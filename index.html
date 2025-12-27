@@ -400,6 +400,190 @@
                                 )
                             )
                         )
+                    ),
+
+                    // Shift Modal
+                    showShiftModal && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50', onClick: () => setShowShiftModal(false) },
+                        React.createElement('div', { className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto', onClick: (e) => e.stopPropagation() },
+                            React.createElement('div', { className: 'flex justify-between items-center mb-4' },
+                                React.createElement('h2', { className: 'text-2xl font-bold text-gray-800' },
+                                    `Shifts for ${selectedDate ? selectedDate.toLocaleDateString() : ''}`
+                                ),
+                                React.createElement('button', { onClick: () => setShowShiftModal(false), className: 'p-2 hover:bg-gray-100 rounded-lg' },
+                                    React.createElement(X)
+                                )
+                            ),
+
+                            // Existing shifts
+                            modalShifts.length > 0 && React.createElement('div', { className: 'mb-6' },
+                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Current Shifts:'),
+                                React.createElement('div', { className: 'space-y-2' },
+                                    modalShifts.map(shift =>
+                                        React.createElement('div', { key: shift.id, className: 'flex justify-between items-center p-3 bg-green-50 rounded-lg' },
+                                            React.createElement('div', null,
+                                                React.createElement('span', { className: 'font-semibold' }, `${shift.hours}h - ${differentials[shift.shiftType]?.name || shift.shiftType}`),
+                                                shift.bonusType !== 'none' && React.createElement('span', { className: 'text-sm text-gray-600 ml-2' },
+                                                    `+$${shift.bonusType === 'custom' ? shift.customBonus : bonusAmounts[shift.bonusType]} bonus`
+                                                )
+                                            ),
+                                            React.createElement('button', {
+                                                onClick: () => removeShiftFromModal(shift.id),
+                                                className: 'text-red-600 hover:bg-red-100 p-2 rounded'
+                                            }, 'Remove')
+                                        )
+                                    )
+                                )
+                            ),
+
+                            // Add new shift
+                            React.createElement('div', { className: 'border-t pt-4' },
+                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Add Shift:'),
+                                React.createElement('div', { className: 'grid grid-cols-2 gap-4 mb-4' },
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Hours'),
+                                        React.createElement('input', {
+                                            type: 'number',
+                                            value: modalData.hours,
+                                            onChange: (e) => setModalData({...modalData, hours: parseFloat(e.target.value) || 0}),
+                                            step: '0.5',
+                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
+                                        })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Shift Type'),
+                                        React.createElement('select', {
+                                            value: modalData.shiftType,
+                                            onChange: (e) => setModalData({...modalData, shiftType: e.target.value}),
+                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
+                                        },
+                                            Object.entries(differentials).filter(([_, diff]) => diff.active).map(([key, diff]) =>
+                                                React.createElement('option', { key: key, value: key }, diff.name)
+                                            )
+                                        )
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Bonus'),
+                                        React.createElement('select', {
+                                            value: modalData.bonusType,
+                                            onChange: (e) => setModalData({...modalData, bonusType: e.target.value}),
+                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
+                                        },
+                                            React.createElement('option', { value: 'none' }, 'None'),
+                                            React.createElement('option', { value: 'c1' }, 'C1 ($12)'),
+                                            React.createElement('option', { value: 'c2' }, 'C2 ($10)'),
+                                            React.createElement('option', { value: 'c3' }, 'C3 ($15)'),
+                                            React.createElement('option', { value: 'custom' }, 'Custom')
+                                        )
+                                    ),
+                                    modalData.bonusType === 'custom' && React.createElement('div', null,
+                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Custom Bonus $'),
+                                        React.createElement('input', {
+                                            type: 'number',
+                                            value: modalData.customBonus,
+                                            onChange: (e) => setModalData({...modalData, customBonus: parseFloat(e.target.value) || 0}),
+                                            step: '0.01',
+                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
+                                        })
+                                    )
+                                ),
+                                React.createElement('button', {
+                                    onClick: addShiftToModal,
+                                    className: 'w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 mb-4'
+                                }, '+ Add Shift')
+                            ),
+
+                            // Actions
+                            React.createElement('div', { className: 'flex gap-3 mt-6' },
+                                React.createElement('button', {
+                                    onClick: saveShift,
+                                    disabled: modalShifts.length === 0,
+                                    className: 'flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold'
+                                }, 'Save All Shifts'),
+                                modalShifts.length > 0 && React.createElement('button', {
+                                    onClick: deleteAllShiftsForDay,
+                                    className: 'px-4 bg-red-100 text-red-600 py-3 rounded-lg hover:bg-red-200 font-semibold'
+                                }, 'Delete All')
+                            )
+                        )
+                    ),
+
+                    // Differential Config Modal
+                    showDifferentialConfig && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50', onClick: () => setShowDifferentialConfig(false) },
+                        React.createElement('div', { className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto', onClick: (e) => e.stopPropagation() },
+                            React.createElement('div', { className: 'flex justify-between items-center mb-6' },
+                                React.createElement('h2', { className: 'text-2xl font-bold text-gray-800' }, 'Configure Shift Differentials'),
+                                React.createElement('button', { onClick: () => setShowDifferentialConfig(false), className: 'p-2 hover:bg-gray-100 rounded-lg' },
+                                    React.createElement(X)
+                                )
+                            ),
+
+                            React.createElement('div', { className: 'space-y-4 mb-6' },
+                                Object.entries(differentials).map(([key, diff]) =>
+                                    React.createElement('div', { key: key, className: 'flex items-center gap-4 p-4 bg-gray-50 rounded-lg' },
+                                        React.createElement('input', {
+                                            type: 'checkbox',
+                                            checked: diff.active,
+                                            onChange: () => toggleDifferentialActive(key),
+                                            className: 'w-5 h-5'
+                                        }),
+                                        React.createElement('div', { className: 'flex-1' },
+                                            React.createElement('input', {
+                                                type: 'text',
+                                                value: diff.name,
+                                                onChange: (e) => updateDifferential(key, 'name', e.target.value),
+                                                className: 'w-full px-3 py-2 border border-gray-200 rounded-lg mb-2 font-semibold',
+                                                disabled: key === 'base'
+                                            }),
+                                            React.createElement('div', { className: 'flex items-center gap-2' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Differential: $'),
+                                                React.createElement('input', {
+                                                    type: 'number',
+                                                    value: diff.amount,
+                                                    onChange: (e) => updateDifferential(key, 'amount', e.target.value),
+                                                    step: '0.01',
+                                                    className: 'w-24 px-2 py-1 border border-gray-200 rounded'
+                                                }),
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, '/hr')
+                                            )
+                                        ),
+                                        !key.includes('base') && React.createElement('button', {
+                                            onClick: () => deleteDifferential(key),
+                                            className: 'text-red-600 hover:bg-red-100 p-2 rounded'
+                                        }, 'Delete')
+                                    )
+                                )
+                            ),
+
+                            React.createElement('div', { className: 'border-t pt-4' },
+                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Add New Differential:'),
+                                React.createElement('div', { className: 'flex gap-3' },
+                                    React.createElement('input', {
+                                        type: 'text',
+                                        value: newDifferentialName,
+                                        onChange: (e) => setNewDifferentialName(e.target.value),
+                                        placeholder: 'Name (e.g., Night Shift)',
+                                        className: 'flex-1 px-3 py-2 border border-gray-200 rounded-lg'
+                                    }),
+                                    React.createElement('input', {
+                                        type: 'number',
+                                        value: newDifferentialAmount,
+                                        onChange: (e) => setNewDifferentialAmount(parseFloat(e.target.value) || 0),
+                                        placeholder: '0.00',
+                                        step: '0.01',
+                                        className: 'w-32 px-3 py-2 border border-gray-200 rounded-lg'
+                                    }),
+                                    React.createElement('button', {
+                                        onClick: addNewDifferential,
+                                        className: 'bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600'
+                                    }, 'Add')
+                                )
+                            ),
+
+                            React.createElement('button', {
+                                onClick: () => setShowDifferentialConfig(false),
+                                className: 'w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 mt-6 font-semibold'
+                            }, 'Done')
+                        )
                     )
                 )
             );
