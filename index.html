@@ -64,8 +64,6 @@
             const [modalShifts, setModalShifts] = useState([]);
             const [showPaystubPreview, setShowPaystubPreview] = useState(false);
             const [parsedPaystubData, setParsedPaystubData] = useState(null);
-            const [usePaystubHours, setUsePaystubHours] = useState(false);
-            const [paystubHours, setPaystubHours] = useState({});
 
             const bonusAmounts = { 'none': 0, 'c1': 12, 'c2': 10, 'c3': 15 };
 
@@ -86,8 +84,6 @@
                         if (data.shifts) setShifts(data.shifts);
                         if (data.customWithholdings) setCustomWithholdings(data.customWithholdings);
                         if (data.differentials) setDifferentials(data.differentials);
-                        if (data.usePaystubHours !== undefined) setUsePaystubHours(data.usePaystubHours);
-                        if (data.paystubHours) setPaystubHours(data.paystubHours);
                     }
                 } catch (e) {
                     console.error('Error loading saved data:', e);
@@ -99,13 +95,12 @@
                 const dataToSave = {
                     baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
                     ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent,
-                    payPeriodStart, shifts, customWithholdings, differentials,
-                    usePaystubHours, paystubHours
+                    payPeriodStart, shifts, customWithholdings, differentials
                 };
                 localStorage.setItem('nursingWagePlannerData', JSON.stringify(dataToSave));
             }, [baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions, ficaWithholdingType,
                 ficaWithholdingAmount, ficaWithholdingPercent, payPeriodStart, shifts,
-                customWithholdings, differentials, usePaystubHours, paystubHours]);
+                customWithholdings, differentials]);
 
             // Export data as JSON file
             const exportData = () => {
@@ -287,7 +282,7 @@
                 event.target.value = ''; // Reset input
             };
 
-            // Apply parsed paystub data
+            // Apply parsed paystub data to configure calculator
             const applyPaystubData = () => {
                 if (!parsedPaystubData) return;
 
@@ -302,67 +297,9 @@
                     setFicaWithholdingAmount(parsedPaystubData.ficaWithholding);
                 }
 
-                // Store paystub hours for quick entry
-                if (parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0) {
-                    const hours = {};
-                    parsedPaystubData.shifts.forEach(shift => {
-                        // Map shift description to differential key
-                        let shiftKey = 'base';
-                        const desc = shift.description.toLowerCase();
-                        if (desc.includes('weekday') && desc.includes('eve')) shiftKey = 'weekday-eve';
-                        else if (desc.includes('weekend') && desc.includes('day')) shiftKey = 'weekend-day';
-                        else if (desc.includes('weekend') && desc.includes('eve')) shiftKey = 'weekend-eve';
-                        else if (desc.includes('overtime')) shiftKey = 'overtime';
-
-                        hours[shiftKey] = (hours[shiftKey] || 0) + shift.hours;
-                    });
-                    setPaystubHours(hours);
-                }
-
                 setShowPaystubPreview(false);
                 setParsedPaystubData(null);
-                alert('Paystub data applied successfully!');
-            };
-
-            // Distribute paystub hours to random calendar days
-            const distributeHoursToCalendar = () => {
-                if (!parsedPaystubData || !parsedPaystubData.shifts) return;
-
-                const payPeriod = getPayPeriodDays();
-                const newShifts = {};
-
-                parsedPaystubData.shifts.forEach(shift => {
-                    let remainingHours = shift.hours;
-
-                    // Map shift description to differential key
-                    let shiftKey = 'base';
-                    const desc = shift.description.toLowerCase();
-                    if (desc.includes('weekday') && desc.includes('eve')) shiftKey = 'weekday-eve';
-                    else if (desc.includes('weekend') && desc.includes('day')) shiftKey = 'weekend-day';
-                    else if (desc.includes('weekend') && desc.includes('eve')) shiftKey = 'weekend-eve';
-                    else if (desc.includes('overtime')) shiftKey = 'overtime';
-
-                    // Distribute hours across random days (8-12 hour shifts)
-                    while (remainingHours > 0) {
-                        const shiftHours = Math.min(remainingHours, Math.random() > 0.5 ? 12 : 8);
-                        const randomDay = payPeriod[Math.floor(Math.random() * payPeriod.length)];
-                        const dateKey = formatDateKey(randomDay);
-
-                        if (!newShifts[dateKey]) newShifts[dateKey] = [];
-                        newShifts[dateKey].push({
-                            id: Date.now() + Math.random(),
-                            hours: shiftHours,
-                            shiftType: shiftKey,
-                            bonusType: 'none',
-                            customBonus: 0
-                        });
-
-                        remainingHours -= shiftHours;
-                    }
-                });
-
-                setShifts(newShifts);
-                applyPaystubData();
+                alert('Calculator configured successfully! Now add your shifts to the calendar.');
             };
 
             const getPayPeriodDays = () => {
@@ -474,28 +411,17 @@
             const periodCalculations = useMemo(() => {
                 let totalGross = 0, totalHours = 0;
 
-                if (usePaystubHours && Object.keys(paystubHours).length > 0) {
-                    // Use paystub hours for calculation
-                    Object.entries(paystubHours).forEach(([shiftType, hours]) => {
-                        const differentialRate = differentials[shiftType]?.amount || 0;
+                // Calculate from calendar shifts
+                Object.values(shifts).forEach((dayShifts) => {
+                    dayShifts.forEach((shift) => {
+                        const differentialRate = differentials[shift.shiftType]?.amount || 0;
                         const hourlyRate = baseRate + differentialRate;
-                        const shiftGross = hourlyRate * hours;
+                        const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) : bonusAmounts[shift.bonusType];
+                        const shiftGross = (hourlyRate * shift.hours) + bonusAmount;
                         totalGross += shiftGross;
-                        totalHours += hours;
+                        totalHours += shift.hours;
                     });
-                } else {
-                    // Use calendar shifts for calculation
-                    Object.values(shifts).forEach((dayShifts) => {
-                        dayShifts.forEach((shift) => {
-                            const differentialRate = differentials[shift.shiftType]?.amount || 0;
-                            const hourlyRate = baseRate + differentialRate;
-                            const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) : bonusAmounts[shift.bonusType];
-                            const shiftGross = (hourlyRate * shift.hours) + bonusAmount;
-                            totalGross += shiftGross;
-                            totalHours += shift.hours;
-                        });
-                    });
-                }
+                });
 
                 const taxableGross = totalGross - pretaxDeductions;
                 let ficaWithholding = 0;
@@ -529,7 +455,7 @@
                     totalDeductions: totalDeductions.toFixed(2),
                     netPay: netPay.toFixed(2),
                 };
-            }, [shifts, baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent, usePaystubHours, paystubHours]);
+            }, [shifts, baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent]);
 
             const getDayShiftGross = (date) => {
                 const dayShifts = getShiftsForDate(date);
@@ -560,7 +486,10 @@
                                 ),
                                 React.createElement('h1', { className: 'text-3xl md:text-4xl font-bold text-gray-800' }, 'Nursing Wage Planner')
                             ),
-                            React.createElement('p', { className: 'text-gray-600 text-base md:text-lg ml-11' }, 'Plan your schedule and forecast your take-home pay')
+                            React.createElement('div', { className: 'ml-11 space-y-1' },
+                                React.createElement('p', { className: 'text-gray-600 text-base md:text-lg' }, 'Plan your schedule and forecast your take-home pay'),
+                                React.createElement('p', { className: 'text-xs text-orange-600 font-semibold' }, '⚠️ Test with prior paystubs first to verify accuracy')
+                            )
                         ),
                         React.createElement('div', { className: 'flex gap-2 flex-shrink-0 flex-wrap' },
                             React.createElement('button', {
@@ -581,9 +510,10 @@
                                 })
                             ),
                             React.createElement('label', {
-                                title: 'Upload Paystub PDF',
-                                className: 'p-2 md:p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer'
+                                title: 'Step 1: Upload Example Paystub to Configure',
+                                className: 'relative p-2 md:p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer'
                             },
+                                React.createElement('span', { className: 'absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center' }, '1'),
                                 React.createElement(FileText),
                                 React.createElement('input', {
                                     type: 'file',
@@ -607,6 +537,13 @@
                     React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8' },
                         React.createElement('div', { className: 'lg:col-span-2' },
                             React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm p-4 md:p-6 border border-gray-100' },
+                                React.createElement('div', { className: 'mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200' },
+                                    React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
+                                        React.createElement('span', { className: 'bg-blue-500 text-white text-sm font-bold rounded-full w-6 h-6 flex items-center justify-center' }, '2'),
+                                        React.createElement('span', { className: 'font-bold text-gray-800' }, 'Add Your Shifts')
+                                    ),
+                                    React.createElement('p', { className: 'text-xs text-gray-600' }, 'Click calendar days to add shifts manually, or upload a Kronos schedule screenshot')
+                                ),
                                 React.createElement('div', { className: 'mb-6 p-3 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-100' },
                                     React.createElement('label', { className: 'flex items-center gap-2 font-semibold text-gray-700 mb-2' },
                                         React.createElement(Calendar),
@@ -810,68 +747,6 @@
                                             className: 'w-full text-xs text-red-600 hover:bg-red-50 py-2 rounded-lg transition'
                                         }, '🗑️ Clear All Data')
                                     )
-                                )
-                            ),
-                            React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm p-6 border border-gray-100' },
-                                React.createElement('div', { className: 'flex items-center justify-between mb-4' },
-                                    React.createElement('h3', { className: 'text-lg font-bold text-gray-800 flex items-center gap-2' },
-                                        React.createElement(FileText),
-                                        'Paystub Hours'
-                                    ),
-                                    React.createElement('label', { className: 'relative inline-flex items-center cursor-pointer' },
-                                        React.createElement('input', {
-                                            type: 'checkbox',
-                                            checked: usePaystubHours,
-                                            onChange: (e) => setUsePaystubHours(e.target.checked),
-                                            className: 'sr-only peer'
-                                        }),
-                                        React.createElement('div', { className: 'w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500' })
-                                    )
-                                ),
-                                React.createElement('p', { className: 'text-xs text-gray-600 mb-4' },
-                                    usePaystubHours
-                                        ? '✓ Using paystub hours for calculations'
-                                        : 'Using calendar shifts for calculations'
-                                ),
-                                Object.keys(paystubHours).length > 0 ? React.createElement('div', { className: 'space-y-3' },
-                                    Object.entries(paystubHours).map(([shiftType, hours]) =>
-                                        React.createElement('div', { key: shiftType, className: 'flex justify-between items-center p-3 bg-orange-50 rounded-lg border border-orange-200' },
-                                            React.createElement('div', null,
-                                                React.createElement('div', { className: 'text-sm font-semibold text-gray-700' },
-                                                    differentials[shiftType]?.name || shiftType
-                                                ),
-                                                React.createElement('div', { className: 'text-xs text-gray-500' },
-                                                    `$${(baseRate + (differentials[shiftType]?.amount || 0)).toFixed(2)}/hr`
-                                                )
-                                            ),
-                                            React.createElement('div', { className: 'flex items-center gap-2' },
-                                                React.createElement('input', {
-                                                    type: 'number',
-                                                    value: hours,
-                                                    onChange: (e) => {
-                                                        const newHours = { ...paystubHours };
-                                                        const val = parseFloat(e.target.value);
-                                                        if (val > 0) {
-                                                            newHours[shiftType] = val;
-                                                        } else {
-                                                            delete newHours[shiftType];
-                                                        }
-                                                        setPaystubHours(newHours);
-                                                    },
-                                                    step: '0.5',
-                                                    className: 'w-16 px-2 py-1 text-sm border border-orange-300 rounded text-right'
-                                                }),
-                                                React.createElement('span', { className: 'text-xs text-gray-600' }, 'hrs')
-                                            )
-                                        )
-                                    ),
-                                    React.createElement('button', {
-                                        onClick: () => setPaystubHours({}),
-                                        className: 'w-full text-xs text-red-600 hover:bg-red-50 py-2 rounded-lg transition mt-2'
-                                    }, 'Clear Paystub Hours')
-                                ) : React.createElement('div', { className: 'text-center py-8 text-gray-400' },
-                                    React.createElement('p', { className: 'text-sm mb-2' }, 'No paystub hours entered'),
-                                    React.createElement('p', { className: 'text-xs' }, 'Upload a paystub PDF to extract hours')
                                 )
                             ),
                             React.createElement('div', { className: 'bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-6 border-2 border-green-200' },
@@ -1109,14 +984,23 @@
                     showPaystubPreview && parsedPaystubData && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50', onClick: () => setShowPaystubPreview(false) },
                         React.createElement('div', { className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto', onClick: (e) => e.stopPropagation() },
                             React.createElement('div', { className: 'flex justify-between items-center mb-6' },
-                                React.createElement('h2', { className: 'text-2xl font-bold text-gray-800' }, 'Paystub Data Preview'),
+                                React.createElement('div', null,
+                                    React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
+                                        React.createElement('span', { className: 'bg-orange-500 text-white text-sm font-bold rounded-full w-6 h-6 flex items-center justify-center' }, '1'),
+                                        React.createElement('h2', { className: 'text-2xl font-bold text-gray-800' }, 'Configure Calculator')
+                                    ),
+                                    React.createElement('p', { className: 'text-xs text-orange-600' }, 'Review extracted data from your example paystub')
+                                ),
                                 React.createElement('button', { onClick: () => setShowPaystubPreview(false), className: 'p-2 hover:bg-gray-100 rounded-lg' },
                                     React.createElement(X)
                                 )
                             ),
 
                             React.createElement('div', { className: 'mb-6' },
-                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Review the data extracted from your paystub before applying:')
+                                React.createElement('div', { className: 'p-3 bg-blue-50 rounded-lg border border-blue-200 mb-4' },
+                                    React.createElement('p', { className: 'text-sm text-blue-800 font-semibold mb-1' }, '💡 How to Use This Tool'),
+                                    React.createElement('p', { className: 'text-xs text-blue-700' }, 'This paystub configures your hourly rate, deductions, and tax withholdings. After applying, you\'ll manually add shifts to the calendar to calculate future paychecks.')
+                                )
                             ),
 
                             React.createElement('div', { className: 'space-y-4 mb-6' },
@@ -1166,7 +1050,7 @@
                                 ),
 
                                 parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0 && React.createElement('div', { className: 'p-4 bg-gray-50 rounded-lg border border-gray-200' },
-                                    React.createElement('div', { className: 'font-semibold text-gray-700 mb-2' }, 'Shifts Found:'),
+                                    React.createElement('div', { className: 'font-semibold text-gray-700 mb-2' }, 'Shift Types Detected (for reference):'),
                                     React.createElement('div', { className: 'space-y-2' },
                                         parsedPaystubData.shifts.map((shift, idx) =>
                                             React.createElement('div', { key: idx, className: 'text-sm' },
@@ -1175,28 +1059,19 @@
                                             )
                                         )
                                     ),
-                                    React.createElement('p', { className: 'text-xs text-orange-600 mt-2 italic' }, 'Note: Paystubs don\'t include specific dates. Choose how to handle shift hours below.')
+                                    React.createElement('p', { className: 'text-xs text-gray-500 mt-2 italic' }, 'Note: Shift hours shown are from THIS paystub only. You\'ll add future shifts manually to the calendar.')
                                 )
                             ),
 
-                            React.createElement('div', { className: 'flex flex-col gap-3 pt-4 border-t' },
-                                React.createElement('div', { className: 'flex gap-3' },
-                                    React.createElement('button', {
-                                        onClick: () => setShowPaystubPreview(false),
-                                        className: 'flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold'
-                                    }, 'Cancel'),
-                                    React.createElement('button', {
-                                        onClick: applyPaystubData,
-                                        className: 'flex-1 px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold'
-                                    }, 'Apply Data Only')
-                                ),
-                                parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0 && React.createElement('button', {
-                                    onClick: distributeHoursToCalendar,
-                                    className: 'w-full px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:shadow-lg font-semibold flex items-center justify-center gap-2'
-                                },
-                                    React.createElement('span', null, '📅'),
-                                    'Distribute Hours to Random Calendar Days'
-                                )
+                            React.createElement('div', { className: 'flex gap-3 pt-4 border-t' },
+                                React.createElement('button', {
+                                    onClick: () => setShowPaystubPreview(false),
+                                    className: 'flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold'
+                                }, 'Cancel'),
+                                React.createElement('button', {
+                                    onClick: applyPaystubData,
+                                    className: 'flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:shadow-lg font-semibold'
+                                }, '✓ Configure Calculator')
                             )
                         )
                     )
