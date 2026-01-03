@@ -7,6 +7,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
@@ -29,6 +30,7 @@
         const Download = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' }));
         const Upload = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' }));
         const Save = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4' }));
+        const FileText = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' }));
 
         function NursingWageCalculator() {
             const [baseRate, setBaseRate] = useState(65.15);
@@ -60,6 +62,8 @@
                 customBonus: 0,
             });
             const [modalShifts, setModalShifts] = useState([]);
+            const [showPaystubPreview, setShowPaystubPreview] = useState(false);
+            const [parsedPaystubData, setParsedPaystubData] = useState(null);
 
             const bonusAmounts = { 'none': 0, 'c1': 12, 'c2': 10, 'c3': 15 };
 
@@ -150,6 +154,142 @@
                     localStorage.removeItem('nursingWagePlannerData');
                     window.location.reload();
                 }
+            };
+
+            // Parse paystub PDF
+            const parsePaystubPDF = async (file) => {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                    let fullText = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+
+                    // Extract data using pattern matching
+                    const extracted = {};
+
+                    // Pay period dates
+                    const payBeginMatch = fullText.match(/Pay Begin Date:\s*(\d{2}\/\d{2}\/\d{4})/);
+                    const payEndMatch = fullText.match(/Pay End Date:\s*(\d{2}\/\d{2}\/\d{4})/);
+                    if (payBeginMatch) {
+                        const [month, day, year] = payBeginMatch[1].split('/');
+                        extracted.payPeriodStart = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                    }
+
+                    // Base hourly rate
+                    const rateMatch = fullText.match(/Pay Rate:\s*\$?([\d,]+\.?\d*)\s*Hourly/);
+                    if (rateMatch) {
+                        extracted.baseRate = parseFloat(rateMatch[1].replace(/,/g, ''));
+                    }
+
+                    // Pre-tax deductions (403b, 401k, etc.)
+                    const pretaxMatch = fullText.match(/403\(b\)[^\d]+([\d,]+\.?\d*)/);
+                    if (pretaxMatch) {
+                        extracted.pretaxDeductions = parseFloat(pretaxMatch[1].replace(/,/g, ''));
+                    }
+
+                    // FICA taxes
+                    const ficaMedMatch = fullText.match(/Fed MED\/EE[^\d]+([\d,]+\.?\d*)/);
+                    const ficaOasdiMatch = fullText.match(/Fed OASDI\/EE[^\d]+([\d,]+\.?\d*)/);
+                    if (ficaMedMatch && ficaOasdiMatch) {
+                        const ficaTotal = parseFloat(ficaMedMatch[1].replace(/,/g, '')) +
+                                        parseFloat(ficaOasdiMatch[1].replace(/,/g, ''));
+                        extracted.ficaWithholding = ficaTotal;
+                    }
+
+                    // State taxes
+                    const stateMatch = fullText.match(/PA W\/H[^\d]+([\d,]+\.?\d*)/);
+                    const philaMatch = fullText.match(/PA PHILADELPHIA W\/H[^\d]+([\d,]+\.?\d*)/);
+                    const lsMatch = fullText.match(/PA LS Tax[^\d]+([\d,]+\.?\d*)/);
+                    let stateTaxTotal = 0;
+                    if (stateMatch) stateTaxTotal += parseFloat(stateMatch[1].replace(/,/g, ''));
+                    if (philaMatch) stateTaxTotal += parseFloat(philaMatch[1].replace(/,/g, ''));
+                    if (lsMatch) stateTaxTotal += parseFloat(lsMatch[1].replace(/,/g, ''));
+                    if (stateTaxTotal > 0) {
+                        extracted.stateTax = stateTaxTotal;
+                    }
+
+                    // Gross pay for rate calculations
+                    const grossMatch = fullText.match(/TOTAL GROSS[^\d]+([\d,]+\.?\d*)/);
+                    if (grossMatch) {
+                        extracted.grossPay = parseFloat(grossMatch[1].replace(/,/g, ''));
+                    }
+
+                    // Calculate tax rates
+                    if (extracted.ficaWithholding && extracted.grossPay) {
+                        extracted.ficaRate = (extracted.ficaWithholding / extracted.grossPay) * 100;
+                    }
+                    if (extracted.stateTax && extracted.grossPay) {
+                        extracted.stateTaxRate = (extracted.stateTax / extracted.grossPay) * 100;
+                    }
+
+                    // Extract hours and shift types
+                    extracted.shifts = [];
+                    const shiftsSection = fullText.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
+                    if (shiftsSection) {
+                        const shiftLines = shiftsSection[1].split('\n');
+
+                        // Match patterns like "PD Weekday Day 65.150000 39.25 2,557.16"
+                        const shiftRegex = /(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)/g;
+                        let match;
+                        while ((match = shiftRegex.exec(shiftsSection[1])) !== null) {
+                            extracted.shifts.push({
+                                description: match[1].trim(),
+                                rate: parseFloat(match[2]),
+                                hours: parseFloat(match[3]),
+                                earnings: parseFloat(match[4].replace(/,/g, ''))
+                            });
+                        }
+                    }
+
+                    return extracted;
+                } catch (error) {
+                    console.error('Error parsing PDF:', error);
+                    throw new Error('Failed to parse paystub. Please ensure it is a valid PDF file.');
+                }
+            };
+
+            // Handle paystub file upload
+            const handlePaystubUpload = async (event) => {
+                const file = event.target.files[0];
+                if (file && file.type === 'application/pdf') {
+                    try {
+                        const parsed = await parsePaystubPDF(file);
+                        setParsedPaystubData(parsed);
+                        setShowPaystubPreview(true);
+                    } catch (error) {
+                        alert(error.message || 'Error parsing paystub. Please try again.');
+                    }
+                } else {
+                    alert('Please upload a PDF file.');
+                }
+                event.target.value = ''; // Reset input
+            };
+
+            // Apply parsed paystub data
+            const applyPaystubData = () => {
+                if (!parsedPaystubData) return;
+
+                if (parsedPaystubData.baseRate) setBaseRate(parsedPaystubData.baseRate);
+                if (parsedPaystubData.payPeriodStart) setPayPeriodStart(parsedPaystubData.payPeriodStart);
+                if (parsedPaystubData.pretaxDeductions) setPretaxDeductions(parsedPaystubData.pretaxDeductions);
+                if (parsedPaystubData.stateTaxRate) setStateTaxRate(parsedPaystubData.stateTaxRate);
+
+                // Set FICA as dollar amount if found
+                if (parsedPaystubData.ficaWithholding) {
+                    setFicaWithholdingType('dollar');
+                    setFicaWithholdingAmount(parsedPaystubData.ficaWithholding);
+                }
+
+                setShowPaystubPreview(false);
+                setParsedPaystubData(null);
+                alert('Paystub data applied successfully!');
             };
 
             const getPayPeriodDays = () => {
@@ -351,6 +491,18 @@
                                     type: 'file',
                                     accept: '.json',
                                     onChange: importData,
+                                    className: 'hidden'
+                                })
+                            ),
+                            React.createElement('label', {
+                                title: 'Upload Paystub PDF',
+                                className: 'p-2 md:p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer'
+                            },
+                                React.createElement(FileText),
+                                React.createElement('input', {
+                                    type: 'file',
+                                    accept: '.pdf',
+                                    onChange: handlePaystubUpload,
                                     className: 'hidden'
                                 })
                             ),
@@ -802,6 +954,93 @@
                                 onClick: () => setShowDifferentialConfig(false),
                                 className: 'w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 mt-6 font-semibold'
                             }, 'Done')
+                        )
+                    ),
+
+                    // Paystub Preview Modal
+                    showPaystubPreview && parsedPaystubData && React.createElement('div', { className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50', onClick: () => setShowPaystubPreview(false) },
+                        React.createElement('div', { className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto', onClick: (e) => e.stopPropagation() },
+                            React.createElement('div', { className: 'flex justify-between items-center mb-6' },
+                                React.createElement('h2', { className: 'text-2xl font-bold text-gray-800' }, 'Paystub Data Preview'),
+                                React.createElement('button', { onClick: () => setShowPaystubPreview(false), className: 'p-2 hover:bg-gray-100 rounded-lg' },
+                                    React.createElement(X)
+                                )
+                            ),
+
+                            React.createElement('div', { className: 'mb-6' },
+                                React.createElement('p', { className: 'text-sm text-gray-600 mb-4' }, 'Review the data extracted from your paystub before applying:')
+                            ),
+
+                            React.createElement('div', { className: 'space-y-4 mb-6' },
+                                parsedPaystubData.payPeriodStart && React.createElement('div', { className: 'p-4 bg-emerald-50 rounded-lg border border-emerald-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Pay Period Start:'),
+                                        React.createElement('span', { className: 'text-gray-900' }, parsedPaystubData.payPeriodStart)
+                                    )
+                                ),
+
+                                parsedPaystubData.baseRate && React.createElement('div', { className: 'p-4 bg-blue-50 rounded-lg border border-blue-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Base Hourly Rate:'),
+                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.baseRate.toFixed(2)}`)
+                                    )
+                                ),
+
+                                parsedPaystubData.pretaxDeductions && React.createElement('div', { className: 'p-4 bg-purple-50 rounded-lg border border-purple-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Pre-Tax Deductions:'),
+                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.pretaxDeductions.toFixed(2)}`)
+                                    ),
+                                    React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, '(403b, 401k, etc.)')
+                                ),
+
+                                parsedPaystubData.ficaWithholding && React.createElement('div', { className: 'p-4 bg-yellow-50 rounded-lg border border-yellow-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'FICA Withholding:'),
+                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.ficaWithholding.toFixed(2)}`)
+                                    ),
+                                    parsedPaystubData.ficaRate && React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, `(${parsedPaystubData.ficaRate.toFixed(2)}% of gross)`)
+                                ),
+
+                                parsedPaystubData.stateTax && React.createElement('div', { className: 'p-4 bg-orange-50 rounded-lg border border-orange-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'State Tax Total:'),
+                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.stateTax.toFixed(2)}`)
+                                    ),
+                                    parsedPaystubData.stateTaxRate && React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, `Rate: ${parsedPaystubData.stateTaxRate.toFixed(2)}%`)
+                                ),
+
+                                parsedPaystubData.grossPay && React.createElement('div', { className: 'p-4 bg-green-50 rounded-lg border border-green-200' },
+                                    React.createElement('div', { className: 'flex justify-between items-center' },
+                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Gross Pay (for reference):'),
+                                        React.createElement('span', { className: 'text-gray-900 font-mono font-bold' }, `$${parsedPaystubData.grossPay.toFixed(2)}`)
+                                    )
+                                ),
+
+                                parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0 && React.createElement('div', { className: 'p-4 bg-gray-50 rounded-lg border border-gray-200' },
+                                    React.createElement('div', { className: 'font-semibold text-gray-700 mb-2' }, 'Shifts Found:'),
+                                    React.createElement('div', { className: 'space-y-2' },
+                                        parsedPaystubData.shifts.map((shift, idx) =>
+                                            React.createElement('div', { key: idx, className: 'text-sm' },
+                                                React.createElement('span', { className: 'text-gray-700' }, shift.description),
+                                                React.createElement('span', { className: 'text-gray-500 ml-2' }, `- ${shift.hours}h @ $${shift.rate.toFixed(2)}`)
+                                            )
+                                        )
+                                    ),
+                                    React.createElement('p', { className: 'text-xs text-gray-500 mt-2 italic' }, 'Note: Shifts are shown for reference. Use the calendar to manually add them.')
+                                )
+                            ),
+
+                            React.createElement('div', { className: 'flex gap-3 pt-4 border-t' },
+                                React.createElement('button', {
+                                    onClick: () => setShowPaystubPreview(false),
+                                    className: 'flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold'
+                                }, 'Cancel'),
+                                React.createElement('button', {
+                                    onClick: applyPaystubData,
+                                    className: 'flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:shadow-lg font-semibold'
+                                }, 'Apply Data')
+                            )
                         )
                     )
                 )
