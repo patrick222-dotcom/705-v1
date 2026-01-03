@@ -234,22 +234,32 @@
                         extracted.stateTaxRate = (extracted.stateTax / extracted.grossPay) * 100;
                     }
 
-                    // Extract hours and shift types
+                    // Extract hours and shift types (current period only, not YTD)
                     extracted.shifts = [];
                     const shiftsSection = fullText.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
                     if (shiftsSection) {
-                        const shiftLines = shiftsSection[1].split('\n');
-
                         // Match patterns like "PD Weekday Day 65.150000 39.25 2,557.16"
-                        const shiftRegex = /(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)/g;
+                        // Captures current period hours only (3rd number), ignoring YTD columns
+                        const shiftRegex = /(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)(?:\s+[\d.]+\s+[\d,.]+)?/g;
                         let match;
+                        const seenShifts = new Set(); // Track to avoid duplicates from YTD rows
+
                         while ((match = shiftRegex.exec(shiftsSection[1])) !== null) {
-                            extracted.shifts.push({
-                                description: match[1].trim(),
-                                rate: parseFloat(match[2]),
-                                hours: parseFloat(match[3]),
-                                earnings: parseFloat(match[4].replace(/,/g, ''))
-                            });
+                            const description = match[1].trim();
+                            const hours = parseFloat(match[3]);
+
+                            // Skip if hours seem like YTD (typically much larger, e.g., >100)
+                            // or if we've already seen this shift type
+                            const shiftKey = description.toLowerCase();
+                            if (hours > 0 && hours < 200 && !seenShifts.has(shiftKey)) {
+                                seenShifts.add(shiftKey);
+                                extracted.shifts.push({
+                                    description: description,
+                                    rate: parseFloat(match[2]),
+                                    hours: hours,
+                                    earnings: parseFloat(match[4].replace(/,/g, ''))
+                                });
+                            }
                         }
                     }
 
