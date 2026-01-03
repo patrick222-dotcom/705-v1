@@ -17,7 +17,7 @@
     <script type="module">
         const React = window.React;
         const ReactDOM = window.ReactDOM;
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect } = React;
 
         // Simple SVG Icons
         const Calendar = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' }));
@@ -26,6 +26,9 @@
         const Settings = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' }), React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z' }));
         const MessageCircle = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' }));
         const X = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M6 18L18 6M6 6l12 12' }));
+        const Download = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' }));
+        const Upload = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' }));
+        const Save = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4' }));
 
         function NursingWageCalculator() {
             const [baseRate, setBaseRate] = useState(65.15);
@@ -59,6 +62,95 @@
             const [modalShifts, setModalShifts] = useState([]);
 
             const bonusAmounts = { 'none': 0, 'c1': 12, 'c2': 10, 'c3': 15 };
+
+            // Load data from localStorage on mount
+            useEffect(() => {
+                try {
+                    const saved = localStorage.getItem('nursingWagePlannerData');
+                    if (saved) {
+                        const data = JSON.parse(saved);
+                        if (data.baseRate !== undefined) setBaseRate(data.baseRate);
+                        if (data.stateTaxRate !== undefined) setStateTaxRate(data.stateTaxRate);
+                        if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
+                        if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
+                        if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
+                        if (data.ficaWithholdingAmount !== undefined) setFicaWithholdingAmount(data.ficaWithholdingAmount);
+                        if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
+                        if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
+                        if (data.shifts) setShifts(data.shifts);
+                        if (data.customWithholdings) setCustomWithholdings(data.customWithholdings);
+                        if (data.differentials) setDifferentials(data.differentials);
+                    }
+                } catch (e) {
+                    console.error('Error loading saved data:', e);
+                }
+            }, []);
+
+            // Auto-save to localStorage whenever data changes
+            useEffect(() => {
+                const dataToSave = {
+                    baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
+                    ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent,
+                    payPeriodStart, shifts, customWithholdings, differentials
+                };
+                localStorage.setItem('nursingWagePlannerData', JSON.stringify(dataToSave));
+            }, [baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions, ficaWithholdingType,
+                ficaWithholdingAmount, ficaWithholdingPercent, payPeriodStart, shifts,
+                customWithholdings, differentials]);
+
+            // Export data as JSON file
+            const exportData = () => {
+                const dataToExport = {
+                    baseRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
+                    ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent,
+                    payPeriodStart, shifts, customWithholdings, differentials,
+                    exportDate: new Date().toISOString()
+                };
+                const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `nursing-wage-planner-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            // Import data from JSON file
+            const importData = (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            if (data.baseRate !== undefined) setBaseRate(data.baseRate);
+                            if (data.stateTaxRate !== undefined) setStateTaxRate(data.stateTaxRate);
+                            if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
+                            if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
+                            if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
+                            if (data.ficaWithholdingAmount !== undefined) setFicaWithholdingAmount(data.ficaWithholdingAmount);
+                            if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
+                            if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
+                            if (data.shifts) setShifts(data.shifts);
+                            if (data.customWithholdings) setCustomWithholdings(data.customWithholdings);
+                            if (data.differentials) setDifferentials(data.differentials);
+                            alert('Data imported successfully!');
+                        } catch (error) {
+                            alert('Error importing data. Please check the file format.');
+                            console.error('Import error:', error);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            // Clear all data
+            const clearAllData = () => {
+                if (confirm('Are you sure you want to clear ALL data? This cannot be undone.')) {
+                    localStorage.removeItem('nursingWagePlannerData');
+                    window.location.reload();
+                }
+            };
 
             const getPayPeriodDays = () => {
                 const [year, month, day] = payPeriodStart.split('-').map(Number);
@@ -244,13 +336,34 @@
                             ),
                             React.createElement('p', { className: 'text-gray-600 text-base md:text-lg ml-11' }, 'Plan your schedule and forecast your take-home pay')
                         ),
-                        React.createElement('div', { className: 'flex gap-2 flex-shrink-0' },
-                            React.createElement('button', { onClick: () => setShowDifferentialConfig(true), className: 'p-2 md:p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 hover:shadow-lg transition' },
-                                React.createElement(Settings)
+                        React.createElement('div', { className: 'flex gap-2 flex-shrink-0 flex-wrap' },
+                            React.createElement('button', {
+                                onClick: exportData,
+                                title: 'Export Data',
+                                className: 'p-2 md:p-3 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 hover:shadow-lg transition'
+                            }, React.createElement(Download)),
+                            React.createElement('label', {
+                                title: 'Import Data',
+                                className: 'p-2 md:p-3 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 hover:shadow-lg transition cursor-pointer'
+                            },
+                                React.createElement(Upload),
+                                React.createElement('input', {
+                                    type: 'file',
+                                    accept: '.json',
+                                    onChange: importData,
+                                    className: 'hidden'
+                                })
                             ),
-                            React.createElement('button', { onClick: () => window.open('https://docs.google.com/forms/d/e/1FAIpQLSd0sOLUD76uvXsGrLvmd90LFHTcXrT-6he-GhrELaCEW3r-Fg/viewform?usp=pp_url', '_blank'), className: 'p-2 md:p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:shadow-lg transition' },
-                                React.createElement(MessageCircle)
-                            )
+                            React.createElement('button', {
+                                onClick: () => setShowDifferentialConfig(true),
+                                title: 'Settings',
+                                className: 'p-2 md:p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 hover:shadow-lg transition'
+                            }, React.createElement(Settings)),
+                            React.createElement('button', {
+                                onClick: () => window.open('https://docs.google.com/forms/d/e/1FAIpQLSd0sOLUD76uvXsGrLvmd90LFHTcXrT-6he-GhrELaCEW3r-Fg/viewform?usp=pp_url', '_blank'),
+                                title: 'Feedback',
+                                className: 'p-2 md:p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:shadow-lg transition'
+                            }, React.createElement(MessageCircle))
                         )
                     ),
                     React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8' },
@@ -452,6 +565,12 @@
                                                 )
                                             )
                                         )
+                                    ),
+                                    React.createElement('div', { className: 'border-t pt-4 mt-4' },
+                                        React.createElement('button', {
+                                            onClick: clearAllData,
+                                            className: 'w-full text-xs text-red-600 hover:bg-red-50 py-2 rounded-lg transition'
+                                        }, '🗑️ Clear All Data')
                                     )
                                 )
                             ),
