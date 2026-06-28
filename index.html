@@ -39,7 +39,6 @@
             const [pretaxDeductions, setPretaxDeductions] = useState(0);
             const [posttaxDeductions, setPosttaxDeductions] = useState(0);
             const [ficaWithholdingType, setFicaWithholdingType] = useState('standard');
-            const [ficaWithholdingAmount, setFicaWithholdingAmount] = useState(0);
             const [ficaWithholdingPercent, setFicaWithholdingPercent] = useState(7.65);
             const [payPeriodStart, setPayPeriodStart] = useState('2024-01-01');
             const [shifts, setShifts] = useState({});
@@ -66,8 +65,17 @@
             const [modalShifts, setModalShifts] = useState([]);
             const [showPaystubPreview, setShowPaystubPreview] = useState(false);
             const [parsedPaystubData, setParsedPaystubData] = useState(null);
+            const [isParsingPDF, setIsParsingPDF] = useState(false);
 
             const bonusAmounts = { 'none': 0, 'charge': 3, 'preceptor': 2, 'oncall': 5, 'custom': 0 };
+
+            // Lock body scroll when modals are open
+            useEffect(() => {
+                if (showShiftModal || showDifferentialConfig || showPaystubPreview) {
+                    document.body.style.overflow = 'hidden';
+                    return () => { document.body.style.overflow = 'unset'; };
+                }
+            }, [showShiftModal, showDifferentialConfig, showPaystubPreview]);
 
             // Load data from localStorage on mount
             useEffect(() => {
@@ -81,7 +89,6 @@
                         if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
                         if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
                         if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
-                        if (data.ficaWithholdingAmount !== undefined) setFicaWithholdingAmount(data.ficaWithholdingAmount);
                         if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
                         if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
                         if (data.shifts) setShifts(data.shifts);
@@ -99,7 +106,7 @@
                     try {
                         const dataToSave = {
                             baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
-                            ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent,
+                            ficaWithholdingType, ficaWithholdingPercent,
                             payPeriodStart, shifts, customWithholdings, differentials
                         };
                         localStorage.setItem('nursingWagePlannerData', JSON.stringify(dataToSave));
@@ -113,14 +120,13 @@
 
                 return () => clearTimeout(timeoutId);
             }, [baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, ficaWithholdingType,
-                ficaWithholdingAmount, ficaWithholdingPercent, payPeriodStart, shifts,
-                customWithholdings, differentials]);
+                ficaWithholdingPercent, payPeriodStart, shifts, customWithholdings, differentials]);
 
             // Export data as JSON file
             const exportData = () => {
                 const dataToExport = {
                     baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
-                    ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent,
+                    ficaWithholdingType, ficaWithholdingPercent,
                     payPeriodStart, shifts, customWithholdings, differentials,
                     exportDate: new Date().toISOString()
                 };
@@ -133,6 +139,19 @@
                 URL.revokeObjectURL(url);
             };
 
+            // Validate import data structure
+            const validateImportData = (data) => {
+                if (typeof data !== 'object' || data === null) return false;
+                const numericFields = ['baseRate', 'federalTaxRate', 'stateTaxRate', 'pretaxDeductions', 'posttaxDeductions', 'ficaWithholdingPercent'];
+                for (const field of numericFields) {
+                    if (data[field] !== undefined && (typeof data[field] !== 'number' || data[field] < 0 || !isFinite(data[field]))) {
+                        return false;
+                    }
+                }
+                if (data.shifts !== undefined && typeof data.shifts !== 'object') return false;
+                return true;
+            };
+
             // Import data from JSON file
             const importData = (event) => {
                 const file = event.target.files[0];
@@ -141,12 +160,15 @@
                     reader.onload = (e) => {
                         try {
                             const data = JSON.parse(e.target.result);
+                            if (!validateImportData(data)) {
+                                throw new Error('Invalid data format or corrupted file');
+                            }
                             if (data.baseRate !== undefined) setBaseRate(data.baseRate);
+                            if (data.federalTaxRate !== undefined) setFederalTaxRate(data.federalTaxRate);
                             if (data.stateTaxRate !== undefined) setStateTaxRate(data.stateTaxRate);
                             if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
                             if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
                             if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
-                            if (data.ficaWithholdingAmount !== undefined) setFicaWithholdingAmount(data.ficaWithholdingAmount);
                             if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
                             if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
                             if (data.shifts) setShifts(data.shifts);
@@ -323,12 +345,15 @@
                     return;
                 }
 
+                setIsParsingPDF(true);
                 try {
                     const parsed = await parsePaystubPDF(file);
                     setParsedPaystubData(parsed);
                     setShowPaystubPreview(true);
                 } catch (error) {
                     alert(error.message || 'Error parsing paystub. Please try again.');
+                } finally {
+                    setIsParsingPDF(false);
                 }
                 event.target.value = ''; // Reset input
             };
@@ -564,33 +589,47 @@
                 };
             }, [shifts, baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent]);
 
-            const getDayShiftGross = (date) => {
-                const dayShifts = getShiftsForDate(date);
-                let dayGross = 0;
-                dayShifts.forEach((shift) => {
-                    const differential = differentials[shift.shiftType];
-                    const differentialAmount = differential?.amount || 0;
-                    const differentialType = differential?.type || 'dollar';
+            // Memoize day calculations to prevent recalculation on every render
+            const dayCalculations = useMemo(() => {
+                const calculations = {};
+                payPeriodDays.forEach((date) => {
+                    const dateKey = formatDateKey(date);
+                    const dayShifts = shifts[dateKey] || [];
+                    let dayGross = 0;
+                    let dayHours = 0;
 
-                    // Calculate hourly rate based on differential type
-                    let hourlyRate;
-                    if (differentialType === 'multiplier') {
-                        hourlyRate = baseRate * differentialAmount;
-                    } else if (differentialType === 'percent') {
-                        hourlyRate = baseRate * (1 + differentialAmount / 100);
-                    } else {
-                        hourlyRate = baseRate + differentialAmount;
-                    }
+                    dayShifts.forEach((shift) => {
+                        const differential = differentials[shift.shiftType];
+                        const differentialAmount = differential?.amount || 0;
+                        const differentialType = differential?.type || 'dollar';
 
-                    const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) || 0 : bonusAmounts[shift.bonusType] || 0;
-                    dayGross += (hourlyRate * shift.hours) + bonusAmount;
+                        let hourlyRate;
+                        if (differentialType === 'multiplier') {
+                            hourlyRate = baseRate * differentialAmount;
+                        } else if (differentialType === 'percent') {
+                            hourlyRate = baseRate * (1 + differentialAmount / 100);
+                        } else {
+                            hourlyRate = baseRate + differentialAmount;
+                        }
+
+                        const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) || 0 : bonusAmounts[shift.bonusType] || 0;
+                        dayGross += (hourlyRate * shift.hours) + bonusAmount;
+                        dayHours += shift.hours;
+                    });
+
+                    calculations[dateKey] = { gross: dayGross, hours: dayHours };
                 });
-                return dayGross;
+                return calculations;
+            }, [shifts, baseRate, differentials, payPeriodStart]);
+
+            const getDayShiftGross = (date) => {
+                const dateKey = formatDateKey(date);
+                return dayCalculations[dateKey]?.gross || 0;
             };
 
             const getDayHours = (date) => {
-                const dayShifts = getShiftsForDate(date);
-                return dayShifts.reduce((sum, shift) => sum + shift.hours, 0);
+                const dateKey = formatDateKey(date);
+                return dayCalculations[dateKey]?.hours || 0;
             };
 
             const payPeriodLabel = `${payPeriodStart} to ${formatDateKey(new Date(new Date(payPeriodStart).getTime() + 13 * 24 * 60 * 60 * 1000))}`;
@@ -613,7 +652,7 @@
                                 )
                             )
                         ),
-                        React.createElement('div', { className: 'flex gap-2 flex-shrink-0 flex-wrap' },
+                        React.createElement('div', { className: 'flex gap-2 flex-shrink-0 flex-wrap justify-end', role: 'group', 'aria-label': 'App actions' },
                             React.createElement('button', {
                                 onClick: exportData,
                                 'aria-label': 'Export data as JSON file',
@@ -637,15 +676,16 @@
                             React.createElement('label', {
                                 'aria-label': 'Upload example paystub PDF to configure rates',
                                 title: 'Step 1: Upload Example Paystub to Configure',
-                                className: 'relative p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer focus-within:ring-2 focus-within:ring-orange-500'
+                                className: `relative p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer focus-within:ring-2 focus-within:ring-orange-500 ${isParsingPDF ? 'opacity-50 pointer-events-none' : ''}`
                             },
                                 React.createElement('span', { className: 'absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center' }, '1'),
-                                React.createElement(FileText),
+                                isParsingPDF ? React.createElement('div', { className: 'animate-spin w-5 h-5 border-2 border-orange-700 border-t-transparent rounded-full' }) : React.createElement(FileText),
                                 React.createElement('input', {
                                     type: 'file',
                                     accept: '.pdf',
                                     onChange: handlePaystubUpload,
                                     'aria-label': 'Upload paystub PDF',
+                                    disabled: isParsingPDF,
                                     className: 'hidden'
                                 })
                             ),
@@ -705,19 +745,19 @@
                                                 key: dateKey,
                                                 onClick: () => handleDateClick(date),
                                                 'aria-label': `${date.toLocaleDateString()} - ${dayShifts.length > 0 ? `${dayHours} hours scheduled` : 'Add shift'}`,
-                                                className: `rounded p-2 text-center cursor-pointer transition min-h-24 md:min-h-20 flex flex-col justify-center text-sm md:text-xs ${dayShifts.length > 0 ? 'bg-gradient-to-b from-green-100 to-emerald-100 border-2 border-green-400 hover:shadow-md' : isWeekend ? 'bg-gray-100 border border-gray-300 hover:border-emerald-300' : 'bg-white border border-gray-200 hover:border-emerald-300'}`,
+                                                className: `rounded p-2 text-center cursor-pointer transition min-h-32 md:min-h-24 flex flex-col justify-center text-base md:text-sm ${dayShifts.length > 0 ? 'bg-gradient-to-b from-green-100 to-emerald-100 border-2 border-green-400 hover:shadow-md' : isWeekend ? 'bg-gray-100 border border-gray-300 hover:border-emerald-300' : 'bg-white border border-gray-200 hover:border-emerald-300'}`,
                                                 style: { padding: '8px', cursor: 'pointer' }
                                             },
                                                 React.createElement('div', { className: 'font-bold text-gray-800' }, date.getDate()),
                                                 dayShifts.length > 0 ? React.createElement('div', { className: 'space-y-1 mt-1' },
-                                                    React.createElement('div', { className: 'text-sm md:text-xs text-emerald-700 font-semibold' }, `${dayHours}h`),
-                                                    React.createElement('div', { className: 'text-sm md:text-xs text-green-600 font-bold' }, `$${dayGross.toFixed(0)}`)
-                                                ) : React.createElement('div', { className: 'text-gray-400 hover:text-emerald-500 transition text-lg leading-none mt-1' }, '+')
+                                                    React.createElement('div', { className: 'text-sm md:text-xs text-emerald-800 font-semibold' }, `${dayHours}h`),
+                                                    React.createElement('div', { className: 'text-sm md:text-xs text-green-700 font-bold' }, `$${dayGross.toFixed(0)}`)
+                                                ) : React.createElement('div', { className: 'text-gray-500 hover:text-emerald-600 transition text-lg leading-none mt-1' }, '+')
                                             );
                                         })
                                     )
                                 ),
-                                React.createElement('p', { className: 'text-xs text-gray-500 text-center mt-4' }, '💡 Click a day to add or view shifts')
+                                React.createElement('p', { className: 'text-sm text-gray-600 text-center mt-4 font-medium' }, '💡 Click a day to add or view shifts')
                             )
                         ),
                         React.createElement('div', { className: 'space-y-6' },
@@ -946,9 +986,9 @@
                                         )
                                     )
                                 ),
-                                React.createElement('div', { className: 'bg-white rounded-xl p-4 border border-green-200' },
+                                React.createElement('div', { className: 'bg-white rounded-xl p-4 border-2 border-green-300' },
                                     React.createElement('p', { className: 'text-gray-600 text-xs mb-2 font-medium' }, '💰 Your Take-Home Pay'),
-                                    React.createElement('p', { className: 'text-3xl md:text-4xl font-bold text-green-600' }, `$${periodCalculations.netPay}`)
+                                    React.createElement('p', { className: 'text-4xl md:text-5xl font-bold text-green-600' }, `$${periodCalculations.netPay}`)
                                 )
                             )
                         )
@@ -1309,8 +1349,37 @@
             );
         }
 
+        // Error Boundary Component
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            componentDidCatch(error, info) {
+                console.error('Application error:', error, info);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return React.createElement('div', { className: 'min-h-screen flex items-center justify-center bg-red-50 p-8' },
+                        React.createElement('div', { className: 'bg-white rounded-2xl shadow-lg p-8 max-w-md text-center' },
+                            React.createElement('h1', { className: 'text-2xl font-bold text-red-600 mb-4' }, 'Something went wrong'),
+                            React.createElement('p', { className: 'text-gray-600 mb-6' }, 'The app encountered an error. Your data is saved in browser storage.'),
+                            React.createElement('button', {
+                                onClick: () => window.location.reload(),
+                                className: 'bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 font-semibold'
+                            }, 'Reload App')
+                        )
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(NursingWageCalculator));
+        root.render(React.createElement(ErrorBoundary, null, React.createElement(NursingWageCalculator)));
     </script>
 </body>
 </html>
