@@ -325,10 +325,11 @@ function App(){
 
   /* check auth session */
   useEffect(()=>{
-    supabase.auth.getSession().then(({data:{session}})=>{
+    supabase.auth.getSession().then(async ({data:{session}})=>{
       setSession(session);
       setUser(session?.user ?? null);
-      if(session) loadFromSupabase(session.user.id).then(d=>{
+      if(session){
+        const d = await loadFromSupabase(session.user.id);
         if(d){
           if(d.name) setName(d.name);
           if(d.baseRate!=null) setBaseRate(d.baseRate);
@@ -348,8 +349,8 @@ function App(){
           }
           setSetupComplete(d.setupComplete!==false);
         }
-        setReady(true);
-      });
+      }
+      setReady(true);
     });
     const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,session)=>{
       setSession(session);
