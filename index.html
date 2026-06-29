@@ -1,1385 +1,939 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nursing Wage Planner</title>
-    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.tailwindcss.com@3.4.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>ScrubPay — Nursing Wage Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --ink:#16181F; --ink-2:#21242F; --paper:#F6F5F1; --card:#FFFFFF;
+    --indigo:#5B4FE9; --indigo-press:#4A3FD4; --indigo-soft:#ECEAFE; --indigo-ink:#3F35B8;
+    --mint:#34D399; --money:#11A86B; --money-soft:#E3F7EE; --money-ink:#0B5D3C;
+    --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
+    --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
+    --muted:#6B665C; --muted-2:#9A968C; --line:#EEEDE8; --line-2:#E7E5DE;
+    --danger:#C84B3C; --danger-soft:#F3D6D1;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+  .display{font-family:'Bricolage Grotesque','Plus Jakarta Sans',sans-serif;letter-spacing:-.02em}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,select{font-family:inherit}
+  .num{font-variant-numeric:tabular-nums}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#dcdacf;border-radius:6px;border:3px solid var(--paper)}
+
+  /* loading splash */
+  #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--paper);z-index:9999;transition:opacity .35s}
+  #splash .logo{display:flex;align-items:center;gap:10px}
+  #splash .dot{width:14px;height:14px;border-radius:5px;background:var(--indigo)}
+  #splash .wm{font-family:'Bricolage Grotesque';font-weight:800;font-size:24px}
+  #splash .spin{width:26px;height:26px;border:3px solid #e3e1d8;border-top-color:var(--indigo);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* layout */
+  .topbar{position:sticky;top:0;z-index:40;background:rgba(246,245,241,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:12px 18px}
+  .brand{display:flex;align-items:center;gap:8px;font-family:'Bricolage Grotesque';font-weight:800;font-size:18px}
+  .brand .b-dot{width:11px;height:11px;border-radius:4px;background:var(--indigo)}
+  .topnav{display:none;gap:20px;margin-left:8px}
+  .topnav span{font-weight:600;font-size:13.5px;color:var(--muted-2)}
+  .topnav span.on{color:var(--ink)}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .iconbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line-2);background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--ink)}
+  .iconbtn:hover{background:#fbfaf7}
+  .avatar{width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 120px}
+  .greet-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .greet .hi{font-size:13px;color:var(--muted-2);font-weight:500}
+  .greet .name{font-family:'Bricolage Grotesque';font-weight:700;font-size:22px}
+  .period{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-weight:600;font-size:13.5px}
+  .period button{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--ink);font-size:18px;line-height:1}
+  .period button:hover{background:#f1f0eb}
+
+  .dash{display:grid;grid-template-columns:1fr;gap:16px}
+  .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px}
+  .card h3{margin:0 0 14px;font-size:14px;font-weight:700}
+
+  .hero{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff}
+  .hero .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
+  .hero .num{font-family:'Bricolage Grotesque';font-weight:800;color:var(--mint);font-size:clamp(46px,12vw,64px);line-height:1;letter-spacing:-.03em;margin:8px 0 14px}
+  .hero .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .hero .chip{background:rgba(255,255,255,.08);color:#D9DBE4;padding:7px 12px;border-radius:9px;font-weight:600;font-size:12.5px}
+  .hero .more{margin-top:14px;font-weight:600;font-size:12.5px;color:#8E92A0;display:inline-flex;align-items:center;gap:4px}
+  .hero .more:hover{color:#cfd2db}
+
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+  .stat .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px}
+  .stat .k{font-size:12px;color:var(--muted-2);margin-top:2px;font-weight:500}
+
+  .whatif{background:var(--indigo-soft);border-radius:16px;padding:15px 16px;display:flex;align-items:center;gap:12px}
+  .whatif .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
+  .whatif .s{font-size:12px;color:#6A60C9;margin-top:3px}
+  .whatif button{background:var(--indigo);color:#fff;padding:9px 14px;border-radius:11px;font-weight:600;font-size:12.5px;flex:0 0 auto}
+
+  /* calendar */
+  .cal-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+  .cal-head .ttl{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px}
+  .cal-head .sub{font-size:12.5px;color:var(--muted-2)}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+  .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cell{aspect-ratio:1/1;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
+  .cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
+  .cell.empty{border-style:dashed;background:#fff;pointer-events:none}
+  .cell .d{font-weight:700;font-size:13px}
+  .cell .plus{margin-top:auto;color:#cfccc2;font-size:17px;font-weight:700}
+  .cell .dots{margin-top:auto;display:flex;gap:3px;flex-wrap:wrap}
+  .cell .dots i{width:7px;height:7px;border-radius:50%}
+  .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:2px}
+  .cell.has{background:#fff}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+  .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:500}
+  .legend i{width:8px;height:8px;border-radius:50%}
+
+  /* breakdown */
+  .bd-row{margin-bottom:13px}
+  .bd-row:last-child{margin-bottom:0}
+  .bd-row .lh{display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px}
+  .bd-row .lh .nm{font-weight:600;color:var(--muted)}
+  .bd-row .lh .nm.g{color:var(--ink)}
+  .bd-row .lh .vv{font-weight:600;color:var(--danger)}
+  .bd-row .lh .vv.g{font-family:'Bricolage Grotesque';font-weight:700;color:var(--ink)}
+  .bar{height:9px;border-radius:5px;background:var(--danger-soft)}
+  .bar.gross{height:10px;background:var(--indigo);width:100%}
+  .takehome{background:var(--ink);border-radius:16px;padding:16px 18px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;color:#fff}
+  .takehome .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
+  .takehome .s{font-size:11.5px;color:#7E8290;margin-top:2px}
+  .takehome .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em}
+  .disclaimer{font-size:11.5px;line-height:1.5;color:#A8A498;text-align:center;margin-top:14px}
+
+  /* buttons */
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:15px;border-radius:15px;font-weight:600;font-size:15px;width:100%;transition:transform .06s,box-shadow .12s}
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--indigo);color:#fff;box-shadow:0 8px 18px rgba(91,79,233,.28)}
+  .btn-primary:hover{background:var(--indigo-press)}
+  .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line-2)}
+  .btn-ghost:hover{background:#fbfaf7}
+  .btn-soft{background:var(--indigo-soft);color:var(--indigo-ink)}
+  .btn-sm{padding:10px 16px;border-radius:11px;font-size:13px;width:auto}
+
+  /* fab */
+  .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:45;background:var(--indigo);color:#fff;padding:15px 26px;border-radius:16px;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;box-shadow:0 10px 26px rgba(91,79,233,.4)}
+  .fab:active{transform:translateX(-50%) translateY(1px)}
+
+  /* toggle */
+  .tg{width:44px;height:25px;border-radius:13px;background:#D7D5CE;position:relative;flex:0 0 auto;transition:background .15s;cursor:pointer}
+  .tg .knob{position:absolute;top:2.5px;left:2.5px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .tg.on{background:var(--indigo)}
+  .tg.on .knob{left:21.5px}
+
+  /* inputs */
+  .field{display:block;margin-bottom:14px}
+  .field .lab{font-size:13px;font-weight:600;margin-bottom:7px;display:block}
+  .field .hint{font-size:11.5px;color:var(--muted-2);margin-top:6px}
+  .inp{position:relative}
+  .inp input,.inp select{width:100%;padding:13px 14px;border:1.5px solid var(--line-2);border-radius:13px;font-size:15px;background:#fff;color:var(--ink);outline:none}
+  .inp.pre input{padding-left:30px}
+  .inp.suf input{padding-right:38px}
+  .inp .pfx{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
+  .inp .sfx{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
+  .inp input:focus,.inp select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,79,233,.12)}
+
+  /* diff rows */
+  .drow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:9px}
+  .drow.off{opacity:.55}
+  .drow .nm{font-weight:600;font-size:14px;flex:1;min-width:0}
+  .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:5px 9px;border-radius:8px;white-space:nowrap}
+  .drow .amt input{width:54px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
+  .ddash{border:1.5px dashed #D8D5CC;border-radius:13px;padding:12px;text-align:center;font-weight:600;font-size:13px;color:#7A766C;width:100%}
+
+  /* chips */
+  .chips-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:11px 12px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
+  .chip-sel i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .chip-sel.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .chip-sel.on i{background:#fff!important}
+  .hrs{display:flex;gap:8px}
+  .hrs .hc{flex:1;border:1.5px solid var(--line);border-radius:12px;padding:11px;text-align:center;font-weight:700;font-size:14px;color:var(--muted);background:#fff}
+  .hrs .hc.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* tags */
+  .tag{display:inline-block;font-weight:600;font-size:10.5px;padding:3px 7px;border-radius:6px;margin-top:5px}
+  .tag.est{color:#C2820A;background:#FDF3DD}
+  .tag.auto{color:var(--indigo);background:var(--indigo-soft)}
+
+  /* progress */
+  .prog{flex:1;height:6px;border-radius:3px;background:#E5E3DC;overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--indigo);border-radius:3px;transition:width .3s}
+  .back{width:36px;height:36px;border-radius:11px;border:1.5px solid var(--line-2);background:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex:0 0 auto}
+
+  /* onboarding */
+  .ob{min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding:22px 24px calc(24px + env(safe-area-inset-bottom))}
+  .ob .eyebrow{font-weight:600;font-size:12.5px;color:var(--indigo);margin-bottom:10px;letter-spacing:.02em}
+  .ob .q{font-family:'Bricolage Grotesque';font-weight:700;font-size:25px;line-height:1.18}
+  .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
+  .ob .spacer{flex:1;min-height:18px}
+  .ob.dark{background:var(--ink);color:#fff}
+  .pill{display:inline-flex;align-self:flex-start;background:var(--indigo-soft);color:var(--indigo);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
+
+  /* modal / sheet */
+  .scrim{position:fixed;inset:0;background:rgba(18,18,26,.55);z-index:80;display:flex;animation:fade .2s}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .sheet{margin-top:auto;width:100%;max-width:520px;margin-left:auto;margin-right:auto;background:var(--paper);border-radius:26px 26px 0 0;max-height:92dvh;overflow-y:auto;padding:14px 22px calc(24px + env(safe-area-inset-bottom));animation:up .26s cubic-bezier(.2,.8,.2,1)}
+  @keyframes up{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
+  .grab{width:42px;height:5px;border-radius:3px;background:#D8D5CC;margin:0 auto 16px}
+  .modal{margin:auto;width:100%;max-width:560px;background:var(--paper);border-radius:24px;max-height:90dvh;overflow-y:auto;padding:24px;animation:up .24s ease}
+  .sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .sheet-h .t{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px}
+  .sec-lab{font-weight:600;font-size:12px;color:var(--muted-2);margin:4px 0 9px;letter-spacing:.02em}
+  .preview{background:var(--money-soft);border:1px solid #BCE9D4;border-radius:14px;padding:14px 16px;margin:16px 0}
+  .preview .k{font-weight:600;font-size:12px;color:var(--money-ink)}
+  .preview .v{font-weight:700;font-size:14px;color:var(--money-ink);margin-top:2px}
+  .row-item{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin-bottom:9px}
+  .link{color:var(--indigo);font-weight:600;font-size:13px}
+  .danger-link{color:var(--danger);font-weight:600;font-size:12.5px}
+
+  @media (min-width:920px){
+    .topnav{display:flex}
+    .dash{grid-template-columns:1.6fr 1fr;align-items:start}
+    .fab{display:none}
+    .wrap{padding-bottom:40px}
+    .hero .num{font-size:60px}
+  }
+  @media (max-width:919px){ .desk-only{display:none!important} }
+</style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="module">
-        const React = window.React;
-        const ReactDOM = window.ReactDOM;
-        const { useState, useMemo, useEffect } = React;
-
-        // Simple SVG Icons
-        const Calendar = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' }));
-        const Briefcase = () => React.createElement('svg', { className: 'w-6 h-6', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m0 10v10l8 4m8-4v-10' }));
-        const DollarSign = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' }));
-        const Settings = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' }), React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z' }));
-        const MessageCircle = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z' }));
-        const X = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M6 18L18 6M6 6l12 12' }));
-        const Download = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4' }));
-        const Upload = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' }));
-        const Save = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4' }));
-        const FileText = () => React.createElement('svg', { className: 'w-5 h-5', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, React.createElement('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' }));
-
-        function NursingWageCalculator() {
-            const [baseRate, setBaseRate] = useState(65.15);
-            const [federalTaxRate, setFederalTaxRate] = useState(12);
-            const [stateTaxRate, setStateTaxRate] = useState(2.5);
-            const [pretaxDeductions, setPretaxDeductions] = useState(0);
-            const [posttaxDeductions, setPosttaxDeductions] = useState(0);
-            const [ficaWithholdingType, setFicaWithholdingType] = useState('standard');
-            const [ficaWithholdingPercent, setFicaWithholdingPercent] = useState(7.65);
-            const [payPeriodStart, setPayPeriodStart] = useState('2024-01-01');
-            const [shifts, setShifts] = useState({});
-            const [selectedDate, setSelectedDate] = useState(null);
-            const [showShiftModal, setShowShiftModal] = useState(false);
-            const [customWithholdings, setCustomWithholdings] = useState([]);
-            const [showDifferentialConfig, setShowDifferentialConfig] = useState(false);
-            const [differentials, setDifferentials] = useState({
-                'base': { name: 'Regular Day', amount: 0, type: 'dollar', active: true },
-                'night': { name: 'Night Shift', amount: 10, type: 'dollar', active: true },
-                'weekday-eve': { name: 'Weekday Evening', amount: 3, type: 'dollar', active: true },
-                'weekend-day': { name: 'Weekend Day', amount: 11.5, type: 'dollar', active: true },
-                'weekend-eve': { name: 'Weekend Evening', amount: 16.5, type: 'dollar', active: true },
-                'overtime': { name: 'Overtime (1.5×)', amount: 1.5, type: 'multiplier', active: true },
-            });
-            const [newDifferentialName, setNewDifferentialName] = useState('');
-            const [newDifferentialAmount, setNewDifferentialAmount] = useState(0);
-            const [modalData, setModalData] = useState({
-                hours: 12,
-                shiftType: 'base',
-                bonusType: 'none',
-                customBonus: 0,
-            });
-            const [modalShifts, setModalShifts] = useState([]);
-            const [showPaystubPreview, setShowPaystubPreview] = useState(false);
-            const [parsedPaystubData, setParsedPaystubData] = useState(null);
-            const [isParsingPDF, setIsParsingPDF] = useState(false);
-
-            const bonusAmounts = { 'none': 0, 'charge': 3, 'preceptor': 2, 'oncall': 5, 'custom': 0 };
-
-            // Lock body scroll when modals are open
-            useEffect(() => {
-                if (showShiftModal || showDifferentialConfig || showPaystubPreview) {
-                    document.body.style.overflow = 'hidden';
-                    return () => { document.body.style.overflow = 'unset'; };
-                }
-            }, [showShiftModal, showDifferentialConfig, showPaystubPreview]);
-
-            // Load data from localStorage on mount
-            useEffect(() => {
-                try {
-                    const saved = localStorage.getItem('nursingWagePlannerData');
-                    if (saved) {
-                        const data = JSON.parse(saved);
-                        if (data.baseRate !== undefined) setBaseRate(data.baseRate);
-                        if (data.federalTaxRate !== undefined) setFederalTaxRate(data.federalTaxRate);
-                        if (data.stateTaxRate !== undefined) setStateTaxRate(data.stateTaxRate);
-                        if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
-                        if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
-                        if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
-                        if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
-                        if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
-                        if (data.shifts) setShifts(data.shifts);
-                        if (data.customWithholdings) setCustomWithholdings(data.customWithholdings);
-                        if (data.differentials) setDifferentials(data.differentials);
-                    }
-                } catch (e) {
-                    console.error('Error loading saved data:', e);
-                }
-            }, []);
-
-            // Auto-save to localStorage whenever data changes (debounced)
-            useEffect(() => {
-                const timeoutId = setTimeout(() => {
-                    try {
-                        const dataToSave = {
-                            baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
-                            ficaWithholdingType, ficaWithholdingPercent,
-                            payPeriodStart, shifts, customWithholdings, differentials
-                        };
-                        localStorage.setItem('nursingWagePlannerData', JSON.stringify(dataToSave));
-                    } catch (e) {
-                        if (e.name === 'QuotaExceededError') {
-                            alert('Storage limit reached. Please export and clear old data.');
-                        }
-                        console.error('Error saving data:', e);
-                    }
-                }, 500);
-
-                return () => clearTimeout(timeoutId);
-            }, [baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, ficaWithholdingType,
-                ficaWithholdingPercent, payPeriodStart, shifts, customWithholdings, differentials]);
-
-            // Export data as JSON file
-            const exportData = () => {
-                const dataToExport = {
-                    baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions,
-                    ficaWithholdingType, ficaWithholdingPercent,
-                    payPeriodStart, shifts, customWithholdings, differentials,
-                    exportDate: new Date().toISOString()
-                };
-                const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `nursing-wage-planner-${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-            };
-
-            // Validate import data structure
-            const validateImportData = (data) => {
-                if (typeof data !== 'object' || data === null) return false;
-                const numericFields = ['baseRate', 'federalTaxRate', 'stateTaxRate', 'pretaxDeductions', 'posttaxDeductions', 'ficaWithholdingPercent'];
-                for (const field of numericFields) {
-                    if (data[field] !== undefined && (typeof data[field] !== 'number' || data[field] < 0 || !isFinite(data[field]))) {
-                        return false;
-                    }
-                }
-                if (data.shifts !== undefined && typeof data.shifts !== 'object') return false;
-                return true;
-            };
-
-            // Import data from JSON file
-            const importData = (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const data = JSON.parse(e.target.result);
-                            if (!validateImportData(data)) {
-                                throw new Error('Invalid data format or corrupted file');
-                            }
-                            if (data.baseRate !== undefined) setBaseRate(data.baseRate);
-                            if (data.federalTaxRate !== undefined) setFederalTaxRate(data.federalTaxRate);
-                            if (data.stateTaxRate !== undefined) setStateTaxRate(data.stateTaxRate);
-                            if (data.pretaxDeductions !== undefined) setPretaxDeductions(data.pretaxDeductions);
-                            if (data.posttaxDeductions !== undefined) setPosttaxDeductions(data.posttaxDeductions);
-                            if (data.ficaWithholdingType) setFicaWithholdingType(data.ficaWithholdingType);
-                            if (data.ficaWithholdingPercent !== undefined) setFicaWithholdingPercent(data.ficaWithholdingPercent);
-                            if (data.payPeriodStart) setPayPeriodStart(data.payPeriodStart);
-                            if (data.shifts) setShifts(data.shifts);
-                            if (data.customWithholdings) setCustomWithholdings(data.customWithholdings);
-                            if (data.differentials) setDifferentials(data.differentials);
-                            alert('Data imported successfully!');
-                        } catch (error) {
-                            alert('Error importing data. Please check the file format.');
-                            console.error('Import error:', error);
-                        }
-                    };
-                    reader.readAsText(file);
-                }
-            };
-
-            // Clear all data
-            const clearAllData = () => {
-                if (confirm('Are you sure you want to clear ALL data? This cannot be undone.')) {
-                    localStorage.removeItem('nursingWagePlannerData');
-                    window.location.reload();
-                }
-            };
-
-            // Parse paystub PDF
-            const parsePaystubPDF = async (file) => {
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-                    let fullText = '';
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const textContent = await page.getTextContent();
-                        const pageText = textContent.items.map(item => item.str).join(' ');
-                        fullText += pageText + '\n';
-                    }
-
-                    // Extract data using pattern matching
-                    const extracted = {};
-
-                    // Pay period dates
-                    const payBeginMatch = fullText.match(/Pay Begin Date:\s*(\d{2}\/\d{2}\/\d{4})/);
-                    const payEndMatch = fullText.match(/Pay End Date:\s*(\d{2}\/\d{2}\/\d{4})/);
-                    if (payBeginMatch) {
-                        const [month, day, year] = payBeginMatch[1].split('/');
-                        extracted.payPeriodStart = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-                    }
-
-                    // Base hourly rate
-                    const rateMatch = fullText.match(/Pay Rate:\s*\$?([\d,]+\.?\d*)\s*Hourly/);
-                    if (rateMatch) {
-                        extracted.baseRate = parseFloat(rateMatch[1].replace(/,/g, ''));
-                    }
-
-                    // Pre-tax deductions (403b, 401k, etc.)
-                    const pretaxMatch = fullText.match(/403\(b\)[^\d]+([\d,]+\.?\d*)/);
-                    if (pretaxMatch) {
-                        extracted.pretaxDeductions = parseFloat(pretaxMatch[1].replace(/,/g, ''));
-                    }
-
-                    // FICA taxes
-                    const ficaMedMatch = fullText.match(/Fed MED\/EE[^\d]+([\d,]+\.?\d*)/);
-                    const ficaOasdiMatch = fullText.match(/Fed OASDI\/EE[^\d]+([\d,]+\.?\d*)/);
-                    if (ficaMedMatch && ficaOasdiMatch) {
-                        const ficaTotal = parseFloat(ficaMedMatch[1].replace(/,/g, '')) +
-                                        parseFloat(ficaOasdiMatch[1].replace(/,/g, ''));
-                        extracted.ficaWithholding = ficaTotal;
-                    }
-
-                    // State taxes
-                    const stateMatch = fullText.match(/PA W\/H[^\d]+([\d,]+\.?\d*)/);
-                    const philaMatch = fullText.match(/PA PHILADELPHIA W\/H[^\d]+([\d,]+\.?\d*)/);
-                    const lsMatch = fullText.match(/PA LS Tax[^\d]+([\d,]+\.?\d*)/);
-                    let stateTaxTotal = 0;
-                    if (stateMatch) stateTaxTotal += parseFloat(stateMatch[1].replace(/,/g, ''));
-                    if (philaMatch) stateTaxTotal += parseFloat(philaMatch[1].replace(/,/g, ''));
-                    if (lsMatch) stateTaxTotal += parseFloat(lsMatch[1].replace(/,/g, ''));
-                    if (stateTaxTotal > 0) {
-                        extracted.stateTax = stateTaxTotal;
-                    }
-
-                    // Post-tax deductions (after TAXES section, before TOTAL NET)
-                    const deductionsSection = fullText.match(/DEDUCTIONS([\s\S]*?)(?:TOTAL NET|$)/);
-                    if (deductionsSection) {
-                        let posttaxTotal = 0;
-                        // Common post-tax patterns: Union dues, parking, FSA, garnishments, etc.
-                        const deductionPatterns = [
-                            /Union[^\d]+([\d,]+\.?\d*)/i,
-                            /Parking[^\d]+([\d,]+\.?\d*)/i,
-                            /Dues[^\d]+([\d,]+\.?\d*)/i,
-                            /Garnish[^\d]+([\d,]+\.?\d*)/i,
-                            /Post.*Tax[^\d]+([\d,]+\.?\d*)/i
-                        ];
-
-                        deductionPatterns.forEach(pattern => {
-                            const match = deductionsSection[1].match(pattern);
-                            if (match) {
-                                posttaxTotal += parseFloat(match[1].replace(/,/g, ''));
-                            }
-                        });
-
-                        if (posttaxTotal > 0) {
-                            extracted.posttaxDeductions = posttaxTotal;
-                        }
-                    }
-
-                    // Gross pay for rate calculations
-                    const grossMatch = fullText.match(/TOTAL GROSS[^\d]+([\d,]+\.?\d*)/);
-                    if (grossMatch) {
-                        extracted.grossPay = parseFloat(grossMatch[1].replace(/,/g, ''));
-                    }
-
-                    // Calculate tax rates
-                    if (extracted.ficaWithholding && extracted.grossPay) {
-                        extracted.ficaRate = (extracted.ficaWithholding / extracted.grossPay) * 100;
-                    }
-                    if (extracted.stateTax && extracted.grossPay) {
-                        extracted.stateTaxRate = (extracted.stateTax / extracted.grossPay) * 100;
-                    }
-
-                    // Extract hours and shift types (current period only, not YTD)
-                    extracted.shifts = [];
-                    const shiftsSection = fullText.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
-                    if (shiftsSection) {
-                        // Match patterns like "PD Weekday Day 65.150000 39.25 2,557.16"
-                        // Captures current period hours only (3rd number), ignoring YTD columns
-                        const shiftRegex = /(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)(?:\s+[\d.]+\s+[\d,.]+)?/g;
-                        let match;
-                        const seenShifts = new Set(); // Track to avoid duplicates from YTD rows
-
-                        while ((match = shiftRegex.exec(shiftsSection[1])) !== null) {
-                            const description = match[1].trim();
-                            const hours = parseFloat(match[3]);
-
-                            // Skip if hours seem like YTD (typically much larger, e.g., >100)
-                            // or if we've already seen this shift type
-                            const shiftKey = description.toLowerCase();
-                            if (hours > 0 && hours < 200 && !seenShifts.has(shiftKey)) {
-                                seenShifts.add(shiftKey);
-                                extracted.shifts.push({
-                                    description: description,
-                                    rate: parseFloat(match[2]),
-                                    hours: hours,
-                                    earnings: parseFloat(match[4].replace(/,/g, ''))
-                                });
-                            }
-                        }
-                    }
-
-                    return extracted;
-                } catch (error) {
-                    console.error('Error parsing PDF:', error);
-                    throw new Error('Failed to parse paystub. Please ensure it is a valid PDF file.');
-                }
-            };
-
-            // Handle paystub file upload
-            const handlePaystubUpload = async (event) => {
-                const file = event.target.files[0];
-                const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
-
-                if (!file) return;
-
-                if (file.size > MAX_FILE_SIZE) {
-                    alert('File too large. Maximum size is 10MB.');
-                    event.target.value = '';
-                    return;
-                }
-
-                if (file.type !== 'application/pdf') {
-                    alert('Please upload a PDF file.');
-                    event.target.value = '';
-                    return;
-                }
-
-                setIsParsingPDF(true);
-                try {
-                    const parsed = await parsePaystubPDF(file);
-                    setParsedPaystubData(parsed);
-                    setShowPaystubPreview(true);
-                } catch (error) {
-                    alert(error.message || 'Error parsing paystub. Please try again.');
-                } finally {
-                    setIsParsingPDF(false);
-                }
-                event.target.value = ''; // Reset input
-            };
-
-            // Apply parsed paystub data to configure calculator
-            const applyPaystubData = () => {
-                if (!parsedPaystubData) return;
-
-                if (parsedPaystubData.baseRate) setBaseRate(parsedPaystubData.baseRate);
-                if (parsedPaystubData.payPeriodStart) setPayPeriodStart(parsedPaystubData.payPeriodStart);
-                if (parsedPaystubData.pretaxDeductions) setPretaxDeductions(parsedPaystubData.pretaxDeductions);
-                if (parsedPaystubData.posttaxDeductions) setPosttaxDeductions(parsedPaystubData.posttaxDeductions);
-                if (parsedPaystubData.stateTaxRate) setStateTaxRate(parsedPaystubData.stateTaxRate);
-
-                // Set FICA as percentage if found
-                if (parsedPaystubData.ficaRate) {
-                    setFicaWithholdingType('percent');
-                    setFicaWithholdingPercent(parsedPaystubData.ficaRate);
-                }
-
-                // Update shift differentials based on paystub data
-                if (parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0 && parsedPaystubData.baseRate) {
-                    const newDifferentials = { ...differentials };
-
-                    parsedPaystubData.shifts.forEach(shift => {
-                        // Calculate differential amount: shift rate - base rate
-                        const differentialAmount = shift.rate - parsedPaystubData.baseRate;
-
-                        // Map shift description to differential key
-                        const desc = shift.description.toLowerCase();
-                        let shiftKey = 'base';
-                        let shiftName = shift.description;
-
-                        if (desc.includes('weekday') && (desc.includes('eve') || desc.includes('evening'))) {
-                            shiftKey = 'weekday-eve';
-                            shiftName = 'Weekday Evening';
-                        } else if (desc.includes('weekend') && desc.includes('day') && !desc.includes('eve')) {
-                            shiftKey = 'weekend-day';
-                            shiftName = 'Weekend Day';
-                        } else if (desc.includes('weekend') && (desc.includes('eve') || desc.includes('evening'))) {
-                            shiftKey = 'weekend-eve';
-                            shiftName = 'Weekend Evening';
-                        } else if (desc.includes('overtime')) {
-                            shiftKey = 'overtime';
-                            shiftName = 'Overtime';
-                        } else if (desc.includes('weekday') && desc.includes('day')) {
-                            shiftKey = 'base';
-                            shiftName = 'Regular Day';
-                        }
-
-                        // Update the differential with actual paystub values
-                        newDifferentials[shiftKey] = {
-                            name: shiftName,
-                            amount: Math.round(differentialAmount * 100) / 100, // Round to 2 decimal places
-                            active: true
-                        };
-                    });
-
-                    setDifferentials(newDifferentials);
-                }
-
-                setShowPaystubPreview(false);
-                setParsedPaystubData(null);
-                alert('Calculator configured successfully with your paystub rates and deductions! Now add your shifts to the calendar.');
-            };
-
-            const getPayPeriodDays = () => {
-                const [year, month, day] = payPeriodStart.split('-').map(Number);
-                const days = [];
-                for (let i = 0; i < 14; i++) {
-                    const date = new Date(year, month - 1, day + i);
-                    days.push(date);
-                }
-                return days;
-            };
-
-            const payPeriodDays = getPayPeriodDays();
-
-            const formatDateKey = (date) => date.toISOString().split('T')[0];
-
-            const getShiftsForDate = (date) => {
-                const dateKey = formatDateKey(date);
-                return shifts[dateKey] || [];
-            };
-
-            const handleDateClick = (date) => {
-                setSelectedDate(date);
-                const dateKey = formatDateKey(date);
-                const existingShifts = shifts[dateKey] || [];
-                setModalShifts([...existingShifts]);
-                setModalData({ hours: 12, shiftType: 'base', bonusType: 'none', customBonus: 0 });
-                setShowShiftModal(true);
-            };
-
-            const addShiftToModal = () => {
-                if (modalData.hours > 0 && modalData.hours <= 24) {
-                    const newShift = { id: Date.now(), ...modalData };
-                    setModalShifts([...modalShifts, newShift]);
-                    setModalData({ hours: 12, shiftType: 'base', bonusType: 'none', customBonus: 0 });
-                } else {
-                    alert('Hours must be between 0.1 and 24');
-                }
-            };
-
-            const removeShiftFromModal = (shiftId) => {
-                setModalShifts(modalShifts.filter(s => s.id !== shiftId));
-            };
-
-            const saveShift = () => {
-                if (selectedDate && modalShifts.length > 0) {
-                    const dateKey = formatDateKey(selectedDate);
-                    setShifts({ ...shifts, [dateKey]: modalShifts });
-                    setShowShiftModal(false);
-                    setSelectedDate(null);
-                    setModalShifts([]);
-                }
-            };
-
-            const deleteAllShiftsForDay = () => {
-                if (selectedDate) {
-                    const dateKey = formatDateKey(selectedDate);
-                    const newShifts = { ...shifts };
-                    delete newShifts[dateKey];
-                    setShifts(newShifts);
-                    setShowShiftModal(false);
-                    setSelectedDate(null);
-                    setModalShifts([]);
-                }
-            };
-
-            const addCustomWithholding = () => {
-                setCustomWithholdings([...customWithholdings, { id: Date.now(), name: '', amount: 0, type: 'dollar' }]);
-            };
-
-            const updateCustomWithholding = (id, field, value) => {
-                setCustomWithholdings(customWithholdings.map(w => w.id === id ? { ...w, [field]: value } : w));
-            };
-
-            const removeCustomWithholding = (id) => {
-                setCustomWithholdings(customWithholdings.filter(w => w.id !== id));
-            };
-
-            const updateDifferential = (key, field, value) => {
-                setDifferentials({
-                    ...differentials,
-                    [key]: { ...differentials[key], [field]: field === 'amount' ? parseFloat(value) : value }
-                });
-            };
-
-            const toggleDifferentialActive = (key) => {
-                setDifferentials({
-                    ...differentials,
-                    [key]: { ...differentials[key], active: !differentials[key].active }
-                });
-            };
-
-            const addNewDifferential = () => {
-                if (newDifferentialName.trim()) {
-                    const newKey = `custom-${Date.now()}`;
-                    setDifferentials({
-                        ...differentials,
-                        [newKey]: { name: newDifferentialName, amount: parseFloat(newDifferentialAmount) || 0, active: true }
-                    });
-                    setNewDifferentialName('');
-                    setNewDifferentialAmount(0);
-                }
-            };
-
-            const deleteDifferential = (key) => {
-                const newDifferentials = { ...differentials };
-                delete newDifferentials[key];
-                setDifferentials(newDifferentials);
-            };
-
-            const periodCalculations = useMemo(() => {
-                let totalGross = 0, totalHours = 0;
-
-                // Calculate from calendar shifts
-                Object.values(shifts).forEach((dayShifts) => {
-                    dayShifts.forEach((shift) => {
-                        const differential = differentials[shift.shiftType];
-                        const differentialAmount = differential?.amount || 0;
-                        const differentialType = differential?.type || 'dollar';
-
-                        // Calculate hourly rate based on differential type
-                        let hourlyRate;
-                        if (differentialType === 'multiplier') {
-                            hourlyRate = baseRate * differentialAmount;
-                        } else if (differentialType === 'percent') {
-                            hourlyRate = baseRate * (1 + differentialAmount / 100);
-                        } else {
-                            hourlyRate = baseRate + differentialAmount;
-                        }
-
-                        const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) || 0 : bonusAmounts[shift.bonusType] || 0;
-                        const shiftGross = (hourlyRate * shift.hours) + bonusAmount;
-                        totalGross += shiftGross;
-                        totalHours += shift.hours;
-                    });
-                });
-
-                const taxableGross = totalGross - pretaxDeductions;
-                let ficaWithholding = 0;
-                if (ficaWithholdingType === 'standard') {
-                    ficaWithholding = taxableGross * 0.0765;
-                } else if (ficaWithholdingType === 'percent') {
-                    ficaWithholding = taxableGross * (parseFloat(ficaWithholdingPercent) / 100) || 0;
-                }
-
-                const federalTax = taxableGross * (federalTaxRate / 100);
-                const stateTax = taxableGross * (stateTaxRate / 100);
-                let customWithholdingsTotal = 0;
-                customWithholdings.forEach(withholding => {
-                    if (withholding.type === 'dollar') {
-                        customWithholdingsTotal += parseFloat(withholding.amount) || 0;
-                    } else if (withholding.type === 'percent') {
-                        customWithholdingsTotal += taxableGross * (parseFloat(withholding.amount) / 100) || 0;
-                    }
-                });
-
-                const totalDeductions = pretaxDeductions + ficaWithholding + federalTax + stateTax + posttaxDeductions + customWithholdingsTotal;
-                const netPay = totalGross - totalDeductions;
-
-                return {
-                    totalGross: totalGross.toFixed(2),
-                    totalHours: totalHours.toFixed(1),
-                    ficaWithholding: ficaWithholding.toFixed(2),
-                    federalTax: federalTax.toFixed(2),
-                    stateTax: stateTax.toFixed(2),
-                    customWithholdingsTotal: customWithholdingsTotal.toFixed(2),
-                    totalDeductions: totalDeductions.toFixed(2),
-                    netPay: netPay.toFixed(2),
-                };
-            }, [shifts, baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingPercent]);
-
-            // Memoize day calculations to prevent recalculation on every render
-            const dayCalculations = useMemo(() => {
-                const calculations = {};
-                payPeriodDays.forEach((date) => {
-                    const dateKey = formatDateKey(date);
-                    const dayShifts = shifts[dateKey] || [];
-                    let dayGross = 0;
-                    let dayHours = 0;
-
-                    dayShifts.forEach((shift) => {
-                        const differential = differentials[shift.shiftType];
-                        const differentialAmount = differential?.amount || 0;
-                        const differentialType = differential?.type || 'dollar';
-
-                        let hourlyRate;
-                        if (differentialType === 'multiplier') {
-                            hourlyRate = baseRate * differentialAmount;
-                        } else if (differentialType === 'percent') {
-                            hourlyRate = baseRate * (1 + differentialAmount / 100);
-                        } else {
-                            hourlyRate = baseRate + differentialAmount;
-                        }
-
-                        const bonusAmount = shift.bonusType === 'custom' ? parseFloat(shift.customBonus) || 0 : bonusAmounts[shift.bonusType] || 0;
-                        dayGross += (hourlyRate * shift.hours) + bonusAmount;
-                        dayHours += shift.hours;
-                    });
-
-                    calculations[dateKey] = { gross: dayGross, hours: dayHours };
-                });
-                return calculations;
-            }, [shifts, baseRate, differentials, payPeriodStart]);
-
-            const getDayShiftGross = (date) => {
-                const dateKey = formatDateKey(date);
-                return dayCalculations[dateKey]?.gross || 0;
-            };
-
-            const getDayHours = (date) => {
-                const dateKey = formatDateKey(date);
-                return dayCalculations[dateKey]?.hours || 0;
-            };
-
-            const payPeriodLabel = `${payPeriodStart} to ${formatDateKey(new Date(new Date(payPeriodStart).getTime() + 13 * 24 * 60 * 60 * 1000))}`;
-
-            return React.createElement('div', { className: 'w-full min-h-screen bg-gradient-to-b from-emerald-50 via-white to-green-50 p-4 md:p-6' },
-                React.createElement('div', { className: 'max-w-5xl mx-auto' },
-                    React.createElement('div', { className: 'mb-8 flex items-start justify-between gap-4' },
-                        React.createElement('div', null,
-                            React.createElement('div', { className: 'flex items-center gap-3 mb-3' },
-                                React.createElement('div', { className: 'p-2 bg-gradient-to-br from-emerald-100 to-green-100 rounded-lg' },
-                                    React.createElement(Briefcase)
-                                ),
-                                React.createElement('h1', { className: 'text-3xl md:text-4xl font-bold text-gray-800' }, 'Nursing Wage Planner')
-                            ),
-                            React.createElement('div', { className: 'ml-11 space-y-1' },
-                                React.createElement('p', { className: 'text-gray-600 text-base md:text-lg' }, 'Plan your schedule and forecast your take-home pay'),
-                                React.createElement('div', { className: 'text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-2 mt-2' },
-                                    React.createElement('p', { className: 'font-bold mb-1' }, '⚠️ ESTIMATES ONLY - NOT FINANCIAL ADVICE'),
-                                    React.createElement('p', null, 'This calculator provides estimates for planning. Actual pay varies based on W-4 elections, employer policies, and tax rules. Always verify against paystubs.')
-                                )
-                            )
-                        ),
-                        React.createElement('div', { className: 'flex gap-2 flex-shrink-0 flex-wrap justify-end', role: 'group', 'aria-label': 'App actions' },
-                            React.createElement('button', {
-                                onClick: exportData,
-                                'aria-label': 'Export data as JSON file',
-                                title: 'Export Data',
-                                className: 'p-3 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 hover:shadow-lg transition focus:ring-2 focus:ring-blue-500 focus:outline-none'
-                            }, React.createElement(Download)),
-                            React.createElement('label', {
-                                'aria-label': 'Import data from JSON file',
-                                title: 'Import Data',
-                                className: 'p-3 bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 hover:shadow-lg transition cursor-pointer focus-within:ring-2 focus-within:ring-purple-500'
-                            },
-                                React.createElement(Upload),
-                                React.createElement('input', {
-                                    type: 'file',
-                                    accept: '.json',
-                                    onChange: importData,
-                                    'aria-label': 'Import JSON file',
-                                    className: 'hidden'
-                                })
-                            ),
-                            React.createElement('label', {
-                                'aria-label': 'Upload example paystub PDF to configure rates',
-                                title: 'Step 1: Upload Example Paystub to Configure',
-                                className: `relative p-3 bg-orange-100 text-orange-700 rounded-xl hover:bg-orange-200 hover:shadow-lg transition cursor-pointer focus-within:ring-2 focus-within:ring-orange-500 ${isParsingPDF ? 'opacity-50 pointer-events-none' : ''}`
-                            },
-                                React.createElement('span', { className: 'absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center' }, '1'),
-                                isParsingPDF ? React.createElement('div', { className: 'animate-spin w-5 h-5 border-2 border-orange-700 border-t-transparent rounded-full' }) : React.createElement(FileText),
-                                React.createElement('input', {
-                                    type: 'file',
-                                    accept: '.pdf',
-                                    onChange: handlePaystubUpload,
-                                    'aria-label': 'Upload paystub PDF',
-                                    disabled: isParsingPDF,
-                                    className: 'hidden'
-                                })
-                            ),
-                            React.createElement('button', {
-                                onClick: () => setShowDifferentialConfig(true),
-                                'aria-label': 'Open settings to configure shift differentials',
-                                title: 'Settings',
-                                className: 'p-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 hover:shadow-lg transition focus:ring-2 focus:ring-gray-500 focus:outline-none'
-                            }, React.createElement(Settings)),
-                            React.createElement('button', {
-                                onClick: () => window.open('https://docs.google.com/forms/d/e/1FAIpQLSd0sOLUD76uvXsGrLvmd90LFHTcXrT-6he-GhrELaCEW3r-Fg/viewform?usp=pp_url', '_blank'),
-                                'aria-label': 'Submit feedback (opens in new tab)',
-                                title: 'Feedback',
-                                rel: 'noopener noreferrer',
-                                className: 'p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl hover:shadow-lg transition focus:ring-2 focus:ring-green-600 focus:outline-none'
-                            }, React.createElement(MessageCircle))
-                        )
-                    ),
-                    React.createElement('div', { className: 'grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8' },
-                        React.createElement('div', { className: 'lg:col-span-2' },
-                            React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm p-4 md:p-6 border border-gray-100' },
-                                React.createElement('div', { className: 'mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200' },
-                                    React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
-                                        React.createElement('span', { className: 'bg-blue-500 text-white text-sm font-bold rounded-full w-6 h-6 flex items-center justify-center' }, '2'),
-                                        React.createElement('span', { className: 'font-bold text-gray-800' }, 'Add Your Shifts')
-                                    ),
-                                    React.createElement('p', { className: 'text-xs text-gray-600' }, 'Click calendar days to add shifts manually, or upload a Kronos schedule screenshot')
-                                ),
-                                React.createElement('div', { className: 'mb-6 p-3 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-100' },
-                                    React.createElement('label', { className: 'flex items-center gap-2 font-semibold text-gray-700 mb-2' },
-                                        React.createElement(Calendar),
-                                        'Pay Period Start Date'
-                                    ),
-                                    React.createElement('input', {
-                                        type: 'date',
-                                        value: payPeriodStart,
-                                        onChange: (e) => setPayPeriodStart(e.target.value),
-                                        className: 'px-3 py-1 text-sm border border-emerald-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent w-full'
-                                    }),
-                                    React.createElement('p', { className: 'text-xs text-gray-600 mt-1' }, `📅 ${payPeriodLabel}`)
-                                ),
-                                React.createElement('div', { className: 'overflow-x-auto' },
-                                    React.createElement('div', { className: 'grid grid-cols-7 gap-1 mb-2' },
-                                        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) =>
-                                            React.createElement('div', { key: day, className: 'text-center font-bold text-xs text-gray-600 h-6 flex items-center justify-center' }, day)
-                                        )
-                                    ),
-                                    React.createElement('div', { className: 'grid grid-cols-7 gap-1' },
-                                        payPeriodDays.map((date) => {
-                                            const dayShifts = getShiftsForDate(date);
-                                            const dayGross = getDayShiftGross(date);
-                                            const dayHours = getDayHours(date);
-                                            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                                            const dateKey = formatDateKey(date);
-
-                                            return React.createElement('button', {
-                                                key: dateKey,
-                                                onClick: () => handleDateClick(date),
-                                                'aria-label': `${date.toLocaleDateString()} - ${dayShifts.length > 0 ? `${dayHours} hours scheduled` : 'Add shift'}`,
-                                                className: `rounded p-2 text-center cursor-pointer transition min-h-32 md:min-h-24 flex flex-col justify-center text-base md:text-sm ${dayShifts.length > 0 ? 'bg-gradient-to-b from-green-100 to-emerald-100 border-2 border-green-400 hover:shadow-md' : isWeekend ? 'bg-gray-100 border border-gray-300 hover:border-emerald-300' : 'bg-white border border-gray-200 hover:border-emerald-300'}`,
-                                                style: { padding: '8px', cursor: 'pointer' }
-                                            },
-                                                React.createElement('div', { className: 'font-bold text-gray-800' }, date.getDate()),
-                                                dayShifts.length > 0 ? React.createElement('div', { className: 'space-y-1 mt-1' },
-                                                    React.createElement('div', { className: 'text-sm md:text-xs text-emerald-800 font-semibold' }, `${dayHours}h`),
-                                                    React.createElement('div', { className: 'text-sm md:text-xs text-green-700 font-bold' }, `$${dayGross.toFixed(0)}`)
-                                                ) : React.createElement('div', { className: 'text-gray-500 hover:text-emerald-600 transition text-lg leading-none mt-1' }, '+')
-                                            );
-                                        })
-                                    )
-                                ),
-                                React.createElement('p', { className: 'text-sm text-gray-600 text-center mt-4 font-medium' }, '💡 Click a day to add or view shifts')
-                            )
-                        ),
-                        React.createElement('div', { className: 'space-y-6' },
-                            React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm p-6 border border-gray-100' },
-                                React.createElement('h3', { className: 'text-lg font-bold text-gray-800 mb-5 flex items-center gap-2' },
-                                    React.createElement(DollarSign),
-                                    'Your Details'
-                                ),
-                                React.createElement('div', { className: 'space-y-4' },
-                                    React.createElement('div', null,
-                                        React.createElement('label', { htmlFor: 'base-rate', className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'Base Hourly Rate'),
-                                        React.createElement('div', { className: 'relative' },
-                                            React.createElement('span', { className: 'absolute left-3 top-3 text-gray-500' }, '$'),
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                id: 'base-rate',
-                                                'aria-label': 'Base hourly rate in dollars',
-                                                value: baseRate,
-                                                onChange: (e) => {
-                                                    const val = parseFloat(e.target.value);
-                                                    if (!isNaN(val) && val >= 0) setBaseRate(val);
-                                                },
-                                                step: '0.01',
-                                                min: '0',
-                                                max: '500',
-                                                className: 'w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent focus:outline-none'
-                                            })
-                                        )
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { htmlFor: 'fica-type', className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'FICA Tax Withholding'),
-                                        React.createElement('select', {
-                                            id: 'fica-type',
-                                            value: ficaWithholdingType,
-                                            onChange: (e) => setFicaWithholdingType(e.target.value),
-                                            'aria-label': 'FICA withholding type',
-                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent mb-2'
-                                        },
-                                            React.createElement('option', { value: 'standard' }, 'Standard (7.65%)'),
-                                            React.createElement('option', { value: 'percent' }, 'Custom Percent (%)')
-                                        ),
-                                        ficaWithholdingType === 'percent' && React.createElement('div', { className: 'relative' },
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                id: 'fica-percent',
-                                                'aria-label': 'FICA percentage',
-                                                value: ficaWithholdingPercent,
-                                                onChange: (e) => setFicaWithholdingPercent(parseFloat(e.target.value) || 0),
-                                                step: '0.01',
-                                                min: '0',
-                                                max: '15',
-                                                placeholder: '7.65',
-                                                className: 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent'
-                                            }),
-                                            React.createElement('span', { className: 'absolute right-3 top-3 text-gray-500' }, '%')
-                                        )
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { htmlFor: 'federal-tax', className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'Federal Tax Rate'),
-                                        React.createElement('div', { className: 'relative' },
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                id: 'federal-tax',
-                                                'aria-label': 'Federal tax rate percentage',
-                                                value: federalTaxRate,
-                                                onChange: (e) => setFederalTaxRate(parseFloat(e.target.value) || 0),
-                                                step: '0.1',
-                                                min: '0',
-                                                max: '37',
-                                                className: 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent'
-                                            }),
-                                            React.createElement('span', { className: 'absolute right-3 top-3 text-gray-500' }, '%')
-                                        ),
-                                        React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 'Most nurses: 10-22% (estimate based on W-4)')
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { htmlFor: 'state-tax', className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'State Tax Rate'),
-                                        React.createElement('div', { className: 'relative' },
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                id: 'state-tax',
-                                                'aria-label': 'State tax rate percentage',
-                                                value: stateTaxRate,
-                                                onChange: (e) => setStateTaxRate(parseFloat(e.target.value) || 0),
-                                                step: '0.1',
-                                                min: '0',
-                                                max: '15',
-                                                className: 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent'
-                                            }),
-                                            React.createElement('span', { className: 'absolute right-3 top-3 text-gray-500' }, '%')
-                                        ),
-                                        React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 'PA example: ~2.5%')
-                                    )
-                                )
-                            ),
-                            React.createElement('div', { className: 'bg-white rounded-2xl shadow-sm p-6 border border-gray-100' },
-                                React.createElement('h3', { className: 'text-lg font-bold text-gray-800 mb-5 flex items-center gap-2' },
-                                    React.createElement(DollarSign),
-                                    'Deductions'
-                                ),
-                                React.createElement('div', { className: 'space-y-4' },
-                                    React.createElement('div', null,
-                                        React.createElement('label', { className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'Pre-Tax Deductions'),
-                                        React.createElement('div', { className: 'relative' },
-                                            React.createElement('span', { className: 'absolute left-3 top-3 text-gray-500' }, '$'),
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                value: pretaxDeductions,
-                                                onChange: (e) => setPretaxDeductions(parseFloat(e.target.value) || 0),
-                                                step: '0.01',
-                                                placeholder: '0.00',
-                                                className: 'w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent'
-                                            })
-                                        ),
-                                        React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 'e.g., 401k, health insurance')
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { className: 'block text-sm font-semibold text-gray-700 mb-2' }, 'Post-Tax Deductions'),
-                                        React.createElement('div', { className: 'relative' },
-                                            React.createElement('span', { className: 'absolute left-3 top-3 text-gray-500' }, '$'),
-                                            React.createElement('input', {
-                                                type: 'number',
-                                                value: posttaxDeductions,
-                                                onChange: (e) => setPosttaxDeductions(parseFloat(e.target.value) || 0),
-                                                step: '0.01',
-                                                placeholder: '0.00',
-                                                className: 'w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent'
-                                            })
-                                        ),
-                                        React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, 'e.g., union dues, garnishments')
-                                    ),
-                                    React.createElement('div', { className: 'border-t pt-4 mt-4' },
-                                        React.createElement('div', { className: 'flex justify-between items-center mb-3' },
-                                            React.createElement('label', { className: 'text-sm font-semibold text-gray-700' }, 'Custom Withholdings'),
-                                            React.createElement('button', {
-                                                onClick: addCustomWithholding,
-                                                className: 'text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg hover:bg-emerald-600'
-                                            }, '+ Add')
-                                        ),
-                                        customWithholdings.length > 0 && React.createElement('div', { className: 'space-y-3' },
-                                            customWithholdings.map(withholding =>
-                                                React.createElement('div', { key: withholding.id, className: 'p-3 bg-gray-50 rounded-lg space-y-2' },
-                                                    React.createElement('div', { className: 'flex gap-2' },
-                                                        React.createElement('input', {
-                                                            type: 'text',
-                                                            value: withholding.name,
-                                                            onChange: (e) => updateCustomWithholding(withholding.id, 'name', e.target.value),
-                                                            placeholder: 'Name (e.g., FSA)',
-                                                            className: 'flex-1 px-2 py-1 text-sm border border-gray-200 rounded'
-                                                        }),
-                                                        React.createElement('select', {
-                                                            value: withholding.type,
-                                                            onChange: (e) => updateCustomWithholding(withholding.id, 'type', e.target.value),
-                                                            className: 'px-2 py-1 text-sm border border-gray-200 rounded'
-                                                        },
-                                                            React.createElement('option', { value: 'dollar' }, '$'),
-                                                            React.createElement('option', { value: 'percent' }, '%')
-                                                        )
-                                                    ),
-                                                    React.createElement('div', { className: 'flex gap-2' },
-                                                        React.createElement('input', {
-                                                            type: 'number',
-                                                            value: withholding.amount,
-                                                            onChange: (e) => updateCustomWithholding(withholding.id, 'amount', parseFloat(e.target.value) || 0),
-                                                            step: '0.01',
-                                                            placeholder: '0.00',
-                                                            className: 'flex-1 px-2 py-1 text-sm border border-gray-200 rounded'
-                                                        }),
-                                                        React.createElement('button', {
-                                                            onClick: () => removeCustomWithholding(withholding.id),
-                                                            className: 'px-3 py-1 text-sm text-red-600 hover:bg-red-100 rounded'
-                                                        }, 'Remove')
-                                                    )
-                                                )
-                                            )
-                                        )
-                                    ),
-                                    React.createElement('div', { className: 'border-t pt-4 mt-4' },
-                                        React.createElement('button', {
-                                            onClick: clearAllData,
-                                            className: 'w-full text-xs text-red-600 hover:bg-red-50 py-2 rounded-lg transition'
-                                        }, '🗑️ Clear All Data')
-                                    )
-                                )
-                            ),
-                            React.createElement('div', { className: 'bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl shadow-sm p-6 border-2 border-green-200' },
-                                React.createElement('h3', { className: 'text-lg font-bold text-gray-800 mb-5' }, '14-Day Earnings'),
-                                React.createElement('div', { className: 'space-y-3 text-sm mb-5' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'text-gray-700' }, 'Total Hours'),
-                                        React.createElement('span', { className: 'font-mono font-bold text-lg text-gray-800' }, periodCalculations.totalHours)
-                                    ),
-                                    React.createElement('div', { className: 'flex justify-between items-center pb-4 border-b-2 border-green-200' },
-                                        React.createElement('span', { className: 'text-gray-700 font-semibold' }, 'Gross Pay'),
-                                        React.createElement('span', { className: 'font-mono font-bold text-lg text-gray-800' }, `$${periodCalculations.totalGross}`)
-                                    ),
-                                    React.createElement('div', { className: 'space-y-2 pt-2' },
-                                        React.createElement('div', { className: 'text-xs text-gray-600 mb-1' }, 'Deductions:'),
-                                        pretaxDeductions > 0 && React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'Pre-Tax'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${pretaxDeductions.toFixed(2)}`)
-                                        ),
-                                        React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'FICA Tax'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${periodCalculations.ficaWithholding}`)
-                                        ),
-                                        React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'Federal Tax'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${periodCalculations.federalTax}`)
-                                        ),
-                                        React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'State Tax'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${periodCalculations.stateTax}`)
-                                        ),
-                                        posttaxDeductions > 0 && React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'Post-Tax'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${posttaxDeductions.toFixed(2)}`)
-                                        ),
-                                        parseFloat(periodCalculations.customWithholdingsTotal) > 0 && React.createElement('div', { className: 'flex justify-between text-xs' },
-                                            React.createElement('span', { className: 'text-gray-600' }, 'Other Withholdings'),
-                                            React.createElement('span', { className: 'font-mono text-gray-700' }, `-$${periodCalculations.customWithholdingsTotal}`)
-                                        ),
-                                        React.createElement('div', { className: 'flex justify-between text-xs font-semibold border-t border-green-200 pt-2 mt-2' },
-                                            React.createElement('span', { className: 'text-gray-700' }, 'Total Deductions'),
-                                            React.createElement('span', { className: 'font-mono text-gray-800' }, `-$${periodCalculations.totalDeductions}`)
-                                        )
-                                    )
-                                ),
-                                React.createElement('div', { className: 'bg-white rounded-xl p-4 border-2 border-green-300' },
-                                    React.createElement('p', { className: 'text-gray-600 text-xs mb-2 font-medium' }, '💰 Your Take-Home Pay'),
-                                    React.createElement('p', { className: 'text-4xl md:text-5xl font-bold text-green-600' }, `$${periodCalculations.netPay}`)
-                                )
-                            )
-                        )
-                    ),
-
-                    // Shift Modal
-                    showShiftModal && React.createElement('div', {
-                        className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50',
-                        onClick: () => setShowShiftModal(false),
-                        onKeyDown: (e) => { if (e.key === 'Escape') setShowShiftModal(false); }
-                    },
-                        React.createElement('div', {
-                            className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto',
-                            onClick: (e) => e.stopPropagation(),
-                            role: 'dialog',
-                            'aria-modal': 'true',
-                            'aria-labelledby': 'shift-modal-title'
-                        },
-                            React.createElement('div', { className: 'flex justify-between items-center mb-4' },
-                                React.createElement('h2', { id: 'shift-modal-title', className: 'text-2xl font-bold text-gray-800' },
-                                    `Shifts for ${selectedDate ? selectedDate.toLocaleDateString() : ''}`
-                                ),
-                                React.createElement('button', {
-                                    onClick: () => setShowShiftModal(false),
-                                    'aria-label': 'Close modal',
-                                    className: 'p-2 hover:bg-gray-100 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none'
-                                },
-                                    React.createElement(X)
-                                )
-                            ),
-
-                            // Existing shifts
-                            modalShifts.length > 0 && React.createElement('div', { className: 'mb-6' },
-                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Current Shifts:'),
-                                React.createElement('div', { className: 'space-y-2' },
-                                    modalShifts.map(shift =>
-                                        React.createElement('div', { key: shift.id, className: 'flex justify-between items-center p-3 bg-green-50 rounded-lg' },
-                                            React.createElement('div', null,
-                                                React.createElement('span', { className: 'font-semibold' }, `${shift.hours}h - ${differentials[shift.shiftType]?.name || shift.shiftType}`),
-                                                shift.bonusType !== 'none' && React.createElement('span', { className: 'text-sm text-gray-600 ml-2' },
-                                                    `+$${shift.bonusType === 'custom' ? shift.customBonus : bonusAmounts[shift.bonusType]} bonus`
-                                                )
-                                            ),
-                                            React.createElement('button', {
-                                                onClick: () => removeShiftFromModal(shift.id),
-                                                className: 'text-red-600 hover:bg-red-100 p-2 rounded'
-                                            }, 'Remove')
-                                        )
-                                    )
-                                )
-                            ),
-
-                            // Add new shift
-                            React.createElement('div', { className: 'border-t pt-4' },
-                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Add Shift:'),
-                                React.createElement('div', { className: 'grid grid-cols-2 gap-4 mb-4' },
-                                    React.createElement('div', null,
-                                        React.createElement('label', { htmlFor: 'shift-hours', className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Hours'),
-                                        React.createElement('input', {
-                                            type: 'number',
-                                            id: 'shift-hours',
-                                            'aria-label': 'Shift hours',
-                                            value: modalData.hours,
-                                            onChange: (e) => setModalData({...modalData, hours: parseFloat(e.target.value) || 0}),
-                                            step: '0.5',
-                                            min: '0.1',
-                                            max: '24',
-                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none'
-                                        }),
-                                        React.createElement('div', { className: 'flex gap-2 mt-2' },
-                                            [8, 12, 16].map(h => React.createElement('button', {
-                                                key: h,
-                                                type: 'button',
-                                                onClick: () => setModalData({...modalData, hours: h}),
-                                                className: `px-3 py-1 text-xs rounded ${modalData.hours === h ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`,
-                                                'aria-label': `Set hours to ${h}`
-                                            }, `${h}h`))
-                                        )
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Shift Type'),
-                                        React.createElement('select', {
-                                            value: modalData.shiftType,
-                                            onChange: (e) => setModalData({...modalData, shiftType: e.target.value}),
-                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
-                                        },
-                                            Object.entries(differentials).filter(([_, diff]) => diff.active).map(([key, diff]) =>
-                                                React.createElement('option', { key: key, value: key }, diff.name)
-                                            )
-                                        )
-                                    ),
-                                    React.createElement('div', null,
-                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Bonus'),
-                                        React.createElement('select', {
-                                            value: modalData.bonusType,
-                                            onChange: (e) => setModalData({...modalData, bonusType: e.target.value}),
-                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
-                                        },
-                                            React.createElement('option', { value: 'none' }, 'None'),
-                                            React.createElement('option', { value: 'charge' }, 'Charge Nurse (+$3/hr)'),
-                                            React.createElement('option', { value: 'preceptor' }, 'Preceptor (+$2/hr)'),
-                                            React.createElement('option', { value: 'oncall' }, 'On-Call (+$5/hr)'),
-                                            React.createElement('option', { value: 'custom' }, 'Custom Amount')
-                                        )
-                                    ),
-                                    modalData.bonusType === 'custom' && React.createElement('div', null,
-                                        React.createElement('label', { className: 'block text-sm font-medium text-gray-700 mb-1' }, 'Custom Bonus $'),
-                                        React.createElement('input', {
-                                            type: 'number',
-                                            value: modalData.customBonus,
-                                            onChange: (e) => setModalData({...modalData, customBonus: parseFloat(e.target.value) || 0}),
-                                            step: '0.01',
-                                            className: 'w-full px-3 py-2 border border-gray-200 rounded-lg'
-                                        })
-                                    )
-                                ),
-                                React.createElement('button', {
-                                    onClick: addShiftToModal,
-                                    className: 'w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 mb-4'
-                                }, '+ Add Shift')
-                            ),
-
-                            // Actions
-                            React.createElement('div', { className: 'flex gap-3 mt-6' },
-                                React.createElement('button', {
-                                    onClick: saveShift,
-                                    disabled: modalShifts.length === 0,
-                                    className: 'flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold'
-                                }, 'Save All Shifts'),
-                                modalShifts.length > 0 && React.createElement('button', {
-                                    onClick: deleteAllShiftsForDay,
-                                    className: 'px-4 bg-red-100 text-red-600 py-3 rounded-lg hover:bg-red-200 font-semibold'
-                                }, 'Delete All')
-                            )
-                        )
-                    ),
-
-                    // Differential Config Modal
-                    showDifferentialConfig && React.createElement('div', {
-                        className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50',
-                        onClick: () => setShowDifferentialConfig(false),
-                        onKeyDown: (e) => { if (e.key === 'Escape') setShowDifferentialConfig(false); }
-                    },
-                        React.createElement('div', {
-                            className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto',
-                            onClick: (e) => e.stopPropagation(),
-                            role: 'dialog',
-                            'aria-modal': 'true',
-                            'aria-labelledby': 'differential-modal-title'
-                        },
-                            React.createElement('div', { className: 'flex justify-between items-center mb-6' },
-                                React.createElement('h2', { id: 'differential-modal-title', className: 'text-2xl font-bold text-gray-800' }, 'Configure Shift Differentials'),
-                                React.createElement('button', {
-                                    onClick: () => setShowDifferentialConfig(false),
-                                    'aria-label': 'Close settings',
-                                    className: 'p-2 hover:bg-gray-100 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none'
-                                },
-                                    React.createElement(X)
-                                )
-                            ),
-
-                            React.createElement('div', { className: 'space-y-4 mb-6' },
-                                Object.entries(differentials).map(([key, diff]) =>
-                                    React.createElement('div', { key: key, className: 'flex items-center gap-4 p-4 bg-gray-50 rounded-lg' },
-                                        React.createElement('input', {
-                                            type: 'checkbox',
-                                            checked: diff.active,
-                                            onChange: () => toggleDifferentialActive(key),
-                                            className: 'w-5 h-5'
-                                        }),
-                                        React.createElement('div', { className: 'flex-1' },
-                                            React.createElement('input', {
-                                                type: 'text',
-                                                value: diff.name,
-                                                onChange: (e) => updateDifferential(key, 'name', e.target.value),
-                                                className: 'w-full px-3 py-2 border border-gray-200 rounded-lg mb-2 font-semibold',
-                                                disabled: key === 'base'
-                                            }),
-                                            React.createElement('div', { className: 'flex items-center gap-2' },
-                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Differential: $'),
-                                                React.createElement('input', {
-                                                    type: 'number',
-                                                    value: diff.amount,
-                                                    onChange: (e) => updateDifferential(key, 'amount', e.target.value),
-                                                    step: '0.01',
-                                                    className: 'w-24 px-2 py-1 border border-gray-200 rounded'
-                                                }),
-                                                React.createElement('span', { className: 'text-sm text-gray-600' }, '/hr')
-                                            )
-                                        ),
-                                        !key.includes('base') && React.createElement('button', {
-                                            onClick: () => deleteDifferential(key),
-                                            className: 'text-red-600 hover:bg-red-100 p-2 rounded'
-                                        }, 'Delete')
-                                    )
-                                )
-                            ),
-
-                            React.createElement('div', { className: 'border-t pt-4' },
-                                React.createElement('h3', { className: 'font-semibold text-gray-700 mb-3' }, 'Add New Differential:'),
-                                React.createElement('div', { className: 'flex gap-3' },
-                                    React.createElement('input', {
-                                        type: 'text',
-                                        value: newDifferentialName,
-                                        onChange: (e) => setNewDifferentialName(e.target.value),
-                                        placeholder: 'Name (e.g., Night Shift)',
-                                        className: 'flex-1 px-3 py-2 border border-gray-200 rounded-lg'
-                                    }),
-                                    React.createElement('input', {
-                                        type: 'number',
-                                        value: newDifferentialAmount,
-                                        onChange: (e) => setNewDifferentialAmount(parseFloat(e.target.value) || 0),
-                                        placeholder: '0.00',
-                                        step: '0.01',
-                                        className: 'w-32 px-3 py-2 border border-gray-200 rounded-lg'
-                                    }),
-                                    React.createElement('button', {
-                                        onClick: addNewDifferential,
-                                        className: 'bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600'
-                                    }, 'Add')
-                                )
-                            ),
-
-                            React.createElement('button', {
-                                onClick: () => setShowDifferentialConfig(false),
-                                className: 'w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 mt-6 font-semibold'
-                            }, 'Done')
-                        )
-                    ),
-
-                    // Paystub Preview Modal
-                    showPaystubPreview && parsedPaystubData && React.createElement('div', {
-                        className: 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50',
-                        onClick: () => setShowPaystubPreview(false),
-                        onKeyDown: (e) => { if (e.key === 'Escape') setShowPaystubPreview(false); }
-                    },
-                        React.createElement('div', {
-                            className: 'bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto',
-                            onClick: (e) => e.stopPropagation(),
-                            role: 'dialog',
-                            'aria-modal': 'true',
-                            'aria-labelledby': 'paystub-modal-title'
-                        },
-                            React.createElement('div', { className: 'flex justify-between items-center mb-6' },
-                                React.createElement('div', null,
-                                    React.createElement('div', { className: 'flex items-center gap-2 mb-2' },
-                                        React.createElement('span', { className: 'bg-orange-500 text-white text-sm font-bold rounded-full w-6 h-6 flex items-center justify-center' }, '1'),
-                                        React.createElement('h2', { id: 'paystub-modal-title', className: 'text-2xl font-bold text-gray-800' }, 'Configure Calculator')
-                                    ),
-                                    React.createElement('p', { className: 'text-xs text-orange-600' }, 'Review extracted data from your example paystub')
-                                ),
-                                React.createElement('button', {
-                                    onClick: () => setShowPaystubPreview(false),
-                                    'aria-label': 'Close paystub preview',
-                                    className: 'p-2 hover:bg-gray-100 rounded-lg focus:ring-2 focus:ring-gray-500 focus:outline-none'
-                                },
-                                    React.createElement(X)
-                                )
-                            ),
-
-                            React.createElement('div', { className: 'mb-6' },
-                                React.createElement('div', { className: 'p-3 bg-blue-50 rounded-lg border border-blue-200 mb-4' },
-                                    React.createElement('p', { className: 'text-sm text-blue-800 font-semibold mb-1' }, '💡 How to Use This Tool'),
-                                    React.createElement('p', { className: 'text-xs text-blue-700' }, 'This paystub configures your hourly rate, shift differentials, deductions, and tax withholdings. After applying, you\'ll manually add shifts to the calendar to calculate future paychecks.')
-                                )
-                            ),
-
-                            React.createElement('div', { className: 'space-y-4 mb-6' },
-                                parsedPaystubData.payPeriodStart && React.createElement('div', { className: 'p-4 bg-emerald-50 rounded-lg border border-emerald-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Pay Period Start:'),
-                                        React.createElement('span', { className: 'text-gray-900' }, parsedPaystubData.payPeriodStart)
-                                    )
-                                ),
-
-                                parsedPaystubData.baseRate && React.createElement('div', { className: 'p-4 bg-blue-50 rounded-lg border border-blue-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Base Hourly Rate:'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.baseRate.toFixed(2)}`)
-                                    )
-                                ),
-
-                                parsedPaystubData.pretaxDeductions && React.createElement('div', { className: 'p-4 bg-purple-50 rounded-lg border border-purple-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Pre-Tax Deductions:'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.pretaxDeductions.toFixed(2)}`)
-                                    ),
-                                    React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, '(403b, 401k, etc.)')
-                                ),
-
-                                parsedPaystubData.ficaWithholding && React.createElement('div', { className: 'p-4 bg-yellow-50 rounded-lg border border-yellow-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'FICA Withholding:'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.ficaWithholding.toFixed(2)}`)
-                                    ),
-                                    parsedPaystubData.ficaRate && React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, `(${parsedPaystubData.ficaRate.toFixed(2)}% of gross)`)
-                                ),
-
-                                parsedPaystubData.stateTax && React.createElement('div', { className: 'p-4 bg-orange-50 rounded-lg border border-orange-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'State Tax Total:'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.stateTax.toFixed(2)}`)
-                                    ),
-                                    parsedPaystubData.stateTaxRate && React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, `Rate: ${parsedPaystubData.stateTaxRate.toFixed(2)}%`)
-                                ),
-
-                                parsedPaystubData.posttaxDeductions && React.createElement('div', { className: 'p-4 bg-pink-50 rounded-lg border border-pink-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Post-Tax Deductions:'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono' }, `$${parsedPaystubData.posttaxDeductions.toFixed(2)}`)
-                                    ),
-                                    React.createElement('p', { className: 'text-xs text-gray-500 mt-1' }, '(Union dues, parking, etc.)')
-                                ),
-
-                                parsedPaystubData.grossPay && React.createElement('div', { className: 'p-4 bg-green-50 rounded-lg border border-green-200' },
-                                    React.createElement('div', { className: 'flex justify-between items-center' },
-                                        React.createElement('span', { className: 'font-semibold text-gray-700' }, 'Gross Pay (for reference):'),
-                                        React.createElement('span', { className: 'text-gray-900 font-mono font-bold' }, `$${parsedPaystubData.grossPay.toFixed(2)}`)
-                                    )
-                                ),
-
-                                parsedPaystubData.shifts && parsedPaystubData.shifts.length > 0 && React.createElement('div', { className: 'p-4 bg-indigo-50 rounded-lg border-2 border-indigo-300' },
-                                    React.createElement('div', { className: 'font-semibold text-indigo-900 mb-2 flex items-center gap-2' },
-                                        React.createElement('span', null, '⚙️'),
-                                        'Shift Differentials (will be configured):'
-                                    ),
-                                    React.createElement('div', { className: 'space-y-2' },
-                                        parsedPaystubData.shifts.map((shift, idx) => {
-                                            const differential = shift.rate - (parsedPaystubData.baseRate || 0);
-                                            return React.createElement('div', { key: idx, className: 'text-sm bg-white p-2 rounded border border-indigo-200' },
-                                                React.createElement('div', { className: 'flex justify-between items-center' },
-                                                    React.createElement('span', { className: 'font-semibold text-gray-700' }, shift.description),
-                                                    React.createElement('span', { className: 'text-indigo-700 font-mono' }, `+$${differential.toFixed(2)}/hr`)
-                                                ),
-                                                React.createElement('div', { className: 'text-xs text-gray-500 mt-1' },
-                                                    `Rate: $${shift.rate.toFixed(2)}/hr (${shift.hours}h this period)`
-                                                )
-                                            );
-                                        })
-                                    ),
-                                    React.createElement('p', { className: 'text-xs text-indigo-700 mt-3 font-medium' }, '✓ These differentials will be applied to your shift types for accurate future calculations')
-                                )
-                            ),
-
-                            React.createElement('div', { className: 'flex gap-3 pt-4 border-t' },
-                                React.createElement('button', {
-                                    onClick: () => setShowPaystubPreview(false),
-                                    className: 'flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold'
-                                }, 'Cancel'),
-                                React.createElement('button', {
-                                    onClick: applyPaystubData,
-                                    className: 'flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:shadow-lg font-semibold'
-                                }, '✓ Configure Calculator')
-                            )
-                        )
-                    )
-                )
-            );
+<div id="splash"><div class="logo"><span class="dot"></span><span class="wm">scrubpay</span></div><div class="spin"></div></div>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useRef } = React;
+
+/* ---------- icons ---------- */
+const Ic = {
+  gear:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  check: <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0B2E22" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>,
+  scan:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>,
+  x:     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 18L18 6M6 6l12 12"/></svg>,
+};
+
+/* ---------- model ---------- */
+const STORE_KEY = 'nursingWagePlannerData';
+const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+
+const DIFF_DEFAULTS = {
+  'base':         { name:'Day (regular)',   amount:0,    type:'dollar',     active:true,  color:'#8A93A6' },
+  'night':        { name:'Night',           amount:10,   type:'dollar',     active:true,  color:'#5B4FE9' },
+  'weekday-eve':  { name:'Weekday evening',  amount:3,    type:'dollar',     active:false, color:'#8A93A6' },
+  'weekend-day':  { name:'Weekend day',      amount:11.5, type:'dollar',     active:true,  color:'#FF6B5C' },
+  'weekend-eve':  { name:'Weekend night',    amount:16.5, type:'dollar',     active:true,  color:'#9B5BE9' },
+  'holiday':      { name:'Holiday',          amount:1.5,  type:'multiplier', active:true,  color:'#F5A524' },
+  'overtime':     { name:'Overtime (1.5×)',  amount:1.5,  type:'multiplier', active:true,  color:'#11A86B' },
+  'bonus-incentive':{ name:'Bonus incentive',amount:15,   type:'dollar',     active:true,  color:'#11A86B' },
+};
+const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
+const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom' };
+
+const fmt = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmt2 = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function hourlyRate(base, diff){
+  if(!diff) return base;
+  if(diff.type==='multiplier') return base * diff.amount;
+  if(diff.type==='percent') return base * (1 + diff.amount/100);
+  return base + diff.amount;
+}
+function shiftGross(base, diff, s){
+  const bonus = s.bonusType==='custom' ? (parseFloat(s.customBonus)||0) : (BONUS[s.bonusType]||0);
+  return hourlyRate(base, diff) * s.hours + bonus;
+}
+
+/* ============================================================= */
+function App(){
+  const [ready,setReady] = useState(false);
+  const [setupComplete,setSetupComplete] = useState(false);
+  const [obStep,setObStep] = useState(0); // 0 welcome..4 done
+
+  const [name,setName] = useState('there');
+  const [baseRate,setBaseRate] = useState(65.15);
+  const [federalTaxRate,setFederal] = useState(12);
+  const [stateTaxRate,setState] = useState(2.5);
+  const [pretaxDeductions,setPretax] = useState(0);
+  const [posttaxDeductions,setPosttax] = useState(0);
+  const [ficaType,setFicaType] = useState('standard');
+  const [ficaPct,setFicaPct] = useState(7.65);
+  const [payPeriodStart,setPPS] = useState(todayISO());
+  const [shifts,setShifts] = useState({});
+  const [customWithholdings,setCW] = useState([]);
+  const [differentials,setDiff] = useState(DIFF_DEFAULTS);
+
+  const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
+  const [showSettings,setShowSettings] = useState(false);
+  const [showBreakdown,setShowBreakdown] = useState(false);
+  const [paystub,setPaystub] = useState(null);
+  const [parsing,setParsing] = useState(false);
+
+  const fileImport = useRef(null);
+
+  /* load */
+  useEffect(()=>{
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw){
+        const d = JSON.parse(raw);
+        if(d.name) setName(d.name);
+        if(d.baseRate!=null) setBaseRate(d.baseRate);
+        if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
+        if(d.stateTaxRate!=null) setState(d.stateTaxRate);
+        if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
+        if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
+        if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
+        if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
+        if(d.payPeriodStart) setPPS(d.payPeriodStart);
+        if(d.shifts) setShifts(d.shifts);
+        if(d.customWithholdings) setCW(d.customWithholdings);
+        if(d.differentials){
+          const merged = {...DIFF_DEFAULTS};
+          Object.entries(d.differentials).forEach(([k,v])=>{ merged[k] = {...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}), ...v}; });
+          setDiff(merged);
         }
+        setSetupComplete(d.setupComplete!==false);
+      }
+    }catch(e){ console.error('load',e); }
+    setReady(true);
+    const sp = document.getElementById('splash');
+    if(sp){ sp.style.opacity='0'; setTimeout(()=>sp.remove(),400); }
+  },[]);
 
-        // Error Boundary Component
-        class ErrorBoundary extends React.Component {
-            constructor(props) {
-                super(props);
-                this.state = { hasError: false, error: null };
-            }
-            static getDerivedStateFromError(error) {
-                return { hasError: true, error };
-            }
-            componentDidCatch(error, info) {
-                console.error('Application error:', error, info);
-            }
-            render() {
-                if (this.state.hasError) {
-                    return React.createElement('div', { className: 'min-h-screen flex items-center justify-center bg-red-50 p-8' },
-                        React.createElement('div', { className: 'bg-white rounded-2xl shadow-lg p-8 max-w-md text-center' },
-                            React.createElement('h1', { className: 'text-2xl font-bold text-red-600 mb-4' }, 'Something went wrong'),
-                            React.createElement('p', { className: 'text-gray-600 mb-6' }, 'The app encountered an error. Your data is saved in browser storage.'),
-                            React.createElement('button', {
-                                onClick: () => window.location.reload(),
-                                className: 'bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 font-semibold'
-                            }, 'Reload App')
-                        )
-                    );
-                }
-                return this.props.children;
-            }
-        }
+  /* save (debounced) */
+  useEffect(()=>{
+    if(!ready) return;
+    const id = setTimeout(()=>{
+      try{
+        localStorage.setItem(STORE_KEY, JSON.stringify({
+          name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
+          ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
+          payPeriodStart,shifts,customWithholdings,differentials,setupComplete
+        }));
+      }catch(e){ if(e.name==='QuotaExceededError') alert('Storage full — export your data.'); }
+    },500);
+    return ()=>clearTimeout(id);
+  },[ready,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,setupComplete]);
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(ErrorBoundary, null, React.createElement(NursingWageCalculator)));
-    </script>
+  /* lock scroll behind overlays */
+  useEffect(()=>{
+    const open = sheetDate||showSettings||showBreakdown||paystub;
+    document.body.style.overflow = open ? 'hidden':'';
+    return ()=>{ document.body.style.overflow=''; };
+  },[sheetDate,showSettings,showBreakdown,paystub]);
+
+  /* ---- period days ---- */
+  const days = useMemo(()=>{
+    const [y,m,d] = payPeriodStart.split('-').map(Number);
+    return Array.from({length:14},(_,i)=> new Date(y,m-1,d+i));
+  },[payPeriodStart]);
+  const keyOf = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  const periodLabel = useMemo(()=>{
+    const a=days[0], b=days[13];
+    const o={month:'short',day:'numeric'};
+    return `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}`;
+  },[days]);
+
+  /* ---- calculations ---- */
+  const calc = useMemo(()=>{
+    let gross=0, hours=0;
+    Object.values(shifts).forEach(arr => (arr||[]).forEach(s=>{
+      gross += shiftGross(baseRate, differentials[s.shiftType], s);
+      hours += s.hours;
+    }));
+    const taxable = gross - pretaxDeductions;
+    let fica = 0;
+    if(ficaType==='standard') fica = taxable*0.0765;
+    else if(ficaType==='percent') fica = taxable*((parseFloat(ficaPct)||0)/100);
+    const fed = taxable*(federalTaxRate/100);
+    const st  = taxable*(stateTaxRate/100);
+    let cw = 0;
+    customWithholdings.forEach(w=>{ cw += w.type==='percent' ? taxable*((parseFloat(w.amount)||0)/100) : (parseFloat(w.amount)||0); });
+    const ded = pretaxDeductions+fica+fed+st+posttaxDeductions+cw;
+    const net = gross-ded;
+    return {gross,hours,fica,fed,st,cw,ded,net,pre:pretaxDeductions,post:posttaxDeductions,
+      pct: gross>0 ? Math.round(net/gross*100) : 0};
+  },[shifts,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+
+  const dayTotals = useMemo(()=>{
+    const o={};
+    days.forEach(dt=>{
+      const arr = shifts[keyOf(dt)]||[];
+      let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
+      o[keyOf(dt)] = {g,h,n:arr.length};
+    });
+    return o;
+  },[days,shifts,baseRate,differentials]);
+
+  const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
+
+  /* effective per-shift take-home ratio (for live previews) */
+  const ficaForPreview = ficaType==='standard'?7.65:(ficaType==='percent'?(parseFloat(ficaPct)||0):0);
+  const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview)/100);
+
+  /* ---- handlers ---- */
+  const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };
+  const movePeriod = (dir)=>{ const [y,m,d]=payPeriodStart.split('-').map(Number); const nd=new Date(y,m-1,d+dir*14); setPPS(keyOf(nd)); };
+
+  const saveDayShifts = (dateKey, arr)=>{
+    setShifts(prev=>{ const n={...prev}; if(arr.length) n[dateKey]=arr; else delete n[dateKey]; return n; });
+  };
+
+  const exportData = ()=>{
+    const blob = new Blob([JSON.stringify({name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,payPeriodStart,shifts,customWithholdings,differentials,setupComplete,exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
+    const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=`scrubpay-${todayISO()}.json`; a.click(); URL.revokeObjectURL(u);
+  };
+  const importData = (e)=>{
+    const f=e.target.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=ev=>{ try{
+      const d=JSON.parse(ev.target.result);
+      if(typeof d!=='object'||!d) throw 0;
+      if(d.name) setName(d.name);
+      if(d.baseRate!=null) setBaseRate(d.baseRate);
+      if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
+      if(d.stateTaxRate!=null) setState(d.stateTaxRate);
+      if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
+      if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
+      if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
+      if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
+      if(d.payPeriodStart) setPPS(d.payPeriodStart);
+      if(d.shifts) setShifts(d.shifts);
+      if(d.customWithholdings) setCW(d.customWithholdings);
+      if(d.differentials){ const m={...DIFF_DEFAULTS}; Object.entries(d.differentials).forEach(([k,v])=>{m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v};}); setDiff(m); }
+      setSetupComplete(true);
+      alert('Data imported.');
+    }catch(err){ alert('Could not read that file.'); } };
+    r.readAsText(f); e.target.value='';
+  };
+  const clearAll = ()=>{ if(confirm('Clear ALL data? This cannot be undone.')){ localStorage.removeItem(STORE_KEY); location.reload(); } };
+
+  /* ---- paystub PDF ---- */
+  const parsePDF = async (file)=>{
+    const buf = await file.arrayBuffer();
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    let text='';
+    for(let i=1;i<=pdf.numPages;i++){ const p=await pdf.getPage(i); const c=await p.getTextContent(); text += c.items.map(x=>x.str).join(' ')+'\n'; }
+    const ex={};
+    let m;
+    if((m=text.match(/Pay Begin Date:\s*(\d{2}\/\d{2}\/\d{4})/))){ const[mm,dd,yy]=m[1].split('/'); ex.payPeriodStart=`${yy}-${mm}-${dd}`; }
+    if((m=text.match(/Pay Rate:\s*\$?([\d,]+\.?\d*)\s*Hourly/))) ex.baseRate=parseFloat(m[1].replace(/,/g,''));
+    if((m=text.match(/403\(b\)[^\d]+([\d,]+\.?\d*)/))) ex.pretaxDeductions=parseFloat(m[1].replace(/,/g,''));
+    const med=text.match(/Fed MED\/EE[^\d]+([\d,]+\.?\d*)/), oas=text.match(/Fed OASDI\/EE[^\d]+([\d,]+\.?\d*)/);
+    if(med&&oas) ex.ficaWithholding=parseFloat(med[1].replace(/,/g,''))+parseFloat(oas[1].replace(/,/g,''));
+    let stt=0; const pa=text.match(/PA W\/H[^\d]+([\d,]+\.?\d*)/), ph=text.match(/PA PHILADELPHIA W\/H[^\d]+([\d,]+\.?\d*)/), ls=text.match(/PA LS Tax[^\d]+([\d,]+\.?\d*)/);
+    if(pa)stt+=parseFloat(pa[1].replace(/,/g,'')); if(ph)stt+=parseFloat(ph[1].replace(/,/g,'')); if(ls)stt+=parseFloat(ls[1].replace(/,/g,''));
+    if(stt>0) ex.stateTax=stt;
+    const g=text.match(/TOTAL GROSS[^\d]+([\d,]+\.?\d*)/); if(g) ex.grossPay=parseFloat(g[1].replace(/,/g,''));
+    if(ex.ficaWithholding&&ex.grossPay) ex.ficaRate=ex.ficaWithholding/ex.grossPay*100;
+    if(ex.stateTax&&ex.grossPay) ex.stateTaxRate=ex.stateTax/ex.grossPay*100;
+    ex.shifts=[]; const sec=text.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
+    if(sec){ const rx=/(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)(?:\s+[\d.]+\s+[\d,.]+)?/g; let mm2; const seen=new Set();
+      while((mm2=rx.exec(sec[1]))!==null){ const desc=mm2[1].trim(); const hrs=parseFloat(mm2[3]); const k=desc.toLowerCase();
+        if(hrs>0&&hrs<200&&!seen.has(k)){ seen.add(k); ex.shifts.push({description:desc,rate:parseFloat(mm2[2]),hours:hrs,earnings:parseFloat(mm2[4].replace(/,/g,''))}); } } }
+    return ex;
+  };
+  const onPaystub = async (e)=>{
+    const f=e.target.files[0]; if(!f) return;
+    if(f.size>10*1024*1024){ alert('File too large (max 10MB).'); e.target.value=''; return; }
+    if(f.type!=='application/pdf'){ alert('Please upload a PDF.'); e.target.value=''; return; }
+    setParsing(true);
+    try{ const p=await parsePDF(f); setPaystub(p); }
+    catch(err){ alert('Could not parse that paystub.'); console.error(err); }
+    finally{ setParsing(false); e.target.value=''; }
+  };
+  const applyPaystub = ()=>{
+    const p=paystub; if(!p) return;
+    if(p.baseRate) setBaseRate(p.baseRate);
+    if(p.payPeriodStart) setPPS(p.payPeriodStart);
+    if(p.pretaxDeductions) setPretax(p.pretaxDeductions);
+    if(p.stateTaxRate) setState(Math.round(p.stateTaxRate*100)/100);
+    if(p.ficaRate){ setFicaType('percent'); setFicaPct(Math.round(p.ficaRate*100)/100); }
+    if(p.shifts&&p.shifts.length&&p.baseRate){
+      const nd={...differentials};
+      p.shifts.forEach(s=>{
+        const da = Math.round((s.rate-p.baseRate)*100)/100;
+        const d=s.description.toLowerCase(); let key='base';
+        if(d.includes('weekday')&&(d.includes('eve')||d.includes('evening'))) key='weekday-eve';
+        else if(d.includes('weekend')&&d.includes('day')&&!d.includes('eve')) key='weekend-day';
+        else if(d.includes('weekend')&&(d.includes('eve')||d.includes('evening'))) key='weekend-eve';
+        else if(d.includes('overtime')) key='overtime';
+        else if(d.includes('holiday')) key='holiday';
+        if(key!=='base'||da!==0) nd[key]={...nd[key],amount: nd[key]&&nd[key].type==='multiplier'?nd[key].amount:da, active:true};
+      });
+      setDiff(nd);
+    }
+    setPaystub(null); setSetupComplete(true); setObStep(0);
+  };
+
+  if(!ready) return null;
+
+  /* ============== ONBOARDING ============== */
+  if(!setupComplete){
+    return <Onboarding {...{obStep,setObStep,name,setName,baseRate,setBaseRate,num,
+      differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
+      pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
+      onPaystub,parsing,finish:()=>{setSetupComplete(true);},
+      sampleNet:()=>{ // illustrative typical 2wk schedule from their rates
+        const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
+          {shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'base',hours:12,bonusType:'none'} ];
+        let g=0,h=0; sample.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
+        const t=g-pretaxDeductions; const fica=ficaType==='percent'?t*((parseFloat(ficaPct)||0)/100):t*0.0765;
+        const net=g-(pretaxDeductions+fica+t*(federalTaxRate/100)+t*(stateTaxRate/100)+posttaxDeductions);
+        return {net,gross:g,hours:h}; }
+    }} />;
+  }
+
+  /* ============== MAIN APP ============== */
+  const sampleWeekendNet = Math.round(shiftGross(baseRate, differentials['weekend-eve'], {shiftType:'weekend-eve',hours:12,bonusType:'none'}) * keepRatio);
+
+  return (
+    <div>
+      <div className="topbar">
+        <div className="brand"><span className="b-dot"></span>scrubpay</div>
+        <nav className="topnav"><span className="on">Planner</span><span onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})} style={{cursor:'pointer'}}>Calendar</span><span onClick={()=>setShowSettings(true)} style={{cursor:'pointer'}}>Settings</span></nav>
+        <div className="top-actions">
+          <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); setSheetDate(k);}}>+ Log a shift</button>
+          <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
+          <div className="avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>
+        </div>
+      </div>
+
+      <div className="wrap">
+        <div className="greet-row">
+          <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
+          <div className="period"><button onClick={()=>movePeriod(-1)}>‹</button><span className="num">{periodLabel}</span><button onClick={()=>movePeriod(1)}>›</button></div>
+        </div>
+
+        <div className="dash">
+          {/* LEFT */}
+          <div className="col">
+            <div className="hero">
+              <div className="lbl">Projected take-home</div>
+              <div className="num num">{fmt(calc.net)}</div>
+              <div className="chips">
+                <span className="chip">Gross {fmt(calc.gross)}</span>
+                <span className="chip">Taxes & deductions –{fmt(calc.ded)}</span>
+                {calc.hours>0 && <span className="chip">{calc.hours} hrs · {shiftCount} shifts</span>}
+              </div>
+              <div className="hero more" style={{cursor:'pointer'}} onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</div>
+            </div>
+
+            <div className="stats">
+              <div className="stat"><div className="v num">{calc.hours.toFixed(calc.hours%1?1:0)}</div><div className="k">hours this period</div></div>
+              <div className="stat"><div className="v num">{shiftCount}</div><div className="k">shifts scheduled</div></div>
+            </div>
+
+            {shiftCount>0 && baseRate>0 &&
+              <div className="whatif">
+                <div style={{flex:1}}><div className="t">Pick up a weekend night?</div><div className="s">That's about <b>+{fmt(sampleWeekendNet)}</b> take-home.</div></div>
+                <button onClick={()=>{ const sat=days.find(d=>d.getDay()===6 && !(shifts[keyOf(d)])) || days.find(d=>d.getDay()===6) || days[0]; setSheetDate(keyOf(sat)); }}>Try it</button>
+              </div>}
+
+            <div className="card">
+              <div className="cal-head"><div><div className="ttl">This pay period</div></div><div className="sub">Tap a day to add or edit</div></div>
+              <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+              <Calendar days={days} keyOf={keyOf} dayTotals={dayTotals} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} />
+              <div className="legend">
+                {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
+                  <span key={k}><i style={{background:differentials[k]?.color||'#8A93A6'}}></i>{l}</span>)}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT */}
+          <div className="col">
+            <Breakdown calc={calc} embedded />
+            {shiftCount===0 &&
+              <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
+                <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:17}}>No shifts yet</div>
+                <div style={{fontSize:13,color:'var(--muted)',margin:'8px 0 16px',lineHeight:1.5}}>Tap a day on the calendar — or log your first shift — to watch your take-home build.</div>
+                <button className="btn btn-soft" onClick={()=>setSheetDate(keyOf(days[0]))}>+ Log a shift</button>
+              </div>}
+            <div className="card desk-only">
+              <h3>Take-home rate</h3>
+              <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+                <span className="display" style={{fontWeight:800,fontSize:40}}>{calc.pct}%</span>
+                <span style={{fontSize:13,color:'var(--muted-2)',fontWeight:500}}>of gross kept</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button className="fab" onClick={()=>setSheetDate(keyOf(days[0]))}>+ Log a shift</button>
+
+      {sheetDate &&
+        <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
+          existing={shifts[sheetDate]||[]} baseRate={baseRate} keepRatio={keepRatio}
+          onClose={()=>setSheetDate(null)} onSave={arr=>{ saveDayShifts(sheetDate,arr); setSheetDate(null); }} />}
+
+      {showBreakdown &&
+        <div className="scrim" onClick={()=>setShowBreakdown(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="sheet-h"><div className="t">Your paycheck math</div><button className="back" onClick={()=>setShowBreakdown(false)}>{Ic.x}</button></div>
+            <div className="sub" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>{periodLabel} · here's where it goes</div>
+            <Breakdown calc={calc} />
+            <div className="disclaimer">Estimates for planning. Always verify against your real paystub.</div>
+          </div>
+        </div>}
+
+      {showSettings &&
+        <Settings onClose={()=>setShowSettings(false)}
+          {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
+            pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+            exportData,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll}} />}
+
+      <input ref={fileImport} type="file" accept=".json" onChange={importData} style={{display:'none'}} />
+    </div>
+  );
+}
+
+function greeting(){ const h=new Date().getHours(); return h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
+
+/* ---------- Calendar ---------- */
+function Calendar({days,keyOf,dayTotals,differentials,shifts,onPick}){
+  const lead = days[0].getDay();
+  const cells = [];
+  for(let i=0;i<lead;i++) cells.push(<div key={'e'+i} className="cell empty"></div>);
+  days.forEach(dt=>{
+    const k=keyOf(dt); const t=dayTotals[k]; const arr=shifts[k]||[]; const has=arr.length>0;
+    cells.push(
+      <button key={k} className={'cell'+(has?' has':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
+        <div className="d">{dt.getDate()}</div>
+        {has
+          ? <><div className="dots">{arr.slice(0,4).map((s,i)=><i key={i} style={{background:differentials[s.shiftType]?.color||'#8A93A6'}}></i>)}</div><div className="amt num">{fmt(t.g)}</div></>
+          : <div className="plus">+</div>}
+      </button>);
+  });
+  return <div className="grid">{cells}</div>;
+}
+
+/* ---------- Breakdown ---------- */
+function Breakdown({calc,embedded}){
+  const g=calc.gross||0;
+  const rows=[
+    ['Pre-tax · 401k, health', calc.pre],
+    ['Federal income tax', calc.fed],
+    ['FICA', calc.fica],
+    ['State tax', calc.st],
+    ['Post-tax · union dues', calc.post],
+    ['Other withholdings', calc.cw],
+  ].filter(r=>r[1]>0.005);
+  const maxDed = Math.max(...rows.map(r=>r[1]),1);
+  return (
+    <div className={embedded?'card':''}>
+      {embedded && <h3>Where it goes</h3>}
+      <div className="bd-row">
+        <div className="lh"><span className="nm g">Gross pay</span><span className="vv g num">{fmt(g)}</span></div>
+        <div className="bar gross"></div>
+      </div>
+      {rows.map(([nm,v])=>(
+        <div className="bd-row" key={nm}>
+          <div className="lh"><span className="nm">{nm}</span><span className="vv num">–{fmt(v)}</span></div>
+          <div className="bar" style={{width:Math.max(6, v/maxDed*100)+'%'}}></div>
+        </div>
+      ))}
+      {rows.length===0 && <div style={{fontSize:13,color:'var(--muted-2)',padding:'4px 0 8px'}}>Add shifts to see your deductions.</div>}
+      <div className="takehome">
+        <div><div className="k">Take-home</div><div className="s">{calc.pct}% of gross</div></div>
+        <div className="v num">{fmt(calc.net)}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Add Shift Sheet ---------- */
+function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepRatio,onClose,onSave}){
+  const [list,setList] = useState(existing.map(s=>({...s})));
+  const [shiftType,setType] = useState('night');
+  const [hours,setHours] = useState(12);
+  const [bonusType,setBonus] = useState('none');
+  const [customBonus,setCustomBonus] = useState(0);
+
+  const active = Object.entries(differentials).filter(([_,d])=>d.active);
+  const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
+  const dateLabel = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  const draft = {shiftType,hours,bonusType,customBonus};
+  const previewGross = shiftGross(baseRate, differentials[shiftType], draft);
+  const previewNet = Math.round(previewGross*keepRatio);
+
+  const add = ()=>{ if(hours>0&&hours<=24){ setList([...list,{id:Date.now(),...draft}]); setBonus('none'); } else alert('Hours must be 0.1–24'); };
+  const remove = id=> setList(list.filter(s=>s.id!==id));
+
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="grab"></div>
+        <div className="sheet-h">
+          <div className="t">Add a shift</div>
+          <div className="row-item" style={{margin:0,padding:'7px 12px',fontWeight:600,fontSize:12.5}}>{dateLabel}</div>
+        </div>
+
+        {list.length>0 &&
+          <div style={{marginBottom:16}}>
+            <div className="sec-lab">ON THIS DAY</div>
+            {list.map(s=>(
+              <div className="row-item" key={s.id}>
+                <span style={{display:'flex',alignItems:'center',gap:9}}>
+                  <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
+                  <b style={{fontWeight:600,fontSize:13.5}}>{s.hours}h · {differentials[s.shiftType]?.name||s.shiftType}</b>
+                  {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>+{BONUS_LABEL[s.bonusType]}</span>}
+                </span>
+                <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
+              </div>
+            ))}
+          </div>}
+
+        <div className="sec-lab">SHIFT TYPE</div>
+        <div className="chips-grid" style={{marginBottom:16}}>
+          {active.map(([k,d])=>(
+            <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} onClick={()=>setType(k)}>
+              <i style={{background:d.color||'#8A93A6'}}></i>{d.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="sec-lab">HOURS</div>
+        <div className="hrs" style={{marginBottom:12}}>
+          {[8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} onClick={()=>setHours(h)}>{h}h</button>)}
+          <div className="inp suf" style={{flex:1}}><input type="number" step="0.5" min="0.1" max="24" value={hours} onChange={e=>setHours(parseFloat(e.target.value)||0)} style={{padding:'11px 12px',textAlign:'center',fontWeight:700}}/></div>
+        </div>
+
+        <div className="sec-lab">BONUS</div>
+        <div className="inp" style={{marginBottom:bonusType==='custom'?10:16}}>
+          <select value={bonusType} onChange={e=>setBonus(e.target.value)}>
+            {Object.keys(BONUS_LABEL).map(k=><option key={k} value={k}>{BONUS_LABEL[k]}</option>)}
+          </select>
+        </div>
+        {bonusType==='custom' &&
+          <div className="inp pre" style={{marginBottom:16}}><span className="pfx">$</span><input type="number" step="0.01" value={customBonus} onChange={e=>setCustomBonus(parseFloat(e.target.value)||0)} placeholder="0.00"/></div>}
+
+        <div className="preview">
+          <div className="k">This shift adds</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home</div>
+        </div>
+
+        <button className="btn btn-ghost" style={{marginBottom:10}} onClick={add}>+ Add to this day</button>
+        <button className="btn btn-primary" onClick={()=>onSave(list)}>{list.length? 'Save day':'Save'}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Settings ---------- */
+function Settings(props){
+  const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
+    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+    exportData,onImport,onPaystub,parsing,clearAll}=props;
+  const [newName,setNewName]=useState('');
+  const [newAmt,setNewAmt]=useState(0);
+
+  const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
+  const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
+  const del=k=>{ const n={...differentials}; delete n[k]; setDiff(n); };
+  const addDiff=()=>{ if(newName.trim()){ setDiff({...differentials,['custom-'+Date.now()]:{name:newName,amount:parseFloat(newAmt)||0,type:'dollar',active:true,color:'#5B4FE9'}}); setNewName(''); setNewAmt(0); } };
+
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose}>{Ic.x}</button></div>
+
+        <div className="sec-lab">YOUR PAY</div>
+        <div className="field"><span className="lab">Your name</span><div className="inp"><input value={name==='there'?'':name} placeholder="Name" onChange={e=>setName(e.target.value||'there')}/></div></div>
+        <div className="field"><span className="lab">Base hourly rate</span><div className="inp pre"><span className="pfx">$</span><input type="number" step="0.01" min="0" value={baseRate} onChange={e=>{const v=num(e.target.value,0); if(v>=0)setBaseRate(v);}}/></div></div>
+
+        <div className="sec-lab" style={{marginTop:14}}>SHIFT DIFFERENTIALS</div>
+        {Object.entries(differentials).map(([k,d])=>(
+          <div className={'drow'+(d.active?'':' off')} key={k}>
+            <div className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></div>
+            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
+            <input className="nm" value={d.name} disabled={k==='base'} onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
+            <span className="amt">{d.type==='multiplier'?<>{<input value={d.amount} onChange={e=>upd(k,'amount',e.target.value)} style={{width:34}}/>}×</>:<>+$<input value={d.amount} onChange={e=>upd(k,'amount',e.target.value)}/></>}</span>
+            {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}}>Del</button>}
+          </div>
+        ))}
+        <div style={{display:'flex',gap:8,marginTop:4}}>
+          <div className="inp" style={{flex:1}}><input value={newName} placeholder="New differential" onChange={e=>setNewName(e.target.value)}/></div>
+          <div className="inp pre" style={{width:120}}><span className="pfx">$</span><input type="number" step="0.01" value={newAmt} onChange={e=>setNewAmt(e.target.value)}/></div>
+          <button className="btn btn-soft btn-sm" onClick={addDiff}>Add</button>
+        </div>
+
+        <div className="sec-lab" style={{marginTop:18}}>TAXES</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="field" style={{margin:0}}><span className="lab">Federal</span><div className="inp suf"><input type="number" step="0.1" value={federalTaxRate} onChange={e=>setFederal(num(e.target.value,0))}/><span className="sfx">%</span></div></div>
+          <div className="field" style={{margin:0}}><span className="lab">State</span><div className="inp suf"><input type="number" step="0.1" value={stateTaxRate} onChange={e=>setState(num(e.target.value,0))}/><span className="sfx">%</span></div></div>
+        </div>
+        <div className="field" style={{marginTop:12}}><span className="lab">FICA withholding</span>
+          <div className="inp"><select value={ficaType} onChange={e=>setFicaType(e.target.value)}><option value="standard">Standard (7.65%)</option><option value="percent">Custom %</option></select></div>
+          {ficaType==='percent' && <div className="inp suf" style={{marginTop:8}}><input type="number" step="0.01" value={ficaPct} onChange={e=>setFicaPct(num(e.target.value,0))}/><span className="sfx">%</span></div>}
+        </div>
+
+        <div className="sec-lab" style={{marginTop:14}}>DEDUCTIONS · per pay period</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div className="field" style={{margin:0}}><span className="lab">Pre-tax</span><div className="inp pre"><span className="pfx">$</span><input type="number" step="0.01" value={pretaxDeductions} onChange={e=>setPretax(num(e.target.value,0))}/></div></div>
+          <div className="field" style={{margin:0}}><span className="lab">Post-tax</span><div className="inp pre"><span className="pfx">$</span><input type="number" step="0.01" value={posttaxDeductions} onChange={e=>setPosttax(num(e.target.value,0))}/></div></div>
+        </div>
+
+        <div className="sec-lab" style={{marginTop:18}}>DATA</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <button className="btn btn-ghost btn-sm" onClick={exportData}>Export JSON</button>
+          <button className="btn btn-ghost btn-sm" onClick={onImport}>Import JSON</button>
+          <label className="btn btn-ghost btn-sm" style={{position:'relative'}}>{parsing?'Reading…':'Scan paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+        </div>
+        <button className="danger-link" style={{display:'block',margin:'16px auto 0'}} onClick={clearAll}>Clear all data</button>
+
+        <button className="btn btn-primary" style={{marginTop:18}} onClick={onClose}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+/* ============== ONBOARDING ============== */
+function Onboarding(props){
+  const {obStep,setObStep,name,setName,baseRate,setBaseRate,num,differentials,setDiff,
+    federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
+    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet}=props;
+
+  const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
+  const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
+
+  /* 0 — welcome */
+  if(obStep===0) return (
+    <div className="ob">
+      <div className="brand"><span className="b-dot"></span>scrubpay</div>
+      <div className="spacer"></div>
+      <span className="pill" style={{marginBottom:16}}>For bedside nurses</span>
+      <div className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</div>
+      <div className="help">Nights, weekends, holidays, that charge bonus — we do the messy math so the number's never a surprise.</div>
+      <div className="hero" style={{marginTop:22}}>
+        <div className="lbl">Sample · 72 hrs this period</div>
+        <div className="num" style={{fontSize:38,margin:'6px 0 4px'}}>$3,951</div>
+        <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
+      </div>
+      <div className="spacer"></div>
+      <label className="btn btn-primary" style={{marginBottom:10,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
+      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
+    </div>
+  );
+
+  const Head = ({step,label})=>(
+    <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
+      <button className="back" onClick={()=>setObStep(obStep-1)}>‹</button>
+      <div className="prog"><i style={{width:(step*25)+'%'}}></i></div>
+    </div>
+  );
+
+  /* 1 — base rate */
+  if(obStep===1) return (
+    <div className="ob">
+      <Head step={1}/>
+      <div className="eyebrow">STEP 1 OF 4 · YOUR PAY</div>
+      <div className="q">What's your base hourly rate?</div>
+      <div className="help">The rate before any differentials or bonuses. On your paystub it's usually listed as "Pay Rate."</div>
+      <div className="inp pre" style={{marginTop:28}}>
+        <span className="pfx" style={{fontSize:22}}>$</span>
+        <input type="number" step="0.01" min="0" value={baseRate} onChange={e=>{const v=num(e.target.value,0); if(v>=0)setBaseRate(v);}} style={{fontSize:32,fontWeight:700,padding:'18px 14px 18px 34px',fontFamily:"'Bricolage Grotesque'"}}/>
+        <span className="sfx">/ hr</span>
+      </div>
+      <div className="spacer"></div>
+      <button className="btn btn-primary" onClick={()=>setObStep(2)}>Continue</button>
+    </div>
+  );
+
+  /* 2 — differentials */
+  if(obStep===2) return (
+    <div className="ob">
+      <Head step={2}/>
+      <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
+      <div className="q">How does your pay change by shift?</div>
+      <div className="help">We pre-filled common amounts. Toggle what applies and tweak to your contract.</div>
+      <div style={{marginTop:18}}>
+        {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
+          <div className={'drow'+(d.active?'':' off')} key={k}>
+            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
+            <span className="nm">{d.name}</span>
+            <span className="amt num">{d.type==='multiplier'? d.amount+'× rate' : '+$'+d.amount.toFixed(2)+'/hr'}</span>
+            <div className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></div>
+          </div>
+        ))}
+      </div>
+      <div className="spacer"></div>
+      <button className="btn btn-primary" onClick={()=>setObStep(3)}>Continue</button>
+    </div>
+  );
+
+  /* 3 — taxes */
+  if(obStep===3) return (
+    <div className="ob">
+      <Head step={3}/>
+      <div className="eyebrow">STEP 3 OF 4 · TAXES & DEDUCTIONS</div>
+      <div className="q">Last thing — taxes & take-outs.</div>
+      <div className="help">We estimated these from typical nurse withholdings. Adjust anything you know.</div>
+      <div style={{marginTop:18,display:'flex',flexDirection:'column',gap:10}}>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Federal income tax</div><span className="tag est">ESTIMATED</span></div>
+          <div className="inp suf" style={{width:90}}><input type="number" step="0.1" value={federalTaxRate} onChange={e=>setFederal(num(e.target.value,0))} style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>State tax</div><span className="tag est">ESTIMATED</span></div>
+          <div className="inp suf" style={{width:90}}><input type="number" step="0.1" value={stateTaxRate} onChange={e=>setState(num(e.target.value,0))} style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>FICA</div><span className="tag auto">AUTO 7.65%</span></div>
+          <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:18}}>7.65%</div></div>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Pre-tax · 401k, health</div><div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
+          <div className="inp pre" style={{width:110}}><span className="pfx">$</span><input type="number" step="1" value={pretaxDeductions} onChange={e=>setPretax(num(e.target.value,0))} style={{textAlign:'right',fontWeight:700}}/></div></div>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Post-tax · union dues</div><div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
+          <div className="inp pre" style={{width:110}}><span className="pfx">$</span><input type="number" step="1" value={posttaxDeductions} onChange={e=>setPosttax(num(e.target.value,0))} style={{textAlign:'right',fontWeight:700}}/></div></div>
+      </div>
+      <div className="spacer"></div>
+      <button className="btn btn-primary" onClick={()=>setObStep(4)}>See my estimate</button>
+    </div>
+  );
+
+  /* 4 — done */
+  const sample = sampleNet();
+  return (
+    <div className="ob dark" style={{alignItems:'center',textAlign:'center'}}>
+      <div className="spacer"></div>
+      <div style={{width:74,height:74,borderRadius:'50%',background:'var(--mint)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 12px rgba(52,211,153,.14)'}}>{Ic.check}</div>
+      <div className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</div>
+      <div className="help" style={{color:'#9A9DAB'}}>Based on a typical two-week schedule, here's what you'd take home:</div>
+      <div style={{width:'100%',background:'var(--ink-2)',borderRadius:22,padding:24,marginTop:24}}>
+        <div style={{fontSize:12,fontWeight:600,color:'#9A9DAB'}}>Projected take-home</div>
+        <div className="num" style={{fontFamily:"'Bricolage Grotesque'",fontWeight:800,fontSize:54,color:'var(--mint)',letterSpacing:'-.03em',margin:'8px 0',lineHeight:1}}>{fmt(sample.net)}</div>
+        <div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
+      </div>
+      <div style={{width:'100%',marginTop:14}}>
+        <div className="field" style={{margin:0,textAlign:'left'}}>
+          <div className="inp"><input placeholder="What should we call you?" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
+        </div>
+      </div>
+      <div className="spacer"></div>
+      <button className="btn btn-primary" style={{width:'100%'}} onClick={finish}>Go to my planner</button>
+      <button className="btn" style={{width:'100%',color:'#9A9DAB'}} onClick={()=>setObStep(1)}>Edit my setup</button>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
 </body>
 </html>
