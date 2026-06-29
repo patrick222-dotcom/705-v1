@@ -87,9 +87,11 @@
   .cal-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
   .cal-head .ttl{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px}
   .cal-head .sub{font-size:12.5px;color:var(--muted-2)}
-  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+  .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px;scrollbar-width:none}
+  .cal-scroll::-webkit-scrollbar{display:none}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;min-width:600px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
-  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;min-width:600px}
   .cell{aspect-ratio:1/1;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
   .cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .cell.empty{border-style:dashed;background:#fff;pointer-events:none}
@@ -551,8 +553,10 @@ function App(){
 
             <div className="card">
               <div className="cal-head"><div><div className="ttl">This pay period</div></div><div className="sub">Tap a day to add or edit</div></div>
-              <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
-              <Calendar days={days} keyOf={keyOf} dayTotals={dayTotals} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} />
+              <div className="cal-scroll">
+                <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+                <Calendar days={days} keyOf={keyOf} dayTotals={dayTotals} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} />
+              </div>
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
                   <span key={k}><i style={{background:differentials[k]?.color||'#8A93A6'}}></i>{l}</span>)}
