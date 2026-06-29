@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - master
-      - claude/migrate-to-github-deploy-3F5RD
   workflow_dispatch:
 
 permissions:
