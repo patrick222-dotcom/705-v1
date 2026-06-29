@@ -587,7 +587,7 @@
                     totalDeductions: totalDeductions.toFixed(2),
                     netPay: netPay.toFixed(2),
                 };
-            }, [shifts, baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingAmount, ficaWithholdingPercent]);
+            }, [shifts, baseRate, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions, customWithholdings, differentials, ficaWithholdingType, ficaWithholdingPercent]);
 
             // Memoize day calculations to prevent recalculation on every render
             const dayCalculations = useMemo(() => {
