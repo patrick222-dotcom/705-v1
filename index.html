@@ -325,57 +325,69 @@ function App(){
 
   /* check auth session */
   useEffect(()=>{
-    supabase.auth.getSession().then(async ({data:{session}})=>{
+    const init = async ()=>{
+      try{
+        const {data:{session}} = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+        if(session){
+          try{
+            const d = await loadFromSupabase(session.user.id);
+            if(d){
+              if(d.name) setName(d.name);
+              if(d.baseRate!=null) setBaseRate(d.baseRate);
+              if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
+              if(d.stateTaxRate!=null) setState(d.stateTaxRate);
+              if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
+              if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
+              if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
+              if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
+              if(d.payPeriodStart) setPPS(d.payPeriodStart);
+              if(d.shifts) setShifts(d.shifts);
+              if(d.customWithholdings) setCW(d.customWithholdings);
+              if(d.differentials){
+                const m={...DIFF_DEFAULTS};
+                Object.entries(d.differentials).forEach(([k,v])=>{m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v};});
+                setDiff(m);
+              }
+              setSetupComplete(d.setupComplete!==false);
+            }
+          }catch(e){console.error('Load from Supabase error:',e);}
+        }
+      }catch(e){console.error('Auth session error:',e);}
+      setReady(true);
+      const sp = document.getElementById('splash');
+      if(sp){ sp.style.opacity='0'; setTimeout(()=>sp.remove(),400); }
+    };
+    init();
+
+    const {data:{subscription}} = supabase.auth.onAuthStateChange(async (_event,session)=>{
       setSession(session);
       setUser(session?.user ?? null);
       if(session){
-        const d = await loadFromSupabase(session.user.id);
-        if(d){
-          if(d.name) setName(d.name);
-          if(d.baseRate!=null) setBaseRate(d.baseRate);
-          if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
-          if(d.stateTaxRate!=null) setState(d.stateTaxRate);
-          if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
-          if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
-          if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
-          if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
-          if(d.payPeriodStart) setPPS(d.payPeriodStart);
-          if(d.shifts) setShifts(d.shifts);
-          if(d.customWithholdings) setCW(d.customWithholdings);
-          if(d.differentials){
-            const m={...DIFF_DEFAULTS};
-            Object.entries(d.differentials).forEach(([k,v])=>{m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v};});
-            setDiff(m);
+        try{
+          const d = await loadFromSupabase(session.user.id);
+          if(d){
+            if(d.name) setName(d.name);
+            if(d.baseRate!=null) setBaseRate(d.baseRate);
+            if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
+            if(d.stateTaxRate!=null) setState(d.stateTaxRate);
+            if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
+            if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
+            if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
+            if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
+            if(d.payPeriodStart) setPPS(d.payPeriodStart);
+            if(d.shifts) setShifts(d.shifts);
+            if(d.customWithholdings) setCW(d.customWithholdings);
+            if(d.differentials){
+              const m={...DIFF_DEFAULTS};
+              Object.entries(d.differentials).forEach(([k,v])=>{m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v};});
+              setDiff(m);
+            }
+            setSetupComplete(d.setupComplete!==false);
           }
-          setSetupComplete(d.setupComplete!==false);
-        }
+        }catch(e){console.error('Load on auth change error:',e);}
       }
-      setReady(true);
-    });
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,session)=>{
-      setSession(session);
-      setUser(session?.user ?? null);
-      if(session) loadFromSupabase(session.user.id).then(d=>{
-        if(d){
-          if(d.name) setName(d.name);
-          if(d.baseRate!=null) setBaseRate(d.baseRate);
-          if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
-          if(d.stateTaxRate!=null) setState(d.stateTaxRate);
-          if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
-          if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
-          if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
-          if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
-          if(d.payPeriodStart) setPPS(d.payPeriodStart);
-          if(d.shifts) setShifts(d.shifts);
-          if(d.customWithholdings) setCW(d.customWithholdings);
-          if(d.differentials){
-            const m={...DIFF_DEFAULTS};
-            Object.entries(d.differentials).forEach(([k,v])=>{m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v};});
-            setDiff(m);
-          }
-          setSetupComplete(d.setupComplete!==false);
-        }
-      });
     });
     return ()=> subscription.unsubscribe();
   },[]);
@@ -406,9 +418,6 @@ function App(){
         setSetupComplete(d.setupComplete!==false);
       }
     }catch(e){ console.error('load',e); }
-    setReady(true);
-    const sp = document.getElementById('splash');
-    if(sp){ sp.style.opacity='0'; setTimeout(()=>sp.remove(),400); }
   },[]);
 
   /* save (debounced) */
