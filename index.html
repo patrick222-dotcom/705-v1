@@ -15,7 +15,7 @@
 <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --ink:#16181F; --ink-2:#21242F; --paper:#F6F5F1; --card:#FFFFFF;
@@ -226,6 +226,34 @@
 <div id="splash"><div class="logo"><span class="dot"></span><span class="wm">scrubpay</span></div><div class="spin"></div></div>
 <div id="root"></div>
 
+<script>
+/* Boot watchdog: if the app hasn't rendered within 8s, stop spinning and show what went wrong.
+   Plain JS on purpose — must work even when React/Babel/Supabase fail to load. */
+(function(){
+  window.__bootError = null;
+  window.addEventListener('error', function(e){ if(!window.__bootError) window.__bootError = e.message || String(e.error||''); }, true);
+  window.addEventListener('unhandledrejection', function(e){ if(!window.__bootError) window.__bootError = (e.reason && e.reason.message) || String(e.reason||''); });
+  setTimeout(function(){
+    var root = document.getElementById('root');
+    var splash = document.getElementById('splash');
+    if(!splash || (root && root.childElementCount > 0)) return;
+    var missing = [];
+    if(!window.React) missing.push('React');
+    if(!window.ReactDOM) missing.push('ReactDOM');
+    if(!window.Babel) missing.push('Babel');
+    if(!window.supabase) missing.push('Supabase');
+    var detail = missing.length ? 'Failed to load: ' + missing.join(', ') + '. Check your connection.' : (window.__bootError || 'Unknown startup error.');
+    splash.innerHTML =
+      '<div style="max-width:320px;text-align:center;padding:24px;font-family:sans-serif">' +
+      '<div style="font-size:40px;margin-bottom:12px">&#9888;&#65039;</div>' +
+      '<div style="font-weight:700;font-size:18px;color:#fff;margin-bottom:8px">ScrubPay couldn\'t start</div>' +
+      '<div style="font-size:13px;color:#9A9DAB;margin-bottom:20px;word-break:break-word">' + detail + '</div>' +
+      '<button onclick="location.reload()" style="background:#5B4FE9;color:#fff;border:none;border-radius:12px;padding:12px 28px;font-weight:600;font-size:14px">Try again</button>' +
+      '</div>';
+  }, 8000);
+})();
+</script>
+
 <script type="text/babel" data-presets="react">
 const { useState, useMemo, useEffect, useRef } = React;
 
@@ -240,10 +268,19 @@ const Ic = {
 };
 
 /* ---------- supabase ---------- */
-const supabase = window.supabase.createClient(
-  'https://mnnlgcxnvodjwlhhiphq.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA'
-);
+/* Guarded: if the CDN script failed to load, run in localStorage-only mode instead of crashing. */
+const supabase = (window.supabase && window.supabase.createClient)
+  ? window.supabase.createClient(
+      'https://mnnlgcxnvodjwlhhiphq.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA'
+    )
+  : null;
+
+/* Race a promise against a timeout — Supabase getSession() can deadlock on Safari/WebKit. */
+const withTimeout = (p, ms, label) => Promise.race([
+  p,
+  new Promise((_,rej)=>setTimeout(()=>rej(new Error((label||'operation')+' timed out')), ms))
+]);
 
 /* ---------- model ---------- */
 const STORE_KEY = 'nursingWagePlannerData';
@@ -278,6 +315,7 @@ function shiftGross(base, diff, s){
 
 /* ---------- supabase helpers ---------- */
 async function saveToSupabase(userId, data){
+  if(!supabase) return false;
   const {error} = await supabase
     .from('user_data')
     .upsert({user_id:userId, data, updated_at:new Date().toISOString()});
@@ -286,6 +324,7 @@ async function saveToSupabase(userId, data){
 }
 
 async function loadFromSupabase(userId){
+  if(!supabase) return null;
   const {data, error} = await supabase
     .from('user_data')
     .select('data')
@@ -369,12 +408,13 @@ function App(){
   useEffect(()=>{
     const init = async ()=>{
       try{
-        const {data:{session}} = await supabase.auth.getSession();
+        if(!supabase) throw new Error('Supabase unavailable — offline mode');
+        const {data:{session}} = await withTimeout(supabase.auth.getSession(), 4000, 'auth check');
         setSession(session);
         setUser(session?.user ?? null);
         if(session){
           try{
-            const d = await loadFromSupabase(session.user.id);
+            const d = await withTimeout(loadFromSupabase(session.user.id), 6000, 'cloud load');
             if(d){
               if(d.name) setName(d.name);
               if(d.baseRate!=null) setBaseRate(d.baseRate);
@@ -403,6 +443,7 @@ function App(){
     };
     init();
 
+    if(!supabase) return;
     const {data:{subscription}} = supabase.auth.onAuthStateChange(async (_event,session)=>{
       setSession(session);
       setUser(session?.user ?? null);
@@ -669,7 +710,7 @@ function App(){
           <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); setSheetDate(k);}}>+ Log a shift</button>
           <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
           {user
-            ? <button className="iconbtn" title="Sign out" onClick={async()=>{if(confirm('Sign out?'))await supabase.auth.signOut();}}>{Ic.logout}</button>
+            ? <button className="iconbtn" title="Sign out" onClick={async()=>{if(confirm('Sign out?')&&supabase)await supabase.auth.signOut();}}>{Ic.logout}</button>
             : <button className="btn btn-primary btn-sm" onClick={()=>setShowAuth(true)}>Sign in</button>}
           <div className="avatar">{user ? (user.email||'?').charAt(0).toUpperCase() : (name||'?').trim().charAt(0).toUpperCase()}</div>
         </div>
@@ -911,6 +952,7 @@ function AuthModal({mode,onClose}){
 
   const handleEmailAuth = async (e)=>{
     e.preventDefault();
+    if(!supabase){ setError('Cloud sync is unavailable right now — your data is still saved on this device.'); return; }
     setLoading(true);
     setError('');
     const action = mode==='signup' ? supabase.auth.signUp : supabase.auth.signInWithPassword;
@@ -924,6 +966,7 @@ function AuthModal({mode,onClose}){
   };
 
   const handleGoogleAuth = async ()=>{
+    if(!supabase){ setError('Cloud sync is unavailable right now — your data is still saved on this device.'); return; }
     setLoading(true);
     setError('');
     const {error:err} = await supabase.auth.signInWithOAuth({

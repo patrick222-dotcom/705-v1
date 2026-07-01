@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - master
+      # This repo has no main branch yet — the branch below is the de facto default.
+      # Remove it from this list once work is merged into main.
+      - claude/migrate-to-github-deploy-3F5RD
   workflow_dispatch:
 
 permissions:
