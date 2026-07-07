@@ -105,6 +105,16 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    - **Sync model**: one-time **re-import when the schedule changes** (no live sync without an
      API); a new import updates the affected dates.
    - Validate first via the `feedback` table (are users actually asking for this?).
+   - **hStream / HealthStream angle (researched 2026-07-07):** NurseGrid was acquired by
+     HealthStream; the **hStream Developer Portal** (developers.hstream.com) DOES expose
+     RESTful APIs + **webhooks** (e.g. schedule-change events) and NurseGrid is in its first
+     integration cohort. BUT access is a **gated B2B partner/customer program**: requires a
+     pre-authorized hStreamID + "Request Access" approval + becoming **hStream-Certified**;
+     data is a health *system's* authorized data (not an individual nurse's consent), so it
+     near-certainly needs contracts + a **HIPAA BAA**. Not accessible to a personal/PoC app.
+     This is the *legitimate* path to live NurseGrid sync **only if ScrubPay becomes a real
+     product** and pursues certified-partner status — a business/legal step, not a code task.
+     Revisit only with real demand + intent to commercialize.
 
 ## Testing (no device needed)
 
