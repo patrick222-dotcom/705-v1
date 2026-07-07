@@ -898,20 +898,29 @@ function App(){
     setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
   };
 
-  /* Cross-device sync: when the tab regains focus/visibility, pull the latest cloud blob
-     if another device wrote a NEWER one. Guarded by updated_at so we never echo our own
-     write or clobber unsaved local edits; keepPeriod leaves the user's current view alone. */
+  /* Cross-device sync: while the tab is visible, poll the cloud blob (every 15s) and also
+     refetch on focus/visibility. If another device wrote a NEWER blob, apply it. Guarded by
+     updated_at AND content-equality so we never echo our own write, re-save identical data
+     (which would ping-pong between devices), or clobber unsaved local edits; keepPeriod
+     leaves the user's current pay-period view alone.
+     NOTE: this is poll-based near-realtime, not push. A Supabase Realtime subscription would
+     make it instant — a possible future upgrade. */
   useEffect(()=>{
     if(!supabase || !user) return;
-    let busy=false;
+    let busy=false, stopped=false;
+    const normalize = o => { try{ return JSON.stringify({...o, payPeriodStart:0}); }catch(_){ return ''; } };
     const refetch = async ()=>{
-      if(busy || document.visibilityState==='hidden') return;
+      if(busy || stopped || document.visibilityState==='hidden') return;
       if(hydratedForUser.current !== user.id) return;   // only after this user has safely hydrated
       busy=true;
       try{
         const row = await withTimeout(loadCloudRow(user.id), 6000, 'sync refetch');
         if(row && row.data && row.updatedAt && (!lastSeenAt.current || row.updatedAt > lastSeenAt.current)){
-          applyData(row.data,{keepPeriod:true});
+          // only apply if the remote content actually differs from what we already show
+          // (ignoring the local view period) — otherwise just record that we've seen it.
+          if(normalize(row.data) !== normalize(serializeState())){
+            applyData(row.data,{keepPeriod:true});
+          }
           lastSeenAt.current = row.updatedAt;
         }
       }catch(_){ /* offline / timeout — leave state as-is */ }
@@ -921,7 +930,8 @@ function App(){
     const onVis = ()=>{ if(document.visibilityState==='visible') refetch(); };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVis);
-    return ()=>{ window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); };
+    const id = setInterval(refetch, 15000);
+    return ()=>{ stopped=true; clearInterval(id); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); };
   },[user]);
 
   /* lock scroll behind overlays */
