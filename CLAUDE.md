@@ -16,10 +16,20 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 
 - **Single-file app**: everything lives in `index.html` — React 18 + Babel standalone
   (JSX transformed in-browser), no build step. Keep it single-file.
-- CDN dependencies (pinned versions): React/ReactDOM 18.2.0 (unpkg), Babel standalone
-  7.24.7 (unpkg), pdf.js 3.11.174 (cdnjs), supabase-js 2.45.4 (jsdelivr).
+- CDN dependencies (pinned versions, all with SRI hashes): React/ReactDOM 18.2.0 (unpkg),
+  Babel standalone 7.24.7 (unpkg), pdf.js **main lib** 3.11.174 (cdnjs), supabase-js 2.45.4
+  (jsdelivr). The pdf.js **worker** is hosted locally (`pdf.worker.min.js`, deployed next to
+  `index.html`) — same-origin, no third-party CDN in the paystub path; `getDocument` uses
+  `isEvalSupported:false` (CVE-2024-4367 hardening).
 - **Data**: logged-in users → Supabase `user_data` table (one JSON blob per user,
-  upserted, debounced 500ms). Anonymous users → localStorage (`nursingWagePlannerData`).
+  upserted, debounced 500ms; capped at `MAX_BLOB_BYTES` = 512KB as a free-tier guard).
+  Anonymous users → localStorage (`nursingWagePlannerData`).
+- **Feedback**: in-app widget (top-bar 💬 + Settings) → Supabase `feedback` table. RLS is
+  insert-only for `anon`+`authenticated` (anyone can submit, **nobody can read back via the
+  anon key** — submissions are private). Offline submissions are stashed in localStorage
+  (`scrubpay_feedback_pending`) and flushed on next load. Read submissions as the owner via
+  the dashboard or Management API: `select created_at, message, contact, user_id from
+  public.feedback order by created_at desc;`
 - **Auth**: Supabase email/password + Google OAuth. Project ref: `mnnlgcxnvodjwlhhiphq`.
 - **Boot hardening** (do not remove): plain-JS boot watchdog in `index.html` shows an
   error screen if the app hasn't rendered in 8s; Supabase client creation is
@@ -60,11 +70,19 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 4. Rerun the improved agent council against the app (owner's standing request) —
    first full run with the automated fix→re-review loop done 2026-07-04, see
    `git log` for the fixes it produced.
-5. P1 backlog: deploy only `index.html` (not the whole repo) in the Pages artifact,
-   host pdf.js worker locally, SRI hashes (previous attempt broke the site — verify
-   hashes carefully), error monitoring, Supabase free-tier warnings. Note: leaked
-   password protection (HIBP) is Pro-plan only — the API silently ignores it on the
-   free tier.
+5. ~~P1 backlog~~ **Done 2026-07-07**: Pages publishes only `index.html` + `pdf.worker.min.js`;
+   pdf.js worker hosted locally; SRI hashes on all 5 CDN scripts (verified byte-for-byte vs
+   live CDNs); client error monitoring (onerror + unhandledrejection ring buffer + "Copy error
+   log"); free-tier guard (`MAX_BLOB_BYTES`). Note: leaked password protection (HIBP) is
+   Pro-plan only — the API silently ignores it on the free tier.
+6. **Free-tier headroom** (as of 2026-07-07): DB 11MB / 500MB, well within limits. Watch
+   Monthly Active Users (50k cap) and DB size as friends join. Check usage:
+   `GET /v1/projects/<ref>/usage` (Management API) or the dashboard's Usage page. The
+   `MAX_BLOB_BYTES` guard and `feedback` length checks bound per-row growth.
+7. **Feedback email delivery (optional, not built):** feedback currently lands in the
+   `feedback` table only (query it to review). To also forward to email, add a Supabase
+   Database Webhook → Edge Function → email provider (e.g. Resend — needs an API key), or
+   a scheduled digest. Gmail MCP was disconnected at build time, so no automated email yet.
 
 ## Testing (no device needed)
 
