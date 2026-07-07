@@ -461,18 +461,21 @@ function shiftGross(base, diff, s){
 }
 
 /* ---------- supabase helpers ---------- */
+/* Returns the ISO updated_at written on success (truthy), or null on failure — callers
+   record it as the "last write we made" so the focus-refetch can ignore our own writes. */
 async function saveToSupabase(userId, data){
-  if(!supabase) return false;
+  if(!supabase) return null;
+  const updatedAt = new Date().toISOString();
   try{
     const {error} = await supabase
       .from('user_data')
-      .upsert({user_id:userId, data, updated_at:new Date().toISOString()});
-    if(error) console.error('Save error:',error);
-    return !error;
+      .upsert({user_id:userId, data, updated_at:updatedAt});
+    if(error){ console.error('Save error:',error); return null; }
+    return updatedAt;
   }catch(e){
     // rejected fetch (network drop) — never let this leak past the save effect
     console.error('Save threw:',e);
-    return false;
+    return null;
   }
 }
 
@@ -498,14 +501,19 @@ async function submitFeedback({message, contact, userId}){
 }
 
 async function loadFromSupabase(userId){
+  const row = await loadCloudRow(userId);
+  return row ? row.data : null;
+}
+/* Full row incl. updated_at — used by initial hydration and the focus-refetch sync. */
+async function loadCloudRow(userId){
   if(!supabase) return null;
   const {data, error} = await supabase
     .from('user_data')
-    .select('data')
+    .select('data, updated_at')
     .eq('user_id',userId)
     .single();
   if(error && error.code!=='PGRST116') console.error('Load error:',error);
-  return data?.data || null;
+  return data?.data ? {data:data.data, updatedAt:data.updated_at||null} : null;
 }
 
 /* ---------- feedback sheet ---------- */
@@ -678,6 +686,7 @@ function App(){
   const prevUserId = useRef(null);         // last seen auth user id (detects real user changes)
   const snapshotRef = useRef(null);        // latest {user,data} for the pagehide flush
   const oversizeWarned = useRef(false);    // warn once if the blob outgrows the free-tier budget
+  const lastSeenAt = useRef(null);         // updated_at of the cloud blob we last wrote/loaded (sync guard)
   const BACKUP_KEY = uid => STORE_KEY + '::' + uid;  // per-user local mirror (never the shared anon key)
 
   /* ---- single serializer (used by save effect, export, and flush) ---- */
@@ -688,7 +697,11 @@ function App(){
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
-  const applyData = (raw)=>{
+  /* opts.landCurrent: snap the pay period to the one containing today (phase-preserved) —
+       used on initial/sign-in loads so landing always shows the current paycheck.
+     opts.keepPeriod: leave the currently-displayed pay period untouched — used by the
+       focus-refetch sync so pulling remote edits doesn't yank the user's view. */
+  const applyData = (raw, opts={})=>{
     const d = sanitizeData(raw);
     if(!d) return;
     if(d.name) setName(d.name);
@@ -699,7 +712,10 @@ function App(){
     if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
     if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
     if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
-    if(d.payPeriodStart) setPPS(d.payPeriodStart);
+    if(!opts.keepPeriod){
+      if(opts.landCurrent) setPPS(currentPeriodStart(d.payPeriodStart||todayISO()));
+      else if(d.payPeriodStart) setPPS(d.payPeriodStart);
+    }
     if(d.shifts) setShifts(d.shifts);
     if(d.customWithholdings) setCW(d.customWithholdings);
     if(d.differentials){
@@ -722,11 +738,11 @@ function App(){
     if(loadingRef.current===userId || hydratedForUser.current===userId) return true; // no double-load
     loadingRef.current = userId;
     try{
-      const d = await withTimeout(loadFromSupabase(userId), timeoutMs||6000, 'cloud load');
-      if(d){ applyData(d); }
+      const row = await withTimeout(loadCloudRow(userId), timeoutMs||6000, 'cloud load');
+      if(row && row.data){ applyData(row.data,{landCurrent:true}); lastSeenAt.current = row.updatedAt; }
       else{
         // genuinely no cloud row yet — recover any local backup we mirrored for this user
-        try{ const b = localStorage.getItem(BACKUP_KEY(userId)); if(b) applyData(JSON.parse(b)); }catch(_){}
+        try{ const b = localStorage.getItem(BACKUP_KEY(userId)); if(b) applyData(JSON.parse(b),{landCurrent:true}); }catch(_){}
       }
       hydratedForUser.current = userId;  // ONLY now are cloud saves for this user safe
       setSyncError(false);
@@ -780,7 +796,8 @@ function App(){
         hydratedForUser.current = null;
         setSyncError(false);
         resetToDefaults();
-        setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw)); }catch(_){} }, 0);
+        lastSeenAt.current = null;
+        setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
     return ()=> subscription.unsubscribe();
@@ -790,7 +807,7 @@ function App(){
   useEffect(()=>{
     try{
       const raw = localStorage.getItem(STORE_KEY);
-      if(raw) applyData(JSON.parse(raw));
+      if(raw) applyData(JSON.parse(raw),{landCurrent:true});
     }catch(e){ console.error('load',e); }
   },[]);
 
@@ -812,11 +829,12 @@ function App(){
           return;
         }
         setSyncing(true);
-        let ok=false;
-        try{ ok = await saveToSupabase(user.id, dataToSave); }
+        let ts=null;
+        try{ ts = await saveToSupabase(user.id, dataToSave); }
         finally{ setSyncing(false); }
-        setSyncError(!ok);
-        if(!ok){
+        setSyncError(!ts);
+        if(ts){ lastSeenAt.current = ts; }   // remember our own write so the focus-refetch ignores it
+        else{
           // network drop: mirror to a PER-USER key (not the shared anon STORE_KEY) so nothing is lost and nothing leaks
           try{ localStorage.setItem(BACKUP_KEY(user.id), JSON.stringify(dataToSave)); }catch(_){}
         }
@@ -836,7 +854,7 @@ function App(){
       if(!snap) return;
       if(snap.user){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key
-        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data); }catch(_){} }
+        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts) lastSeenAt.current=ts; }); }catch(_){} }
       }else{
         try{ localStorage.setItem(STORE_KEY, JSON.stringify(snap.data)); }catch(_){}
       }
@@ -851,11 +869,38 @@ function App(){
   const retrySync = async ()=>{
     if(!user || hydratedForUser.current!==user.id) return;
     setSyncing(true);
-    let ok=false;
-    try{ ok = await saveToSupabase(user.id, serializeState()); }
+    let ts=null;
+    try{ ts = await saveToSupabase(user.id, serializeState()); }
     finally{ setSyncing(false); }
-    setSyncError(!ok);
+    setSyncError(!ts);
+    if(ts){ lastSeenAt.current = ts; }
   };
+
+  /* Cross-device sync: when the tab regains focus/visibility, pull the latest cloud blob
+     if another device wrote a NEWER one. Guarded by updated_at so we never echo our own
+     write or clobber unsaved local edits; keepPeriod leaves the user's current view alone. */
+  useEffect(()=>{
+    if(!supabase || !user) return;
+    let busy=false;
+    const refetch = async ()=>{
+      if(busy || document.visibilityState==='hidden') return;
+      if(hydratedForUser.current !== user.id) return;   // only after this user has safely hydrated
+      busy=true;
+      try{
+        const row = await withTimeout(loadCloudRow(user.id), 6000, 'sync refetch');
+        if(row && row.data && row.updatedAt && (!lastSeenAt.current || row.updatedAt > lastSeenAt.current)){
+          applyData(row.data,{keepPeriod:true});
+          lastSeenAt.current = row.updatedAt;
+        }
+      }catch(_){ /* offline / timeout — leave state as-is */ }
+      finally{ busy=false; }
+    };
+    const onFocus = ()=>refetch();
+    const onVis = ()=>{ if(document.visibilityState==='visible') refetch(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return ()=>{ window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); };
+  },[user]);
 
   /* lock scroll behind overlays */
   useEffect(()=>{
@@ -887,6 +932,14 @@ function App(){
   const keyOf = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
   const parseISO = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
   const addDaysISO = (s,n)=>{ const d=parseISO(s); return keyOf(new Date(d.getFullYear(),d.getMonth(),d.getDate()+n)); };
+  /* the pay period (phase-aligned to `anchor`) that contains today — keeps the user's
+     real 14-day cycle but always lands on the current paycheck. */
+  const currentPeriodStart = (anchorISO)=>{
+    const anchor = parseISO(anchorISO||todayISO());
+    const today = new Date(); today.setHours(0,0,0,0);
+    const k = Math.floor(Math.round((today - anchor)/86400000)/14);
+    return keyOf(new Date(anchor.getFullYear(),anchor.getMonth(),anchor.getDate()+k*14));
+  };
   const periodLabel = useMemo(()=>{
     const a=days[0], b=days[13];
     const o={month:'short',day:'numeric'};

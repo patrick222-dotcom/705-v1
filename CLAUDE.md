@@ -83,14 +83,13 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    `feedback` table only (query it to review). To also forward to email, add a Supabase
    Database Webhook → Edge Function → email provider (e.g. Resend — needs an API key), or
    a scheduled digest. Gmail MCP was disconnected at build time, so no automated email yet.
-8. **Cross-device sync lag (bug, backlog)** reported 2026-07-07: edited on desktop, opened
-   Chrome on iPhone (WebKit), didn't see the update. Cause: there is **no realtime sync** —
-   `loadFromSupabase` only runs on mount/sign-in, so an already-open session on another
-   device won't see changes until it reloads/re-auths. Fix options: (a) add a Supabase
-   Realtime subscription on `user_data` to live-apply remote changes (mind the debounced
-   save so we don't echo our own writes / clobber local edits — reconcile by `updated_at`);
-   (b) refetch on window `focus`/`visibilitychange`; (c) simplest interim: a manual "refresh
-   from cloud" action. Watch for last-writer-wins races between two open devices.
+8. ~~Cross-device sync lag~~ **Fixed 2026-07-07 (option b)**: logged-in sessions now refetch
+   the cloud blob on window `focus`/`visibilitychange`. Guarded by `updated_at` vs a
+   `lastSeenAt` ref (set on every successful save + initial load) so we never echo our own
+   write or clobber unsaved local edits; `applyData(...,{keepPeriod:true})` pulls remote
+   changes without moving the user's current pay-period view. Not *live* realtime (no
+   subscription) but covers the reported case (edit on desktop → foreground the phone).
+   A Supabase Realtime subscription remains a possible future upgrade.
 9. **NurseGrid integration — PARKED 2026-07-07 (deliberately deferred until user feedback
    justifies it; owner doesn't want to over-build before validating demand).** Goal: pull a
    nurse's NurseGrid schedule into ScrubPay so they can project paychecks while self-scheduling.
