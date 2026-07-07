@@ -41,21 +41,30 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
   as an environment variable (set in the Claude Code cloud environment settings —
   never commit the token). If MCP tools are available, use them directly instead of
   giving the owner dashboard instructions.
+- **Network policy must allow `api.supabase.com`** (environment network settings) or
+  both the MCP server and direct Management API calls get 403 from the egress proxy.
+  Env vars and network policy load at container start. If MCP started without the
+  token, the Management API via `curl` works as a fallback (POST
+  `/v1/projects/<ref>/database/query` for SQL, GET/PATCH `/v1/projects/<ref>/config/auth`
+  for auth settings, GET `/v1/projects/<ref>/advisors/{security,performance}`).
 
 ## Pending tasks (check before starting new work)
 
-1. **RLS not yet enabled** on `user_data`. Apply via MCP if connected, else give SQL:
-   `ALTER TABLE user_data ENABLE ROW LEVEL SECURITY;` plus a policy
-   `USING (auth.uid() = user_id)` for ALL.
-2. **Supabase Auth URL config**: Site URL must be
-   `https://patrick222-dotcom.github.io/705-v1/` and Redirect URLs must include
-   `https://patrick222-dotcom.github.io/705-v1/**`. Until set, Google OAuth bounces
-   users to `localhost:3000` (default Site URL). Verify via MCP if possible.
-3. Verify Google sign-in end-to-end on a real iPhone after (2).
-4. Rerun the improved agent council against the app (owner's standing request).
+1. ~~RLS~~ **Done 2026-07-04**: RLS enabled on `user_data` with per-command policies
+   `(select auth.uid()) = user_id` (subselect form per the performance advisor).
+2. ~~Supabase Auth URL config~~ **Done 2026-07-04**: Site URL set to
+   `https://patrick222-dotcom.github.io/705-v1/`, redirect allow list to
+   `https://patrick222-dotcom.github.io/705-v1/**` via Management API.
+3. Verify Google sign-in end-to-end on a real iPhone (config is now correct; needs a
+   human with a phone).
+4. Rerun the improved agent council against the app (owner's standing request) —
+   first full run with the automated fix→re-review loop done 2026-07-04, see
+   `git log` for the fixes it produced.
 5. P1 backlog: deploy only `index.html` (not the whole repo) in the Pages artifact,
    host pdf.js worker locally, SRI hashes (previous attempt broke the site — verify
-   hashes carefully), error monitoring, Supabase free-tier warnings.
+   hashes carefully), error monitoring, Supabase free-tier warnings. Note: leaked
+   password protection (HIBP) is Pro-plan only — the API silently ignores it on the
+   free tier.
 
 ## Testing (no device needed)
 
