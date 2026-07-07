@@ -32,10 +32,11 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Stage site (publish only index.html, not the whole repo)
+      - name: Stage site (publish only the app files, not the whole repo)
         run: |
           mkdir -p _site
           cp index.html _site/
+          cp pdf.worker.min.js _site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
