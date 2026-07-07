@@ -96,11 +96,26 @@
   .cal-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
   .cal-head .ttl{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px}
   .cal-head .sub{font-size:12.5px;color:var(--muted-2)}
+  .viewseg{display:flex;gap:4px;background:#EFEEE9;border-radius:12px;padding:4px;margin-bottom:14px}
+  .viewseg button{flex:1;padding:9px 6px;border-radius:9px;font-weight:600;font-size:12.5px;color:var(--muted);background:transparent;border:0;transition:background .15s,color .15s;cursor:pointer}
+  .viewseg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(18,18,26,.1)}
+  .calnav{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+  .calnav button{position:relative;width:36px;height:36px;border-radius:11px;border:1px solid var(--line-2);background:#fff;color:var(--ink);font-size:19px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .calnav button::after{content:'';position:absolute;inset:-5px}
+  .calnav button:hover{background:#fbfaf7}
+  .calnav-t{flex:1;text-align:center;font-family:'Bricolage Grotesque';font-weight:700;font-size:15.5px}
+  .yearlist{display:flex;flex-direction:column;gap:7px}
+  .yrow{display:flex;align-items:center;gap:12px;width:100%;background:#fbfaf7;border:1px solid var(--line);border-radius:13px;padding:13px 15px;text-align:left;transition:background .12s}
+  .yrow.has{background:#fff}
+  .yrow:hover{background:var(--indigo-soft)}
+  .yrow .ym{font-weight:700;font-size:14.5px;width:84px;flex:0 0 auto}
+  .yrow .yd{flex:1;font-size:13px;color:var(--muted);font-weight:500}
+  .yrow .ychev{color:#c9c6bc;font-size:18px;font-weight:700;flex:0 0 auto}
   .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px;scrollbar-width:none}
   .cal-scroll::-webkit-scrollbar{display:none}
-  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;min-width:600px}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px;min-width:320px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
-  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;min-width:600px}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;min-width:320px}
   .cell{aspect-ratio:1/1;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
   .cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .cell.empty{border-style:dashed;background:#fff;pointer-events:none}
@@ -654,6 +669,8 @@ function App(){
   const [paystub,setPaystub] = useState(null);
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
+  const [calView,setCalView] = useState('period');   // 'period' | 'week' | 'month' | 'year'
+  const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
 
   const fileImport = useRef(null);
   const hydratedForUser = useRef(null);   // user.id whose cloud data is loaded & safe to overwrite
@@ -868,11 +885,68 @@ function App(){
     return Array.from({length:14},(_,i)=> new Date(y,m-1,d+i));
   },[payPeriodStart]);
   const keyOf = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  const parseISO = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+  const addDaysISO = (s,n)=>{ const d=parseISO(s); return keyOf(new Date(d.getFullYear(),d.getMonth(),d.getDate()+n)); };
   const periodLabel = useMemo(()=>{
     const a=days[0], b=days[13];
     const o={month:'short',day:'numeric'};
-    return `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}`;
+    return `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}, ${b.getFullYear()}`;
   },[days]);
+
+  /* per-day {gross,hours,count} for any date — powers every calendar view */
+  const statOf = (k)=>{
+    const arr = shifts[k]||[];
+    let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
+    return {g,h,n:arr.length};
+  };
+
+  /* days shown in the current calendar view */
+  const viewDays = useMemo(()=>{
+    if(calView==='week'){
+      // weeks align to pay-period halves: a pay period is exactly two weeks
+      const anchor = parseISO(payPeriodStart), focus = parseISO(calFocus);
+      const diff = Math.round((focus - anchor)/86400000);
+      const wi = Math.floor(diff/7);
+      const s = new Date(anchor.getFullYear(),anchor.getMonth(),anchor.getDate()+wi*7);
+      return Array.from({length:7},(_,i)=>new Date(s.getFullYear(),s.getMonth(),s.getDate()+i));
+    }
+    if(calView==='month'){
+      const f=parseISO(calFocus), y=f.getFullYear(), m=f.getMonth(), n=new Date(y,m+1,0).getDate();
+      return Array.from({length:n},(_,i)=>new Date(y,m,i+1));
+    }
+    return days; // period
+  },[calView,calFocus,payPeriodStart,days]);
+
+  const viewTitle = useMemo(()=>{
+    if(calView==='week'){
+      const a=viewDays[0], b=viewDays[6];
+      const same=a.getMonth()===b.getMonth();
+      return same
+        ? `${a.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${b.getDate()}, ${b.getFullYear()}`
+        : `${a.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${b.toLocaleDateString('en-US',{month:'short',day:'numeric'})}, ${b.getFullYear()}`;
+    }
+    if(calView==='month') return parseISO(calFocus).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    if(calView==='year')  return String(parseISO(calFocus).getFullYear());
+    return periodLabel;
+  },[calView,calFocus,viewDays,periodLabel]);
+
+  const navCal = (dir)=>{
+    if(calView==='week') setCalFocus(addDaysISO(calFocus, dir*7));
+    else if(calView==='month'){ const f=parseISO(calFocus); setCalFocus(keyOf(new Date(f.getFullYear(),f.getMonth()+dir,1))); }
+    else if(calView==='year'){ const f=parseISO(calFocus); setCalFocus(keyOf(new Date(f.getFullYear()+dir,f.getMonth(),1))); }
+  };
+
+  /* year view: 12-month totals from all shifts in the focused year */
+  const yearMonths = useMemo(()=>{
+    if(calView!=='year') return [];
+    const y = parseISO(calFocus).getFullYear();
+    return Array.from({length:12},(_,m)=>{
+      const prefix = `${y}-${String(m+1).padStart(2,'0')}-`;
+      let g=0,h=0,n=0;
+      Object.keys(shifts).forEach(k=>{ if(k.indexOf(prefix)===0){ (shifts[k]||[]).forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; n++; }); } });
+      return {m,g,h,n};
+    });
+  },[calView,calFocus,shifts,baseRate,differentials]);
 
   /* ---- calculations ---- */
   const calc = useMemo(()=>{
@@ -901,16 +975,6 @@ function App(){
     return {gross,hours,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost,
       pct: gross>0 ? Math.round(net/gross*100) : 0};
   },[shifts,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
-
-  const dayTotals = useMemo(()=>{
-    const o={};
-    days.forEach(dt=>{
-      const arr = shifts[keyOf(dt)]||[];
-      let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
-      o[keyOf(dt)] = {g,h,n:arr.length};
-    });
-    return o;
-  },[days,shifts,baseRate,differentials]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
 
@@ -1095,11 +1159,26 @@ function App(){
               </div>}
 
             <div className="card">
-              <div className="cal-head"><div><div className="ttl">This pay period</div></div><div className="sub">Tap a day to add or edit</div></div>
-              <div className="cal-scroll">
-                <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
-                <Calendar days={days} keyOf={keyOf} dayTotals={dayTotals} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} />
+              <div className="cal-head"><div><div className="ttl">{calView==='period'?'This pay period':'Browse calendar'}</div></div><div className="sub">Tap a day to add or edit</div></div>
+              <div className="viewseg" role="tablist" aria-label="Calendar view">
+                {[['period','Pay period'],['week','Week'],['month','Month'],['year','Year']].map(([v,l])=>
+                  <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
+                    onClick={()=>{ if(calView==='period'&&v!=='period') setCalFocus(payPeriodStart); setCalView(v); }}>{l}</button>)}
               </div>
+              {calView!=='period' &&
+                <div className="calnav">
+                  <button onClick={()=>navCal(-1)} aria-label="Previous">‹</button>
+                  <span className="calnav-t">{viewTitle}</span>
+                  <button onClick={()=>navCal(1)} aria-label="Next">›</button>
+                </div>}
+              {calView==='year'
+                ? <YearList months={yearMonths} onPick={(m)=>{ setCalFocus(`${parseISO(calFocus).getFullYear()}-${String(m+1).padStart(2,'0')}-01`); setCalView('month'); }} />
+                : <div className="cal-scroll">
+                    <div className="dow">{calView==='week'
+                      ? viewDays.map((d,i)=><div key={i}>{'SMTWTFS'[d.getDay()]}</div>)
+                      : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+                    <Calendar days={viewDays} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} noLead={calView==='week'} />
+                  </div>}
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
                   <span key={k}><i style={{background:differentials[k]?.color||'#8A93A6'}}></i>{l}</span>)}
@@ -1253,12 +1332,12 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
 }
 
 /* ---------- Calendar ---------- */
-function Calendar({days,keyOf,dayTotals,differentials,shifts,onPick}){
-  const lead = days[0].getDay();
+function Calendar({days,keyOf,statOf,differentials,shifts,onPick,noLead}){
+  const lead = noLead?0:days[0].getDay();
   const cells = [];
   for(let i=0;i<lead;i++) cells.push(<div key={'e'+i} className="cell empty"></div>);
   days.forEach(dt=>{
-    const k=keyOf(dt); const t=dayTotals[k]; const arr=shifts[k]||[]; const has=arr.length>0;
+    const k=keyOf(dt); const t=statOf(k); const arr=shifts[k]||[]; const has=arr.length>0;
     cells.push(
       <button key={k} className={'cell'+(has?' has':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
         <div className="d">{dt.getDate()}</div>
@@ -1268,6 +1347,22 @@ function Calendar({days,keyOf,dayTotals,differentials,shifts,onPick}){
       </button>);
   });
   return <div className="grid">{cells}</div>;
+}
+
+/* ---------- Year view: 12-month summary list ---------- */
+function YearList({months,onPick}){
+  const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return (
+    <div className="yearlist">
+      {months.map(mm=>(
+        <button key={mm.m} className={'yrow'+(mm.n>0?' has':'')} onClick={()=>onPick(mm.m)}>
+          <span className="ym">{MN[mm.m]}</span>
+          <span className="yd">{mm.n>0 ? <>{mm.h.toFixed(mm.h%1?1:0)} hrs · <span className="num">{fmt(mm.g)}</span> · {mm.n} {mm.n===1?'shift':'shifts'}</> : 'No shifts'}</span>
+          <span className="ychev" aria-hidden="true">›</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /* ---------- Breakdown ---------- */
