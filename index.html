@@ -876,6 +876,28 @@ function App(){
     if(ts){ lastSeenAt.current = ts; }
   };
 
+  /* WebKit-safe sign-out. supabase-js signOut() calls getSession() + a /logout network
+     request and only clears the local session AFTER they resolve — both deadlock on iOS
+     WebKit (same bug the getSession 4s-race guards). So we race it against a timeout and,
+     no matter what, purge the persisted auth token ourselves so we always end up signed out. */
+  const clearAuthStorage = ()=>{ try{ Object.keys(localStorage).filter(k=>k.indexOf('sb-')===0 && k.indexOf('auth-token')>=0).forEach(k=>localStorage.removeItem(k)); }catch(_){} };
+  const signOutClient = async ()=>{
+    try{ if(supabase) await withTimeout(supabase.auth.signOut({scope:'local'}), 3000, 'sign out'); }
+    catch(e){ console.error('Sign out:', e); }
+    clearAuthStorage();
+  };
+  const handleSignOut = async ()=>{
+    if(!(await confirmAsync('You can sign back in anytime.',{title:'Sign out?',confirm:'Sign out'}))) return;
+    await signOutClient();
+    // Force signed-out state locally — never rely on onAuthStateChange, which won't fire if
+    // signOut stalled. Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires).
+    hydratedForUser.current = null; lastSeenAt.current = null; prevUserId.current = null;
+    setSyncError(false);
+    setSession(null); setUser(null);
+    resetToDefaults();
+    setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
+  };
+
   /* Cross-device sync: when the tab regains focus/visibility, pull the latest cloud blob
      if another device wrote a NEWER one. Guarded by updated_at so we never echo our own
      write or clobber unsaved local edits; keepPeriod leaves the user's current view alone. */
@@ -1080,7 +1102,7 @@ function App(){
         const uid = user.id;
         try{ await withTimeout(supabase.from('user_data').delete().eq('user_id',uid), 5000, 'clear'); }
         catch(e){ console.error('Cloud clear error:',e); }
-        try{ await supabase.auth.signOut(); }catch(e){ console.error('Sign-out error:',e); }
+        await signOutClient();   // WebKit-safe: won't hang before the reload below
         try{ localStorage.removeItem(BACKUP_KEY(uid)); }catch(_){}
       }
     }finally{
@@ -1184,7 +1206,7 @@ function App(){
           <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>setShowFeedback(true)}>{Ic.chat}</button>
           <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
           {user
-            ? <button className="iconbtn" title="Sign out" onClick={async()=>{if(await confirmAsync('You can sign back in anytime.',{title:'Sign out?',confirm:'Sign out'})&&supabase)await supabase.auth.signOut();}}>{Ic.logout}</button>
+            ? <button className="iconbtn" title="Sign out" onClick={handleSignOut}>{Ic.logout}</button>
             : <button className="btn btn-primary btn-sm" onClick={()=>setShowAuth(true)}>Sign in</button>}
           <div className="avatar">{user ? (user.email||'?').charAt(0).toUpperCase() : (name||'?').trim().charAt(0).toUpperCase()}</div>
         </div>
