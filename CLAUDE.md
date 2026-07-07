@@ -30,6 +30,13 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
   (`scrubpay_feedback_pending`) and flushed on next load. Read submissions as the owner via
   the dashboard or Management API: `select created_at, message, contact, user_id from
   public.feedback order by created_at desc;`
+- **Analytics** (privacy-light): in-app `track(name, props)` inserts to Supabase `events`
+  (insert-only RLS, same private model as `feedback`). Coarse events only — **never wage
+  figures**: `app_open`, `setup_completed`, `shift_saved`, `paystub_imported`, `view_changed`
+  (props `{view}`), `feedback_submitted`, `signed_in`. A stable per-device `anon_id`
+  (localStorage `scrubpay_anon_id`) lets you count distinct anonymous users without PII. Query
+  as owner: `select name, count(*) from public.events group by name order by 2 desc;` or
+  `select created_at, name, props, anon_id, user_id from public.events order by created_at desc;`
 - **Auth**: Supabase email/password + Google OAuth. Project ref: `mnnlgcxnvodjwlhhiphq`.
 - **Boot hardening** (do not remove): plain-JS boot watchdog in `index.html` shows an
   error screen if the app hasn't rendered in 8s; Supabase client creation is
@@ -79,10 +86,13 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    Monthly Active Users (50k cap) and DB size as friends join. Check usage:
    `GET /v1/projects/<ref>/usage` (Management API) or the dashboard's Usage page. The
    `MAX_BLOB_BYTES` guard and `feedback` length checks bound per-row growth.
-7. **Feedback email delivery (optional, not built):** feedback currently lands in the
-   `feedback` table only (query it to review). To also forward to email, add a Supabase
-   Database Webhook → Edge Function → email provider (e.g. Resend — needs an API key), or
-   a scheduled digest. Gmail MCP was disconnected at build time, so no automated email yet.
+7. **Feedback email delivery — BACKLOG (owner wants it; blocked on a Resend API key
+   2026-07-07):** email each new `feedback` row to the owner. Plan: Supabase Edge Function
+   (formats the row, sends via Resend `onboarding@resend.dev` → owner email; no domain setup
+   needed to start) + a Database Webhook on `feedback` INSERT that calls it. Deploy the
+   function via Management API (`POST /v1/projects/<ref>/functions`) and set the
+   `RESEND_API_KEY` secret. Table stays the durable record; email is the notification layer.
+   Ask the owner for the `re_...` key + destination address to proceed.
 8. ~~Cross-device sync lag~~ **Fixed 2026-07-07 (v2, poll-based)**: focus/visibility refetch
    alone missed the common case (iPhone tab already foregrounded → no event fires; iOS
    `window.focus` is unreliable). Now also **polls every 15s while the tab is visible**.
