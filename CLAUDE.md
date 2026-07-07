@@ -83,13 +83,16 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    `feedback` table only (query it to review). To also forward to email, add a Supabase
    Database Webhook → Edge Function → email provider (e.g. Resend — needs an API key), or
    a scheduled digest. Gmail MCP was disconnected at build time, so no automated email yet.
-8. ~~Cross-device sync lag~~ **Fixed 2026-07-07 (option b)**: logged-in sessions now refetch
-   the cloud blob on window `focus`/`visibilitychange`. Guarded by `updated_at` vs a
-   `lastSeenAt` ref (set on every successful save + initial load) so we never echo our own
-   write or clobber unsaved local edits; `applyData(...,{keepPeriod:true})` pulls remote
-   changes without moving the user's current pay-period view. Not *live* realtime (no
-   subscription) but covers the reported case (edit on desktop → foreground the phone).
-   A Supabase Realtime subscription remains a possible future upgrade.
+8. ~~Cross-device sync lag~~ **Fixed 2026-07-07 (v2, poll-based)**: focus/visibility refetch
+   alone missed the common case (iPhone tab already foregrounded → no event fires; iOS
+   `window.focus` is unreliable). Now also **polls every 15s while the tab is visible**.
+   Guarded by `updated_at` vs a `lastSeenAt` ref AND a content-equality check (normalized,
+   ignoring the local view period) so we never echo our own write, re-save identical data
+   (which would ping-pong writes between two devices), or clobber unsaved local edits;
+   `applyData(...,{keepPeriod:true})` leaves the user's current pay-period view alone. Still
+   poll-based near-realtime (~15s), not push — a Supabase Realtime subscription (needs the
+   table added to the `supabase_realtime` publication + `wss://*.supabase.co` in the CSP)
+   would make it instant and is the future upgrade.
 9. **NurseGrid integration — PARKED 2026-07-07 (deliberately deferred until user feedback
    justifies it; owner doesn't want to over-build before validating demand).** Goal: pull a
    nurse's NurseGrid schedule into ScrubPay so they can project paychecks while self-scheduling.
