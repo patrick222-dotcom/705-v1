@@ -500,6 +500,32 @@ async function submitFeedback({message, contact, userId}){
   }catch(e){ console.error('Feedback threw:',e); return false; }
 }
 
+/* ---------- lightweight product analytics (events table, insert-only RLS) ---------- */
+/* Stable per-device id so we can count distinct anonymous users without any PII. */
+const ANON_ID_KEY = 'scrubpay_anon_id';
+function anonId(){
+  try{
+    let id = localStorage.getItem(ANON_ID_KEY);
+    if(!id){ id = (window.crypto&&crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)); localStorage.setItem(ANON_ID_KEY, id); }
+    return id;
+  }catch(_){ return null; }
+}
+/* Fire-and-forget: logs a named event (+ small props). Never blocks the UI or throws.
+   Only event names/coarse props are sent — never wage figures or other sensitive data. */
+function track(name, props, userId){
+  if(!supabase) return;
+  try{
+    supabase.from('events').insert({
+      name: String(name).slice(0,64),
+      props: props || null,
+      user_id: userId || null,
+      anon_id: anonId(),
+      page: String(location.pathname||'').slice(0,120),
+      user_agent: String(navigator.userAgent||'').slice(0,400)
+    }).then(({error})=>{ if(error) console.debug('track:', error.message); }, ()=>{});
+  }catch(_){}
+}
+
 async function loadFromSupabase(userId){
   const row = await loadCloudRow(userId);
   return row ? row.data : null;
@@ -527,7 +553,7 @@ function FeedbackSheet({user, onClose}){
     setSending(true);
     const ok = await submitFeedback({message:text, contact:contact.trim()||null, userId:(user&&user.id)||null});
     setSending(false);
-    if(ok){ toast('Thanks! Your feedback was sent. 💜','success'); onClose(); return; }
+    if(ok){ toast('Thanks! Your feedback was sent. 💜','success'); track('feedback_submitted', null, user&&user.id); onClose(); return; }
     // offline / insert failed — stash locally so it isn't lost; flushed on next load
     try{
       const pend = JSON.parse(localStorage.getItem(FEEDBACK_PENDING_KEY)||'[]');
@@ -787,6 +813,7 @@ function App(){
       if(nextId === prevId) return;   // TOKEN_REFRESHED / USER_UPDATED / repeats — no reload, no clobber
       prevUserId.current = nextId;
       if(nextId){
+        if(event==='SIGNED_IN') track('signed_in', null, nextId);
         if(hydratedForUser.current === nextId) return;  // init already loaded this user
         hydratedForUser.current = null;                 // block cloud saves until loaded
         setTimeout(()=>hydrateFromCloud(nextId, 6000), 0);
@@ -1083,7 +1110,11 @@ function App(){
 
   const saveDayShifts = (dateKey, arr)=>{
     setShifts(prev=>{ const n={...prev}; if(arr.length) n[dateKey]=arr; else delete n[dateKey]; return n; });
+    if(arr.length) track('shift_saved', {n:arr.length}, user?.id);
   };
+
+  /* analytics: one event per app load */
+  useEffect(()=>{ track('app_open', null, null); },[]);
 
   const exportData = ()=>{
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
@@ -1177,6 +1208,7 @@ function App(){
       setDiff(nd);
     }
     setPaystub(null); setSetupComplete(true); setObStep(0);
+    track('paystub_imported', {shifts: (p.shifts&&p.shifts.length)||0}, user?.id);
   };
 
   if(!ready) return null;
@@ -1187,7 +1219,7 @@ function App(){
       <Onboarding {...{obStep,setObStep,name,setName,baseRate,setBaseRate,num,
       differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
       pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
-      onPaystub,parsing,finish:()=>{setSetupComplete(true);},
+      onPaystub,parsing,finish:()=>{setSetupComplete(true); track('setup_completed', null, user?.id);},
       sampleNet:()=>{ // illustrative typical 2wk schedule from their rates
         const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
           {shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'base',hours:12,bonusType:'none'} ];
@@ -1258,7 +1290,7 @@ function App(){
               <div className="viewseg" role="tablist" aria-label="Calendar view">
                 {[['period','Pay period'],['week','Week'],['month','Month'],['year','Year']].map(([v,l])=>
                   <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
-                    onClick={()=>{ if(calView==='period'&&v!=='period') setCalFocus(payPeriodStart); setCalView(v); }}>{l}</button>)}
+                    onClick={()=>{ if(calView==='period'&&v!=='period') setCalFocus(payPeriodStart); if(v!==calView) track('view_changed', {view:v}, user?.id); setCalView(v); }}>{l}</button>)}
               </div>
               {calView!=='period' &&
                 <div className="calnav">
