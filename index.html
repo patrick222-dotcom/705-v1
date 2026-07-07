@@ -208,6 +208,21 @@
   @keyframes up{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
   .grab{width:42px;height:5px;border-radius:3px;background:#D8D5CC;margin:0 auto 16px}
   .modal{margin:auto;width:100%;max-width:560px;background:var(--paper);border-radius:24px;max-height:90dvh;overflow-y:auto;padding:24px;animation:up .24s ease}
+  /* toast notifications (replace native alert) */
+  .toaster{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom));z-index:200;display:flex;flex-direction:column;gap:8px;width:calc(100% - 32px);max-width:400px;pointer-events:none}
+  .toast{pointer-events:auto;background:var(--ink);color:#fff;border-radius:13px;padding:13px 16px;font-size:14px;font-weight:500;box-shadow:0 10px 30px rgba(18,18,26,.28);display:flex;align-items:center;gap:10px;animation:up .22s ease;cursor:pointer}
+  .toast .ic{flex:0 0 auto;font-size:15px;line-height:1}
+  .toast.success{background:#1F7A54}
+  .toast.error{background:var(--danger)}
+  /* confirm dialog (replace native confirm) */
+  .cdlg{margin:auto;width:100%;max-width:380px;background:var(--paper);border-radius:22px;padding:24px;animation:up .22s ease}
+  .cdlg .ct{font-family:'Bricolage Grotesque';font-weight:700;font-size:19px;margin-bottom:8px}
+  .cdlg .cm{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:22px}
+  .cdlg .crow{display:flex;gap:10px}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-danger:hover{background:#b3402f}
+  /* expand the back-button tap target to >=44px without changing its look */
+  .back::after{content:'';position:absolute;inset:-4px}
   .sheet-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
   .sheet-h .t{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px}
   .sec-lab{font-weight:600;font-size:12px;color:var(--muted-2);margin:4px 0 9px;letter-spacing:.02em}
@@ -453,6 +468,59 @@ async function loadFromSupabase(userId){
   return data?.data || null;
 }
 
+/* ---------- global toast + confirm (module-scoped, avoids prop-drilling) ---------- */
+const _ui = { toastFns:new Set(), confirmFn:null };
+function toast(msg, kind){ _ui.toastFns.forEach(fn=>fn(msg, kind||'info')); }
+function confirmAsync(msg, opts){
+  if(_ui.confirmFn) return _ui.confirmFn(msg, opts||{});
+  return Promise.resolve(window.confirm(msg));  // fallback if host isn't mounted
+}
+function Toaster(){
+  const [items,setItems] = useState([]);
+  useEffect(()=>{
+    const add=(msg,kind)=>{
+      const id=Date.now()+Math.random();
+      setItems(x=>[...x,{id,msg,kind}]);
+      setTimeout(()=>setItems(x=>x.filter(i=>i.id!==id)), 3600);
+    };
+    _ui.toastFns.add(add);
+    return ()=>{ _ui.toastFns.delete(add); };
+  },[]);
+  if(!items.length) return null;
+  const icon={success:'✓',error:'⚠️',info:'•'};
+  return (
+    <div className="toaster" role="status" aria-live="polite">
+      {items.map(t=>(
+        <div key={t.id} className={'toast '+(t.kind||'info')} onClick={()=>setItems(x=>x.filter(i=>i.id!==t.id))}>
+          <span className="ic" aria-hidden="true">{icon[t.kind]||'•'}</span><span>{t.msg}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+function ConfirmHost(){
+  const [st,setSt] = useState(null); // {msg, opts, resolve}
+  useEffect(()=>{
+    _ui.confirmFn=(msg,opts)=>new Promise(res=>setSt({msg,opts:opts||{},resolve:res}));
+    return ()=>{ _ui.confirmFn=null; };
+  },[]);
+  if(!st) return null;
+  const done=(v)=>{ st.resolve(v); setSt(null); };
+  const o=st.opts;
+  return (
+    <div className="scrim" style={{zIndex:210}} onClick={()=>done(false)}>
+      <div className="cdlg" onClick={e=>e.stopPropagation()} role="alertdialog" aria-modal="true">
+        <div className="ct">{o.title||'Are you sure?'}</div>
+        <div className="cm">{st.msg}</div>
+        <div className="crow">
+          <button className="btn btn-ghost" onClick={()=>done(false)}>{o.cancel||'Cancel'}</button>
+          <button className={'btn '+(o.danger?'btn-danger':'btn-primary')} onClick={()=>done(true)} autoFocus>{o.confirm||'Confirm'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- error boundary ---------- */
 class ErrorBoundary extends React.Component {
   constructor(props){
@@ -664,7 +732,7 @@ function App(){
       }else{
         try{
           localStorage.setItem(STORE_KEY, JSON.stringify(dataToSave));
-        }catch(e){ if(e.name==='QuotaExceededError') alert('Storage full — export your data.'); }
+        }catch(e){ if(e.name==='QuotaExceededError') toast('Storage full — export your data.','error'); }
       }
     },500);
     return ()=>clearTimeout(id);
@@ -781,16 +849,16 @@ function App(){
       if(typeof d!=='object'||!d) throw 0;
       applyData(d);
       setSetupComplete(true);
-      alert('Data imported.');
-    }catch(err){ alert('Could not read that file.'); } };
+      toast('Data imported.','success');
+    }catch(err){ toast('Could not read that file.','error'); } };
     r.readAsText(f); e.target.value='';
   };
   const clearAll = async ()=>{
     const signedIn = !!user;
     const msg = signedIn
-      ? 'Clear ALL data, including your cloud copy? This cannot be undone.'
-      : 'Clear ALL data? This cannot be undone.';
-    if(!confirm(msg)) return;
+      ? 'This erases everything here and your cloud copy. It cannot be undone.'
+      : 'This erases everything on this device. It cannot be undone.';
+    if(!(await confirmAsync(msg,{title:'Clear all data?',confirm:'Clear everything',danger:true}))) return;
     try{
       if(signedIn && supabase){
         const uid = user.id;
@@ -833,11 +901,11 @@ function App(){
   };
   const onPaystub = async (e)=>{
     const f=e.target.files[0]; if(!f) return;
-    if(f.size>10*1024*1024){ alert('File too large (max 10MB).'); e.target.value=''; return; }
-    if(f.type!=='application/pdf'){ alert('Please upload a PDF.'); e.target.value=''; return; }
+    if(f.size>10*1024*1024){ toast('File too large (max 10MB).','error'); e.target.value=''; return; }
+    if(f.type!=='application/pdf'){ toast('Please upload a PDF.','error'); e.target.value=''; return; }
     setParsing(true);
     try{ const p=await parsePDF(f); setPaystub(p); }
-    catch(err){ alert('Could not parse that paystub.'); console.error(err); }
+    catch(err){ toast('Could not parse that paystub.','error'); console.error(err); }
     finally{ setParsing(false); e.target.value=''; }
   };
   const applyPaystub = (override)=>{
@@ -897,7 +965,7 @@ function App(){
           <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); setSheetDate(k);}}>+ Log a shift</button>
           <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
           {user
-            ? <button className="iconbtn" title="Sign out" onClick={async()=>{if(confirm('Sign out?')&&supabase)await supabase.auth.signOut();}}>{Ic.logout}</button>
+            ? <button className="iconbtn" title="Sign out" onClick={async()=>{if(await confirmAsync('You can sign back in anytime.',{title:'Sign out?',confirm:'Sign out'})&&supabase)await supabase.auth.signOut();}}>{Ic.logout}</button>
             : <button className="btn btn-primary btn-sm" onClick={()=>setShowAuth(true)}>Sign in</button>}
           <div className="avatar">{user ? (user.email||'?').charAt(0).toUpperCase() : (name||'?').trim().charAt(0).toUpperCase()}</div>
         </div>
@@ -1274,7 +1342,7 @@ function AuthModal({mode:initialMode,onClose}){
         : await supabase.auth.signInWithPassword({email,password});
       if(err) setError(err.message);
       else {
-        if(mode==='signup') alert('Check your email to confirm your account!');
+        if(mode==='signup') toast('Check your email to confirm your account!','success');
         onClose();
       }
     }catch(e2){
@@ -1533,7 +1601,7 @@ function Onboarding(props){
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/></ErrorBoundary>);
+ReactDOM.createRoot(document.getElementById('root')).render(<ErrorBoundary><App/><Toaster/><ConfirmHost/></ErrorBoundary>);
 </script>
 </body>
 </html>
