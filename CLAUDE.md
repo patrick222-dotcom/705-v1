@@ -91,10 +91,20 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    save so we don't echo our own writes / clobber local edits — reconcile by `updated_at`);
    (b) refetch on window `focus`/`visibilitychange`; (c) simplest interim: a manual "refresh
    from cloud" action. Watch for last-writer-wins races between two open devices.
-9. **NurseGrid integration (exploration requested 2026-07-07):** let nurses pull their
-   NurseGrid schedule into ScrubPay to project paychecks while scheduling. NurseGrid has no
-   public API; realistic paths are calendar (.ics) import or parsing an exported/printed
-   schedule (PDF/image) like the paystub scanner. Scope pending owner answers.
+9. **NurseGrid integration — PARKED 2026-07-07 (deliberately deferred until user feedback
+   justifies it; owner doesn't want to over-build before validating demand).** Goal: pull a
+   nurse's NurseGrid schedule into ScrubPay so they can project paychecks while self-scheduling.
+   Research: NurseGrid has **no public API**; it offers an iCal feed/calendar sync + a shareable
+   schedule link. Ready-to-build spec when demand appears:
+   - **Import**: start with **.ics file upload** (most reliable, works offline on the static
+     site; parse VEVENT date/times). A pasted iCal *subscribe URL* would need a proxy (CORS),
+     so defer that. Screenshot/OCR is a later, lower-reliability option.
+   - **Shift-type mapping** (NurseGrid events carry no pay differential): owner likes an
+     **"Intuit-style" guided questionnaire** — e.g. "Is Tue Jul 7 a night or day shift?" —
+     ideally pre-filled by inferring from start time + weekend, then confirmed per shift.
+   - **Sync model**: one-time **re-import when the schedule changes** (no live sync without an
+     API); a new import updates the affected dates.
+   - Validate first via the `feedback` table (are users actually asking for this?).
 
 ## Testing (no device needed)
 
