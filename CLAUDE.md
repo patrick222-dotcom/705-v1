@@ -65,8 +65,8 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 2. ~~Supabase Auth URL config~~ **Done 2026-07-04**: Site URL set to
    `https://patrick222-dotcom.github.io/705-v1/`, redirect allow list to
    `https://patrick222-dotcom.github.io/705-v1/**` via Management API.
-3. Verify Google sign-in end-to-end on a real iPhone (config is now correct; needs a
-   human with a phone).
+3. ~~Verify Google sign-in on a real iPhone~~ **Done 2026-07-07**: owner confirmed Google
+   sign-in works end-to-end on a real iPhone.
 4. Rerun the improved agent council against the app (owner's standing request) —
    first full run with the automated fix→re-review loop done 2026-07-04, see
    `git log` for the fixes it produced.
@@ -83,6 +83,18 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    `feedback` table only (query it to review). To also forward to email, add a Supabase
    Database Webhook → Edge Function → email provider (e.g. Resend — needs an API key), or
    a scheduled digest. Gmail MCP was disconnected at build time, so no automated email yet.
+8. **Cross-device sync lag (bug, backlog)** reported 2026-07-07: edited on desktop, opened
+   Chrome on iPhone (WebKit), didn't see the update. Cause: there is **no realtime sync** —
+   `loadFromSupabase` only runs on mount/sign-in, so an already-open session on another
+   device won't see changes until it reloads/re-auths. Fix options: (a) add a Supabase
+   Realtime subscription on `user_data` to live-apply remote changes (mind the debounced
+   save so we don't echo our own writes / clobber local edits — reconcile by `updated_at`);
+   (b) refetch on window `focus`/`visibilitychange`; (c) simplest interim: a manual "refresh
+   from cloud" action. Watch for last-writer-wins races between two open devices.
+9. **NurseGrid integration (exploration requested 2026-07-07):** let nurses pull their
+   NurseGrid schedule into ScrubPay to project paychecks while scheduling. NurseGrid has no
+   public API; realistic paths are calendar (.ics) import or parsing an exported/printed
+   schedule (PDF/image) like the paystub scanner. Scope pending owner answers.
 
 ## Testing (no device needed)
 
