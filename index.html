@@ -951,10 +951,16 @@ function App(){
   /* ---- calculations ---- */
   const calc = useMemo(()=>{
     let gross=0, hours=0;
-    Object.values(shifts).forEach(arr => (arr||[]).forEach(s=>{
-      gross += shiftGross(baseRate, differentials[s.shiftType], s);
-      hours += s.hours;
-    }));
+    // Scope to the active pay period — a pay period is one paycheck, so taxes on this
+    // gross give a proper per-paycheck take-home estimate (and the hero matches its label).
+    const periodKeys = new Set(days.map(keyOf));
+    Object.keys(shifts).forEach(k=>{
+      if(!periodKeys.has(k)) return;
+      (shifts[k]||[]).forEach(s=>{
+        gross += shiftGross(baseRate, differentials[s.shiftType], s);
+        hours += s.hours;
+      });
+    });
     // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
     // deferrals only reduce income-tax wages. Keep the two bases separate.
     const ficaBase = gross;
@@ -974,9 +980,13 @@ function App(){
     const dispPost = Math.min(posttaxDeductions, Math.max(0, flatCapTotal - dispPre));
     return {gross,hours,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost,
       pct: gross>0 ? Math.round(net/gross*100) : 0};
-  },[shifts,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+  },[shifts,days,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
+  const periodShiftCount = useMemo(()=>{
+    const periodKeys = new Set(days.map(keyOf));
+    return Object.keys(shifts).reduce((a,k)=> a + (periodKeys.has(k) ? (shifts[k]?.length||0) : 0), 0);
+  },[shifts,days]);
 
   /* effective per-shift take-home ratio (for live previews) */
   const ficaForPreview = ficaType==='standard'?7.65:(ficaType==='percent'?(parseFloat(ficaPct)||0):0);
@@ -1142,14 +1152,14 @@ function App(){
               <div className="chips">
                 <span className="chip">Gross {fmt(calc.gross)}</span>
                 <span className="chip">Taxes & deductions –{fmt(calc.ded)}</span>
-                {calc.hours>0 && <span className="chip">{calc.hours} hrs · {shiftCount} shifts</span>}
+                {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
               <button className="hero more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
             </div>
 
             <div className="stats">
               <div className="stat"><div className="v num">{calc.hours.toFixed(calc.hours%1?1:0)}</div><div className="k">hours this period</div></div>
-              <div className="stat"><div className="v num">{shiftCount}</div><div className="k">shifts scheduled</div></div>
+              <div className="stat"><div className="v num">{periodShiftCount}</div><div className="k">shifts this period</div></div>
             </div>
 
             {shiftCount>0 && baseRate>0 &&
