@@ -103,8 +103,12 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    poll-based near-realtime (~15s), not push — a Supabase Realtime subscription (needs the
    table added to the `supabase_realtime` publication + `wss://*.supabase.co` in the CSP)
    would make it instant and is the future upgrade.
-9. **NurseGrid integration — PARKED 2026-07-07 (deliberately deferred until user feedback
-   justifies it; owner doesn't want to over-build before validating demand).** Goal: pull a
+9. **NurseGrid capabilities — BUILT 2026-07-19 (owner green-lit going native instead of
+   integrating).** Shipped in the orchestrated feature run: shift templates + quick-fill,
+   work-life day events (PTO paid at base rate, education/appointment/off) + notes + shift
+   start times, .ics export (deterministic UIDs, no wage data), and .ics import with a
+   grouped Intuit-style shift-type questionnaire (re-import moves shifts, preserves assigned
+   pay types via shift.icsUid). Original research below for reference.** Goal: pull a
    nurse's NurseGrid schedule into ScrubPay so they can project paychecks while self-scheduling.
    Research: NurseGrid has **no public API**; it offers an iCal feed/calendar sync + a shareable
    schedule link. Ready-to-build spec when demand appears:

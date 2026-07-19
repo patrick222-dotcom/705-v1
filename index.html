@@ -449,6 +449,161 @@ function icsFold(line){
   return out.join('\r\n ');
 }
 
+/* ---------- calendar (.ics) IMPORT helpers ---------- */
+const ICS_UID_RE = /^[A-Za-z0-9@._-]{1,128}$/;
+const ICS_IMPORT_MAX_EVENTS = 200;       // hard cap per import
+const ICS_IMPORT_PAST_DAYS = 60;         // import window: 60 days back...
+const ICS_IMPORT_FUTURE_DAYS = 366;      // ...to 366 days forward
+
+/* Unfold RFC 5545 §3.1 folded lines: a CRLF|LF immediately followed by a space or tab is
+   a continuation of the previous logical line, not a line break. */
+function icsUnfold(text){
+  return String(text||'').replace(/\r\n/g,'\n').replace(/\n[ \t]/g,'');
+}
+
+/* Parse one VEVENT's raw (unfolded) body into {NAME: {left, value}} — `left` keeps the
+   parameter list (e.g. "DTSTART;VALUE=DATE") so callers can inspect VALUE=DATE / TZID. */
+function parseVEventProps(block){
+  const props = {};
+  block.split('\n').forEach(line=>{
+    if(!line) return;
+    const idx = line.indexOf(':');
+    if(idx<0) return;
+    const left = line.slice(0,idx);
+    const value = line.slice(idx+1);
+    const name = left.split(';')[0].toUpperCase();
+    props[name] = {left, value};
+  });
+  return props;
+}
+
+/* Parse a DTSTART/DTEND property value into local wall-clock parts. Per product spec, ALL
+   forms (bare, TZID-qualified, trailing Z) are treated as local time — no timezone math. */
+function parseICSDateTime(prop){
+  if(!prop) return null;
+  const isDateOnly = /VALUE=DATE(?!-TIME)/i.test(prop.left);
+  const v = prop.value.trim();
+  let m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
+  if(m && !isDateOnly) return { y:+m[1], mo:+m[2], d:+m[3], hh:+m[4], mm:+m[5], allDay:false };
+  m = v.match(/^(\d{4})(\d{2})(\d{2})/);
+  if(m) return { y:+m[1], mo:+m[2], d:+m[3], hh:null, mm:null, allDay:true };
+  return null;
+}
+
+/* Parse a DURATION value (ISO-8601 subset: P#DT#H#M#S) into fractional hours, or null. */
+function parseICSDuration(v){
+  const m = String(v||'').trim().match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i);
+  if(!m) return null;
+  const days=m[1]?Number(m[1]):0, h=m[2]?Number(m[2]):0, mi=m[3]?Number(m[3]):0, s=m[4]?Number(m[4]):0;
+  const totalH = days*24 + h + mi/60 + s/3600;
+  return totalH>0 ? totalH : null;
+}
+
+/* Parse an uploaded .ics file's full text into normalized import candidates. Tolerant by
+   design: malformed VEVENTs (no DTSTART) are dropped silently; RRULE/own-export/out-of-window
+   events are dropped with counts the caller can report. Throws only if the file has no
+   VEVENT structure at all — callers show "Couldn't read that calendar file." for that. */
+function parseICSSchedule(text){
+  const unfolded = icsUnfold(text);
+  const blocks = [];
+  const re = /BEGIN:VEVENT\r?\n?([\s\S]*?)END:VEVENT/g;
+  let m;
+  while((m=re.exec(unfolded))!==null) blocks.push(m[1]);
+  if(blocks.length===0) throw new Error('No VEVENT blocks found');
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const winStart = new Date(today); winStart.setDate(winStart.getDate()-ICS_IMPORT_PAST_DAYS);
+  const winEnd = new Date(today); winEnd.setDate(winEnd.getDate()+ICS_IMPORT_FUTURE_DAYS);
+  const keyOfYMD = (y,mo,d)=>`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+
+  let droppedRepeating=0, droppedOwn=0, droppedWindow=0, droppedCap=0;
+  const events = [];
+  blocks.forEach(raw=>{
+    const props = parseVEventProps(raw);
+    if(props.RRULE){ droppedRepeating++; return; }
+    const uidRaw = props.UID ? props.UID.value.trim() : '';
+    if(uidRaw.indexOf('@scrubpay')>=0){ droppedOwn++; return; }
+    const dtstart = parseICSDateTime(props.DTSTART);
+    if(!dtstart) return;   // malformed (no/unparsable DTSTART) — skip silently
+    const dtend = parseICSDateTime(props.DTEND);
+    let hours = null;
+    if(!dtstart.allDay){
+      if(dtend && !dtend.allDay){
+        const startMs = new Date(dtstart.y,dtstart.mo-1,dtstart.d,dtstart.hh,dtstart.mm).getTime();
+        const endMs = new Date(dtend.y,dtend.mo-1,dtend.d,dtend.hh,dtend.mm).getTime();
+        if(endMs>startMs) hours = (endMs-startMs)/3600000;
+      } else if(props.DURATION){
+        hours = parseICSDuration(props.DURATION.value);
+      }
+    }
+    if(hours==null) hours = 12;                       // all-day / missing end -> default (confirmed in stepper)
+    hours = Math.round(hours*10)/10;                   // settle ms-division float noise (e.g. 7.9999998)
+    hours = Math.min(24, Math.max(0.5, hours));
+
+    const dateObj = new Date(dtstart.y,dtstart.mo-1,dtstart.d);
+    if(dateObj < winStart || dateObj > winEnd){ droppedWindow++; return; }
+    if(events.length >= ICS_IMPORT_MAX_EVENTS){ droppedCap++; return; }
+
+    const uid = uidRaw ? uidRaw.replace(/[^A-Za-z0-9@._-]/g,'').slice(0,128) : '';
+    events.push({
+      dateKey: keyOfYMD(dtstart.y,dtstart.mo,dtstart.d),
+      start: dtstart.allDay ? null : `${String(dtstart.hh).padStart(2,'0')}:${String(dtstart.mm).padStart(2,'0')}`,
+      hours,
+      uid: uid || null,
+    });
+  });
+  events.sort((a,b)=> a.dateKey===b.dateKey ? (a.start||'').localeCompare(b.start||'') : a.dateKey.localeCompare(b.dateKey));
+  return { events, droppedRepeating, droppedOwn, droppedWindow, droppedCap };
+}
+
+/* Build the compact "Skipped: ..." drop-reason summary for a completed .ics parse. Only
+   reasons with a nonzero count are included, each with its own wording — cap-truncated events
+   are never described as "outside the import window" (and vice versa); that conflation was a
+   review-flagged wording bug. Returns '' when nothing was dropped. */
+function icsDropSummary(parsed){
+  const segs = [];
+  if(parsed.droppedRepeating>0) segs.push(`${parsed.droppedRepeating} repeating`);
+  if(parsed.droppedCap>0) segs.push(`${parsed.droppedCap} over the ${ICS_IMPORT_MAX_EVENTS}-event limit`);
+  if(parsed.droppedWindow>0) segs.push(`${parsed.droppedWindow} outside the last ${ICS_IMPORT_PAST_DAYS} days–next year`);
+  return segs.length ? `Skipped: ${segs.join(' · ')}` : '';
+}
+
+/* Group parsed events for the questionnaire: one card per (weekday-class, start-time-or-allday,
+   hours) combination — matching shifts get confirmed together instead of one card each. */
+function groupICSEvents(events){
+  const map = new Map();
+  events.forEach(ev=>{
+    const [y,mo,d] = ev.dateKey.split('-').map(Number);
+    const isWeekend = [0,6].indexOf(new Date(y,mo-1,d).getDay())>=0;
+    const key = `${isWeekend?'we':'wd'}|${ev.start||'allday'}|${ev.hours}`;
+    if(!map.has(key)) map.set(key, {key, isWeekend, start:ev.start, hours:ev.hours, items:[]});
+    map.get(key).items.push(ev);
+  });
+  return Array.from(map.values()).sort((a,b)=> a.items[0].dateKey.localeCompare(b.items[0].dateKey));
+}
+
+/* Pre-fill inference for a group's shift-type chip, per product spec:
+   start hour >=19 or <5 -> night; weekend+day -> weekend-day; weekend+night -> weekend-eve; else base. */
+function inferShiftType(group){
+  const hh = group.start ? Number(group.start.split(':')[0]) : null;
+  const isNight = hh!=null && (hh>=19 || hh<5);
+  if(group.isWeekend && isNight) return 'weekend-eve';
+  if(group.isWeekend) return 'weekend-day';
+  if(isNight) return 'night';
+  return 'base';
+}
+
+/* Human label for a questionnaire card: "Tue Jul 7 · 7:00 PM · 12h" or, for multi-item
+   groups, "3 shifts like Mon Jul 6 · 7:00 AM · 12h". */
+function groupLabel(g){
+  const rep = g.items[0];
+  const [y,mo,d] = rep.dateKey.split('-').map(Number);
+  const dayLabel = new Date(y,mo-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const timeLabel = rep.start ? fmtTime12(rep.start) : 'All day';
+  const base = `${dayLabel} · ${timeLabel} · ${g.hours}h`;
+  return g.items.length>1 ? `${g.items.length} shifts like ${base}` : base;
+}
+
 /* Map a parsed paystub earnings-row description to a differential key.
    Weekend variants are tested first so "Weekend Night" -> weekend-eve (not night).
    Returns null for rows we can't confidently classify — callers MUST skip those
@@ -494,6 +649,7 @@ function sanitizeData(d){
         .map(x=>{
           const o = {...x, hours:Number(x.hours)};
           if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
+          if(typeof o.icsUid!=='string' || !ICS_UID_RE.test(o.icsUid)) delete o.icsUid;
           return o;
         });
       if(clean.length) s[k] = clean;
@@ -822,6 +978,7 @@ function App(){
   const [paystub,setPaystub] = useState(null);
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
+  const [icsImport,setIcsImport] = useState(null);   // schedule-import stepper state, or null when closed
   const [calView,setCalView] = useState('period');   // 'period' | 'week' | 'month' | 'year'
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -1089,10 +1246,10 @@ function App(){
 
   /* lock scroll behind overlays */
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport]);
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -1404,6 +1561,104 @@ function App(){
     }catch(err){ toast('Could not read that file.','error'); } };
     r.readAsText(f); e.target.value='';
   };
+
+  /* ---- schedule (.ics) import: parse -> build a merge plan -> hand off to the stepper ---- */
+  const ICS_IMPORT_MAX_BYTES = 2*1024*1024;
+  const buildIcsImportPlan = (parsed)=>{
+    // Re-import idempotency: an existing shift anywhere carrying the same icsUid gets
+    // MOVED/UPDATED (new date/hours/start), but its user-chosen shiftType/bonusType is kept —
+    // those events skip the questionnaire entirely.
+    const existingByUid = {};
+    Object.entries(shifts).forEach(([dk,arr])=>{
+      (arr||[]).forEach(s=>{ if(s.icsUid) existingByUid[s.icsUid] = {dateKey:dk, shift:s}; });
+    });
+    const toUpdate = [], toClassify = [];
+    parsed.events.forEach(ev=>{
+      const match = ev.uid ? existingByUid[ev.uid] : null;
+      if(match){
+        toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start,
+          prevDateKey:match.dateKey, prevShiftId:match.shift.id,
+          shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
+      } else {
+        toClassify.push(ev);
+      }
+    });
+    return { toUpdate, toClassify };
+  };
+  const onImportICS = (e)=>{
+    const f = e.target.files[0]; e.target.value='';
+    if(!f) return;
+    if(f.size > ICS_IMPORT_MAX_BYTES){ toast('That calendar file is too large (max 2MB).','error'); return; }
+    const r = new FileReader();
+    r.onload = ev=>{
+      const text = String(ev.target.result||'');
+      let parsed;
+      try{ parsed = parseICSSchedule(text); }
+      catch(err){ toast("Couldn't read that calendar file.",'error'); return; }
+      if(parsed.events.length===0){
+        // Nothing will open a sheet in this branch, so a toast is the only way to report —
+        // no risk of it covering stepper controls that don't exist yet.
+        const summary = icsDropSummary(parsed);
+        if(summary) toast(summary,'info');
+        toast('No shifts found to import from that calendar.','error');
+        return;
+      }
+      track('ics_import_parsed', {events:parsed.events.length}, user?.id);
+      const plan = buildIcsImportPlan(parsed);
+      const groups = groupICSEvents(plan.toClassify);
+      const answers = {};
+      groups.forEach(g=>{ answers[g.key] = inferShiftType(g); });
+      // Non-blocking parse drops (repeating / cap / window) are surfaced INSIDE the stepper
+      // sheet as a compact one-line notice — not toast(): the global toast host is fixed to the
+      // bottom of the viewport (above the sheet) and firing it the instant the sheet opens would
+      // sit directly over the shift-type chips and Next/Confirm button on a 390px screen,
+      // blocking taps for ~3.6s until it auto-dismisses. See icsDropSummary for wording.
+      const dropNotice = icsDropSummary(parsed);
+      setIcsImport({ groups, toUpdate:plan.toUpdate, answers, stepIdx:0, dropNotice });
+    };
+    r.onerror = ()=> toast("Couldn't read that calendar file.",'error');
+    r.readAsText(f);
+  };
+  const icsAnswer = (key,val)=> setIcsImport(prev=> prev && ({...prev, answers:{...prev.answers, [key]:val}}));
+  const icsNext = ()=> setIcsImport(prev=> prev && ({...prev, stepIdx: Math.min(prev.groups.length, prev.stepIdx+1)}));
+  const icsBack = ()=> setIcsImport(prev=> prev && ({...prev, stepIdx: Math.max(0, prev.stepIdx-1)}));
+  const icsDismissNotices = ()=> setIcsImport(prev=> prev && ({...prev, dropNotice:''}));
+  const icsCancelImport = ()=> setIcsImport(null);
+  const icsConfirmImport = ()=>{
+    if(!icsImport) return;
+    const { groups, toUpdate, answers } = icsImport;
+    let added=0, skipped=0;
+    groups.forEach(g=>{ if(answers[g.key]==='skip') skipped+=g.items.length; else added+=g.items.length; });
+    const updated = toUpdate.length;
+
+    setShifts(prev=>{
+      const next = {...prev};
+      const dayArr = k => (next[k] ? [...next[k]] : []);
+      toUpdate.forEach(u=>{
+        if(next[u.prevDateKey]){
+          const filtered = next[u.prevDateKey].filter(s=>s.id!==u.prevShiftId);
+          if(filtered.length) next[u.prevDateKey]=filtered; else delete next[u.prevDateKey];
+        }
+        const newShift = { id:u.prevShiftId, shiftType:u.shiftType, hours:u.hours, bonusType:u.bonusType, customBonus:u.customBonus||0, icsUid:u.uid };
+        if(u.start) newShift.start = u.start;
+        next[u.dateKey] = [...dayArr(u.dateKey), newShift];
+      });
+      groups.forEach(g=>{
+        if(answers[g.key]==='skip') return;
+        g.items.forEach(ev=>{
+          const newShift = { id:Date.now()+Math.random(), shiftType:answers[g.key], hours:ev.hours, bonusType:'none', customBonus:0 };
+          if(ev.start) newShift.start = ev.start;
+          if(ev.uid) newShift.icsUid = ev.uid;
+          next[ev.dateKey] = [...dayArr(ev.dateKey), newShift];
+        });
+      });
+      return next;
+    });
+
+    toast(`Added ${added}, updated ${updated} shifts.`,'success');
+    track('ics_import_done', {added,updated,skipped}, user?.id);
+    setIcsImport(null);
+  };
   const clearAll = async ()=>{
     const signedIn = !!user;
     const msg = signedIn
@@ -1662,6 +1917,7 @@ function App(){
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
+            onImportICS,
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
@@ -1669,6 +1925,11 @@ function App(){
       {showFeedback && <FeedbackSheet user={user} onClose={()=>setShowFeedback(false)} />}
 
       {paystub && <PaystubReview paystub={paystub} differentials={differentials} onApply={applyPaystub} onCancel={()=>setPaystub(null)} />}
+
+      {icsImport &&
+        <IcsImportSheet state={icsImport} differentials={differentials}
+          onAnswer={icsAnswer} onBack={icsBack} onNext={icsNext}
+          onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices} />}
 
       <input ref={fileImport} type="file" accept=".json" onChange={importData} style={{display:'none'}} />
     </div>
@@ -1759,6 +2020,83 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
         <div style={{display:'flex',gap:10}}>
           <button className="btn btn-ghost" style={{flex:1}} onClick={onCancel}>Cancel</button>
           <button className="btn btn-primary" style={{flex:1}} onClick={apply}>Apply to my planner</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Schedule (.ics) import stepper ---------- */
+/* An "Intuit-style" guided questionnaire: one card per group of similar events (see
+   groupICSEvents), pre-filled by inferShiftType, ending in a confirm-all summary card.
+   Re-import matches (icsImport.state.toUpdate) never reach this component — they're
+   applied directly on confirm. */
+function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
+  const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
+  const total = groups.length;
+  const isFinal = stepIdx >= total;
+  const CHIP_OPTS = [
+    ['base','Day'], ['night','Night'], ['weekend-day','Weekend day'],
+    ['weekend-eve','Weekend night'], ['holiday','Holiday'], ['skip','Skip these'],
+  ];
+
+  // Parse-time drop notice (repeating / cap / window — see icsDropSummary) shown as a compact,
+  // muted single line — not a toast — so it never covers the sheet's own chips/Next/Back
+  // buttons. Only shown on the first card; tap to dismiss early.
+  const noticeBanner = stepIdx===0 && dropNotice && (
+    <div className="sub" style={{fontSize:12.5,color:'var(--muted-2)',marginBottom:16,cursor:'pointer'}} onClick={onDismissNotices} title="Dismiss">
+      {dropNotice}
+    </div>
+  );
+
+  if(isFinal){
+    const toAdd = groups.reduce((n,g)=> n + (answers[g.key]!=='skip' ? g.items.length : 0), 0);
+    const toSkip = groups.reduce((n,g)=> n + (answers[g.key]==='skip' ? g.items.length : 0), 0);
+    return (
+      <div className="scrim" onClick={onCancel}>
+        <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm schedule import">
+          <div className="grab"></div>
+          <div className="sheet-h"><div className="t">Ready to import</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
+          {noticeBanner}
+          <p style={{fontSize:14,color:'var(--muted)',lineHeight:1.5,margin:'0 0 20px'}}>
+            {toUpdate.length>0
+              ? `Add ${toAdd} shifts to your calendar and update ${toUpdate.length} that already changed?`
+              : `Add ${toAdd} shifts to your calendar?`}
+            {toSkip>0 && ` (${toSkip} skipped)`}
+          </p>
+          <div style={{display:'flex',gap:10}}>
+            {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
+            <button className="btn btn-primary" style={{flex:1}} onClick={onConfirm}>Confirm</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const g = groups[stepIdx];
+  const sel = answers[g.key];
+  return (
+    <div className="scrim" onClick={onCancel}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Classify imported shift">
+        <div className="grab"></div>
+        <div className="sheet-h"><div className="t">Import schedule</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
+        {noticeBanner}
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+          <div className="prog"><i style={{width:((stepIdx+1)/(total+1)*100)+'%'}}></i></div>
+          <span style={{fontSize:12,fontWeight:600,color:'var(--muted-2)',flex:'0 0 auto'}}>{stepIdx+1} of {total+1}</span>
+        </div>
+        <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:6}}>{groupLabel(g)}</div>
+        <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>What kind of shift is this?</div>
+        <div className="chips-grid" style={{marginBottom:22}}>
+          {CHIP_OPTS.map(([k,l])=>(
+            <button key={k} className={'chip-sel'+(sel===k?' on':'')} style={{minHeight:44}} onClick={()=>onAnswer(g.key,k)}>
+              <i style={{background: k==='skip' ? 'transparent' : (differentials[k]?.color||'#8A93A6')}}></i>{l}
+            </button>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          {stepIdx>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
+          <button className="btn btn-primary" style={{flex:1}} onClick={onNext}>{stepIdx+1===total ? 'Review':'Next'}</button>
         </div>
       </div>
     </div>
@@ -2168,7 +2506,7 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback}=props;
+    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
 
@@ -2224,9 +2562,11 @@ function Settings(props){
           <button className="btn btn-ghost btn-sm" style={{gap:6}} onClick={exportICS}>{Ic.calendar}Add to calendar (.ics)</button>
           <button className="btn btn-ghost btn-sm" onClick={onImport}>Import JSON</button>
           <label className="btn btn-ghost btn-sm" style={{position:'relative'}}>{parsing?'Reading…':'Scan paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+          <label className="btn btn-ghost btn-sm" style={{position:'relative',gap:6}}>{Ic.calendar}Import schedule (.ics)<input type="file" accept=".ics,text/calendar" onChange={onImportICS} style={{display:'none'}}/></label>
           <button className="btn btn-ghost btn-sm" onClick={(e)=>window.__copyErrorLog&&window.__copyErrorLog(e.currentTarget)}>Copy error log</button>
         </div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Re-export after schedule changes — your calendar app updates the same events.</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>From NurseGrid: sync your schedule to your phone's calendar, export it as .ics, then import here.</div>
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
 
