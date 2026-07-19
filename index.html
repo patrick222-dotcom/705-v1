@@ -92,6 +92,13 @@
   .whatif .s{font-size:12px;color:#6A60C9;margin-top:3px}
   .whatif button{background:var(--indigo);color:#fff;padding:9px 14px;border-radius:11px;font-weight:600;font-size:12.5px;flex:0 0 auto}
 
+  /* quick-fill banner (shift templates applied across multiple calendar days) */
+  .qf-banner{background:var(--indigo-soft);border-radius:16px;padding:15px 16px;margin-bottom:14px}
+  .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
+  .qf-banner .s{font-size:12px;color:#6A60C9;margin-top:3px}
+  .qf-banner .row{display:flex;align-items:center;gap:12px}
+  .qf-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+
   /* calendar */
   .cal-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
   .cal-head .ttl{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px}
@@ -125,6 +132,7 @@
   .cell .dots i{width:7px;height:7px;border-radius:50%}
   .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:2px}
   .cell.has{background:#fff}
+  .cell.qf-on{box-shadow:0 0 0 2px var(--indigo) inset;background:var(--indigo-soft)}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
   .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:500}
   .legend i{width:8px;height:8px;border-radius:50%}
@@ -369,6 +377,7 @@ const withTimeout = (p, ms, label) => Promise.race([
 /* ---------- model ---------- */
 const STORE_KEY = 'nursingWagePlannerData';
 const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier safety; real data is a few KB)
+const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
 const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 const DIFF_DEFAULTS = {
@@ -441,6 +450,23 @@ function sanitizeData(d){
   }
   // differentials: pass objects through; applyData merges each over DIFF_DEFAULTS.
   if(d.differentials && typeof d.differentials==='object' && !Array.isArray(d.differentials)) out.differentials = d.differentials;
+  // templates: repeating-shift presets. Cap MAX_TEMPLATES, validate shape, drop malformed entries.
+  if(Array.isArray(d.templates)){
+    out.templates = d.templates.filter(t=> t && typeof t==='object'
+        && typeof t.name==='string' && t.name.length>0 && t.name.length<=40
+        && typeof t.shiftType==='string'
+        && isFinite(Number(t.hours)) && Number(t.hours)>=0.1 && Number(t.hours)<=24
+        && typeof t.bonusType==='string')
+      .slice(0,MAX_TEMPLATES)
+      .map(t=>({
+        id: (typeof t.id==='string'||typeof t.id==='number') ? t.id : (Date.now()+Math.random()),
+        name: t.name,
+        shiftType: t.shiftType,
+        hours: Number(t.hours),
+        bonusType: t.bonusType,
+        customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0
+      }));
+  }
   if('setupComplete' in d) out.setupComplete = d.setupComplete;
   return out;
 }
@@ -690,6 +716,7 @@ function App(){
   const [shifts,setShifts] = useState({});
   const [customWithholdings,setCW] = useState([]);
   const [differentials,setDiff] = useState(DIFF_DEFAULTS);
+  const [templates,setTemplates] = useState([]);   // saved shift presets for quick logging
 
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
   const [showSettings,setShowSettings] = useState(false);
@@ -705,6 +732,9 @@ function App(){
   const [showFeedback,setShowFeedback] = useState(false);
   const [calView,setCalView] = useState('period');   // 'period' | 'week' | 'month' | 'year'
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
+  const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
+  const [qfTemplate,setQfTemplate] = useState(null); // the template being applied while qfMode is on
+  const qfTouched = useRef(new Set());               // day-keys toggled this quick-fill session (for analytics)
 
   const fileImport = useRef(null);
   const hydratedForUser = useRef(null);   // user.id whose cloud data is loaded & safe to overwrite
@@ -719,7 +749,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,setupComplete
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -749,6 +779,7 @@ function App(){
       Object.entries(d.differentials).forEach(([k,v])=>{ if(v&&typeof v==='object'&&!Array.isArray(v)) m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v}; });
       setDiff(m);
     }
+    if(d.templates) setTemplates(d.templates);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -756,7 +787,7 @@ function App(){
   const resetToDefaults = ()=>{
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
-    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setSetupComplete(false);
+    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]); setSetupComplete(false);
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -872,7 +903,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,setupComplete]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -1113,6 +1144,53 @@ function App(){
     if(arr.length) track('shift_saved', {n:arr.length}, user?.id);
   };
 
+  // Open the add-shift sheet for a day. Quick-fill mode and the sheet are mutually exclusive —
+  // any entry point that can fire while quick-filling must exit qfMode first, or the two
+  // overlays fight over the same taps.
+  const openSheet = (k)=>{ if(qfMode){ setQfMode(false); setQfTemplate(null); } setSheetDate(k); };
+
+  /* ---- shift templates: save / delete / quick-fill across days ---- */
+  const saveTemplate = (tpl)=>{
+    // Cap check runs against the current render's `templates` closure (synchronous), not inside
+    // the setState updater — functional updaters run during React's commit, which happens after
+    // this call returns, so a variable set inside one can't be read reliably right after calling it.
+    const isOverwrite = templates.some(t=>t.name.toLowerCase()===tpl.name.toLowerCase());
+    if(!isOverwrite && templates.length>=MAX_TEMPLATES){
+      toast(`You can save up to ${MAX_TEMPLATES} templates — delete one to add another.`,'error');
+      return false;
+    }
+    setTemplates(prev=>{
+      const idx = prev.findIndex(t=>t.name.toLowerCase()===tpl.name.toLowerCase());
+      if(idx>=0){ const next=[...prev]; next[idx]={...prev[idx], ...tpl, id:prev[idx].id}; return next; }
+      if(prev.length>=MAX_TEMPLATES) return prev; // safety guard; the cap check above should already prevent this
+      return [...prev, {...tpl, id: Date.now()+Math.random()}];
+    });
+    track('template_saved', null, user?.id);
+    return true;
+  };
+  const deleteTemplate = async (tpl)=>{
+    if(!(await confirmAsync(`Delete the "${tpl.name}" template? Shifts you've already logged won't change.`,{title:'Delete template?',confirm:'Delete',danger:true}))) return;
+    setTemplates(prev=>prev.filter(t=>t.id!==tpl.id));
+  };
+  const startQuickFill = ()=>{ if(!templates.length) return; qfTouched.current = new Set(); setQfTemplate(null); setQfMode(true); };
+  const endQuickFill = ()=>{
+    const n = qfTouched.current.size;
+    if(n>0) track('template_applied', {days:n}, user?.id);
+    setQfMode(false); setQfTemplate(null);
+  };
+  const toggleQuickFillDay = (k)=>{
+    if(!qfTemplate) return;
+    setShifts(prev=>{
+      const arr = prev[k]||[];
+      const idx = arr.findIndex(s=>s.templateId===qfTemplate.id);
+      const next = idx>=0
+        ? arr.filter((_,i)=>i!==idx)
+        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, templateId:qfTemplate.id}];
+      const n2={...prev}; if(next.length) n2[k]=next; else delete n2[k]; return n2;
+    });
+    qfTouched.current.add(k);
+  };
+
   /* analytics: one event per app load */
   useEffect(()=>{ track('app_open', null, null); },[]);
 
@@ -1244,7 +1322,7 @@ function App(){
         <div className="top-actions">
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <span onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',marginRight:8,cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</span>}
-          <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); setSheetDate(k);}}>+ Log a shift</button>
+          <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); openSheet(k);}}>+ Log a shift</button>
           <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>setShowFeedback(true)}>{Ic.chat}</button>
           <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
           {user
@@ -1282,11 +1360,32 @@ function App(){
             {shiftCount>0 && baseRate>0 &&
               <div className="whatif">
                 <div style={{flex:1}}><div className="t">Pick up a weekend night?</div><div className="s">That's about <b>+{fmt(sampleWeekendNet)}</b> take-home.</div></div>
-                <button onClick={()=>{ const sat=days.find(d=>d.getDay()===6 && !(shifts[keyOf(d)])) || days.find(d=>d.getDay()===6) || days[0]; setSheetDate(keyOf(sat)); }}>Try it</button>
+                <button onClick={()=>{ const sat=days.find(d=>d.getDay()===6 && !(shifts[keyOf(d)])) || days.find(d=>d.getDay()===6) || days[0]; openSheet(keyOf(sat)); }}>Try it</button>
               </div>}
 
             <div className="card">
-              <div className="cal-head"><div><div className="ttl">{calView==='period'?'This pay period':'Browse calendar'}</div></div><div className="sub">Tap a day to add or edit</div></div>
+              <div className="cal-head"><div><div className="ttl">{calView==='period'?'This pay period':'Browse calendar'}</div></div><div className="sub">{qfMode?'':'Tap a day to add or edit'}</div></div>
+              {!qfMode && templates.length>0 &&
+                <button className="btn btn-ghost btn-sm" style={{marginBottom:14,minHeight:44}} onClick={startQuickFill}>⚡ Quick fill</button>}
+              {qfMode &&
+                <div className="qf-banner">
+                  {!qfTemplate ? <>
+                    <div className="t">Pick a template to quick-fill</div>
+                    <div className="qf-chips">
+                      {templates.map(t=>
+                        <button key={t.id} className="chip-sel" style={{minHeight:44}} onClick={()=>setQfTemplate(t)}>
+                          <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h
+                        </button>)}
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{marginTop:12,minHeight:44}} onClick={endQuickFill}>Cancel</button>
+                  </> : <div className="row">
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="t">Quick fill: ⚡ {qfTemplate.name}</div>
+                      <div className="s">Tap days to add or remove this shift</div>
+                    </div>
+                    <button className="btn btn-primary btn-sm" style={{minHeight:44,flex:'0 0 auto'}} onClick={endQuickFill}>Done</button>
+                  </div>}
+                </div>}
               <div className="viewseg" role="tablist" aria-label="Calendar view">
                 {[['period','Pay period'],['week','Week'],['month','Month'],['year','Year']].map(([v,l])=>
                   <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
@@ -1304,7 +1403,9 @@ function App(){
                     <div className="dow">{calView==='week'
                       ? viewDays.map((d,i)=><div key={i}>{'SMTWTFS'[d.getDay()]}</div>)
                       : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
-                    <Calendar days={viewDays} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts} onPick={k=>setSheetDate(k)} noLead={calView==='week'} />
+                    <Calendar days={viewDays} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
+                      onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
+                      noLead={calView==='week'} qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} />
                   </div>}
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
@@ -1320,7 +1421,7 @@ function App(){
               <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
                 <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:17}}>No shifts yet</div>
                 <div style={{fontSize:13,color:'var(--muted)',margin:'8px 0 16px',lineHeight:1.5}}>Tap a day on the calendar — or log your first shift — to watch your take-home build.</div>
-                <button className="btn btn-soft" onClick={()=>setSheetDate(keyOf(days[0]))}>+ Log a shift</button>
+                <button className="btn btn-soft" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>
               </div>}
             <div className="card desk-only">
               <h3>Take-home rate</h3>
@@ -1333,11 +1434,13 @@ function App(){
         </div>
       </div>
 
-      <button className="fab" onClick={()=>setSheetDate(keyOf(days[0]))}>+ Log a shift</button>
+      {!qfMode &&
+        <button className="fab" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>}
 
       {sheetDate &&
         <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
           existing={shifts[sheetDate]||[]} baseRate={baseRate} keepRatio={keepRatio}
+          templates={templates} onSaveTemplate={saveTemplate} onDeleteTemplate={deleteTemplate} userId={user?.id}
           onClose={()=>setSheetDate(null)} onSave={arr=>{ saveDayShifts(sheetDate,arr); setSheetDate(null); }} />}
 
       {showBreakdown &&
@@ -1459,14 +1562,15 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
 }
 
 /* ---------- Calendar ---------- */
-function Calendar({days,keyOf,statOf,differentials,shifts,onPick,noLead}){
+function Calendar({days,keyOf,statOf,differentials,shifts,onPick,noLead,qfActive,qfTemplateId}){
   const lead = noLead?0:days[0].getDay();
   const cells = [];
   for(let i=0;i<lead;i++) cells.push(<div key={'e'+i} className="cell empty"></div>);
   days.forEach(dt=>{
     const k=keyOf(dt); const t=statOf(k); const arr=shifts[k]||[]; const has=arr.length>0;
+    const qfOn = qfActive && arr.some(s=>s.templateId===qfTemplateId);
     cells.push(
-      <button key={k} className={'cell'+(has?' has':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
+      <button key={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
         <div className="d">{dt.getDate()}</div>
         {has
           ? <><div className="dots">{arr.slice(0,4).map((s,i)=><i key={i} style={{background:differentials[s.shiftType]?.color||'#8A93A6'}}></i>)}</div><div className="amt num">{fmt(t.g)}</div></>
@@ -1553,13 +1657,15 @@ function NumInput({value,onCommit,min,max,step='0.01',placeholder,style,classNam
 }
 
 /* ---------- Add Shift Sheet ---------- */
-function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepRatio,onClose,onSave}){
+function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepRatio,templates,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
   const [list,setList] = useState(existing.map(s=>({...s})));
   const [shiftType,setType] = useState('night');
   const [hours,setHours] = useState(12);
   const [bonusType,setBonus] = useState('none');
   const [customBonus,setCustomBonus] = useState(0);
   const [dirty,setDirty] = useState(false);   // list changed vs `existing` — used to save-on-dismiss
+  const [savingTpl,setSavingTpl] = useState(false);   // inline "save as template" name input open
+  const [tplName,setTplName] = useState('');
 
   const active = Object.entries(differentials).filter(([_,d])=>d.active);
   const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
@@ -1578,6 +1684,21 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
   // Scrim dismiss: never silently drop rows the user already added; a clean sheet just closes.
   const dismiss = ()=> dirty ? onSave(list) : onClose();
 
+  // One-tap template apply: adds that template's shift to this day instantly.
+  const applyTemplateTap = (t)=>{
+    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, templateId:t.id}]);
+    setDirty(true);
+    track('template_tap', null, userId);
+  };
+  const doSaveTemplate = ()=>{
+    const nm = tplName.trim();
+    if(!nm){ toast('Give your template a name.','error'); return; }
+    const ok = onSaveTemplate({name:nm.slice(0,40), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus});
+    // On a failed (capped) save, leave the input open with the typed name so freeing a slot
+    // (deleting another template) lets the user retry without retyping.
+    if(ok){ setSavingTpl(false); setTplName(''); toast(`Saved "${nm}" as a template.`,'success'); }
+  };
+
   return (
     <div className="scrim" onClick={dismiss}>
       <div className="sheet" onClick={e=>e.stopPropagation()}>
@@ -1586,6 +1707,21 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
           <div className="t">Add a shift</div>
           <div className="row-item" style={{margin:0,padding:'7px 12px',fontWeight:600,fontSize:12.5}}>{dateLabel}</div>
         </div>
+
+        {templates.length>0 &&
+          <div style={{marginBottom:16}}>
+            <div className="sec-lab">QUICK ADD FROM TEMPLATE</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {templates.map(t=>(
+                <div key={t.id} style={{display:'flex',alignItems:'center',gap:8}}>
+                  <button className="chip-sel" style={{flex:1,minHeight:44}} onClick={()=>applyTemplateTap(t)}>
+                    <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h
+                  </button>
+                  <button className="back" aria-label={'Delete template '+t.name} onClick={()=>onDeleteTemplate(t)}>{Ic.x}</button>
+                </div>
+              ))}
+            </div>
+          </div>}
 
         {list.length>0 &&
           <div style={{marginBottom:16}}>
@@ -1630,6 +1766,19 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
           <div className="k">This shift adds</div>
           <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home</div>
         </div>
+
+        {!savingTpl
+          ? <button className="linklike" style={{fontSize:12.5,fontWeight:600,color:'var(--indigo)',marginBottom:14,minHeight:44,display:'inline-flex',alignItems:'center',gap:6}}
+              onClick={()=>{ setTplName(''); setSavingTpl(true); }}>⚡ Save as template</button>
+          : <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+              <div className="inp" style={{flex:1}}>
+                <input value={tplName} onChange={e=>setTplName(e.target.value)} placeholder="Template name (e.g. Nights)" maxLength={40} autoFocus
+                  aria-label="Template name"
+                  onKeyDown={e=>{ if(e.key==='Enter') doSaveTemplate(); if(e.key==='Escape') setSavingTpl(false); }}/>
+              </div>
+              <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={doSaveTemplate}>Save</button>
+              <button className="back" aria-label="Cancel save template" onClick={()=>setSavingTpl(false)}>{Ic.x}</button>
+            </div>}
 
         <button className="btn btn-ghost" style={{marginBottom:10}} onClick={add}>+ Add to this day</button>
         <button className="btn btn-primary" onClick={save}>{list.length? 'Save day':'Add shift'}</button>
