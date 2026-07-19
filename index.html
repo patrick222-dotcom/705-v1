@@ -120,17 +120,29 @@
   .yrow .ychev{color:#c9c6bc;font-size:18px;font-weight:700;flex:0 0 auto}
   .cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px;scrollbar-width:none}
   .cal-scroll::-webkit-scrollbar{display:none}
-  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px;min-width:320px}
+  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-bottom:6px;min-width:320px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
-  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;min-width:320px}
-  .cell{aspect-ratio:1/1;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
+  .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;min-width:320px}
+  /* min-height:0 overrides the grid item's default content-based automatic minimum size, which
+     otherwise wins over aspect-ratio and stretches a cell's row taller than its siblings whenever
+     that cell's content is tall — the actual cause was two stacked marker rows (shift dots + event
+     rings) on days that had both; merging them into one row (below) removes that extra line so
+     min-height:0 lets aspect-ratio govern every cell's height again. Deliberately no overflow:hidden
+     here: that would also clip a wide $ amount (e.g. "$1,120") mid-digit against the cell's own
+     horizontal padding. Width containment for the marker row is instead scoped to .dots itself. */
+  .cell{position:relative;aspect-ratio:1/1;min-height:0;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
   .cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .cell.empty{border-style:dashed;background:#fff;pointer-events:none}
   .cell .d{font-weight:700;font-size:13px}
   .cell .plus{margin-top:auto;color:#cfccc2;font-size:17px;font-weight:700}
-  .cell .dots{margin-top:auto;display:flex;gap:3px;flex-wrap:wrap}
-  .cell .dots i{width:7px;height:7px;border-radius:50%}
-  .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:2px}
+  /* Single marker row: shift dots and event rings render together (not stacked rows) so a cell
+     with both never needs more vertical space than a cell with just one. */
+  .cell .dots{display:flex;gap:3px;flex-wrap:nowrap;overflow:hidden}
+  .cell .dots i{flex:none;width:7px;height:7px;border-radius:50%}
+  /* hollow rings for day events (PTO/education/appt/off) — distinct from solid shift dots */
+  .cell .dots i.ev{background:transparent;border:1.3px solid #8A93A6;box-sizing:border-box;width:6px;height:6px}
+  .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:1px}
+  .cell .note-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--indigo)}
   .cell.has{background:#fff}
   .cell.qf-on{box-shadow:0 0 0 2px var(--indigo) inset;background:var(--indigo-soft)}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
@@ -393,6 +405,19 @@ const DIFF_DEFAULTS = {
 const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
 const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom (per shift)' };
 
+/* "Also on this day" life events (work-life calendar core). One entry per kind per day —
+   the AddShiftSheet chips toggle, never stack. Only 'pto' (with hours) touches pay. */
+const EVENT_KINDS = ['pto','education','appointment','off'];
+const EVENT_KIND_META = {
+  pto:         { label:'PTO',        color:'var(--money-ink)' },
+  education:   { label:'Education',  color:'var(--violet)' },
+  appointment: { label:'Appt',       color:'var(--amber)' },
+  off:         { label:'Off',        color:'var(--slate)' },
+};
+const MAX_DAY_EVENTS = 4;
+const MAX_NOTE_LEN = 240;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;   // "HH:MM" 24h, optional shift start
+
 /* Map a parsed paystub earnings-row description to a differential key.
    Weekend variants are tested first so "Weekend Night" -> weekend-eve (not night).
    Returns null for rows we can't confidently classify — callers MUST skip those
@@ -435,10 +460,43 @@ function sanitizeData(d){
       const clean = v.filter(x=> x && typeof x==='object'
           && typeof x.shiftType==='string'
           && isFinite(Number(x.hours)) && Number(x.hours)>0 && Number(x.hours)<=24)
-        .map(x=>({...x, hours:Number(x.hours)}));
+        .map(x=>{
+          const o = {...x, hours:Number(x.hours)};
+          if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
+          return o;
+        });
       if(clean.length) s[k] = clean;
     });
     out.shifts = s;
+  }
+  // dayEvents: date-key -> up to MAX_DAY_EVENTS {id,kind,hours?}; one entry per kind per day.
+  if(d.dayEvents && typeof d.dayEvents==='object' && !Array.isArray(d.dayEvents)){
+    const de = {};
+    Object.entries(d.dayEvents).forEach(([k,v])=>{
+      if(!Array.isArray(v)) return;
+      const seenKinds = new Set();
+      const clean = [];
+      v.forEach(x=>{
+        if(!x || typeof x!=='object' || typeof x.kind!=='string' || EVENT_KINDS.indexOf(x.kind)<0) return;
+        if(seenKinds.has(x.kind)) return;   // dedupe: only one event per kind per day
+        seenKinds.add(x.kind);
+        const ev = { id:(typeof x.id==='string'||typeof x.id==='number')?x.id:(Date.now()+Math.random()), kind:x.kind };
+        if(x.hours!=null){ const n=Number(x.hours); if(isFinite(n) && n>=0 && n<=24) ev.hours = n; }
+        clean.push(ev);
+      });
+      if(clean.length) de[k] = clean.slice(0,MAX_DAY_EVENTS);
+    });
+    out.dayEvents = de;
+  }
+  // notes: date-key -> short free-text string, trimmed and capped.
+  if(d.notes && typeof d.notes==='object' && !Array.isArray(d.notes)){
+    const nt = {};
+    Object.entries(d.notes).forEach(([k,v])=>{
+      if(typeof v!=='string') return;
+      const trimmed = v.trim().slice(0,MAX_NOTE_LEN);
+      if(trimmed) nt[k] = trimmed;
+    });
+    out.notes = nt;
   }
   // customWithholdings: array of {name:string, amount coercible, type:'percent'|'dollar'}.
   if(Array.isArray(d.customWithholdings)){
@@ -464,7 +522,8 @@ function sanitizeData(d){
         shiftType: t.shiftType,
         hours: Number(t.hours),
         bonusType: t.bonusType,
-        customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0
+        customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0,
+        ...(typeof t.start==='string' && TIME_RE.test(t.start) ? {start:t.start} : {})
       }));
   }
   if('setupComplete' in d) out.setupComplete = d.setupComplete;
@@ -717,6 +776,8 @@ function App(){
   const [customWithholdings,setCW] = useState([]);
   const [differentials,setDiff] = useState(DIFF_DEFAULTS);
   const [templates,setTemplates] = useState([]);   // saved shift presets for quick logging
+  const [dayEvents,setDayEvents] = useState({});   // 'YYYY-MM-DD' -> [{id,kind,hours?}] (PTO/education/appt/off)
+  const [notes,setNotes] = useState({});           // 'YYYY-MM-DD' -> short free-text note
 
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
   const [showSettings,setShowSettings] = useState(false);
@@ -749,7 +810,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,setupComplete
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -780,6 +841,8 @@ function App(){
       setDiff(m);
     }
     if(d.templates) setTemplates(d.templates);
+    if(d.dayEvents) setDayEvents(d.dayEvents);
+    if(d.notes) setNotes(d.notes);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -787,7 +850,8 @@ function App(){
   const resetToDefaults = ()=>{
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
-    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]); setSetupComplete(false);
+    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
+    setDayEvents({}); setNotes({}); setSetupComplete(false);
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -903,7 +967,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,setupComplete]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -1036,10 +1100,20 @@ function App(){
     return `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}, ${b.getFullYear()}`;
   },[days]);
 
+  /* PTO gross/hours for a date: hours × baseRate, taxed normally, no differentials/bonuses. */
+  const ptoStatOf = (k)=>{
+    const evs = dayEvents[k]||[];
+    let g=0,h=0;
+    evs.forEach(e=>{ if(e.kind==='pto' && e.hours>0){ g+=e.hours*baseRate; h+=e.hours; } });
+    return {g,h};
+  };
+
   /* per-day {gross,hours,count} for any date — powers every calendar view */
   const statOf = (k)=>{
     const arr = shifts[k]||[];
     let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
+    const pto = ptoStatOf(k);
+    g += pto.g; h += pto.h;
     return {g,h,n:arr.length};
   };
 
@@ -1104,6 +1178,14 @@ function App(){
         hours += s.hours;
       });
     });
+    // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
+    // differentials/bonuses entirely — scoped to the active pay period same as shifts.
+    Object.keys(dayEvents).forEach(k=>{
+      if(!periodKeys.has(k)) return;
+      (dayEvents[k]||[]).forEach(e=>{
+        if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
+      });
+    });
     // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
     // deferrals only reduce income-tax wages. Keep the two bases separate.
     const ficaBase = gross;
@@ -1123,7 +1205,7 @@ function App(){
     const dispPost = Math.min(posttaxDeductions, Math.max(0, flatCapTotal - dispPre));
     return {gross,hours,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost,
       pct: gross>0 ? Math.round(net/gross*100) : 0};
-  },[shifts,days,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+  },[shifts,dayEvents,days,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
   const periodShiftCount = useMemo(()=>{
@@ -1139,9 +1221,26 @@ function App(){
   const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };
   const movePeriod = (dir)=>{ const [y,m,d]=payPeriodStart.split('-').map(Number); const nd=new Date(y,m-1,d+dir*14); setPPS(keyOf(nd)); };
 
-  const saveDayShifts = (dateKey, arr)=>{
+  // Shifts, day events, and a day note are all committed together from the AddShiftSheet's
+  // single save/dismiss flow — one write point, all covered by the same debounced cloud save.
+  const saveDayShifts = (dateKey, arr, events, note)=>{
     setShifts(prev=>{ const n={...prev}; if(arr.length) n[dateKey]=arr; else delete n[dateKey]; return n; });
     if(arr.length) track('shift_saved', {n:arr.length}, user?.id);
+    setDayEvents(prev=>{
+      const before = prev[dateKey]||[];
+      const after = events||[];
+      const beforeKinds = new Set(before.map(e=>e.kind));
+      const afterKinds = new Set(after.map(e=>e.kind));
+      afterKinds.forEach(k=>{ if(!beforeKinds.has(k)) track('day_event_added', {kind:k}, user?.id); });
+      beforeKinds.forEach(k=>{ if(!afterKinds.has(k)) track('day_event_removed', {kind:k}, user?.id); });
+      const n={...prev}; if(after.length) n[dateKey]=after; else delete n[dateKey]; return n;
+    });
+    setNotes(prev=>{
+      const before = prev[dateKey]||'';
+      const trimmed = (note||'').trim().slice(0,MAX_NOTE_LEN);
+      if(trimmed && trimmed!==before) track('note_saved', null, user?.id);
+      const n={...prev}; if(trimmed) n[dateKey]=trimmed; else delete n[dateKey]; return n;
+    });
   };
 
   // Open the add-shift sheet for a day. Quick-fill mode and the sheet are mutually exclusive —
@@ -1185,7 +1284,7 @@ function App(){
       const idx = arr.findIndex(s=>s.templateId===qfTemplate.id);
       const next = idx>=0
         ? arr.filter((_,i)=>i!==idx)
-        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, templateId:qfTemplate.id}];
+        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, templateId:qfTemplate.id, ...(qfTemplate.start?{start:qfTemplate.start}:{})}];
       const n2={...prev}; if(next.length) n2[k]=next; else delete n2[k]; return n2;
     });
     qfTouched.current.add(k);
@@ -1404,12 +1503,17 @@ function App(){
                       ? viewDays.map((d,i)=><div key={i}>{'SMTWTFS'[d.getDay()]}</div>)
                       : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
                     <Calendar days={viewDays} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
+                      dayEvents={dayEvents} notes={notes}
                       onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
                       noLead={calView==='week'} qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} />
                   </div>}
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
                   <span key={k}><i style={{background:differentials[k]?.color||'#8A93A6'}}></i>{l}</span>)}
+              </div>
+              <div className="legend" style={{marginTop:6}}>
+                {EVENT_KINDS.map(k=>
+                  <span key={k}><i style={{background:'transparent',border:'1.3px solid '+EVENT_KIND_META[k].color,boxSizing:'border-box'}}></i>{EVENT_KIND_META[k].label}</span>)}
               </div>
             </div>
           </div>
@@ -1439,9 +1543,10 @@ function App(){
 
       {sheetDate &&
         <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
-          existing={shifts[sheetDate]||[]} baseRate={baseRate} keepRatio={keepRatio}
+          existing={shifts[sheetDate]||[]} existingEvents={dayEvents[sheetDate]||[]} existingNote={notes[sheetDate]||''}
+          baseRate={baseRate} keepRatio={keepRatio}
           templates={templates} onSaveTemplate={saveTemplate} onDeleteTemplate={deleteTemplate} userId={user?.id}
-          onClose={()=>setSheetDate(null)} onSave={arr=>{ saveDayShifts(sheetDate,arr); setSheetDate(null); }} />}
+          onClose={()=>setSheetDate(null)} onSave={(arr,events,note)=>{ saveDayShifts(sheetDate,arr,events,note); setSheetDate(null); }} />}
 
       {showBreakdown &&
         <div className="scrim" onClick={()=>setShowBreakdown(false)}>
@@ -1562,18 +1667,29 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
 }
 
 /* ---------- Calendar ---------- */
-function Calendar({days,keyOf,statOf,differentials,shifts,onPick,noLead,qfActive,qfTemplateId}){
+function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,noLead,qfActive,qfTemplateId}){
   const lead = noLead?0:days[0].getDay();
   const cells = [];
   for(let i=0;i<lead;i++) cells.push(<div key={'e'+i} className="cell empty"></div>);
   days.forEach(dt=>{
-    const k=keyOf(dt); const t=statOf(k); const arr=shifts[k]||[]; const has=arr.length>0;
+    const k=keyOf(dt); const t=statOf(k); const arr=shifts[k]||[];
+    const evs=(dayEvents&&dayEvents[k])||[];
+    const hasShift=arr.length>0, hasEvent=evs.length>0, has=hasShift||hasEvent;
+    const hasNote=!!(notes&&notes[k]);
     const qfOn = qfActive && arr.some(s=>s.templateId===qfTemplateId);
     cells.push(
       <button key={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
-        <div className="d">{dt.getDate()}</div>
+        <div className="d">{dt.getDate()}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
-          ? <><div className="dots">{arr.slice(0,4).map((s,i)=><i key={i} style={{background:differentials[s.shiftType]?.color||'#8A93A6'}}></i>)}</div><div className="amt num">{fmt(t.g)}</div></>
+          ? <div style={{marginTop:'auto'}}>
+              {/* Shift dots and event rings share one marker row (capped to 4 combined) so a day
+                  with both never grows taller than a day with just one — see .cell min-height/overflow. */}
+              <div className="dots">
+                {arr.slice(0,4).map((s,i)=><i key={'s'+i} style={{background:differentials[s.shiftType]?.color||'#8A93A6'}}></i>)}
+                {evs.slice(0,Math.max(0,4-Math.min(arr.length,4))).map((e,i)=><i key={'e'+i} className="ev" style={{borderColor:EVENT_KIND_META[e.kind]?.color||'#8A93A6'}}></i>)}
+              </div>
+              {t.g>0 && <div className="amt num">{fmt(t.g)}</div>}
+            </div>
           : <div className="plus">+</div>}
       </button>);
   });
@@ -1656,16 +1772,35 @@ function NumInput({value,onCommit,min,max,step='0.01',placeholder,style,classNam
     onKeyDown={e=>{ if(e.key==='Enter') e.currentTarget.blur(); }} />;
 }
 
+/* Formats a "HH:MM" 24h string to a short 12h label, e.g. "19:00" -> "7:00 PM". */
+function fmtTime12(t){
+  if(!t || !TIME_RE.test(t)) return null;
+  const [h,m] = t.split(':').map(Number);
+  const ap = h>=12 ? 'PM' : 'AM';
+  const h12 = ((h+11)%12)+1;
+  return `${h12}:${String(m).padStart(2,'0')} ${ap}`;
+}
+
 /* ---------- Add Shift Sheet ---------- */
-function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepRatio,templates,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
+function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
   const [list,setList] = useState(existing.map(s=>({...s})));
   const [shiftType,setType] = useState('night');
   const [hours,setHours] = useState(12);
   const [bonusType,setBonus] = useState('none');
   const [customBonus,setCustomBonus] = useState(0);
-  const [dirty,setDirty] = useState(false);   // list changed vs `existing` — used to save-on-dismiss
+  const [start,setStart] = useState('');   // optional "HH:MM" start time for the shift being configured
+  const [events,setEvents] = useState((existingEvents||[]).map(e=>({...e})));   // "also on this day" life events
+  const [note,setNote] = useState(existingNote||'');
+  const [dirty,setDirty] = useState(false);   // list/events/note changed vs incoming props — used to save-on-dismiss
   const [savingTpl,setSavingTpl] = useState(false);   // inline "save as template" name input open
   const [tplName,setTplName] = useState('');
+  // True whenever shiftType/hours/bonusType/customBonus/start have been touched since the last
+  // add() — reset to false there. Starts true: until add() actually runs, `list` may only hold
+  // pre-existing entries the user hasn't touched, so there's no "just-added" entry to trust yet.
+  // Lets doSaveTemplate() tell "just-added, controls still reflect it" apart from "reconfigured
+  // after adding", instead of guessing from shiftType/hours equality (which missed bonus/start-only
+  // edits and silently captured stale values).
+  const configDirtySinceAdd = useRef(true);
 
   const active = Object.entries(differentials).filter(([_,d])=>d.active);
   const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
@@ -1674,26 +1809,57 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
   const draft = {shiftType,hours,bonusType,customBonus};
   const previewGross = shiftGross(baseRate, differentials[shiftType], draft);
   const previewNet = Math.round(previewGross*keepRatio);
+  const ptoEvent = events.find(e=>e.kind==='pto');
 
   // A configured-but-not-yet-added shift, clamped to a legal hours range (no blocking alert).
-  const draftShift = ()=>({id:Date.now(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus});
-  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setDirty(true); };
+  const draftShift = ()=>{ const o={id:Date.now(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus}; if(start) o.start=start; return o; };
+  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setDirty(true); configDirtySinceAdd.current=false; };
   const remove = id=>{ setList(list.filter(s=>s.id!==id)); setDirty(true); };
-  // Primary button: if no rows were explicitly added, commit the pending draft rather than saving nothing.
-  const save = ()=> onSave(list.length ? list : [draftShift()]);
-  // Scrim dismiss: never silently drop rows the user already added; a clean sheet just closes.
-  const dismiss = ()=> dirty ? onSave(list) : onClose();
+  // Day events (PTO/education/appt/off) toggle: one entry per kind, tap again to remove.
+  const toggleEvent = (kind)=>{
+    setEvents(prev=>{
+      const idx = prev.findIndex(e=>e.kind===kind);
+      if(idx>=0) return prev.filter((_,i)=>i!==idx);
+      const ev = {id:Date.now()+Math.random(), kind};
+      if(kind==='pto') ev.hours = 12;
+      return [...prev, ev];
+    });
+    setDirty(true);
+  };
+  const setPtoHours = (v)=>{ setEvents(prev=>prev.map(e=> e.kind==='pto' ? {...e, hours:v} : e)); setDirty(true); };
+  // Whether the day already has something to save besides the shift being configured —
+  // when true, the primary button won't silently auto-add an unconfirmed draft shift
+  // (e.g. a PTO-only day should never gain a phantom "Night ×12h" entry).
+  const hasOtherContent = events.length>0 || note.trim().length>0;
+  // Primary button: if no rows were explicitly added and there's nothing else to save,
+  // commit the pending draft rather than saving nothing.
+  const save = ()=> onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), events, note.trim());
+  // Scrim dismiss: never silently drop rows/events/note the user already set; a clean sheet just closes.
+  const dismiss = ()=> dirty ? onSave(list, events, note.trim()) : onClose();
 
   // One-tap template apply: adds that template's shift to this day instantly.
   const applyTemplateTap = (t)=>{
-    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, templateId:t.id}]);
+    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, templateId:t.id, ...(t.start?{start:t.start}:{})}]);
     setDirty(true);
     track('template_tap', null, userId);
   };
   const doSaveTemplate = ()=>{
     const nm = tplName.trim();
     if(!nm){ toast('Give your template a name.','error'); return; }
-    const ok = onSaveTemplate({name:nm.slice(0,40), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus});
+    const clampedHours = Math.min(24,Math.max(0.1, hours||0.1));
+    // add() resets bonusType/customBonus/start right after committing a shift to `list`, so in
+    // the natural "configure -> + Add to this day -> Save as template" flow those fields would
+    // otherwise read back as blank/none here. configDirtySinceAdd tracks explicitly whether any
+    // of shiftType/hours/bonusType/customBonus/start has been touched since the last add() (set
+    // there); if not, source bonus/start from the just-added entry instead of the reset draft
+    // state, so the template faithfully captures what's on the day. If the user *has* reconfigured
+    // since, the live control values are what they mean to save.
+    const last = list[list.length-1];
+    const src = (last && !configDirtySinceAdd.current)
+      ? last : {bonusType, customBonus, start};
+    const tpl = {name:nm.slice(0,40), shiftType, hours:clampedHours, bonusType:src.bonusType||'none', customBonus:src.customBonus||0};
+    if(src.start) tpl.start = src.start;
+    const ok = onSaveTemplate(tpl);
     // On a failed (capped) save, leave the input open with the typed name so freeing a slot
     // (deleting another template) lets the user retry without retyping.
     if(ok){ setSavingTpl(false); setTplName(''); toast(`Saved "${nm}" as a template.`,'success'); }
@@ -1730,7 +1896,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
               <div className="row-item" key={s.id}>
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
-                  <b style={{fontWeight:600,fontSize:13.5}}>{s.hours}h · {differentials[s.shiftType]?.name||s.shiftType}</b>
+                  <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>+{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
                 <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
@@ -1741,7 +1907,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
         <div className="sec-lab">SHIFT TYPE</div>
         <div className="chips-grid" style={{marginBottom:16}}>
           {active.map(([k,d])=>(
-            <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} onClick={()=>setType(k)}>
+            <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} onClick={()=>{ setType(k); configDirtySinceAdd.current=true; }}>
               <i style={{background:d.color||'#8A93A6'}}></i>{d.name}
             </button>
           ))}
@@ -1749,22 +1915,47 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
 
         <div className="sec-lab">HOURS</div>
         <div className="hrs" style={{marginBottom:12}}>
-          {[8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} onClick={()=>setHours(h)}>{h}h</button>)}
-          <div className="inp suf" style={{flex:1}}><NumInput value={hours} onCommit={setHours} step="0.5" min={0.1} max={24} ariaLabel="Hours" style={{padding:'11px 12px',textAlign:'center',fontWeight:700}}/></div>
+          {[8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} onClick={()=>{ setHours(h); configDirtySinceAdd.current=true; }}>{h}h</button>)}
+          <div className="inp suf" style={{flex:1}}><NumInput value={hours} onCommit={v=>{ setHours(v); configDirtySinceAdd.current=true; }} step="0.5" min={0.1} max={24} ariaLabel="Hours" style={{padding:'11px 12px',textAlign:'center',fontWeight:700}}/></div>
+        </div>
+
+        <div className="sec-lab">STARTS (OPTIONAL)</div>
+        <div className="inp" style={{marginBottom:16}}>
+          <input type="time" value={start} onChange={e=>{ setStart(e.target.value); configDirtySinceAdd.current=true; }} aria-label="Shift start time" />
         </div>
 
         <div className="sec-lab">BONUS</div>
         <div className="inp" style={{marginBottom:bonusType==='custom'?10:16}}>
-          <select value={bonusType} onChange={e=>setBonus(e.target.value)}>
+          <select value={bonusType} onChange={e=>{ setBonus(e.target.value); configDirtySinceAdd.current=true; }}>
             {Object.keys(BONUS_LABEL).map(k=><option key={k} value={k}>{BONUS_LABEL[k]}</option>)}
           </select>
         </div>
         {bonusType==='custom' &&
-          <div className="inp pre" style={{marginBottom:16}}><span className="pfx">$</span><NumInput value={customBonus} onCommit={setCustomBonus} min={0} ariaLabel="Custom bonus per shift" placeholder="0.00"/></div>}
+          <div className="inp pre" style={{marginBottom:16}}><span className="pfx">$</span><NumInput value={customBonus} onCommit={v=>{ setCustomBonus(v); configDirtySinceAdd.current=true; }} min={0} ariaLabel="Custom bonus per shift" placeholder="0.00"/></div>}
 
         <div className="preview">
           <div className="k">This shift adds</div>
           <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home</div>
+        </div>
+
+        <div className="sec-lab" style={{marginTop:4}}>ALSO ON THIS DAY</div>
+        <div className="chips-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:ptoEvent?10:16}}>
+          {EVENT_KINDS.map(k=>(
+            <button key={k} className={'chip-sel'+(events.some(e=>e.kind===k)?' on':'')}
+              style={{justifyContent:'center',padding:'10px 4px',fontSize:12,minHeight:44}}
+              onClick={()=>toggleEvent(k)}>{EVENT_KIND_META[k].label}</button>
+          ))}
+        </div>
+        {ptoEvent &&
+          <div className="inp suf" style={{marginBottom:16}}>
+            <NumInput value={ptoEvent.hours!=null?ptoEvent.hours:12} onCommit={setPtoHours} step="0.5" min={0.5} max={24} ariaLabel="PTO hours" style={{fontWeight:700}}/>
+            <span className="sfx">hrs PTO</span>
+          </div>}
+
+        <div className="sec-lab">NOTE</div>
+        <div className="inp" style={{marginBottom:16}}>
+          <input value={note} onChange={e=>{ setNote(e.target.value.slice(0,MAX_NOTE_LEN)); setDirty(true); }}
+            placeholder="Note — e.g. 'switch with Jess'" maxLength={MAX_NOTE_LEN} aria-label="Day note" />
         </div>
 
         {!savingTpl
@@ -1781,7 +1972,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,baseRate,keepR
             </div>}
 
         <button className="btn btn-ghost" style={{marginBottom:10}} onClick={add}>+ Add to this day</button>
-        <button className="btn btn-primary" onClick={save}>{list.length? 'Save day':'Add shift'}</button>
+        <button className="btn btn-primary" onClick={save}>{(list.length || hasOtherContent) ? 'Save day':'Add shift'}</button>
       </div>
     </div>
   );
