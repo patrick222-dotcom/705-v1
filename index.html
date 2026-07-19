@@ -369,6 +369,7 @@ const Ic = {
   user:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   logout: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
   chat:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
+  calendar: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
 };
 
 /* ---------- supabase ---------- */
@@ -417,6 +418,36 @@ const EVENT_KIND_META = {
 const MAX_DAY_EVENTS = 4;
 const MAX_NOTE_LEN = 240;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;   // "HH:MM" 24h, optional shift start
+
+/* ---------- calendar (.ics) export helpers ---------- */
+/* Short, wage-free labels for the .ics SUMMARY line — deliberately NOT the same as BONUS_LABEL
+   (which embeds dollar amounts like "Charge +$3/hr"); the exported file must never carry pay figures. */
+const ICS_BONUS_LABEL = { charge:'Charge', preceptor:'Preceptor', oncall:'On-call', custom:'Custom' };
+const ICS_EVENT_LABEL = { pto:'PTO', education:'Education', appointment:'Appointment', off:'Requested off' };
+
+/* RFC 5545 §3.3.11 TEXT escaping: backslash first, then the other reserved characters, then newlines. */
+function icsEscape(s){
+  return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r\n|\r|\n/g,'\\n');
+}
+/* RFC 5545 §3.1 line folding: no logical line may exceed 75 octets (UTF-8 bytes, excluding the
+   CRLF terminator itself); continuation lines start with a single space, which itself counts
+   toward that line's 75-octet budget. Splits are backed off so a multi-byte UTF-8 character is
+   never cut in half (continuation bytes have the top two bits '10'). */
+function icsFold(line){
+  if(typeof TextEncoder==='undefined') return line; // defensive; every supported browser has this
+  const bytes = new TextEncoder().encode(line);
+  if(bytes.length<=75) return line;
+  const dec = new TextDecoder();
+  const out = [];
+  let start = 0, limit = 75;
+  while(start<bytes.length){
+    let end = Math.min(start+limit, bytes.length);
+    while(end<bytes.length && (bytes[end]&0xC0)===0x80) end--;
+    out.push(dec.decode(bytes.slice(start,end)));
+    start = end; limit = 74; // continuation line reserves 1 octet for its leading space
+  }
+  return out.join('\r\n ');
+}
 
 /* Map a parsed paystub earnings-row description to a differential key.
    Weekend variants are tested first so "Weekend Night" -> weekend-eve (not night).
@@ -1297,6 +1328,70 @@ function App(){
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=`scrubpay-${todayISO()}.json`; a.click(); URL.revokeObjectURL(u);
   };
+
+  /* Export every logged shift and day event (all dates, not just the active pay period) as an
+     .ics file — so the schedule shows up in the nurse's own calendar app. No wage/pay figures:
+     SUMMARY only ever carries the shift label, hours, and (short) bonus-type name. */
+  const exportICS = ()=>{
+    const dtstamp = (()=>{ const d=new Date();
+      return d.getUTCFullYear()+String(d.getUTCMonth()+1).padStart(2,'0')+String(d.getUTCDate()).padStart(2,'0')
+        +'T'+String(d.getUTCHours()).padStart(2,'0')+String(d.getUTCMinutes()).padStart(2,'0')+String(d.getUTCSeconds()).padStart(2,'0')+'Z'; })();
+    const dateKeys = new Set([...Object.keys(shifts), ...Object.keys(dayEvents)]);
+    const veventLines = [];
+    let n = 0;
+    // ids come from user-controlled JSON import — strip anything outside a safe charset so a
+    // crafted id can't inject CR/LF (or other structure) into the UID line of the .ics.
+    const safeId = v => String(v==null?'x':v).replace(/[^A-Za-z0-9._-]/g,'') || 'x';
+    Array.from(dateKeys).sort().forEach(dateKey=>{
+      const compact = dateKey.replace(/-/g,'');
+      const note = notes[dateKey];
+      (shifts[dateKey]||[]).forEach(s=>{
+        const label = (differentials[s.shiftType]&&differentials[s.shiftType].name) || s.shiftType || 'Shift';
+        const bonusLabel = (s.bonusType && s.bonusType!=='none') ? ICS_BONUS_LABEL[s.bonusType] : null;
+        const summary = `${label} shift · ${s.hours}h${bonusLabel?` · ${bonusLabel}`:''}`;
+        const lines = ['BEGIN:VEVENT', 'UID:scrubpay-'+dateKey+'-'+safeId(s.id)+'@scrubpay', 'DTSTAMP:'+dtstamp];
+        if(s.start && TIME_RE.test(s.start)){
+          const [hh,mm] = s.start.split(':');
+          lines.push('DTSTART:'+compact+'T'+hh+mm+'00');
+          const totalMin = Math.round(Number(s.hours)*60);
+          const dh = Math.floor(totalMin/60), dm = totalMin%60;
+          let dur = 'PT'; if(dh>0) dur += dh+'H'; if(dm>0 || dh===0) dur += dm+'M';
+          lines.push('DURATION:'+dur);
+        } else {
+          lines.push('DTSTART;VALUE=DATE:'+compact);
+          lines.push('DTEND;VALUE=DATE:'+addDaysISO(dateKey,1).replace(/-/g,''));
+        }
+        lines.push('SUMMARY:'+icsEscape(summary));
+        if(note) lines.push('DESCRIPTION:'+icsEscape(note));
+        lines.push('END:VEVENT');
+        veventLines.push(...lines);
+        n++;
+      });
+      (dayEvents[dateKey]||[]).forEach(ev=>{
+        const label = ICS_EVENT_LABEL[ev.kind] || 'Event';
+        const summary = (ev.kind==='pto' && ev.hours>0) ? `${label} · ${ev.hours}h` : label;
+        const lines = ['BEGIN:VEVENT', 'UID:scrubpay-'+dateKey+'-'+safeId(ev.id)+'@scrubpay', 'DTSTAMP:'+dtstamp,
+          'DTSTART;VALUE=DATE:'+compact,
+          'DTEND;VALUE=DATE:'+addDaysISO(dateKey,1).replace(/-/g,''),
+          'SUMMARY:'+icsEscape(summary)];
+        if(note) lines.push('DESCRIPTION:'+icsEscape(note));
+        lines.push('END:VEVENT');
+        veventLines.push(...lines);
+        n++;
+      });
+    });
+    if(n===0){ toast('Nothing to export yet — log a shift first.','error'); return; }
+    const allLines = [
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//ScrubPay//EN','CALSCALE:GREGORIAN','X-WR-CALNAME:ScrubPay shifts',
+      ...veventLines,
+      'END:VCALENDAR'
+    ].map(icsFold);
+    const content = allLines.join('\r\n')+'\r\n';
+    const blob = new Blob([content],{type:'text/calendar;charset=utf-8'});
+    const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download='scrubpay-calendar.ics'; a.click(); URL.revokeObjectURL(u);
+    toast('Calendar file ready — open it to add your shifts.','success');
+    track('ics_exported', {events:n}, user?.id);
+  };
   const importData = (e)=>{
     const f=e.target.files[0]; if(!f) return;
     const r=new FileReader();
@@ -1464,6 +1559,10 @@ function App(){
 
             <div className="card">
               <div className="cal-head"><div><div className="ttl">{calView==='period'?'This pay period':'Browse calendar'}</div></div><div className="sub">{qfMode?'':'Tap a day to add or edit'}</div></div>
+              {!qfMode &&
+                <div style={{display:'flex',justifyContent:'flex-end',marginTop:-6,marginBottom:12}}>
+                  <button className="btn btn-ghost btn-sm" style={{width:'auto',gap:6,minHeight:44}} onClick={exportICS}>{Ic.calendar}Sync to calendar</button>
+                </div>}
               {!qfMode && templates.length>0 &&
                 <button className="btn btn-ghost btn-sm" style={{marginBottom:14,minHeight:44}} onClick={startQuickFill}>⚡ Quick fill</button>}
               {qfMode &&
@@ -1562,7 +1661,7 @@ function App(){
         <Settings onClose={()=>setShowSettings(false)}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-            exportData,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
+            exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
@@ -2069,7 +2168,7 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-    exportData,onImport,onPaystub,parsing,clearAll,onFeedback}=props;
+    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
 
@@ -2122,10 +2221,12 @@ function Settings(props){
         <div className="sec-lab" style={{marginTop:18}}>DATA</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button className="btn btn-ghost btn-sm" onClick={exportData}>Export JSON</button>
+          <button className="btn btn-ghost btn-sm" style={{gap:6}} onClick={exportICS}>{Ic.calendar}Add to calendar (.ics)</button>
           <button className="btn btn-ghost btn-sm" onClick={onImport}>Import JSON</button>
           <label className="btn btn-ghost btn-sm" style={{position:'relative'}}>{parsing?'Reading…':'Scan paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
           <button className="btn btn-ghost btn-sm" onClick={(e)=>window.__copyErrorLog&&window.__copyErrorLog(e.currentTarget)}>Copy error log</button>
         </div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Re-export after schedule changes — your calendar app updates the same events.</div>
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
 
