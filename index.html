@@ -124,20 +124,29 @@
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
   .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;min-width:320px}
   /* month view: continuous vertical scroll of month sections (replaces ‹ › pagination).
-     Same negative-margin bleed idea as .cal-scroll, just vertical + its own scroll container. */
-  .cal-vscroll{max-height:60vh;min-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px 20px;scrollbar-width:none}
+     Same negative-margin bleed idea as .cal-scroll, just vertical + its own scroll container.
+     background:var(--card) is what keeps the bled area (and the sticky header living in it)
+     reading as "inside the card" — it fills the sliver between the card's own border and the
+     wider bled grid so nothing shows the raw --paper background through cell/header gaps; the
+     card's own left/right border simply runs invisibly behind this section rather than being
+     clipped, which is why the section can be wider than the card's other rows without looking
+     like a separate box floating outside it. */
+  .cal-vscroll-wrap{position:relative;margin:0 -18px}
+  .cal-vscroll{max-height:60vh;min-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
   .cal-vscroll::-webkit-scrollbar{display:none}
+  .cal-vscroll-fade{position:absolute;left:0;right:0;bottom:20px;height:34px;background:linear-gradient(to bottom, transparent, var(--card));pointer-events:none}
   .cal-month-sec{margin-bottom:20px}
   .cal-month-sec:last-child{margin-bottom:2px}
-  .cal-month-h{position:sticky;top:0;z-index:2;background:var(--card);padding:8px 0 10px;font-family:'Bricolage Grotesque';font-weight:700;font-size:15.5px}
+  .cal-month-h{position:sticky;top:0;z-index:2;background:var(--card);padding:2px 0 9px;margin-bottom:1px;font-family:'Bricolage Grotesque';font-weight:700;font-size:17.5px;color:var(--ink);border-bottom:1px solid var(--line)}
   /* mobile: let the grid bleed past the card's AND the page's own padding so it fills
      the phone screen almost edge-to-edge, with a slim padding of its own and a tighter gap. */
   @media (max-width:520px){
-    /* -37px = .wrap's 18px padding + .card's 1px border + .card's 18px padding — the full
-       distance from the viewport edge to here — so the grid lands flush with the screen edge
-       before its own 8px padding is added back. */
-    .cal-scroll{margin:0 -37px;padding:0 8px}
-    .cal-vscroll{margin:0 -37px;padding:0 8px 20px}
+    /* -18px escapes only the .card's own padding, so the grid fills the card's full inner
+       width while staying INSIDE its border/rounded corners — the calendar must read as
+       part of the card, never as a full-bleed band spilling onto the page background. */
+    .cal-scroll{margin:0 -18px;padding:0 8px}
+    .cal-vscroll-wrap{margin:0 -18px}
+    .cal-vscroll{padding:0 8px 20px}
     .dow,.grid{gap:4px;min-width:0}
   }
   /* min-height:0 overrides the grid item's default content-based automatic minimum size, which
@@ -1895,13 +1904,16 @@ function App(){
               {calView==='year'
                 ? <YearList months={yearMonths} onPick={(m)=>{ setCalFocus(`${parseISO(calFocus).getFullYear()}-${String(m+1).padStart(2,'0')}-01`); setCalView('month'); }} />
                 : calView==='month'
-                ? <div className="cal-vscroll" ref={monthScrollRef}>
-                    {monthWindow.map(mo=>
-                      <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
-                        differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
-                        onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
-                        qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id}
-                        secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }} />)}
+                ? <div className="cal-vscroll-wrap">
+                    <div className="cal-vscroll" ref={monthScrollRef}>
+                      {monthWindow.map(mo=>
+                        <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
+                          differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
+                          onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
+                          qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id}
+                          secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }} />)}
+                    </div>
+                    <div className="cal-vscroll-fade" aria-hidden="true"></div>
                   </div>
                 : <div className="cal-scroll">
                     <div className="dow">{calView==='week'
