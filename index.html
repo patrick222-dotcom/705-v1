@@ -123,6 +123,23 @@
   .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-bottom:6px;min-width:320px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
   .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;min-width:320px}
+  /* month view: continuous vertical scroll of month sections (replaces ‹ › pagination).
+     Same negative-margin bleed idea as .cal-scroll, just vertical + its own scroll container. */
+  .cal-vscroll{max-height:60vh;min-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px 20px;scrollbar-width:none}
+  .cal-vscroll::-webkit-scrollbar{display:none}
+  .cal-month-sec{margin-bottom:20px}
+  .cal-month-sec:last-child{margin-bottom:2px}
+  .cal-month-h{position:sticky;top:0;z-index:2;background:var(--card);padding:8px 0 10px;font-family:'Bricolage Grotesque';font-weight:700;font-size:15.5px}
+  /* mobile: let the grid bleed past the card's AND the page's own padding so it fills
+     the phone screen almost edge-to-edge, with a slim padding of its own and a tighter gap. */
+  @media (max-width:520px){
+    /* -37px = .wrap's 18px padding + .card's 1px border + .card's 18px padding — the full
+       distance from the viewport edge to here — so the grid lands flush with the screen edge
+       before its own 8px padding is added back. */
+    .cal-scroll{margin:0 -37px;padding:0 8px}
+    .cal-vscroll{margin:0 -37px;padding:0 8px 20px}
+    .dow,.grid{gap:4px;min-width:0}
+  }
   /* min-height:0 overrides the grid item's default content-based automatic minimum size, which
      otherwise wins over aspect-ratio and stretches a cell's row taller than its siblings whenever
      that cell's content is tall — the actual cause was two stacked marker rows (shift dots + event
@@ -358,7 +375,7 @@
 </script>
 
 <script type="text/babel" data-presets="react">
-const { useState, useMemo, useEffect, useRef } = React;
+const { useState, useMemo, useEffect, useLayoutEffect, useRef } = React;
 
 /* ---------- icons ---------- */
 const Ic = {
@@ -1341,6 +1358,31 @@ function App(){
     else if(calView==='year'){ const f=parseISO(calFocus); setCalFocus(keyOf(new Date(f.getFullYear()+dir,f.getMonth(),1))); }
   };
 
+  /* month view: continuous vertical scroll, 3 months before calFocus's month through 12 after.
+     calFocus is already "the current month" by the time month view mounts — the view-toggle
+     resets it to payPeriodStart when leaving 'period', and a Year-view tap sets it to the
+     tapped month — so centering the window on calFocus covers both entry paths. */
+  const MONTH_BEFORE=3, MONTH_AFTER=12;
+  const monthWindow = useMemo(()=>{
+    if(calView!=='month') return [];
+    const f=parseISO(calFocus), y=f.getFullYear(), m=f.getMonth();
+    return Array.from({length:MONTH_BEFORE+MONTH_AFTER+1},(_,i)=>{
+      const d = new Date(y, m-MONTH_BEFORE+i, 1);
+      return {key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, y:d.getFullYear(), m:d.getMonth()};
+    });
+  },[calView,calFocus]);
+  const monthScrollRef = useRef(null);      // the .cal-vscroll container
+  const monthSecRefs = useRef({});          // key ("YYYY-MM") -> section DOM node
+  useLayoutEffect(()=>{
+    if(calView!=='month') return;
+    const f=parseISO(calFocus);
+    const targetKey = `${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`;
+    const container = monthScrollRef.current, sec = monthSecRefs.current[targetKey];
+    if(!container || !sec) return;
+    const cRect = container.getBoundingClientRect(), sRect = sec.getBoundingClientRect();
+    container.scrollTop += (sRect.top - cRect.top);   // instant, not smooth
+  },[calView,calFocus,monthWindow]);
+
   /* year view: 12-month totals from all shifts in the focused year */
   const yearMonths = useMemo(()=>{
     if(calView!=='year') return [];
@@ -1844,7 +1886,7 @@ function App(){
                   <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
                     onClick={()=>{ if(calView==='period'&&v!=='period') setCalFocus(payPeriodStart); if(v!==calView) track('view_changed', {view:v}, user?.id); setCalView(v); }}>{l}</button>)}
               </div>
-              {calView!=='period' &&
+              {(calView==='week'||calView==='year') &&
                 <div className="calnav">
                   <button onClick={()=>navCal(-1)} aria-label="Previous">‹</button>
                   <span className="calnav-t">{viewTitle}</span>
@@ -1852,6 +1894,15 @@ function App(){
                 </div>}
               {calView==='year'
                 ? <YearList months={yearMonths} onPick={(m)=>{ setCalFocus(`${parseISO(calFocus).getFullYear()}-${String(m+1).padStart(2,'0')}-01`); setCalView('month'); }} />
+                : calView==='month'
+                ? <div className="cal-vscroll" ref={monthScrollRef}>
+                    {monthWindow.map(mo=>
+                      <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
+                        differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
+                        onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
+                        qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id}
+                        secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }} />)}
+                  </div>
                 : <div className="cal-scroll">
                     <div className="dow">{calView==='week'
                       ? viewDays.map((d,i)=><div key={i}>{'SMTWTFS'[d.getDay()]}</div>)
@@ -2131,6 +2182,24 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
       </button>);
   });
   return <div className="grid">{cells}</div>;
+}
+
+/* ---------- Month view: one section of the continuous vertical scroll ---------- */
+function MonthSection({y,m,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,qfActive,qfTemplateId,secRef}){
+  const days = useMemo(()=>{
+    const n = new Date(y,m+1,0).getDate();
+    return Array.from({length:n},(_,i)=>new Date(y,m,i+1));
+  },[y,m]);
+  const label = new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  return (
+    <div className="cal-month-sec" ref={secRef}>
+      <div className="cal-month-h">{label}</div>
+      <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+      <Calendar days={days} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
+        dayEvents={dayEvents} notes={notes} onPick={onPick} noLead={false}
+        qfActive={qfActive} qfTemplateId={qfTemplateId} />
+    </div>
+  );
 }
 
 /* ---------- Year view: 12-month summary list ---------- */
