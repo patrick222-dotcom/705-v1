@@ -129,10 +129,14 @@ grant update (status, note, shift_date, shift_meta, avail_dates)
 create or replace function public.swap_board(g uuid)
 returns table (id uuid, kind text, shift_date date, shift_meta jsonb,
                avail_dates date[], note text, status text, created_at timestamptz,
-               is_mine boolean)
+               is_mine boolean, poster_key text)
 language sql stable security definer set search_path = public as $$
   select p.id, p.kind, p.shift_date, p.shift_meta, p.avail_dates, p.note,
-         p.status, p.created_at, (p.author = auth.uid()) as is_mine
+         p.status, p.created_at, (p.author = auth.uid()) as is_mine,
+         -- pseudonymous per-group key: lets clients correlate posts by the same
+         -- (anonymous) member — required for swap/cycle matching — without ever
+         -- exposing identity. Not reversible; differs across groups.
+         substr(md5(p.author::text || p.group_id::text || 'scrubpay-swaps'), 1, 8) as poster_key
   from swap_posts p
   where p.group_id = g and public.is_swap_member(g)
     -- data minimization: withdrawn/matched post content must stop being
@@ -225,6 +229,23 @@ begin
 end $$;
 revoke all on function public.propose_swap(uuid, uuid[]) from public;
 grant execute on function public.propose_swap(uuid, uuid[]) to authenticated;
+
+-- match details for its parties (works even after posts leave the open board):
+-- legs with post snapshots + accept states; identities still hidden pre-reveal.
+create or replace function public.match_details(m uuid)
+returns table (post_id uuid, kind text, shift_date date, shift_meta jsonb,
+               avail_dates date[], note text, accepted boolean, is_my_leg boolean,
+               match_status text)
+language sql stable security definer set search_path = public as $$
+  select l.post_id, p.kind, p.shift_date, p.shift_meta, p.avail_dates, p.note,
+         l.accepted, (l.leg_user = auth.uid()) as is_my_leg, mt.status
+  from swap_match_legs l
+  join swap_posts p on p.id = l.post_id
+  join swap_matches mt on mt.id = l.match_id
+  where l.match_id = m and public.is_match_party(m)
+$$;
+revoke all on function public.match_details(uuid) from public;
+grant execute on function public.match_details(uuid) to authenticated;
 
 -- reveal: names unlock ONLY when every leg has accepted
 create or replace function public.reveal_match(m uuid)
