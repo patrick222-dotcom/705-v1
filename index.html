@@ -308,6 +308,14 @@
   .link{color:var(--indigo);font-weight:600;font-size:13px}
   .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:10px 8px;margin:-10px -8px}
 
+  /* swap matching: count badge on entry points + suggestion/plan cards */
+  .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:700;line-height:1;margin-left:6px;vertical-align:middle}
+  .swap-card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:10px}
+  .swap-card .kicker{font-weight:600;font-size:11.5px;color:var(--indigo);letter-spacing:.02em;margin-bottom:6px}
+  .swap-step{font-size:13.5px;color:var(--ink);line-height:1.55}
+  .swap-step b{font-weight:700}
+  .swap-plan-text{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;margin:10px 0;color:var(--ink)}
+
   @media (min-width:920px){
     .topnav{display:flex}
     .dash{grid-template-columns:1.6fr 1fr;align-items:start}
@@ -984,6 +992,208 @@ async function withdrawSwapPost(postId){
   }catch(e){ return false; }
 }
 
+/* ---------- swap board (Phase 2): the matching engine ---------- */
+
+/* PURE + unit-testable in isolation (no supabase, no React): given the full list of posts
+   returned by swap_board (open + my own non-open ones — status is filtered here), find every
+   trade that involves ME. A GIVE "fits" a person if its shift_date equals one of their WANT
+   dates or falls in one of their AVAIL date lists. People are correlated by poster_key (mine
+   via is_mine); a give never "fits" its own author. Board is capped at ~200 posts by the
+   backend, so gives are bounded (~50) and the O(n^3) 3-cycle search stays cheap.
+   Returns [{key, kind:'pickup'|'handoff'|'trade'|'cycle3', legPostIds:[...], outgoing?, middle?, incoming?}]
+   where outgoing/middle/incoming are GIVE post objects (never want/avail) describing the plan
+   in giving order — outgoing = a shift I give up, incoming = a shift I receive. */
+function computeSwapSuggestions(posts){
+  const open = (posts||[]).filter(p=>p.status==='open');
+  const keyOf = p => p.is_mine ? 'me' : p.poster_key;
+  const gives = open.filter(p=>p.kind==='give');
+
+  // personKey -> their open want/avail posts (never gives — a give can't "fit" a give)
+  const needs = {};
+  open.forEach(p=>{
+    if(p.kind==='give') return;
+    const k = keyOf(p);
+    if(!needs[k]) needs[k] = {wants:[], avails:[]};
+    if(p.kind==='want' && p.shift_date) needs[k].wants.push(p);
+    if(p.kind==='avail' && p.avail_dates) needs[k].avails.push(p);
+  });
+  // the specific want/avail post of `personKey` that a give's date satisfies, or null
+  const matchingPost = (givePost, personKey)=>{
+    const n = needs[personKey];
+    if(!n) return null;
+    const w = n.wants.find(x=>x.shift_date===givePost.shift_date);
+    if(w) return w;
+    return n.avails.find(x=>(x.avail_dates||[]).indexOf(givePost.shift_date)>=0) || null;
+  };
+  const fits = (givePost, personKey)=> !!matchingPost(givePost, personKey);
+
+  const myGives = gives.filter(g=>keyOf(g)==='me');
+  const otherGives = gives.filter(g=>keyOf(g)!=='me');
+  const otherPersonKeys = Object.keys(needs).filter(k=>k!=='me');
+
+  const suggestions = [];
+  const seen = new Set();
+  const add = (kind, legPostIds, extra)=>{
+    const dedupeKey = kind+':'+[...legPostIds].sort().join(',');
+    if(seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    suggestions.push({key:dedupeKey, kind, legPostIds:[...legPostIds], ...extra});
+  };
+
+  // PICKUP: another's give fits one of MY want/avail posts.
+  otherGives.forEach(g=>{
+    const mine = matchingPost(g, 'me');
+    if(mine) add('pickup', [g.id, mine.id], {incoming:g});
+  });
+
+  // GIVEAWAY (handoff): one of MY gives fits another person's want/avail.
+  myGives.forEach(g=>{
+    otherPersonKeys.forEach(personKey=>{
+      const theirs = matchingPost(g, personKey);
+      if(theirs) add('handoff', [g.id, theirs.id], {outgoing:g});
+    });
+  });
+
+  // DIRECT SWAP (trade): my give fits person B AND B's give fits me.
+  myGives.forEach(myG=>{
+    otherGives.forEach(bG=>{
+      if(fits(myG, keyOf(bG)) && fits(bG, 'me')) add('trade', [myG.id, bG.id], {outgoing:myG, incoming:bG});
+    });
+  });
+
+  // 3-WAY SHUFFLE: my give fits B, B's give fits C, C's give fits me.
+  myGives.forEach(myG=>{
+    otherGives.forEach(bG=>{
+      const bKey = keyOf(bG);
+      if(!fits(myG, bKey)) return;
+      otherGives.forEach(cG=>{
+        const cKey = keyOf(cG);
+        if(cKey===bKey) return;
+        if(fits(bG, cKey) && fits(cG, 'me')) add('cycle3', [myG.id, bG.id, cG.id], {outgoing:myG, middle:bG, incoming:cG});
+      });
+    });
+  });
+
+  return suggestions;
+}
+
+/* PURE: given a confirmed/pending match's legs (from match_details) and MY currently-open
+   want/avail board posts, work out which GIVE leg is the shift coming TO me — used by
+   "Apply to my calendar" when the in-session suggestion that created the match isn't
+   remembered (page reload, or a different party proposed it). For 2-leg matches (trade or
+   pickup) it's unambiguous: the only other leg. For a 3-leg cycle it's the one whose date
+   fits one of my still-open want/avail posts; if that's ambiguous (0 or >1 candidates,
+   e.g. my post was withdrawn) it returns null and callers should skip the Apply convenience. */
+function resolveIncomingGive(legs, myOpenPosts){
+  const others = (legs||[]).filter(l=>!l.is_my_leg && l.kind==='give');
+  if(others.length===0) return null;
+  if(others.length===1) return others[0];
+  const mine = (myOpenPosts||[]).filter(p=>p.kind!=='give' && p.status==='open');
+  const fitsMine = g => mine.some(p=>
+    (p.kind==='want' && p.shift_date===g.shift_date) ||
+    (p.kind==='avail' && (p.avail_dates||[]).indexOf(g.shift_date)>=0));
+  const candidates = others.filter(fitsMine);
+  return candidates.length===1 ? candidates[0] : null;
+}
+
+/* PURE: classify a match's shape from its legs by counting "give" legs and who holds them --
+   this is the actual definition of each match type, not something that needs inference:
+     - handoff: my leg is the ONLY give (I give, someone else wants/is-available) -- remove-only,
+       always unambiguous.
+     - pickup: exactly one give leg and it's NOT mine, my leg is want/avail -- add-only, always
+       unambiguous.
+     - trade: exactly two give legs (mine + theirs) -- remove mine, add theirs.
+     - cycle3: three give legs (a 3-way shuffle) -- MY incoming give isn't just "the other one",
+       it has to be resolved (resolveIncomingGive), which can genuinely fail post-reload.
+   Anything else (0 gives, or a shape that doesn't fit the above) is 'unknown' and callers should
+   fall back to the manual-copy path rather than guess. */
+function classifyMatchShape(legs){
+  const gives = (legs||[]).filter(l=>l.kind==='give');
+  const myGives = gives.filter(l=>l.is_my_leg);
+  const otherGives = gives.filter(l=>!l.is_my_leg);
+  if(gives.length===1 && myGives.length===1) return 'handoff';
+  if(gives.length===1 && otherGives.length===1 && myGives.length===0) return 'pickup';
+  if(gives.length===2) return 'trade';
+  if(gives.length===3) return 'cycle3';
+  return 'unknown';
+}
+
+async function fetchMyMatches(groupId){
+  if(!supabase) return {matches:[], missing:false};
+  try{
+    const {data,error} = await withTimeout(
+      supabase.from('swap_matches').select('id,status,created_at').eq('group_id',groupId).order('created_at',{ascending:false}),
+      6000, 'my swap matches');
+    if(error){ if(isMissingSwapTable(error)) return {matches:[], missing:true}; return {matches:[], missing:false, error}; }
+    return {matches:data||[], missing:false};
+  }catch(e){ return {matches:[], missing:false, error:e}; }
+}
+async function fetchMatchDetails(matchId){
+  if(!supabase) return {legs:[], missing:false};
+  try{
+    const {data,error} = await withTimeout(supabase.rpc('match_details', {m:matchId}), 6000, 'match details');
+    if(error){ if(isMissingSwapTable(error)) return {legs:[], missing:true}; return {legs:[], missing:false, error}; }
+    return {legs:data||[], missing:false};
+  }catch(e){ return {legs:[], missing:false, error:e}; }
+}
+/* Matches list + per-match legs in one shot, for the sheet's poll cycle. Best-effort: if an
+   individual match's legs fail to load it's dropped from the list rather than failing the
+   whole refresh (transient blip — the next 15s poll will pick it back up). */
+async function fetchMyMatchesWithLegs(groupId){
+  const {matches, missing, error} = await fetchMyMatches(groupId);
+  if(missing || error) return {matches:[], missing, error};
+  if(matches.length===0) return {matches:[], missing:false};
+  const withLegs = await Promise.all(matches.map(async m=>{
+    const {legs, missing:lm} = await fetchMatchDetails(m.id);
+    return {match:m, legs, missing:lm};
+  }));
+  // A schema-missing signal on match_details is the same real condition regardless of which
+  // match triggered it (the migration either applied or it didn't) — if every call reports it,
+  // surface "not set up yet" same as the board fetch; otherwise just drop the failing rows
+  // (transient blip — the next 15s poll retries) and keep the rest.
+  if(withLegs.every(x=>x.missing)) return {matches:[], missing:true};
+  return {matches: withLegs.filter(x=>!x.missing).map(x=>({...x.match, legs:x.legs})), missing:false};
+}
+async function proposeSwapMatch(groupId, postIds){
+  if(!supabase) return {error:'offline'};
+  try{
+    const {data,error} = await withTimeout(supabase.rpc('propose_swap', {g:groupId, post_ids:postIds}), 6000, 'propose swap');
+    if(error) return {error};
+    return {matchId:data};
+  }catch(e){ return {error:e}; }
+}
+/* .select() after the update so we can tell "accepted" from "RLS silently matched 0 rows" --
+   PostgREST returns 200 + [] (not an error) when a policy blocks every row, e.g. the match was
+   declined a moment earlier and "accept own leg" now requires status='proposed'. Without the
+   row-count check the caller would believe a no-op succeeded. */
+async function acceptMatchLeg(matchId, postId){
+  if(!supabase) return false;
+  try{
+    const {data, error} = await withTimeout(
+      supabase.from('swap_match_legs').update({accepted:true}).eq('match_id',matchId).eq('post_id',postId).select('post_id'),
+      6000, 'accept swap leg');
+    return !error && Array.isArray(data) && data.length>0;
+  }catch(e){ return false; }
+}
+/* Goes through the decline_swap_match RPC (not a direct table PATCH) so the posts reserved as
+   this match's legs are released back to 'open' in the same transaction -- a plain status
+   update would leave them stuck 'proposed' forever, invisible to the board. */
+async function declineSwapMatch(matchId){
+  if(!supabase) return false;
+  try{
+    const {error} = await withTimeout(supabase.rpc('decline_swap_match', {m:matchId}), 6000, 'decline swap match');
+    return !error;
+  }catch(e){ return false; }
+}
+async function revealSwapMatch(matchId){
+  if(!supabase) return {error:'offline'};
+  try{
+    const {data,error} = await withTimeout(supabase.rpc('reveal_match', {m:matchId}), 6000, 'reveal match');
+    if(error) return {error};
+    return {reveals:data||[]};
+  }catch(e){ return {error:e}; }
+}
+
 /* ---------- feedback sheet ---------- */
 function FeedbackSheet({user, onClose}){
   const [msg,setMsg] = useState('');
@@ -1149,6 +1359,9 @@ function App(){
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
   const [showSwaps,setShowSwaps] = useState(false);   // shift swap board sheet
+  // pending swap matches awaiting MY accept, refreshed by SwapsSheet alongside its own board
+  // poll (never polled while the sheet is closed — badge just keeps showing the last-known count)
+  const [swapPendingCount,setSwapPendingCount] = useState(0);
   const [icsImport,setIcsImport] = useState(null);   // schedule-import stepper state, or null when closed
   const [calView,setCalView] = useState('period');   // 'period' | 'week' | 'month' | 'year'
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
@@ -1981,7 +2194,7 @@ function App(){
     <div>
       <div className="topbar">
         <div className="brand"><span className="b-dot"></span>scrubpay</div>
-        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
+        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
         <div className="top-actions">
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <span onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',marginRight:8,cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</span>}
@@ -2021,7 +2234,7 @@ function App(){
             </div>
 
             <div className="whatif mob-only">
-              <div style={{flex:1}}><div className="t">Shift swaps</div><div className="s">Trade with your unit, anonymously</div></div>
+              <div style={{flex:1}}><div className="t">Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</div><div className="s">Trade with your unit, anonymously</div></div>
               <button onClick={()=>setShowSwaps(true)}>Open</button>
             </div>
 
@@ -2115,7 +2328,7 @@ function App(){
                 <button className="btn btn-soft" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>
               </div>}
             <div className="card">
-              <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps</h3>
+              <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</h3>
               <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:14}}>Trade shifts with your unit — anonymously</div>
               <button className="btn btn-soft" onClick={()=>setShowSwaps(true)}>Open swap board</button>
             </div>
@@ -2159,8 +2372,9 @@ function App(){
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showSwaps &&
-        <SwapsSheet user={user} shifts={shifts} differentials={differentials}
-          onClose={()=>setShowSwaps(false)} onOpenAuth={()=>{ setAuthMode('signin'); setShowAuth(true); }} />}
+        <SwapsSheet user={user} shifts={shifts} dayEvents={dayEvents} notes={notes} saveDayShifts={saveDayShifts} differentials={differentials}
+          onClose={()=>setShowSwaps(false)} onOpenAuth={()=>{ setAuthMode('signin'); setShowAuth(true); }}
+          onPendingCount={setSwapPendingCount} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
@@ -2867,7 +3081,7 @@ function Settings(props){
 }
 
 /* ---------- Swap board (Phase 1: anonymous groups + posting/browsing; matching is Phase 2) ---------- */
-function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
+function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differentials, onClose, onOpenAuth, onPendingCount}){
   const [loading,setLoading] = useState(true);
   const [loadError,setLoadError] = useState(false);
   const [tablesMissing,setTablesMissing] = useState(false);
@@ -2894,6 +3108,27 @@ function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
   const [composerNote,setComposerNote] = useState('');
   const [posting,setPosting] = useState(false);
 
+  // ---- Phase 2: matching ----
+  const [matches,setMatches] = useState([]);           // [{id,status,legs:[...]}] — matches I'm a party to
+  const [proposingKey,setProposingKey] = useState(null);   // suggestion.key currently being proposed
+  const [legBusyId,setLegBusyId] = useState(null);         // match.id currently accepting/declining
+  // Which match ids *I* proposed, and the suggestion that created them — session memory only.
+  // The DB deliberately doesn't grant SELECT on swap_matches.proposed_by (same anonymity model
+  // as posts' author column), so "You proposed this" and the precise cycle3 give-flow can only
+  // be known for matches proposed in this browser session; anything else recomputes best-effort
+  // (resolveIncomingGive) or degrades gracefully (plan shown without the "You proposed" label).
+  const [proposedByMe,setProposedByMe] = useState(()=>new Set());
+  const [matchPlans,setMatchPlans] = useState({});         // matchId -> {kind,outgoing,middle,incoming}
+  const [revealData,setRevealData] = useState({});         // matchId -> [{post_id,display_name}]
+  const [revealing,setRevealing] = useState({});            // matchId -> true while reveal_match is in flight
+  const [appliedMatchIds,setAppliedMatchIds] = useState(()=>new Set());  // Apply-to-calendar already used
+  // matchId -> Date.now() of the last 'match_stale' failure. doReveal's caller (the auto-reveal
+  // effect) re-fires on every `matches` change, and reveal's own error handling below refetches
+  // matches -- without this cooldown a persistently-stale match (legs still read all-accepted
+  // but reveal keeps refusing) would hammer the reveal_match RPC in a tight loop instead of
+  // retrying at the same ~15s pace as everything else that polls.
+  const staleRevealAtRef = useRef({});
+
   const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
   /* ---- initial load: profile, then (if it exists) group memberships ---- */
@@ -2918,21 +3153,37 @@ function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
     // eslint-disable-next-line
   },[user && user.id]);
 
-  /* ---- board: fetch on group switch/open, then poll every 15s while the sheet is open
-     (mirrors the app's cross-device sync poll) ---- */
+  /* ---- board + my matches: fetch on group switch/open, then poll every 15s while the sheet
+     is open (mirrors the app's cross-device sync poll). Match counts (the entry-point badge)
+     ride along on this same cycle — no separate/background polling, per spec: the badge just
+     shows the last count learned while the sheet was open. ---- */
+  const refreshBoardAndMatches = async ()=>{
+    // Run independently (not gated behind Promise.all before either commits) so a slow/failing
+    // matches fetch never delays the board feed showing up — each half updates state as soon
+    // as ITS OWN request resolves.
+    const boardP = fetchSwapBoard(activeGroupId).then(({posts:p, missing})=>{
+      if(missing){ setTablesMissing(true); return; }
+      setPosts(p);
+    });
+    const matchesP = fetchMyMatchesWithLegs(activeGroupId).then(({matches:m, missing})=>{
+      if(missing){ setTablesMissing(true); return; }
+      setMatches(m);
+      if(onPendingCount){
+        const pending = m.filter(mm=> mm.status==='proposed' && (mm.legs||[]).some(l=>l.is_my_leg && !l.accepted)).length;
+        onPendingCount(pending);
+      }
+    });
+    await Promise.all([boardP, matchesP]);
+  };
   useEffect(()=>{
     if(!activeGroupId) return;
     let stopped=false;
-    const load = async ()=>{
-      const {posts:p, missing} = await fetchSwapBoard(activeGroupId);
-      if(stopped) return;
-      if(missing){ setTablesMissing(true); return; }
-      setPosts(p);
-    };
+    const load = async ()=>{ if(!stopped) await refreshBoardAndMatches(); };
     setBoardLoading(true);
     load().finally(()=>{ if(!stopped) setBoardLoading(false); });
     const id = setInterval(load, 15000);
     return ()=>{ stopped=true; clearInterval(id); };
+    // eslint-disable-next-line
   },[activeGroupId]);
 
   const saveDisplayName = async ()=>{
@@ -3042,8 +3293,7 @@ function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
     toast('Posted — your unit sees it anonymously.','success');
     track('swap_posted', {kind:composerKind}, user.id);
     setComposerOpen(false);
-    const {posts:p} = await fetchSwapBoard(activeGroupId);
-    setPosts(p);
+    await refreshBoardAndMatches();
   };
 
   const doWithdraw = async (post)=>{
@@ -3052,6 +3302,241 @@ function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
     if(!ok){ toast("Couldn't withdraw — try again.",'error'); return; }
     track('swap_withdrawn', null, user.id);
     setPosts(prev=> prev.map(p=> p.id===post.id ? {...p, status:'withdrawn'} : p));
+  };
+
+  /* ---- suggested matches: pure computation over the current board snapshot ---- */
+  const suggestions = useMemo(()=> computeSwapSuggestions(posts), [posts]);
+
+  const doPropose = async (sugg)=>{
+    if(!activeGroupId || proposingKey) return;
+    setProposingKey(sugg.key);
+    const {matchId, error} = await proposeSwapMatch(activeGroupId, sugg.legPostIds);
+    setProposingKey(null);
+    if(error){
+      const msg = String((error&&error.message)||error||'');
+      if(msg.indexOf('post_unavailable')>=0){
+        toast('That post was just taken — refreshing.','error');
+      } else {
+        toast("Couldn't propose that swap — try again.",'error');
+      }
+      await refreshBoardAndMatches();
+      return;
+    }
+    toast('Proposed — waiting on the others.','success');
+    track('swap_match_proposed', {legs:sugg.legPostIds.length, kind:sugg.kind}, user.id);
+    setProposedByMe(prev=> new Set(prev).add(matchId));
+    setMatchPlans(prev=>({...prev, [matchId]:{kind:sugg.kind, outgoing:sugg.outgoing, middle:sugg.middle, incoming:sugg.incoming}}));
+    await refreshBoardAndMatches();
+  };
+
+  /* After every leg accepts, pull the names + retire the traded posts. reveal_match is safe to
+     call more than once for the same match (idempotent server-side), so any caller that just
+     observed allAccepted can call it without extra bookkeeping.
+     'match_stale' is a real backend rejection (not a bug): the RPC can now detect that this
+     match's legs' posts are no longer reserved -- e.g. a concurrent decline elsewhere raced the
+     accept -- and refuses to reveal. Surface it as a friendly toast and refetch so the match
+     list reflects reality, never a raw error string. */
+  const doReveal = async (matchId)=>{
+    if(revealData[matchId] || revealing[matchId]) return;
+    const lastStale = staleRevealAtRef.current[matchId];
+    if(lastStale && (Date.now()-lastStale) < 15000) return;  // cooldown, see staleRevealAtRef
+    setRevealing(prev=>({...prev, [matchId]:true}));
+    const {reveals, error} = await revealSwapMatch(matchId);
+    setRevealing(prev=>{ const n={...prev}; delete n[matchId]; return n; });
+    if(error || !reveals){
+      if(error){
+        const msg = String((error&&error.message)||error||'');
+        if(msg.indexOf('match_stale')>=0){
+          staleRevealAtRef.current = {...staleRevealAtRef.current, [matchId]:Date.now()};
+          toast('This match changed — refreshing.','info');
+          await refreshBoardAndMatches();
+        }
+      }
+      return;
+    }
+    delete staleRevealAtRef.current[matchId];
+    setRevealData(prev=>({...prev, [matchId]:reveals}));
+    track('swap_match_confirmed', null, user.id);
+  };
+
+  const doAccept = async (match)=>{
+    const myLeg = (match.legs||[]).find(l=>l.is_my_leg);
+    if(!myLeg || legBusyId) return;
+    setLegBusyId(match.id);
+    const ok = await acceptMatchLeg(match.id, myLeg.post_id);
+    if(!ok){
+      // acceptMatchLeg also returns false when RLS silently matched 0 rows (e.g. the match was
+      // just declined -- "accept own leg" now requires status='proposed') -- refetch so the UI
+      // reflects reality instead of leaving a stale "waiting on accept" card.
+      setLegBusyId(null);
+      toast("Couldn't accept — try again.",'error');
+      await refreshBoardAndMatches();
+      return;
+    }
+    track('swap_match_accepted', null, user.id);
+    const {legs} = await fetchMatchDetails(match.id);
+    const declined = legs && legs.some(l=>l.match_status==='declined');
+    if(legs && legs.length>0 && legs.every(l=>l.accepted) && !declined) await doReveal(match.id);
+    setLegBusyId(null);
+    await refreshBoardAndMatches();
+  };
+
+  const doDecline = async (match)=>{
+    if(legBusyId) return;
+    if(!(await confirmAsync("Decline this proposed swap? The others involved will see it fell through.",{title:'Decline swap?',confirm:'Decline',danger:true}))) return;
+    setLegBusyId(match.id);
+    const ok = await declineSwapMatch(match.id);
+    setLegBusyId(null);
+    if(!ok){ toast("Couldn't decline — try again.",'error'); return; }
+    track('swap_match_declined', null, user.id);
+    await refreshBoardAndMatches();
+  };
+
+  // Catches matches that became fully-accepted from someone ELSE's accept, discovered on the
+  // next 15s poll rather than through my own doAccept — reveal as soon as we notice, same as
+  // the explicit path. doReveal no-ops if already revealed/in-flight, so this is safe to run
+  // on every matches update. Gated on the server-reported match status (not just leg
+  // acceptance) — "all legs accepted" can be stale/raced against a decline that landed
+  // elsewhere, and reveal_match itself now refuses anything that isn't proposed/confirmed, so
+  // this check is defense-in-depth against calling (and toasting an error for) a doomed reveal.
+  useEffect(()=>{
+    matches.forEach(m=>{
+      const legs = m.legs||[];
+      if(m.status==='declined') return;
+      if(legs.length>0 && legs.every(l=>l.accepted)) doReveal(m.id);
+    });
+    // eslint-disable-next-line
+  },[matches]);
+
+  /* Shared by the leg-list render, buildSwapPlanText, and doApplyPlan: which give leg is MY
+     incoming shift, which is my outgoing one, and the match's shape (see classifyMatchShape).
+     handoff/pickup/trade are derived straight from the legs -- unambiguous by construction, no
+     resolution needed. Only cycle3 (and any unrecognized shape) needs resolveIncomingGive, and
+     that's the ONLY case where an unresolved incoming should block the destructive half of a
+     plan -- for handoff there IS no incoming (nothing to add), for pickup there IS no outgoing
+     (nothing to remove), and neither of those is ambiguity. */
+  const resolveApplyPlan = (match)=>{
+    const legs = match.legs||[];
+    const myLeg = legs.find(l=>l.is_my_leg);
+    const shape = classifyMatchShape(legs);
+    if(shape==='handoff') return {shape, outgoing: myLeg, incoming: null};
+    if(shape==='pickup') return {shape, outgoing: null, incoming: legs.find(l=>l.kind==='give' && !l.is_my_leg) || null};
+    if(shape==='trade'){
+      const outgoing = myLeg && myLeg.kind==='give' ? myLeg : null;
+      const incoming = legs.find(l=>l.kind==='give' && !l.is_my_leg) || null;
+      return {shape, outgoing, incoming};
+    }
+    // cycle3 / unknown: resolve via the in-session suggestion when we proposed it, else recompute.
+    const outgoing = myLeg && myLeg.kind==='give' ? myLeg : null;
+    const plan = matchPlans[match.id];
+    let incoming = null;
+    if(plan && plan.incoming){
+      incoming = legs.find(l=>l.post_id===plan.incoming.id) || plan.incoming;
+    } else {
+      incoming = resolveIncomingGive(legs, posts.filter(p=>p.is_mine));
+    }
+    return {shape, outgoing, incoming};
+  };
+
+  /* Builds the plain-text swap plan for copy/paste into a text or the unit's official swap
+     process. Wage-free by construction — dates, shift labels, hours only.
+     Trade/3-way-shuffle matches are ALL give-kind legs -- without extra work every leg reads as
+     a flat, unrelated "X gives up ..." with no statement of what I actually get back. Resolve
+     my incoming leg (same logic as "Apply to my calendar") and fold "→ you get ..." onto my own
+     give line, plus a closing "Net result" summary, so the plan is unambiguous when read cold
+     by a manager who wasn't looking at the app. */
+  const buildSwapPlanText = (match, names)=>{
+    const nameOf = (postId)=>{
+      const row = (names||[]).find(n=>n.post_id===postId);
+      return (row && row.display_name) || 'A colleague';
+    };
+    const describeGive = post => post ? `${fmtDateShort(post.shift_date)} — ${giveMetaLine(post.shift_meta, differentials)}` : '';
+    const {outgoing, incoming} = resolveApplyPlan(match);
+    const lines = ['Shift swap plan:'];
+    (match.legs||[]).forEach(l=>{
+      const who = l.is_my_leg ? 'You' : nameOf(l.post_id);
+      if(l.kind==='give'){
+        if(l.is_my_leg && incoming){
+          lines.push(`${who} give up ${fmtDateShort(l.shift_date)} — ${giveMetaLine(l.shift_meta, differentials)} → you get ${nameOf(incoming.post_id)}'s ${describeGive(incoming)}.`);
+        } else {
+          lines.push(`${who} give${l.is_my_leg?'':'s'} up ${fmtDateShort(l.shift_date)} — ${giveMetaLine(l.shift_meta, differentials)}.`);
+        }
+      } else if(l.kind==='want'){
+        lines.push(`${who} ${l.is_my_leg?'get':'gets'} a shift on ${fmtDateShort(l.shift_date)}.`);
+      } else {
+        lines.push(`${who} ${l.is_my_leg?'pick up':'picks up'} a shift from the dates offered.`);
+      }
+    });
+    if(outgoing && incoming){
+      lines.push(`Net result: you swap your ${fmtDateShort(outgoing.shift_date)} shift for ${nameOf(incoming.post_id)}'s ${fmtDateShort(incoming.shift_date)} shift.`);
+    }
+    lines.push('Please confirm through your unit\'s normal swap process.');
+    return lines.join('\n');
+  };
+
+  const copyPlan = (text)=>{
+    const done = ok => toast(ok?'Swap plan copied!':'Could not copy — write it down.', ok?'success':'error');
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(()=>done(true), ()=>done(false));
+        return;
+      }
+    }catch(_){}
+    try{
+      const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      const ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
+    }catch(_){ done(false); }
+  };
+
+  /* "Apply to my calendar": removes the shift I gave (matched by date + shift_meta) and/or adds
+     the shift I'm receiving, resolved either from the in-session suggestion (matchPlans) or —
+     if that's gone (reload / someone else proposed it) — recomputed via resolveIncomingGive.
+     handoff is remove-only (no incoming leg exists), pickup is add-only (no outgoing leg
+     exists) -- both are unambiguous by shape, see classifyMatchShape. Only trade/cycle3 need
+     BOTH halves resolved; the button that calls this is hidden whenever resolveApplyPlan can't
+     resolve what a given shape requires (canApply, below) -- this guard is defense-in-depth
+     against calling it anyway. Idempotent either way: an identical shift already present on the
+     target date is never duplicated, and removing an already-absent shift is a no-op with a
+     gentle "already" toast instead of silently doing nothing. */
+  const doApplyPlan = (match)=>{
+    if(appliedMatchIds.has(match.id)) return;
+    const {shape, outgoing, incoming} = resolveApplyPlan(match);
+    if(shape==='handoff' && !outgoing){ toast('Nothing to apply to your calendar.','info'); return; }
+    if(shape==='pickup' && !incoming){ toast('Nothing to apply to your calendar.','info'); return; }
+    if((shape==='trade' || shape==='cycle3' || shape==='unknown') && (!outgoing || !incoming)){
+      toast("Can't tell which shift you're receiving — copy the plan instead.",'info');
+      return;
+    }
+
+    const updates = {};   // dateKey -> next shift array for that day
+    const sameMeta = (s,meta)=> s.shiftType===meta.shiftType && Number(s.hours)===Number(meta.hours) && (s.start||'')===((meta&&meta.start)||'');
+    let removed = false, added = false;
+    if(outgoing && outgoing.shift_meta){
+      const dk = outgoing.shift_date;
+      const arr = (updates[dk] || shifts[dk] || []).slice();
+      const idx = arr.findIndex(s=>sameMeta(s, outgoing.shift_meta));
+      if(idx>=0){ arr.splice(idx,1); removed = true; }
+      updates[dk] = arr;
+    }
+    if(incoming && incoming.shift_meta){
+      const dk = incoming.shift_date;
+      const arr = (updates[dk] || shifts[dk] || []).slice();
+      if(!arr.some(s=>sameMeta(s, incoming.shift_meta))){
+        const meta = incoming.shift_meta;
+        arr.push({id:Date.now()+Math.random(), shiftType:meta.shiftType, hours:meta.hours, bonusType:'none', customBonus:0, ...(meta.start?{start:meta.start}:{})});
+        added = true;
+      }
+      updates[dk] = arr;
+    }
+    Object.keys(updates).forEach(dk=> saveDayShifts(dk, updates[dk], dayEvents[dk]||[], notes[dk]||''));
+    setAppliedMatchIds(prev=> new Set(prev).add(match.id));
+    let msg;
+    if(shape==='handoff') msg = removed ? 'Removed from your calendar.' : 'Already off your calendar.';
+    else if(shape==='pickup') msg = added ? 'Added to your calendar.' : 'Already on your calendar.';
+    else msg = 'Applied to your calendar.';
+    toast(msg,'success');
+    track('swap_plan_applied', null, user.id);
   };
 
   const activeGroup = groups.find(g=>g.id===activeGroupId);
@@ -3156,6 +3641,117 @@ function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
               <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
                 <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={openComposer}>+ Post to the board</button>
               </div>
+
+              {matches.length>0 && <div style={{marginBottom:18}}>
+                <div className="sec-lab">YOUR MATCHES</div>
+                {matches.map(m=>{
+                  const legs = m.legs||[];
+                  const myLeg = legs.find(l=>l.is_my_leg);
+                  const total = legs.length;
+                  const acceptedN = legs.filter(l=>l.accepted).length;
+                  const declined = m.status==='declined';
+                  // "every leg accepted" can be a stale/raced read against a decline that just
+                  // landed elsewhere -- never treat a declined match as confirmed even if its
+                  // last-known legs all read accepted.
+                  const allAccepted = !declined && total>0 && acceptedN===total;
+                  const confirmed = !declined && (m.status==='confirmed' || allAccepted);
+                  const reveal = revealData[m.id];
+                  const busy = legBusyId===m.id;
+                  const nameFor = (postId)=>{
+                    const row = (reveal||[]).find(r=>r.post_id===postId);
+                    return row ? row.display_name : null;
+                  };
+                  const planText = confirmed && reveal ? buildSwapPlanText(m, reveal) : null;
+                  const applyPlan = resolveApplyPlan(m);
+                  // handoff needs only its outgoing leg (nothing to add); pickup needs only its
+                  // incoming leg (nothing to remove) -- neither of those is ambiguity, it's the
+                  // shape of the match. trade/cycle3 need BOTH halves resolved before the
+                  // destructive "remove my given shift" half is ever allowed without also adding
+                  // the shift I was promised -- copy-the-plan still works either way.
+                  const canApply = applyPlan.shape==='handoff' ? !!applyPlan.outgoing
+                    : applyPlan.shape==='pickup' ? !!applyPlan.incoming
+                    : !!(applyPlan.outgoing && applyPlan.incoming);
+                  const applyLabel = applyPlan.shape==='handoff' ? 'Remove from my calendar'
+                    : applyPlan.shape==='pickup' ? 'Add to my calendar'
+                    : 'Apply to my calendar';
+                  const appliedLabel = applyPlan.shape==='handoff' ? 'Removed from calendar ✓'
+                    : applyPlan.shape==='pickup' ? 'Added to calendar ✓'
+                    : 'Applied to calendar ✓';
+                  return (
+                    <div className="swap-card" key={m.id}>
+                      <div className="kicker">
+                        {declined ? 'DECLINED' : confirmed ? 'CONFIRMED' : `WAITING ON ${total-acceptedN} OF ${total} TO ACCEPT`}
+                        {proposedByMe.has(m.id) && !declined && ' · YOU PROPOSED THIS'}
+                      </div>
+                      {legs.map(l=>{
+                        // Trade/3-way-shuffle legs are all "give" kind -- annotate MY give leg
+                        // with what I get back so this reads as a swap, not an unrelated give-up,
+                        // before names are revealed (dates/meta only, no identities pre-reveal).
+                        const showsIncoming = l.is_my_leg && l.kind==='give' && !confirmed && applyPlan.incoming;
+                        return (
+                          <div key={l.post_id} className="swap-step" style={{padding:'4px 0', fontWeight:l.is_my_leg?700:400, opacity: l.accepted?1:.75}}>
+                            {l.is_my_leg ? 'You' : (nameFor(l.post_id) || 'A colleague')}
+                            {' '}
+                            {l.kind==='give' && `${l.is_my_leg?'give':'gives'} up ${fmtDateShort(l.shift_date)} · ${giveMetaLine(l.shift_meta, differentials)}`}
+                            {l.kind==='want' && `${l.is_my_leg?'want':'wants'} a shift ${fmtDateShort(l.shift_date)}`}
+                            {l.kind==='avail' && `${l.is_my_leg?'could':'could'} work ${fmtAvailDates(l.avail_dates)}`}
+                            {showsIncoming && ` → you get ${fmtDateShort(applyPlan.incoming.shift_date)} · ${giveMetaLine(applyPlan.incoming.shift_meta, differentials)}`}
+                            {l.accepted ? ' ✓' : ' (not yet accepted)'}
+                          </div>
+                        );
+                      })}
+                      {!declined && !confirmed && <div style={{display:'flex',gap:10,marginTop:12}}>
+                        {myLeg && !myLeg.accepted &&
+                          <button className="btn btn-primary btn-sm" style={{minHeight:44}} disabled={busy} onClick={()=>doAccept(m)}>{busy?'Accepting…':'Accept'}</button>}
+                        <button className="btn btn-ghost btn-sm" style={{minHeight:44}} disabled={busy} onClick={()=>doDecline(m)}>Decline</button>
+                      </div>}
+                      {confirmed && !reveal && <div style={{fontSize:12.5,color:'var(--muted-2)',marginTop:8}}>Revealing names…</div>}
+                      {confirmed && reveal && <React.Fragment>
+                        <div className="swap-plan-text">{planText}</div>
+                        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                          <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={()=>copyPlan(planText)}>Copy swap plan</button>
+                          {canApply &&
+                            <button className="btn btn-ghost btn-sm" style={{minHeight:44}} disabled={appliedMatchIds.has(m.id)} onClick={()=>doApplyPlan(m)}>
+                              {appliedMatchIds.has(m.id) ? appliedLabel : applyLabel}
+                            </button>}
+                          {!canApply &&
+                            <div style={{fontSize:12,color:'var(--muted-2)'}}>Copy the plan above to update your calendar manually.</div>}
+                        </div>
+                      </React.Fragment>}
+                    </div>
+                  );
+                })}
+              </div>}
+
+              {suggestions.length>0 && <div style={{marginBottom:18}}>
+                <div className="sec-lab">SUGGESTED FOR YOU</div>
+                {suggestions.map(s=>{
+                  const describeLeg = post => `${fmtDateShort(post.shift_date)} · ${giveMetaLine(post.shift_meta, differentials)}`;
+                  const busy = proposingKey===s.key;
+                  return (
+                    <div className="swap-card" key={s.key}>
+                      <div className="kicker">
+                        {s.kind==='pickup' && 'PICK UP'}
+                        {s.kind==='handoff' && 'HAND OFF'}
+                        {s.kind==='trade' && 'TRADE'}
+                        {s.kind==='cycle3' && '3-WAY SHUFFLE'}
+                      </div>
+                      {s.kind==='pickup' && <div className="swap-step">Pick up {describeLeg(s.incoming)}</div>}
+                      {s.kind==='handoff' && <div className="swap-step">Hand off {describeLeg(s.outgoing)}</div>}
+                      {s.kind==='trade' && <div className="swap-step">You give <b>{describeLeg(s.outgoing)}</b> → you get <b>{describeLeg(s.incoming)}</b></div>}
+                      {s.kind==='cycle3' && <React.Fragment>
+                        <div className="swap-step">1. You give {describeLeg(s.outgoing)}</div>
+                        <div className="swap-step">2. A colleague gives {describeLeg(s.middle)}</div>
+                        <div className="swap-step">3. You get {describeLeg(s.incoming)}</div>
+                      </React.Fragment>}
+                      <button className="btn btn-primary btn-sm" style={{marginTop:10,minHeight:44}} disabled={busy} onClick={()=>doPropose(s)}>{busy?'Proposing…':'Propose'}</button>
+                    </div>
+                  );
+                })}
+              </div>}
+              {suggestions.length===0 && matches.length===0 && !boardLoading &&
+                <div style={{fontSize:12.5,color:'var(--muted-2)',marginBottom:14}}>No matches yet — more posts, more trades.</div>}
+
               {boardLoading && posts.length===0 &&
                 <div style={{textAlign:'center',padding:'20px',color:'var(--muted-2)',fontSize:13}}>Loading board…</div>}
               {!boardLoading && openPosts.length===0 &&
