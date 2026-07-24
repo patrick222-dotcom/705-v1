@@ -135,6 +135,10 @@ language sql stable security definer set search_path = public as $$
          p.status, p.created_at, (p.author = auth.uid()) as is_mine
   from swap_posts p
   where p.group_id = g and public.is_swap_member(g)
+    -- data minimization: withdrawn/matched post content must stop being
+    -- transmitted to the group entirely ("your unit will no longer see it") —
+    -- authors still see their own non-open posts.
+    and (p.status = 'open' or p.author = auth.uid())
 $$;
 revoke all on function public.swap_board(uuid) from public;
 grant execute on function public.swap_board(uuid) to authenticated;
@@ -169,6 +173,13 @@ drop policy if exists "members propose matches" on public.swap_matches;
 create policy "members propose matches" on public.swap_matches
   for insert to authenticated
   with check ((select auth.uid()) = proposed_by and public.is_swap_member(group_id));
+-- any party may decline a still-proposed match (that's the only status change
+-- allowed directly; confirmation happens exclusively inside reveal_match)
+drop policy if exists "parties decline matches" on public.swap_matches;
+create policy "parties decline matches" on public.swap_matches
+  for update to authenticated
+  using (public.is_match_party(id) and status = 'proposed')
+  with check (status = 'declined');
 
 drop policy if exists "parties see own legs" on public.swap_match_legs;
 create policy "parties see own legs" on public.swap_match_legs
@@ -185,7 +196,8 @@ create policy "accept own leg" on public.swap_match_legs
   using (leg_user = (select auth.uid())) with check (leg_user = (select auth.uid()));
 
 revoke all on public.swap_matches from authenticated;
-grant select (id, group_id, status, created_at), insert (id, group_id, proposed_by, status)
+grant select (id, group_id, status, created_at), insert (id, group_id, proposed_by, status),
+  update (status)
   on public.swap_matches to authenticated;
 revoke all on public.swap_match_legs from authenticated;
 grant select (match_id, post_id, accepted), insert (match_id, post_id, leg_user), update (accepted)
@@ -224,6 +236,10 @@ begin
     raise exception 'not_fully_accepted';
   end if;
   update swap_matches set status = 'confirmed' where id = m and status = 'proposed';
+  -- retire the traded posts so they leave the open board
+  update swap_posts set status = 'matched'
+    where id in (select post_id from swap_match_legs where match_id = m)
+      and status = 'open';
   return query
     select l.post_id, coalesce(pr.display_name, 'A colleague')
     from swap_match_legs l left join swap_profiles pr on pr.user_id = l.leg_user

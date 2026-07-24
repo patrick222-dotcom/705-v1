@@ -92,6 +92,11 @@
   .whatif .s{font-size:12px;color:#6A60C9;margin-top:3px}
   .whatif button{background:var(--indigo);color:#fff;padding:9px 14px;border-radius:11px;font-weight:600;font-size:12.5px;flex:0 0 auto}
 
+  /* mobile-only: hidden by default, shown at/under the same breakpoint .desk-only hides at
+     (920px) — the app's one real layout breakpoint (two-column desktop dash vs stacked mobile) */
+  .mob-only{display:none}
+  @media (max-width:919px){ .mob-only{display:flex} }
+
   /* quick-fill banner (shift templates applied across multiple calendar days) */
   .qf-banner{background:var(--indigo-soft);border-radius:16px;padding:15px 16px;margin-bottom:14px}
   .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
@@ -165,15 +170,22 @@
      with both never needs more vertical space than a cell with just one. */
   .cell .dots{display:flex;gap:3px;flex-wrap:nowrap;overflow:hidden}
   .cell .dots i{flex:none;width:7px;height:7px;border-radius:50%}
+  /* shift-type glyphs: text markers (not dots) — the glyph itself is the marker, no filled
+     circle behind it. Fixed line-height keeps the marker row the same height as before so
+     cell rows never grow. */
+  .cell .dots i.glyph{width:auto;height:auto;background:none;font-size:9.5px;line-height:1;font-style:normal;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
   /* hollow rings for day events (PTO/education/appt/off) — distinct from solid shift dots */
   .cell .dots i.ev{background:transparent;border:1.3px solid #8A93A6;box-sizing:border-box;width:6px;height:6px}
   .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:1px}
   .cell .note-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--indigo)}
   .cell.has{background:#fff}
   .cell.qf-on{box-shadow:0 0 0 2px var(--indigo) inset;background:var(--indigo-soft)}
+  /* today indicator: 2px inset ring, box-shadow so it never affects box size/layout */
+  .cell.today{box-shadow:0 0 0 2px var(--indigo) inset}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
   .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:500}
   .legend i{width:8px;height:8px;border-radius:50%}
+  .legend i.glyph{width:auto;height:auto;background:none;font-size:10.5px;line-height:1;font-style:normal;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
 
   /* breakdown */
   .bd-row{margin-bottom:13px}
@@ -396,6 +408,7 @@ const Ic = {
   logout: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
   chat:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
   calendar: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
+  swap:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>,
 };
 
 /* ---------- supabase ---------- */
@@ -431,6 +444,13 @@ const DIFF_DEFAULTS = {
 };
 const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
 const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom (per shift)' };
+
+/* Small colored glyphs (text, not emoji) that mark shift type on calendar cells + legend —
+   replaces plain solid dots so shift type reads at a glance without needing the legend. */
+const SHIFT_GLYPH = {
+  'base':'☀', 'night':'☾', 'weekend-day':'☀', 'weekend-eve':'☾', 'holiday':'★', 'bonus-incentive':'✦',
+};
+const glyphFor = (type) => SHIFT_GLYPH[type] || '●';
 
 /* "Also on this day" life events (work-life calendar core). One entry per kind per day —
    the AddShiftSheet chips toggle, never stack. Only 'pto' (with hours) touches pay. */
@@ -840,6 +860,130 @@ async function loadCloudRow(userId){
   return data?.data ? {data:data.data, updatedAt:data.updated_at||null} : null;
 }
 
+/* ---------- swap board (Phase 1): anonymous unit swap groups ---------- */
+/* True when the table/RPC genuinely doesn't exist yet on this project (migration not applied) —
+   distinct from a transient network/RLS error. Callers show a friendly "not set up yet" state
+   for this, never a crash. Covers Postgres' own error (42P01 undefined_table) and PostgREST's
+   schema-cache-miss codes/wording (a function or table the API layer doesn't know about yet). */
+function isMissingSwapTable(error){
+  if(!error) return false;
+  if(error.code==='42P01' || error.code==='PGRST202' || error.code==='PGRST205') return true;
+  const m = String(error.message||'').toLowerCase();
+  return m.indexOf('does not exist')>=0 || m.indexOf('schema cache')>=0;
+}
+/* 6-char invite codes, A-Z0-9 only (matches the DB check constraint), excluding ambiguous
+   0/O/1/I so a code is easy to read aloud and retype correctly. */
+const SWAP_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genSwapCode(){
+  let s=''; for(let i=0;i<6;i++) s += SWAP_CODE_CHARS[Math.floor(Math.random()*SWAP_CODE_CHARS.length)];
+  return s;
+}
+async function fetchSwapProfile(userId){
+  if(!supabase) return {profile:null, missing:false};
+  try{
+    const {data,error} = await withTimeout(
+      supabase.from('swap_profiles').select('display_name').eq('user_id',userId).single(),
+      6000, 'swap profile');
+    if(error){
+      if(error.code==='PGRST116') return {profile:null, missing:false};  // no row yet — expected first-run
+      if(isMissingSwapTable(error)) return {profile:null, missing:true};
+      return {profile:null, missing:false, error};
+    }
+    return {profile:data, missing:false};
+  }catch(e){ return {profile:null, missing:false, error:e}; }
+}
+async function saveSwapProfile(userId, displayName){
+  if(!supabase) return false;
+  try{
+    const {error} = await withTimeout(
+      supabase.from('swap_profiles').upsert({user_id:userId, display_name:displayName, updated_at:new Date().toISOString()}),
+      6000, 'save swap profile');
+    return !error;
+  }catch(e){ return false; }
+}
+/* RLS on swap_groups only returns rows the caller is a member of (is_swap_member(id)), so a
+   plain select IS the "my groups" list — no join through swap_members needed. */
+async function fetchSwapGroups(){
+  if(!supabase) return {groups:[], missing:false};
+  try{
+    const {data,error} = await withTimeout(
+      supabase.from('swap_groups').select('id,name,invite_code').order('created_at',{ascending:true}),
+      6000, 'swap groups');
+    if(error){ if(isMissingSwapTable(error)) return {groups:[], missing:true}; return {groups:[], missing:false, error}; }
+    return {groups:data||[], missing:false};
+  }catch(e){ return {groups:[], missing:false, error:e}; }
+}
+/* Create = insert the group THEN insert own membership (per spec). The group's id is generated
+   client-side so we never need to SELECT it straight back: right after the insert, the caller
+   isn't a member yet, so the group-select RLS policy (is_swap_member) would hide an INSERT
+   ...RETURNING row anyway — generating the id ourselves sidesteps that entirely. */
+async function createSwapGroup(userId, name){
+  if(!supabase) return {error:'offline'};
+  if(!(window.crypto && crypto.randomUUID)) return {error:'no_crypto'};
+  const groupId = crypto.randomUUID();
+  let code='', ok=false;
+  for(let attempt=0; attempt<5 && !ok; attempt++){
+    code = genSwapCode();
+    try{
+      const {error} = await withTimeout(
+        supabase.from('swap_groups').insert({id:groupId, name:name.slice(0,60), invite_code:code, created_by:userId}),
+        6000, 'create group');
+      if(error){
+        if(error.code==='23505') continue;   // invite_code collision — retry with a fresh code
+        return {error};
+      }
+      ok = true;
+    }catch(e){ return {error:e}; }
+  }
+  if(!ok) return {error:'code_collision'};
+  try{
+    const {error:memErr} = await withTimeout(
+      supabase.from('swap_members').insert({group_id:groupId, user_id:userId}),
+      6000, 'join own group');
+    if(memErr) return {error:memErr};
+  }catch(e){ return {error:e}; }
+  return {group:{id:groupId, name:name.slice(0,60), invite_code:code}};
+}
+async function joinSwapGroupByCode(code){
+  if(!supabase) return {error:'offline'};
+  try{
+    const {data:groupId, error} = await withTimeout(supabase.rpc('join_swap_group', {code}), 6000, 'join group');
+    if(error) return {error};
+    // Membership now exists (inserted inside the RPC), so this select passes RLS.
+    const {data:g, error:gErr} = await withTimeout(
+      supabase.from('swap_groups').select('id,name,invite_code').eq('id',groupId).single(),
+      6000, 'load joined group');
+    if(gErr) return {error:gErr};
+    return {group:g};
+  }catch(e){ return {error:e}; }
+}
+async function fetchSwapBoard(groupId){
+  if(!supabase) return {posts:[], missing:false};
+  try{
+    const {data,error} = await withTimeout(supabase.rpc('swap_board', {g:groupId}), 6000, 'swap board');
+    if(error){ if(isMissingSwapTable(error)) return {posts:[], missing:true}; return {posts:[], missing:false, error}; }
+    return {posts:data||[], missing:false};
+  }catch(e){ return {posts:[], missing:false, error:e}; }
+}
+async function insertSwapPost(userId, post){
+  if(!supabase) return {error:'offline'};
+  try{
+    const {error} = await withTimeout(
+      supabase.from('swap_posts').insert({...post, author:userId, status:'open'}),
+      6000, 'post to board');
+    return {error};
+  }catch(e){ return {error:e}; }
+}
+async function withdrawSwapPost(postId){
+  if(!supabase) return false;
+  try{
+    const {error} = await withTimeout(
+      supabase.from('swap_posts').update({status:'withdrawn'}).eq('id',postId),
+      6000, 'withdraw post');
+    return !error;
+  }catch(e){ return false; }
+}
+
 /* ---------- feedback sheet ---------- */
 function FeedbackSheet({user, onClose}){
   const [msg,setMsg] = useState('');
@@ -1004,6 +1148,7 @@ function App(){
   const [paystub,setPaystub] = useState(null);
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
+  const [showSwaps,setShowSwaps] = useState(false);   // shift swap board sheet
   const [icsImport,setIcsImport] = useState(null);   // schedule-import stepper state, or null when closed
   const [calView,setCalView] = useState('period');   // 'period' | 'week' | 'month' | 'year'
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
@@ -1272,10 +1417,10 @@ function App(){
 
   /* lock scroll behind overlays */
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps]);
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -1382,14 +1527,20 @@ function App(){
   },[calView,calFocus]);
   const monthScrollRef = useRef(null);      // the .cal-vscroll container
   const monthSecRefs = useRef({});          // key ("YYYY-MM") -> section DOM node
-  useLayoutEffect(()=>{
-    if(calView!=='month') return;
-    const f=parseISO(calFocus);
-    const targetKey = `${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`;
+  /* Scrolls the month container so the given "YYYY-MM" section's header sits at the top —
+     shared by the entry-auto-scroll effect below and the Today button (jumpToday), which needs
+     the same jump even when calFocus doesn't change value (e.g. already on today's month but
+     the user scrolled away by hand — a plain state bail-out wouldn't re-run the effect). */
+  const scrollMonthTo = (targetKey)=>{
     const container = monthScrollRef.current, sec = monthSecRefs.current[targetKey];
     if(!container || !sec) return;
     const cRect = container.getBoundingClientRect(), sRect = sec.getBoundingClientRect();
     container.scrollTop += (sRect.top - cRect.top);   // instant, not smooth
+  };
+  useLayoutEffect(()=>{
+    if(calView!=='month') return;
+    const f=parseISO(calFocus);
+    scrollMonthTo(`${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`);
   },[calView,calFocus,monthWindow]);
 
   /* year view: 12-month totals from all shifts in the focused year */
@@ -1459,6 +1610,18 @@ function App(){
   /* ---- handlers ---- */
   const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };
   const movePeriod = (dir)=>{ const [y,m,d]=payPeriodStart.split('-').map(Number); const nd=new Date(y,m-1,d+dir*14); setPPS(keyOf(nd)); };
+
+  /* "Today" button: jump every calendar view back to today, whichever view is active. Month
+     view calls scrollMonthTo directly (not just setCalFocus) because if calFocus is already
+     today's month — say the user only scrolled the container by hand — the state wouldn't
+     change, so an effect keyed on calFocus would never re-fire and the scroll would silently
+     no-op; calling it here always performs the jump. */
+  const jumpToday = ()=>{
+    track('today_jump', {view:calView}, user?.id);
+    if(calView==='period') setPPS(currentPeriodStart(payPeriodStart));
+    else if(calView==='month'){ setCalFocus(todayISO()); scrollMonthTo(todayISO().slice(0,7)); }
+    else setCalFocus(todayISO());
+  };
 
   // Shifts, day events, and a day note are all committed together from the AddShiftSheet's
   // single save/dismiss flow — one write point, all covered by the same debounced cloud save.
@@ -1818,7 +1981,7 @@ function App(){
     <div>
       <div className="topbar">
         <div className="brand"><span className="b-dot"></span>scrubpay</div>
-        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
+        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
         <div className="top-actions">
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <span onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',marginRight:8,cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</span>}
@@ -1857,6 +2020,11 @@ function App(){
               <div className="stat"><div className="v num">{periodShiftCount}</div><div className="k">shifts this period</div></div>
             </div>
 
+            <div className="whatif mob-only">
+              <div style={{flex:1}}><div className="t">Shift swaps</div><div className="s">Trade with your unit, anonymously</div></div>
+              <button onClick={()=>setShowSwaps(true)}>Open</button>
+            </div>
+
             {shiftCount>0 && baseRate>0 &&
               <div className="whatif">
                 <div style={{flex:1}}><div className="t">Pick up a weekend night?</div><div className="s">That's about <b>+{fmt(sampleWeekendNet)}</b> take-home.</div></div>
@@ -1866,7 +2034,8 @@ function App(){
             <div className="card">
               <div className="cal-head"><div><div className="ttl">{calView==='period'?'This pay period':'Browse calendar'}</div></div><div className="sub">{qfMode?'':'Tap a day to add or edit'}</div></div>
               {!qfMode &&
-                <div style={{display:'flex',justifyContent:'flex-end',marginTop:-6,marginBottom:12}}>
+                <div style={{display:'flex',justifyContent:'space-between',gap:8,marginTop:-6,marginBottom:12}}>
+                  <button className="btn btn-ghost btn-sm" style={{width:'auto',minHeight:44}} onClick={jumpToday}>Today</button>
                   <button className="btn btn-ghost btn-sm" style={{width:'auto',gap:6,minHeight:44}} onClick={exportICS}>{Ic.calendar}Sync to calendar</button>
                 </div>}
               {!qfMode && templates.length>0 &&
@@ -1910,7 +2079,7 @@ function App(){
                         <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
                           differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
                           onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
-                          qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id}
+                          qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} keepRatio={keepRatio}
                           secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }} />)}
                     </div>
                     <div className="cal-vscroll-fade" aria-hidden="true"></div>
@@ -1922,16 +2091,17 @@ function App(){
                     <Calendar days={viewDays} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
                       dayEvents={dayEvents} notes={notes}
                       onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
-                      noLead={calView==='week'} qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} />
+                      noLead={calView==='week'} qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} keepRatio={keepRatio} />
                   </div>}
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
-                  <span key={k}><i style={{background:differentials[k]?.color||'#8A93A6'}}></i>{l}</span>)}
+                  <span key={k}><i className="glyph" style={{color:differentials[k]?.color||'#8A93A6'}}>{glyphFor(k)}</i>{l}</span>)}
               </div>
               <div className="legend" style={{marginTop:6}}>
                 {EVENT_KINDS.map(k=>
                   <span key={k}><i style={{background:'transparent',border:'1.3px solid '+EVENT_KIND_META[k].color,boxSizing:'border-box'}}></i>{EVENT_KIND_META[k].label}</span>)}
               </div>
+              <div className="disclaimer">Day amounts are estimated take-home.</div>
             </div>
           </div>
 
@@ -1944,6 +2114,11 @@ function App(){
                 <div style={{fontSize:13,color:'var(--muted)',margin:'8px 0 16px',lineHeight:1.5}}>Tap a day on the calendar — or log your first shift — to watch your take-home build.</div>
                 <button className="btn btn-soft" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>
               </div>}
+            <div className="card">
+              <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps</h3>
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:14}}>Trade shifts with your unit — anonymously</div>
+              <button className="btn btn-soft" onClick={()=>setShowSwaps(true)}>Open swap board</button>
+            </div>
             <div className="card desk-only">
               <h3>Take-home rate</h3>
               <div style={{display:'flex',alignItems:'baseline',gap:8}}>
@@ -1982,6 +2157,10 @@ function App(){
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
+
+      {showSwaps &&
+        <SwapsSheet user={user} shifts={shifts} differentials={differentials}
+          onClose={()=>setShowSwaps(false)} onOpenAuth={()=>{ setAuthMode('signin'); setShowAuth(true); }} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
@@ -2167,9 +2346,10 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
 }
 
 /* ---------- Calendar ---------- */
-function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,noLead,qfActive,qfTemplateId}){
+function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,noLead,qfActive,qfTemplateId,keepRatio}){
   const lead = noLead?0:days[0].getDay();
   const cells = [];
+  const today = todayISO();
   for(let i=0;i<lead;i++) cells.push(<div key={'e'+i} className="cell empty"></div>);
   days.forEach(dt=>{
     const k=keyOf(dt); const t=statOf(k); const arr=shifts[k]||[];
@@ -2177,18 +2357,20 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
     const hasShift=arr.length>0, hasEvent=evs.length>0, has=hasShift||hasEvent;
     const hasNote=!!(notes&&notes[k]);
     const qfOn = qfActive && arr.some(s=>s.templateId===qfTemplateId);
+    const isToday = k===today;
     cells.push(
-      <button key={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
+      <button key={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')+(isToday?' today':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
         <div className="d">{dt.getDate()}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
           ? <div style={{marginTop:'auto'}}>
-              {/* Shift dots and event rings share one marker row (capped to 4 combined) so a day
+              {/* Shift glyphs and event rings share one marker row (capped to 4 combined) so a day
                   with both never grows taller than a day with just one — see .cell min-height/overflow. */}
               <div className="dots">
-                {arr.slice(0,4).map((s,i)=><i key={'s'+i} style={{background:differentials[s.shiftType]?.color||'#8A93A6'}}></i>)}
+                {arr.slice(0,4).map((s,i)=><i key={'s'+i} className="glyph" style={{color:differentials[s.shiftType]?.color||'#8A93A6'}}>{glyphFor(s.shiftType)}</i>)}
                 {evs.slice(0,Math.max(0,4-Math.min(arr.length,4))).map((e,i)=><i key={'e'+i} className="ev" style={{borderColor:EVENT_KIND_META[e.kind]?.color||'#8A93A6'}}></i>)}
               </div>
-              {t.g>0 && <div className="amt num">{fmt(t.g)}</div>}
+              {/* estimated take-home, not gross — see the "Day amounts are estimated take-home" hint below the legend */}
+              {t.g>0 && <div className="amt num">{'~'+fmt(Math.round(t.g*keepRatio))}</div>}
             </div>
           : <div className="plus">+</div>}
       </button>);
@@ -2197,7 +2379,7 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
 }
 
 /* ---------- Month view: one section of the continuous vertical scroll ---------- */
-function MonthSection({y,m,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,qfActive,qfTemplateId,secRef}){
+function MonthSection({y,m,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick,qfActive,qfTemplateId,keepRatio,secRef}){
   const days = useMemo(()=>{
     const n = new Date(y,m+1,0).getDate();
     return Array.from({length:n},(_,i)=>new Date(y,m,i+1));
@@ -2209,7 +2391,7 @@ function MonthSection({y,m,keyOf,statOf,differentials,shifts,dayEvents,notes,onP
       <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
       <Calendar days={days} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
         dayEvents={dayEvents} notes={notes} onPick={onPick} noLead={false}
-        qfActive={qfActive} qfTemplateId={qfTemplateId} />
+        qfActive={qfActive} qfTemplateId={qfTemplateId} keepRatio={keepRatio} />
     </div>
   );
 }
@@ -2297,6 +2479,33 @@ function fmtTime12(t){
   const ap = h>=12 ? 'PM' : 'AM';
   const h12 = ((h+11)%12)+1;
   return `${h12}:${String(m).padStart(2,'0')} ${ap}`;
+}
+
+/* ---------- swap board display helpers ---------- */
+function fmtDateShort(dateKeyStr){
+  if(!dateKeyStr) return '';
+  const [y,m,d] = dateKeyStr.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+}
+/* "Jul 21, 22, 25" — the month only appears once, at the start of each run. */
+function fmtAvailDates(dates){
+  if(!dates || !dates.length) return '';
+  const sorted = [...dates].sort();
+  let month=null; const parts=[];
+  sorted.forEach(dk=>{
+    const [y,m,d] = dk.split('-').map(Number);
+    const mn = new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short'});
+    parts.push(mn===month ? String(d) : `${mn} ${d}`);
+    month = mn;
+  });
+  return parts.join(', ');
+}
+/* "Night ×12h · starts 7:00 PM" — wage-free by construction (shift_meta never carries $). */
+function giveMetaLine(meta, differentials){
+  if(!meta) return '';
+  const label = (differentials && differentials[meta.shiftType] && differentials[meta.shiftType].name) || meta.shiftType || 'Shift';
+  const t = meta.start ? fmtTime12(meta.start) : null;
+  return `${label} ×${meta.hours}h${t?` · starts ${t}`:''}`;
 }
 
 /* ---------- Add Shift Sheet ---------- */
@@ -2652,6 +2861,380 @@ function Settings(props){
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
 
         <button className="btn btn-primary" style={{marginTop:18}} onClick={onClose}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Swap board (Phase 1: anonymous groups + posting/browsing; matching is Phase 2) ---------- */
+function SwapsSheet({user, shifts, differentials, onClose, onOpenAuth}){
+  const [loading,setLoading] = useState(true);
+  const [loadError,setLoadError] = useState(false);
+  const [tablesMissing,setTablesMissing] = useState(false);
+  const [profile,setProfile] = useState(null);
+  const [dnDraft,setDnDraft] = useState('');
+  const [savingProfile,setSavingProfile] = useState(false);
+
+  const [groups,setGroups] = useState([]);
+  const [activeGroupId,setActiveGroupId] = useState(null);
+  const [justCreated,setJustCreated] = useState(null);   // {id,name,invite_code} — one-time share screen
+  const [createName,setCreateName] = useState('');
+  const [creating,setCreating] = useState(false);
+  const [joinCode,setJoinCode] = useState('');
+  const [joining,setJoining] = useState(false);
+
+  const [posts,setPosts] = useState([]);
+  const [boardLoading,setBoardLoading] = useState(false);
+
+  const [composerOpen,setComposerOpen] = useState(false);
+  const [composerKind,setComposerKind] = useState('give');
+  const [selectedGive,setSelectedGive] = useState(null);   // {dateKey, shift}
+  const [wantDate,setWantDate] = useState('');
+  const [availDates,setAvailDates] = useState([]);
+  const [composerNote,setComposerNote] = useState('');
+  const [posting,setPosting] = useState(false);
+
+  const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  /* ---- initial load: profile, then (if it exists) group memberships ---- */
+  const loadInitial = async (uid)=>{
+    setLoading(true); setLoadError(false); setTablesMissing(false);
+    const {profile:p, missing, error} = await fetchSwapProfile(uid);
+    if(missing){ setTablesMissing(true); setLoading(false); return; }
+    if(error){ setLoadError(true); setLoading(false); return; }
+    setProfile(p);
+    if(p){
+      const {groups:g, missing:gMissing, error:gErr} = await fetchSwapGroups();
+      if(gMissing){ setTablesMissing(true); setLoading(false); return; }
+      if(gErr){ setLoadError(true); setLoading(false); return; }
+      setGroups(g);
+      if(g.length>=1) setActiveGroupId(prev=> prev || g[0].id);
+    }
+    setLoading(false);
+  };
+  useEffect(()=>{
+    if(!user){ setLoading(false); return; }
+    (async()=>{ await loadInitial(user.id); })();
+    // eslint-disable-next-line
+  },[user && user.id]);
+
+  /* ---- board: fetch on group switch/open, then poll every 15s while the sheet is open
+     (mirrors the app's cross-device sync poll) ---- */
+  useEffect(()=>{
+    if(!activeGroupId) return;
+    let stopped=false;
+    const load = async ()=>{
+      const {posts:p, missing} = await fetchSwapBoard(activeGroupId);
+      if(stopped) return;
+      if(missing){ setTablesMissing(true); return; }
+      setPosts(p);
+    };
+    setBoardLoading(true);
+    load().finally(()=>{ if(!stopped) setBoardLoading(false); });
+    const id = setInterval(load, 15000);
+    return ()=>{ stopped=true; clearInterval(id); };
+  },[activeGroupId]);
+
+  const saveDisplayName = async ()=>{
+    const nm = dnDraft.trim();
+    if(nm.length<1 || nm.length>40){ toast('Enter a name between 1 and 40 characters.','error'); return; }
+    setSavingProfile(true);
+    const ok = await saveSwapProfile(user.id, nm);
+    setSavingProfile(false);
+    if(!ok){ toast("Couldn't save your name — try again.",'error'); return; }
+    setProfile({display_name:nm});
+    const {groups:g, missing, error} = await fetchSwapGroups();
+    if(missing){ setTablesMissing(true); return; }
+    if(error){ setLoadError(true); return; }
+    setGroups(g);
+    if(g.length>=1) setActiveGroupId(prev=> prev || g[0].id);
+  };
+
+  const doCreateGroup = async ()=>{
+    const nm = createName.trim();
+    if(nm.length<1 || nm.length>60){ toast("Give your board a name.",'error'); return; }
+    setCreating(true);
+    const {group, error} = await createSwapGroup(user.id, nm);
+    setCreating(false);
+    if(!group){ toast("Couldn't create the board — try again.",'error'); return; }
+    setGroups(prev=>[...prev, group]);
+    setActiveGroupId(group.id);
+    setJustCreated(group);
+    setCreateName('');
+    track('swap_group_created', null, user.id);
+  };
+  const doJoinGroup = async ()=>{
+    const code = joinCode.trim().toUpperCase();
+    if(!/^[A-Z0-9]{6}$/.test(code)){ toast('Enter the 6-character code.','error'); return; }
+    setJoining(true);
+    const {group, error} = await joinSwapGroupByCode(code);
+    setJoining(false);
+    if(!group){
+      const msg = String((error&&error.message)||error||'');
+      toast(msg.indexOf('invalid_code')>=0 ? "That code didn't match a board." : "Couldn't join that board — try again.", 'error');
+      return;
+    }
+    setGroups(prev=> prev.some(g=>g.id===group.id) ? prev : [...prev, group]);
+    setActiveGroupId(group.id);
+    setJoinCode('');
+    track('swap_group_joined', null, user.id);
+  };
+
+  const copyCode = (code)=>{
+    const done = ok => toast(ok?'Code copied!':'Could not copy — write it down.', ok?'success':'error');
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(code).then(()=>done(true), ()=>done(false));
+        return;
+      }
+    }catch(_){}
+    try{
+      const ta=document.createElement('textarea'); ta.value=code; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      const ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
+    }catch(_){ done(false); }
+  };
+
+  /* ---- composer ---- */
+  const upcomingShifts = useMemo(()=>{
+    const today = todayISO();
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate()+60);
+    const cutoffKey = isoOf(cutoff);
+    const out = [];
+    Object.keys(shifts||{}).sort().forEach(dateKey=>{
+      if(dateKey < today || dateKey > cutoffKey) return;
+      (shifts[dateKey]||[]).forEach(s=> out.push({dateKey, shift:s}));
+    });
+    return out;
+  },[shifts]);
+  const next14Days = useMemo(()=>{
+    const out = []; const d = new Date();
+    for(let i=0;i<14;i++){ out.push(isoOf(d)); d.setDate(d.getDate()+1); }
+    return out;
+  },[]);
+  const toggleAvailDate = (dk)=> setAvailDates(prev=> prev.indexOf(dk)>=0 ? prev.filter(x=>x!==dk) : [...prev, dk].sort());
+
+  const openComposer = ()=>{
+    setComposerKind('give'); setSelectedGive(null); setWantDate(''); setAvailDates([]); setComposerNote('');
+    setComposerOpen(true);
+  };
+  const closeComposer = ()=> setComposerOpen(false);
+
+  const submitPost = async ()=>{
+    if(!activeGroupId){ toast('Pick a board first.','error'); return; }
+    const payload = { group_id: activeGroupId, kind: composerKind, note: composerNote.trim().slice(0,200) || null };
+    if(composerKind==='give'){
+      if(!selectedGive){ toast('Pick a shift to give up.','error'); return; }
+      payload.shift_date = selectedGive.dateKey;
+      payload.shift_meta = { shiftType: selectedGive.shift.shiftType, hours: selectedGive.shift.hours,
+        ...(selectedGive.shift.start ? {start:selectedGive.shift.start} : {}) };
+    } else if(composerKind==='want'){
+      if(!wantDate){ toast('Pick a date.','error'); return; }
+      payload.shift_date = wantDate;
+    } else {
+      if(!availDates.length){ toast('Pick at least one date.','error'); return; }
+      payload.avail_dates = availDates;
+    }
+    setPosting(true);
+    const {error} = await insertSwapPost(user.id, payload);
+    setPosting(false);
+    if(error){ toast("Couldn't post — try again.",'error'); return; }
+    toast('Posted — your unit sees it anonymously.','success');
+    track('swap_posted', {kind:composerKind}, user.id);
+    setComposerOpen(false);
+    const {posts:p} = await fetchSwapBoard(activeGroupId);
+    setPosts(p);
+  };
+
+  const doWithdraw = async (post)=>{
+    if(!(await confirmAsync("Take this post down? Your unit will no longer see it.",{title:'Withdraw post?',confirm:'Withdraw'}))) return;
+    const ok = await withdrawSwapPost(post.id);
+    if(!ok){ toast("Couldn't withdraw — try again.",'error'); return; }
+    track('swap_withdrawn', null, user.id);
+    setPosts(prev=> prev.map(p=> p.id===post.id ? {...p, status:'withdrawn'} : p));
+  };
+
+  const activeGroup = groups.find(g=>g.id===activeGroupId);
+  const groupName = activeGroup ? activeGroup.name : 'your unit';
+  const openPosts = useMemo(()=> posts.filter(p=>p.status==='open')
+    .sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)), [posts]);
+
+  const Header = <div className="sheet-h"><div className="t">Shift swaps</div><button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button></div>;
+
+  /* ---- gate: signed out ---- */
+  if(!user){
+    return (
+      <div className="scrim" onClick={onClose}>
+        <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Shift swaps">
+          <div className="grab"></div>
+          {Header}
+          <div style={{textAlign:'center',padding:'32px 12px'}}>
+            <div style={{fontSize:36,marginBottom:12}} aria-hidden="true">🔄</div>
+            <div className="display" style={{fontWeight:700,fontSize:18,marginBottom:8}}>Trade shifts with your unit</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:20}}>Post shifts you want to give up or pick up — anonymously, until everyone accepts a swap.</div>
+            <button className="btn btn-primary" onClick={onOpenAuth}>Sign in to use swaps</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Shift swaps">
+        <div className="grab"></div>
+        {Header}
+
+        {loading && <div style={{textAlign:'center',padding:'40px 12px',color:'var(--muted-2)',fontSize:13.5}}>Loading…</div>}
+
+        {!loading && loadError &&
+          <div style={{textAlign:'center',padding:'32px 12px'}}>
+            <div className="display" style={{fontWeight:700,fontSize:17,marginBottom:8}}>Couldn't load swaps</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Check your connection and try again.</div>
+            <button className="btn btn-ghost" onClick={()=>loadInitial(user.id)}>Retry</button>
+          </div>}
+
+        {!loading && !loadError && tablesMissing &&
+          <div style={{textAlign:'center',padding:'32px 12px'}}>
+            <div style={{fontSize:36,marginBottom:12}} aria-hidden="true">🛠️</div>
+            <div className="display" style={{fontWeight:700,fontSize:17,marginBottom:8}}>The swap board isn't set up yet</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:18}}>Check back soon — we're still setting this up.</div>
+            <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && !profile &&
+          <div>
+            <div className="display" style={{fontWeight:700,fontSize:18,lineHeight:1.3,marginBottom:8}}>What should colleagues call you when a swap is confirmed?</div>
+            <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Only shown AFTER everyone accepts a swap. Posts are anonymous until then.</div>
+            <div className="inp" style={{marginBottom:14}}>
+              <input value={dnDraft} onChange={e=>setDnDraft(e.target.value.slice(0,40))} placeholder="e.g. Sam R." maxLength={40} autoFocus
+                aria-label="Display name" onKeyDown={e=>{ if(e.key==='Enter') saveDisplayName(); }}/>
+            </div>
+            <button className="btn btn-primary" disabled={savingProfile} onClick={saveDisplayName}>{savingProfile?'Saving…':'Continue'}</button>
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && profile && justCreated &&
+          <div style={{textAlign:'center',padding:'8px 4px 4px'}}>
+            <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created!</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Share this code with your unit so they can join.</div>
+            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
+            <button className="btn btn-ghost" style={{marginBottom:10}} onClick={()=>copyCode(justCreated.invite_code)}>Copy code</button>
+            <button className="btn btn-primary" onClick={()=>setJustCreated(null)}>Continue to board</button>
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length===0 &&
+          <div>
+            <div className="card" style={{marginBottom:14}}>
+              <h3>Create your unit's board</h3>
+              <div className="inp" style={{marginBottom:10}}>
+                <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Nights" aria-label="Board name"/>
+              </div>
+              <button className="btn btn-primary" disabled={creating} onClick={doCreateGroup}>{creating?'Creating…':'Create board'}</button>
+            </div>
+            <div className="card">
+              <h3>Join with a code</h3>
+              <div className="inp" style={{marginBottom:10}}>
+                <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
+                  placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>
+              </div>
+              <button className="btn btn-ghost" disabled={joining} onClick={doJoinGroup}>{joining?'Joining…':'Join board'}</button>
+            </div>
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length>0 && !composerOpen &&
+          <div>
+            {groups.length>1 &&
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+                {groups.map(g=>
+                  <button key={g.id} className={'chip-sel'+(g.id===activeGroupId?' on':'')} style={{minHeight:44}} onClick={()=>setActiveGroupId(g.id)}>{g.name}</button>)}
+              </div>}
+            {!activeGroupId &&
+              <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
+                <div style={{fontWeight:700,fontSize:15}}>Choose a board above</div>
+              </div>}
+            {activeGroupId && <React.Fragment>
+              <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+                <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={openComposer}>+ Post to the board</button>
+              </div>
+              {boardLoading && posts.length===0 &&
+                <div style={{textAlign:'center',padding:'20px',color:'var(--muted-2)',fontSize:13}}>Loading board…</div>}
+              {!boardLoading && openPosts.length===0 &&
+                <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
+                  <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Nothing posted yet</div>
+                  <div style={{fontSize:13,color:'var(--muted)',marginBottom:14}}>Be the first to post to your unit's board.</div>
+                  <button className="btn btn-soft btn-sm" onClick={openComposer}>+ Post to the board</button>
+                </div>}
+              {openPosts.map(p=>(
+                <div className="row-item" key={p.id} style={{flexDirection:'column',alignItems:'stretch',gap:6}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,fontSize:14}}>
+                        {p.kind==='give' && `Giving up · ${fmtDateShort(p.shift_date)}`}
+                        {p.kind==='want' && `Wants a shift · ${fmtDateShort(p.shift_date)}`}
+                        {p.kind==='avail' && `Could work · ${fmtAvailDates(p.avail_dates)}`}
+                      </div>
+                      {p.kind==='give' && p.shift_meta &&
+                        <div style={{fontSize:12.5,color:'var(--muted)',marginTop:2}}>{giveMetaLine(p.shift_meta, differentials)}</div>}
+                      {!p.is_mine && <div style={{fontSize:12,color:'var(--muted-2)',marginTop:4}}>Someone on {groupName}</div>}
+                      {p.note && <div style={{fontSize:13,color:'var(--ink)',marginTop:6}}>"{p.note}"</div>}
+                    </div>
+                    {p.is_mine && <span className="tag auto" style={{flex:'0 0 auto'}}>You</span>}
+                  </div>
+                  {p.is_mine && <button className="danger-link" style={{alignSelf:'flex-start',minHeight:44,display:'inline-flex',alignItems:'center'}} onClick={()=>doWithdraw(p)}>Withdraw</button>}
+                </div>
+              ))}
+            </React.Fragment>}
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length>0 && composerOpen &&
+          <div>
+            <div className="sec-lab">WHAT DO YOU NEED?</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+              {[['give','Give up a shift'],['want','Want a shift'],['avail','Available to work']].map(([k,l])=>
+                <button key={k} className={'chip-sel'+(composerKind===k?' on':'')} style={{minHeight:44,justifyContent:'flex-start'}} onClick={()=>setComposerKind(k)}>{l}</button>)}
+            </div>
+
+            {composerKind==='give' &&
+              (upcomingShifts.length===0
+                ? <div className="hint" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>No upcoming shifts in the next 60 days — log one on the Planner first.</div>
+                : <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16,maxHeight:260,overflowY:'auto'}}>
+                    {upcomingShifts.map(({dateKey,shift})=>{
+                      const sel = selectedGive && selectedGive.dateKey===dateKey && selectedGive.shift.id===shift.id;
+                      return (
+                        <button key={dateKey+'-'+shift.id} className={'chip-sel'+(sel?' on':'')} style={{minHeight:44,justifyContent:'flex-start',textAlign:'left'}}
+                          onClick={()=>setSelectedGive({dateKey,shift})}>
+                          <span><b>{fmtDateShort(dateKey)}</b> — {giveMetaLine({shiftType:shift.shiftType,hours:shift.hours,start:shift.start}, differentials)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>)}
+
+            {composerKind==='want' &&
+              <label className="field">
+                <span className="lab">Date you want a shift</span>
+                <div className="inp"><input type="date" value={wantDate} min={todayISO()} onChange={e=>setWantDate(e.target.value)} aria-label="Wanted date"/></div>
+              </label>}
+
+            {composerKind==='avail' &&
+              <div style={{marginBottom:16}}>
+                <div className="sec-lab">TAP THE DAYS YOU COULD WORK</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                  {next14Days.map(dk=>
+                    <button key={dk} className={'chip-sel'+(availDates.indexOf(dk)>=0?' on':'')} style={{minHeight:44,padding:'8px 10px',fontSize:12}}
+                      onClick={()=>toggleAvailDate(dk)}>{fmtDateShort(dk)}</button>)}
+                </div>
+              </div>}
+
+            <div className="sec-lab">NOTE (OPTIONAL)</div>
+            <div className="inp" style={{marginBottom:18}}>
+              <input value={composerNote} onChange={e=>setComposerNote(e.target.value.slice(0,200))} placeholder="e.g. 'need Tue off for an appointment'" maxLength={200} aria-label="Note"/>
+            </div>
+
+            <div style={{display:'flex',gap:10}}>
+              <button className="back" style={{width:44,height:44}} onClick={closeComposer} aria-label="Back to board">‹</button>
+              <button className="btn btn-primary" style={{flex:1}} disabled={posting} onClick={submitPost}>{posting?'Posting…':'Post to the board'}</button>
+            </div>
+          </div>}
       </div>
     </div>
   );
