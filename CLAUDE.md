@@ -132,6 +132,24 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
      product** and pursues certified-partner status — a business/legal step, not a code task.
      Revisit only with real demand + intent to commercialize.
 
+## Swap board (multi-user) — status
+
+Built 2026-07-24 (P1 groups/board/posting + P2 matching/reveal/swap-plan), live in the
+app UI. **Schema NOT yet applied** to the live project: run
+`supabase/migrations/001_swap_board.sql` (dashboard SQL editor or Management API) to
+activate; until then the UI shows a friendly "not set up yet" state. Design: invite-code
+unit groups; anonymity enforced by column-level grants + security-definer RPCs
+(swap_board/propose_swap/match_details/reveal_match — names reveal only after ALL legs
+accept); posts freeze once reserved (RLS status gate) and reveal re-validates
+(match_stale). Client computes pickup/handoff/trade/3-cycle suggestions from
+pseudonymous poster_key correlation (27-assertion unit suite in the harness:
+te_swap_p2_algo.js). **Before announcing to a real unit:** run an adversarial RLS
+integration pass with throwaway confirmed users (needs Management API token — flip
+mailer_autoconfirm temporarily, or create users via admin API). Known disclosure gap:
+poster_key is stable per group, so a colleague identified via one confirmed match can
+recognize that person's other posts thereafter — consider copy disclosure or key
+rotation later.
+
 ## Testing (no device needed)
 
 Chromium + Playwright are pre-installed (`executablePath: '/opt/pw-browsers/chromium'`).

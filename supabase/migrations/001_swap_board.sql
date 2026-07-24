@@ -95,7 +95,12 @@ create table if not exists public.swap_posts (
   shift_meta jsonb check (shift_meta is null or pg_column_size(shift_meta) < 500),
   avail_dates date[] check (avail_dates is null or array_length(avail_dates,1) <= 31),
   note text check (note is null or char_length(note) <= 200),
-  status text not null default 'open' check (status in ('open','matched','withdrawn')),
+  -- 'proposed' = reserved as a leg of a not-yet-fully-accepted match (set the instant
+  -- propose_swap claims it; reverted to 'open' if the match is declined, advanced to
+  -- 'matched' by reveal_match) -- this is what stops the same post being claimed by two
+  -- competing proposals and stops it reappearing as a fresh suggestion the moment it's
+  -- proposed (computeSwapSuggestions only ever looks at status='open' posts).
+  status text not null default 'open' check (status in ('open','proposed','matched','withdrawn')),
   created_at timestamptz not null default now(),
   check (kind <> 'avail' or avail_dates is not null),
   check (kind = 'avail' or shift_date is not null)
@@ -103,16 +108,27 @@ create table if not exists public.swap_posts (
 alter table public.swap_posts enable row level security;
 
 drop policy if exists "group members read posts" on public.swap_posts;
+-- RLS enforces the same visibility rule as swap_board(): non-authors see ONLY
+-- open posts, so a direct REST query can't read withdrawn/proposed/matched
+-- content that the RPC deliberately stops transmitting. Match parties get
+-- reserved-post snapshots via the security-definer match_details() instead.
 create policy "group members read posts" on public.swap_posts
-  for select to authenticated using (public.is_swap_member(group_id));
+  for select to authenticated
+  using (public.is_swap_member(group_id)
+         and (status = 'open' or (select auth.uid()) = author));
 drop policy if exists "insert own posts" on public.swap_posts;
 create policy "insert own posts" on public.swap_posts
   for insert to authenticated
   with check ((select auth.uid()) = author and public.is_swap_member(group_id));
 drop policy if exists "update own posts" on public.swap_posts;
+-- Authors may only edit posts that are still OPEN. Once propose_swap reserves a
+-- post ('proposed') its terms are frozen — no editing the shift or reneging via
+-- direct update after others have accepted. Declines release posts back to
+-- 'open' exclusively through the security-definer decline path.
 create policy "update own posts" on public.swap_posts
   for update to authenticated
-  using ((select auth.uid()) = author) with check ((select auth.uid()) = author);
+  using ((select auth.uid()) = author and status = 'open')
+  with check ((select auth.uid()) = author);
 
 -- ANONYMITY CORE: members may read the board but the author column is not
 -- grantable — API queries selecting `author` (or `select *`) fail for others.
@@ -129,10 +145,14 @@ grant update (status, note, shift_date, shift_meta, avail_dates)
 create or replace function public.swap_board(g uuid)
 returns table (id uuid, kind text, shift_date date, shift_meta jsonb,
                avail_dates date[], note text, status text, created_at timestamptz,
-               is_mine boolean)
+               is_mine boolean, poster_key text)
 language sql stable security definer set search_path = public as $$
   select p.id, p.kind, p.shift_date, p.shift_meta, p.avail_dates, p.note,
-         p.status, p.created_at, (p.author = auth.uid()) as is_mine
+         p.status, p.created_at, (p.author = auth.uid()) as is_mine,
+         -- pseudonymous per-group key: lets clients correlate posts by the same
+         -- (anonymous) member — required for swap/cycle matching — without ever
+         -- exposing identity. Not reversible; differs across groups.
+         substr(md5(p.author::text || p.group_id::text || 'scrubpay-swaps'), 1, 8) as poster_key
   from swap_posts p
   where p.group_id = g and public.is_swap_member(g)
     -- data minimization: withdrawn/matched post content must stop being
@@ -190,10 +210,15 @@ create policy "proposer inserts legs" on public.swap_match_legs
   with check (exists(select 1 from public.swap_matches m
                      where m.id = match_id and m.proposed_by = (select auth.uid())
                        and m.status = 'proposed'));
+-- only while the parent match is still 'proposed' -- once it's declined (or already
+-- confirmed), legs can no longer be toggled at all, closing the window a party could
+-- accept their own leg on a match they (or someone else) already declined.
 drop policy if exists "accept own leg" on public.swap_match_legs;
 create policy "accept own leg" on public.swap_match_legs
   for update to authenticated
-  using (leg_user = (select auth.uid())) with check (leg_user = (select auth.uid()));
+  using (leg_user = (select auth.uid())
+     and exists (select 1 from public.swap_matches m where m.id = match_id and m.status = 'proposed'))
+  with check (leg_user = (select auth.uid()));
 
 revoke all on public.swap_matches from authenticated;
 grant select (id, group_id, status, created_at), insert (id, group_id, proposed_by, status),
@@ -204,18 +229,24 @@ grant select (match_id, post_id, accepted), insert (match_id, post_id, leg_user)
   on public.swap_match_legs to authenticated;
 
 -- proposer must name the leg users — but can't read authors. Resolve server-side:
+-- reserves every leg's post (status 'open' -> 'proposed') atomically per-row (SELECT ...
+-- FOR UPDATE) so two concurrent proposals can never both claim the same post: the second
+-- caller blocks on the row lock until the first commits, then sees status <> 'open' and
+-- raises post_unavailable instead of double-booking the shift.
 create or replace function public.propose_swap(g uuid, post_ids uuid[])
 returns uuid language plpgsql security definer set search_path = public as $$
-declare m uuid; pid uuid; a uuid;
+declare m uuid; pid uuid; a uuid; st text;
 begin
   if not public.is_swap_member(g) then raise exception 'not_a_member'; end if;
   if array_length(post_ids,1) not between 2 and 3 then raise exception 'bad_size'; end if;
   insert into swap_matches(group_id, proposed_by) values (g, auth.uid()) returning id into m;
   foreach pid in array post_ids loop
-    select author into a from swap_posts
-      where id = pid and group_id = g and status = 'open';
-    if a is null then raise exception 'post_unavailable'; end if;
+    select author, status into a, st from swap_posts
+      where id = pid and group_id = g
+      for update;
+    if a is null or st <> 'open' then raise exception 'post_unavailable'; end if;
     insert into swap_match_legs(match_id, post_id, leg_user) values (m, pid, a);
+    update swap_posts set status = 'proposed' where id = pid;
     -- proposer's own legs start accepted
     if a = auth.uid() then
       update swap_match_legs set accepted = true where match_id = m and post_id = pid;
@@ -226,20 +257,68 @@ end $$;
 revoke all on function public.propose_swap(uuid, uuid[]) from public;
 grant execute on function public.propose_swap(uuid, uuid[]) to authenticated;
 
--- reveal: names unlock ONLY when every leg has accepted
+-- decline via RPC (rather than the raw "parties decline matches" UPDATE policy alone) so the
+-- posts reserved as this match's legs are released back to 'open' in the same transaction --
+-- otherwise a declined match would leave its posts stuck 'proposed' forever, invisible to the
+-- board and impossible to re-propose.
+create or replace function public.decline_swap_match(m uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_match_party(m) then raise exception 'not_a_party'; end if;
+  update swap_matches set status = 'declined' where id = m and status = 'proposed';
+  if not found then raise exception 'match_not_proposed'; end if;
+  update swap_posts set status = 'open'
+    where id in (select post_id from swap_match_legs where match_id = m)
+      and status = 'proposed';
+end $$;
+revoke all on function public.decline_swap_match(uuid) from public;
+grant execute on function public.decline_swap_match(uuid) to authenticated;
+
+-- match details for its parties (works even after posts leave the open board):
+-- legs with post snapshots + accept states; identities still hidden pre-reveal.
+create or replace function public.match_details(m uuid)
+returns table (post_id uuid, kind text, shift_date date, shift_meta jsonb,
+               avail_dates date[], note text, accepted boolean, is_my_leg boolean,
+               match_status text)
+language sql stable security definer set search_path = public as $$
+  select l.post_id, p.kind, p.shift_date, p.shift_meta, p.avail_dates, p.note,
+         l.accepted, (l.leg_user = auth.uid()) as is_my_leg, mt.status
+  from swap_match_legs l
+  join swap_posts p on p.id = l.post_id
+  join swap_matches mt on mt.id = l.match_id
+  where l.match_id = m and public.is_match_party(m)
+$$;
+revoke all on function public.match_details(uuid) from public;
+grant execute on function public.match_details(uuid) to authenticated;
+
+-- reveal: names unlock ONLY when every leg has accepted, AND the match is still 'proposed'
+-- (or already 'confirmed', so a repeat call from a second client stays idempotent). A match
+-- that was declined -- even if every leg happens to read accepted=true, e.g. a party accepted
+-- their own leg moments before declining -- must never reveal identities or retire posts.
 create or replace function public.reveal_match(m uuid)
 returns table (post_id uuid, display_name text)
 language plpgsql security definer set search_path = public as $$
+declare cur_status text;
 begin
   if not public.is_match_party(m) then raise exception 'not_a_party'; end if;
+  select status into cur_status from swap_matches where id = m;
+  if cur_status is null then raise exception 'not_a_party'; end if;
+  if cur_status not in ('proposed','confirmed') then raise exception 'match_not_proposed'; end if;
   if exists(select 1 from swap_match_legs where match_id = m and not accepted) then
     raise exception 'not_fully_accepted';
+  end if;
+  -- defense in depth: never confirm against legs whose posts are no longer in
+  -- the reserved state (e.g. released by a concurrent decline).
+  if cur_status = 'proposed' and exists(
+       select 1 from swap_match_legs l join swap_posts p on p.id = l.post_id
+       where l.match_id = m and p.status <> 'proposed') then
+    raise exception 'match_stale';
   end if;
   update swap_matches set status = 'confirmed' where id = m and status = 'proposed';
   -- retire the traded posts so they leave the open board
   update swap_posts set status = 'matched'
     where id in (select post_id from swap_match_legs where match_id = m)
-      and status = 'open';
+      and status = 'proposed';
   return query
     select l.post_id, coalesce(pr.display_name, 'A colleague')
     from swap_match_legs l left join swap_profiles pr on pr.user_id = l.leg_user
