@@ -135,6 +135,10 @@ language sql stable security definer set search_path = public as $$
          p.status, p.created_at, (p.author = auth.uid()) as is_mine
   from swap_posts p
   where p.group_id = g and public.is_swap_member(g)
+    -- data minimization: withdrawn/matched post content must stop being
+    -- transmitted to the group entirely ("your unit will no longer see it") —
+    -- authors still see their own non-open posts.
+    and (p.status = 'open' or p.author = auth.uid())
 $$;
 revoke all on function public.swap_board(uuid) from public;
 grant execute on function public.swap_board(uuid) to authenticated;
