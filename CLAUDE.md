@@ -135,20 +135,42 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 ## Swap board (multi-user) — status
 
 Built 2026-07-24 (P1 groups/board/posting + P2 matching/reveal/swap-plan), live in the
-app UI. **Schema NOT yet applied** to the live project: run
-`supabase/migrations/001_swap_board.sql` (dashboard SQL editor or Management API) to
-activate; until then the UI shows a friendly "not set up yet" state. Design: invite-code
-unit groups; anonymity enforced by column-level grants + security-definer RPCs
+app UI. **Schema APPLIED to the live project 2026-07-30** (owner ran
+`supabase/migrations/001_swap_board.sql`); all 6 tables + 8 functions confirmed present
+and the "not set up yet" UI state is retired. Design: invite-code unit groups; anonymity
+enforced by column-level grants + security-definer RPCs
 (swap_board/propose_swap/match_details/reveal_match — names reveal only after ALL legs
 accept); posts freeze once reserved (RLS status gate) and reveal re-validates
 (match_stale). Client computes pickup/handoff/trade/3-cycle suggestions from
 pseudonymous poster_key correlation (27-assertion unit suite in the harness:
-te_swap_p2_algo.js). **Before announcing to a real unit:** run an adversarial RLS
-integration pass with throwaway confirmed users (needs Management API token — flip
-mailer_autoconfirm temporarily, or create users via admin API). Known disclosure gap:
-poster_key is stable per group, so a colleague identified via one confirmed match can
-recognize that person's other posts thereafter — consider copy disclosure or key
-rotation later.
+te_swap_p2_algo.js).
+
+**Adversarial RLS/anonymity audit — DONE 2026-07-30, 29/29 passing** (throwaway confirmed
+users minted via the admin API; script `scratchpad/rls_audit.js`). Verified end-to-end
+against the live DB from real user JWTs: `author` column ungrantable (select author / `*`
+both 403 for everyone incl. authors), swap_board leaks no author + correct is_mine +
+stable/cross-author-distinct poster_key, cross-group isolation, no author spoofing on
+insert, no cross-author update/delete, propose_swap freezes posts + blocks double-booking
+(`post_unavailable`), reserved posts uneditable by their author, reveal gated until all
+legs accept, non-parties blocked from match_details/reveal, can't accept another's leg,
+decline releases posts. **Found + fixed a real bug the happy path had never exercised:**
+`reveal_match` hit Postgres `42702` (`column reference "post_id" is ambiguous` — bare
+`post_id` in the retire-posts subquery collided with the function's `RETURNS TABLE
+(post_id ...)` OUT param), which would have 400'd every successful reveal. Fixed by
+aliasing the subquery (`select l.post_id from swap_match_legs l`); patched live via
+Management API AND in the migration file. Reveal now returns display names only after full
+acceptance.
+
+Note (env): the Management API token is present but named `supabase_access_token`
+(lowercase) — the MCP server + standard tooling look for `SUPABASE_ACCESS_TOKEN`
+(uppercase, case-sensitive), so rename it in the environment settings to get the typed
+Supabase MCP tools; until then, read `$supabase_access_token` directly in curl and route
+Node's fetch through the egress proxy (`NODE_USE_ENV_PROXY=1`
+`NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`).
+
+Known disclosure gap (still open, by design): poster_key is stable per group, so a
+colleague identified via one confirmed match can recognize that person's other posts
+thereafter — consider copy disclosure or key rotation later.
 
 ## Testing (no device needed)
 

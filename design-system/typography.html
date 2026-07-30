@@ -1,0 +1,100 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScrubPay — Typography</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16181F; --paper:#F6F5F1; --card:#FFFFFF;
+    --indigo:#5B4FE9; --indigo-ink:#3F35B8;
+    --mint:#34D399; --muted:#6B665C; --muted-2:#9A968C; --line:#EEEDE8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .display{font-family:'Bricolage Grotesque','Plus Jakarta Sans',sans-serif;letter-spacing:-.02em}
+  .num{font-variant-numeric:tabular-nums}
+
+  .wrap{max-width:820px;margin:0 auto;padding:28px 22px 60px}
+  .pg-h{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px;margin-bottom:4px}
+  .pg-s{font-size:13px;color:var(--muted-2);margin-bottom:22px}
+  .sec-lab{font-weight:600;font-size:12px;color:var(--muted-2);margin:26px 0 12px;letter-spacing:.02em;text-transform:uppercase}
+
+  .row{display:flex;align-items:baseline;gap:18px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .sample{flex:1 1 auto;min-width:0}
+  .ann{flex:0 0 auto;max-width:150px;font-size:11px;color:var(--muted-2);text-align:right;line-height:1.5;font-variant-numeric:tabular-nums}
+
+  /* Bricolage Grotesque display scale, values copied 1:1 from index.html */
+  .hero-num{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff;margin-bottom:6px}
+  .hero-num .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
+  .hero-num .n{font-family:'Bricolage Grotesque';font-weight:800;color:var(--mint);font-size:60px;line-height:1;letter-spacing:-.03em;margin-top:8px}
+  .takehome-v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em;background:var(--ink);display:inline-block;padding:10px 16px;border-radius:10px}
+  .brand-s{font-family:'Bricolage Grotesque';font-weight:800;font-size:18px}
+  .greet-name{font-family:'Bricolage Grotesque';font-weight:700;font-size:22px}
+  .card-h3{font-size:14px;font-weight:700;margin:0}
+  .sheet-t{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px}
+  .cdlg-ct{font-family:'Bricolage Grotesque';font-weight:700;font-size:19px}
+  .cal-ttl{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px}
+  .cal-month-h{font-family:'Bricolage Grotesque';font-weight:700;font-size:17.5px}
+  .ob-q{font-family:'Bricolage Grotesque';font-weight:700;font-size:25px;line-height:1.18}
+  .stat-v{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px}
+
+  /* Plus Jakarta Sans body/label/sub scale */
+  .body-16{font-size:16px}
+  .btn-15{font-weight:600;font-size:15px}
+  .swap-step-13{font-size:13.5px}
+  .lab-13{font-size:13px;font-weight:600}
+  .toast-14{font-size:14px;font-weight:500}
+  .hi-13{font-size:13px;color:var(--muted-2);font-weight:500}
+  .k-12{font-size:12px;color:var(--muted-2);font-weight:500}
+  .sec-lab-12{font-weight:600;font-size:12px;color:var(--muted-2);letter-spacing:.02em}
+  .hint-11{font-size:11.5px;color:var(--muted-2)}
+  .disclaimer-11{font-size:11.5px;color:#A8A498}
+  .tag-10{font-weight:600;font-size:10.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pg-h">Typography</div>
+  <div class="pg-s">Bricolage Grotesque for display numerals/titles; Plus Jakarta Sans for everything else. Sizes/weights copied from index.html.</div>
+
+  <div class="sec-lab">Bricolage Grotesque — display</div>
+
+  <div class="hero-num">
+    <div class="lbl">Projected take-home</div>
+    <div class="n num">$2,148</div>
+  </div>
+  <div class="ann" style="text-align:left;margin-bottom:18px">.hero .num — weight 800, clamp(46px,12vw,64px) → 60px desktop, letter-spacing -.03em, color var(--mint)</div>
+
+  <div class="row"><div class="sample"><span class="takehome-v num">$2,148</span></div><div class="ann">.takehome .v — weight 800, 34px, -.02em, var(--mint)</div></div>
+  <div class="row"><div class="sample brand-s">scrubpay</div><div class="ann">.brand / #splash .wm — weight 800, 18–24px</div></div>
+  <div class="row"><div class="sample greet-name">Welcome back</div><div class="ann">.greet .name — weight 700, 22px</div></div>
+  <div class="row"><div class="sample ob-q">How many hours do<br>you usually work?</div><div class="ann">.ob .q (onboarding question) — weight 700, 25px, line-height 1.18</div></div>
+  <div class="row"><div class="sample sheet-t">Add a shift</div><div class="ann">.sheet-h .t — weight 700, 21px</div></div>
+  <div class="row"><div class="sample cdlg-ct">Delete template?</div><div class="ann">.cdlg .ct — weight 700, 19px</div></div>
+  <div class="row"><div class="sample cal-ttl">Calendar</div><div class="ann">.cal-head .ttl — weight 700, 18px</div></div>
+  <div class="row"><div class="sample cal-month-h">July 2026</div><div class="ann">.cal-month-h — weight 700, 17.5px</div></div>
+  <div class="row"><div class="sample card-h3">Where it goes</div><div class="ann">.card h3 — weight 700, 14px</div></div>
+  <div class="row"><div class="sample stat-v num">$1,180</div><div class="ann">.stat .v — weight 800, 22px</div></div>
+
+  <div class="sec-lab">Plus Jakarta Sans — body / label / sub scale</div>
+  <div class="row"><div class="sample body-16">Base body / input text — 16px regular (prevents iOS zoom-on-focus)</div><div class="ann">body / .inp input,select</div></div>
+  <div class="row"><div class="sample btn-15">Log a shift</div><div class="ann">.btn — weight 600, 15px</div></div>
+  <div class="row"><div class="sample swap-step-13">You give <b>Tue Jul 7 · Night · 12h</b></div><div class="ann">.swap-step — 13.5px</div></div>
+  <div class="row"><div class="sample lab-13">Base hourly rate</div><div class="ann">.field .lab — weight 600, 13px</div></div>
+  <div class="row"><div class="sample toast-14">Calendar file ready — open it to add your shifts.</div><div class="ann">.toast — weight 500, 14px</div></div>
+  <div class="row"><div class="sample hi-13">Good afternoon</div><div class="ann">.greet .hi — weight 500, 13px, var(--muted-2)</div></div>
+  <div class="row"><div class="sample k-12">hours this period</div><div class="ann">.stat .k — weight 500, 12px, var(--muted-2)</div></div>
+  <div class="row"><div class="sample sec-lab-12">WHAT DO YOU NEED?</div><div class="ann">.sec-lab — weight 600, 12px, letter-spacing .02em</div></div>
+  <div class="row"><div class="sample hint-11">We estimate taxes using 2026 federal brackets.</div><div class="ann">.field .hint — 11.5px, var(--muted-2)</div></div>
+  <div class="row"><div class="sample disclaimer-11">Day amounts are estimated take-home.</div><div class="ann">.disclaimer — 11.5px, #A8A498</div></div>
+  <div class="row"><div class="sample"><span class="tag-10" style="color:#C2820A;background:#FDF3DD;padding:3px 7px;border-radius:6px">ESTIMATE</span></div><div class="ann">.tag.est — weight 600, 10.5px</div></div>
+</div>
+</body>
+</html>

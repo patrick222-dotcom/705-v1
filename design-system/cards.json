@@ -1,0 +1,79 @@
+[
+  {
+    "name": "Colors",
+    "path": "colors.html",
+    "subtitle": "All CSS custom-property color swatches plus shift/event glyph and neutral surface tints, with hex labels",
+    "group": "Foundations",
+    "viewport": { "width": 420, "height": 700 }
+  },
+  {
+    "name": "Typography",
+    "path": "typography.html",
+    "subtitle": "Bricolage Grotesque display scale (hero number, titles) and Plus Jakarta Sans body/label/sub scale with size/weight annotations",
+    "group": "Foundations",
+    "viewport": { "width": 420, "height": 700 }
+  },
+  {
+    "name": "Surfaces",
+    "path": "surfaces.html",
+    "subtitle": ".card, .stat tiles, dark .hero/.takehome panels, and radii/shadow/border token demonstrations",
+    "group": "Foundations",
+    "viewport": { "width": 420, "height": 650 }
+  },
+  {
+    "name": "Buttons",
+    "path": "buttons.html",
+    "subtitle": ".btn-primary/soft/ghost/danger, .btn-sm, .iconbtn with inline SVG, .fab, .linklike, .danger-link",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 620 }
+  },
+  {
+    "name": "Inputs",
+    "path": "inputs.html",
+    "subtitle": ".inp text/select with prefix/suffix and focus state, .field/.lab pattern, .fb-text textarea, .tg toggle off/on",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 650 }
+  },
+  {
+    "name": "Chips & tags",
+    "path": "chips.html",
+    "subtitle": ".chip-sel off/on, .tag/.tag.auto, hero stat chips, template quick-fill chips, pay-period range chip, period label",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 560 }
+  },
+  {
+    "name": "Feedback & status",
+    "path": "feedback.html",
+    "subtitle": ".toast info/success/error, .cdlg confirm dialog, top-bar sync status text states",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 560 }
+  },
+  {
+    "name": "Overlays",
+    "path": "overlays.html",
+    "subtitle": ".scrim+.sheet bottom-sheet anatomy (grab handle, sheet-h, sec-lab) and .modal, side by side at reduced scale",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 560 }
+  },
+  {
+    "name": "Calendar anatomy",
+    "path": "calendar.html",
+    "subtitle": "Day-grid cell states (empty, shift glyphs, events, today, pp-active), pay-period divider, legend, Month/Year segment control",
+    "group": "Calendar",
+    "viewport": { "width": 420, "height": 700 }
+  },
+  {
+    "name": "Banners",
+    "path": "banners.html",
+    "subtitle": ".whatif insight banner and mobile swaps variant, .qf-banner quick-fill in template-pick and active-fill states",
+    "group": "Components",
+    "viewport": { "width": 420, "height": 620 }
+  },
+  {
+    "name": "Swap board",
+    "path": "swaps.html",
+    "subtitle": "Anonymous post rows (give/want, Someone on 7W, You tag), suggestion card, pending match accept/decline, confirmed reveal/plan",
+    "group": "Swap board",
+    "viewport": { "width": 420, "height": 700 }
+  }
+]

@@ -1,0 +1,127 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScrubPay — Colors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16181F; --ink-2:#21242F; --paper:#F6F5F1; --card:#FFFFFF;
+    --indigo:#5B4FE9; --indigo-press:#4A3FD4; --indigo-soft:#ECEAFE; --indigo-ink:#3F35B8;
+    --mint:#34D399; --money:#11A86B; --money-soft:#E3F7EE; --money-ink:#0B5D3C;
+    --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
+    --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
+    --muted:#6B665C; --muted-2:#9A968C; --line:#EEEDE8; --line-2:#E7E5DE;
+    --danger:#C84B3C; --danger-soft:#F3D6D1;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .display{font-family:'Bricolage Grotesque','Plus Jakarta Sans',sans-serif;letter-spacing:-.02em}
+
+  .wrap{max-width:980px;margin:0 auto;padding:28px 22px 60px}
+  .pg-h{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px;margin-bottom:4px}
+  .pg-s{font-size:13px;color:var(--muted-2);margin-bottom:22px}
+  .sec-lab{font-weight:600;font-size:12px;color:var(--muted-2);margin:26px 0 12px;letter-spacing:.02em;text-transform:uppercase}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .swatch{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+  .swatch .fill{height:64px;position:relative}
+  .swatch .fill.bordered{border-bottom:1px solid var(--line)}
+  .swatch .meta{padding:9px 11px}
+  .swatch .nm{font-weight:700;font-size:12.5px}
+  .swatch .hex{font-size:11px;color:var(--muted-2);margin-top:1px;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pg-h">Colors</div>
+  <div class="pg-s">Every CSS custom property defined in :root, plus the recurring inline tints used across shift/event glyphs and surface states.</div>
+
+  <div class="sec-lab">Base</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill bordered" style="background:var(--paper)"></div><div class="meta"><div class="nm">--paper</div><div class="hex">#F6F5F1</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--card)"></div><div class="meta"><div class="nm">--card</div><div class="hex">#FFFFFF</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--ink)"></div><div class="meta"><div class="nm">--ink</div><div class="hex">#16181F</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--ink-2)"></div><div class="meta"><div class="nm">--ink-2</div><div class="hex">#21242F</div></div></div>
+  </div>
+
+  <div class="sec-lab">Indigo (primary)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--indigo)"></div><div class="meta"><div class="nm">--indigo</div><div class="hex">#5B4FE9</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--indigo-press)"></div><div class="meta"><div class="nm">--indigo-press</div><div class="hex">#4A3FD4</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--indigo-soft)"></div><div class="meta"><div class="nm">--indigo-soft</div><div class="hex">#ECEAFE</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--indigo-ink)"></div><div class="meta"><div class="nm">--indigo-ink</div><div class="hex">#3F35B8</div></div></div>
+  </div>
+
+  <div class="sec-lab">Mint / Money (positive, take-home)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--mint)"></div><div class="meta"><div class="nm">--mint</div><div class="hex">#34D399</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--money)"></div><div class="meta"><div class="nm">--money</div><div class="hex">#11A86B</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--money-soft)"></div><div class="meta"><div class="nm">--money-soft</div><div class="hex">#E3F7EE</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--money-ink)"></div><div class="meta"><div class="nm">--money-ink</div><div class="hex">#0B5D3C</div></div></div>
+  </div>
+
+  <div class="sec-lab">Coral</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--coral)"></div><div class="meta"><div class="nm">--coral</div><div class="hex">#FF6B5C</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--coral-soft)"></div><div class="meta"><div class="nm">--coral-soft</div><div class="hex">#FFF3F1</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--coral-ink)"></div><div class="meta"><div class="nm">--coral-ink</div><div class="hex">#7A2E26</div></div></div>
+  </div>
+
+  <div class="sec-lab">Accents (differentials, events)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--violet)"></div><div class="meta"><div class="nm">--violet</div><div class="hex">#9B5BE9</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--amber)"></div><div class="meta"><div class="nm">--amber</div><div class="hex">#F5A524</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--slate)"></div><div class="meta"><div class="nm">--slate</div><div class="hex">#8A93A6</div></div></div>
+  </div>
+
+  <div class="sec-lab">Ink / line (text &amp; borders)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--muted)"></div><div class="meta"><div class="nm">--muted</div><div class="hex">#6B665C</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--muted-2)"></div><div class="meta"><div class="nm">--muted-2</div><div class="hex">#9A968C</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--line)"></div><div class="meta"><div class="nm">--line</div><div class="hex">#EEEDE8</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--line-2)"></div><div class="meta"><div class="nm">--line-2</div><div class="hex">#E7E5DE</div></div></div>
+  </div>
+
+  <div class="sec-lab">Danger</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--danger)"></div><div class="meta"><div class="nm">--danger</div><div class="hex">#C84B3C</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:var(--danger-soft)"></div><div class="meta"><div class="nm">--danger-soft</div><div class="hex">#F3D6D1</div></div></div>
+  </div>
+
+  <div class="sec-lab">Shift-type glyph colors (inline, DIFF_DEFAULTS)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:#8A93A6"></div><div class="meta"><div class="nm">base / day (regular)</div><div class="hex">#8A93A6</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#5B4FE9"></div><div class="meta"><div class="nm">night</div><div class="hex">#5B4FE9</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#FF6B5C"></div><div class="meta"><div class="nm">weekend day</div><div class="hex">#FF6B5C</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#9B5BE9"></div><div class="meta"><div class="nm">weekend night</div><div class="hex">#9B5BE9</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#F5A524"></div><div class="meta"><div class="nm">holiday</div><div class="hex">#F5A524</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#11A86B"></div><div class="meta"><div class="nm">overtime / bonus</div><div class="hex">#11A86B</div></div></div>
+  </div>
+
+  <div class="sec-lab">Event-kind colors (work-life calendar)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill" style="background:var(--money-ink)"></div><div class="meta"><div class="nm">PTO</div><div class="hex">var(--money-ink)</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--violet)"></div><div class="meta"><div class="nm">Education</div><div class="hex">var(--violet)</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--amber)"></div><div class="meta"><div class="nm">Appt</div><div class="hex">var(--amber)</div></div></div>
+    <div class="swatch"><div class="fill" style="background:var(--slate)"></div><div class="meta"><div class="nm">Off</div><div class="hex">var(--slate)</div></div></div>
+  </div>
+
+  <div class="sec-lab">Neutral surface tints (inline, not custom properties)</div>
+  <div class="grid">
+    <div class="swatch"><div class="fill bordered" style="background:#fbfaf7"></div><div class="meta"><div class="nm">hover / cell bg</div><div class="hex">#fbfaf7</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:#f1f0eb"></div><div class="meta"><div class="nm">period btn hover</div><div class="hex">#f1f0eb</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:#EFEEE9"></div><div class="meta"><div class="nm">viewseg track</div><div class="hex">#EFEEE9</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:#F2F1EC"></div><div class="meta"><div class="nm">drow amount pill</div><div class="hex">#F2F1EC</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:#dcdacf"></div><div class="meta"><div class="nm">scrollbar thumb</div><div class="hex">#dcdacf</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#1F7A54"></div><div class="meta"><div class="nm">toast.success bg</div><div class="hex">#1F7A54</div></div></div>
+    <div class="swatch"><div class="fill bordered" style="background:#FDF3DD"></div><div class="meta"><div class="nm">tag.est bg</div><div class="hex">#FDF3DD</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#C2820A"></div><div class="meta"><div class="nm">tag.est text</div><div class="hex">#C2820A</div></div></div>
+  </div>
+</div>
+</body>
+</html>
