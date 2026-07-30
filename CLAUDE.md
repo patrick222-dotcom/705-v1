@@ -168,9 +168,40 @@ Supabase MCP tools; until then, read `$supabase_access_token` directly in curl a
 Node's fetch through the egress proxy (`NODE_USE_ENV_PROXY=1`
 `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`).
 
+**Two more RLS fixes applied live + in migration 2026-07-30 (found by the council run):**
+(1) **Direct-INSERT hole** — `swap_matches`/`swap_match_legs` had raw `insert` grants, so a
+member could fabricate a match + self-named leg pointing at any post_id and then read that
+post's hidden (non-open) content via `match_details()` (gated only on is_match_party). Revoked
+both insert grants; matches/legs are created ONLY through the security-definer `propose_swap()`.
+(2) **Status forge** — tightened the "update own posts" WITH CHECK to `status in
+('open','withdrawn')` so an author can't forge `proposed`/`matched` via a direct REST update
+(edit-while-open and the direct withdraw still work). Re-verified: RLS audit 29/29 + 5/5 new
+adversarial probes (both inserts denied, forge blocked, withdraw intact).
+
 Known disclosure gap (still open, by design): poster_key is stable per group, so a
 colleague identified via one confirmed match can recognize that person's other posts
 thereafter — consider copy disclosure or key rotation later.
+
+## Agent council run — 2026-07-30 (ultracode)
+
+Ran the multi-lens council (8 dimensions: wage-math, security, mobile-ux, accessibility,
+performance, data-integrity, code-quality, product-design) as a Workflow with adversarial
+verification of every finding: 30 confirmed / 2 rejected. Auto-applied the 24 confirmed-safe,
+low-risk fixes (index.html + the 2 swap SQL fixes above), device-tested on iPhone-13 emulation
+(boot happy + hang-getsession + block-babel, wage-math, NaN-safety, Year-PTO, delete-confirm)
+and swap RLS re-audited (29/29 + 5/5), then deployed. Highlights: differential-delete now
+confirms before silently repricing logged shifts; `loadCloudRow` throws on transient errors
+(no more clobbering cloud with local on a network blip); `sanitizeData` coerces malformed
+differentials (no NaN take-home); Year view includes PTO; global `--muted-2` + calendar-amount
+contrast raised to WCAG AA; reduced-motion/transparency media queries; iconbtn double-blur
+removed; many P3 nits (BACKUP_KEY cleanup, aria-pressed/labels, safe-area FAB, dead-code).
+
+**Deferred (real but not safe to auto-apply overnight — need focused work):** overtime×
+differential stacking (wage-core redesign: add an isOvertime flag + independent toggle);
+FAB overlapping content mid-scroll (corner-anchor is a design call); calendar memoization +
+16-month virtualization (subtle re-render/scroll-machinery risk); sync content-equality
+canonicalization (verify user_data.data is json vs jsonb first); broad backdrop-filter
+reduction (needs a real older-iPhone perf repro). See the workflow result for specifics.
 
 ## Testing (no device needed)
 
