@@ -315,9 +315,11 @@ begin
     raise exception 'match_stale';
   end if;
   update swap_matches set status = 'confirmed' where id = m and status = 'proposed';
-  -- retire the traded posts so they leave the open board
+  -- retire the traded posts so they leave the open board.
+  -- alias the subquery: bare `post_id` is ambiguous with this function's OUT
+  -- parameter of the same name (RETURNS TABLE (post_id ...)) — Postgres 42702.
   update swap_posts set status = 'matched'
-    where id in (select post_id from swap_match_legs where match_id = m)
+    where id in (select l.post_id from swap_match_legs l where l.match_id = m)
       and status = 'proposed';
   return query
     select l.post_id, coalesce(pr.display_name, 'A colleague')
