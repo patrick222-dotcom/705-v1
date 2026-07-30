@@ -23,7 +23,7 @@
     --mint:#34D399; --money:#11A86B; --money-soft:#E3F7EE; --money-ink:#0B5D3C;
     --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
     --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
-    --muted:#6B665C; --muted-2:#9A968C; --line:#EEEDE8; --line-2:#E7E5DE;
+    --muted:#6B665C; --muted-2:#726D62; --line:#EEEDE8; --line-2:#E7E5DE;
     --danger:#C84B3C; --danger-soft:#F3D6D1;
 
     /* Liquid Glass tokens */
@@ -59,14 +59,17 @@
   @keyframes spin{to{transform:rotate(360deg)}}
 
   /* layout */
-  .topbar{position:sticky;top:0;z-index:40;background:rgba(246,245,241,.72);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border-bottom:1px solid rgba(22,24,31,.07);box-shadow:inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;gap:14px;padding:12px 18px}
+  .topbar{position:sticky;top:0;z-index:40;background:rgba(246,245,241,.88);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border-bottom:1px solid rgba(22,24,31,.07);box-shadow:inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;gap:14px;padding:12px 18px}
   .brand{display:flex;align-items:center;gap:8px;font-family:'Bricolage Grotesque';font-weight:800;font-size:18px}
   .brand .b-dot{width:11px;height:11px;border-radius:4px;background:var(--indigo)}
   .topnav{display:none;gap:20px;margin-left:8px}
   .topnav span,.topnav button{font-weight:600;font-size:13.5px;color:var(--muted-2)}
   .topnav span.on,.topnav button.on{color:var(--ink)}
   .top-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
-  .iconbtn{position:relative;width:40px;height:40px;border-radius:13px;border:1px solid var(--glass-line);background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);box-shadow:inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:center;color:var(--ink)}
+  /* No backdrop-filter here: .iconbtn sits inside the already-blurred sticky .topbar, so a
+     nested blur would double-composite every scroll frame. A slightly more opaque flat fill
+     keeps the frosted look over the topbar's glass. */
+  .iconbtn{position:relative;width:40px;height:40px;border-radius:13px;border:1px solid var(--glass-line);background:rgba(255,255,255,.7);box-shadow:inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:center;color:var(--ink)}
   .iconbtn::after{content:'';position:absolute;inset:-2px}
   .iconbtn:hover{background:var(--glass-strong)}
   /* keyboard-focusable link-styled buttons (nav, inline affordances) */
@@ -194,7 +197,7 @@
   .cell .dots i.glyph{width:auto;height:auto;background:none;font-size:9.5px;line-height:1;font-style:normal;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
   /* hollow rings for day events (PTO/education/appt/off) — distinct from solid shift dots */
   .cell .dots i.ev{background:transparent;border:1.3px solid #8A93A6;box-sizing:border-box;width:6px;height:6px}
-  .cell .amt{font-weight:700;font-size:10px;color:var(--money);margin-top:1px}
+  .cell .amt{font-weight:700;font-size:10px;color:var(--money-ink);margin-top:1px}
   .cell .note-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--indigo)}
   .cell.has{background:#fff}
   /* ACTIVE pay-period wash — faint, deliberately below .qf-on (quick-fill highlighting must
@@ -235,7 +238,7 @@
   .btn-sm{padding:10px 16px;border-radius:var(--r-pill);font-size:13px;width:auto}
 
   /* fab */
-  .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:45;background:var(--indigo);color:#fff;padding:15px 26px;border-radius:var(--r-pill);font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 16px 40px rgba(91,79,233,.45),0 4px 14px rgba(91,79,233,.28)}
+  .fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom));z-index:45;background:var(--indigo);color:#fff;padding:15px 26px;border-radius:var(--r-pill);font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 16px 40px rgba(91,79,233,.45),0 4px 14px rgba(91,79,233,.28)}
   .fab:active{transform:translateX(-50%) translateY(1px)}
 
   /* toggle */
@@ -262,7 +265,7 @@
   /* diff rows */
   .drow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:9px}
   .drow.off{opacity:.55}
-  .drow .nm{font-weight:600;font-size:14px;flex:1;min-width:0}
+  .drow .nm{font-weight:600;font-size:14px;flex:1;min-width:0;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
   .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:5px 10px;border-radius:var(--r-pill);white-space:nowrap}
   .drow .amt input{width:54px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
   .ddash{border:1.5px dashed #D8D5CC;border-radius:13px;padding:12px;text-align:center;font-weight:600;font-size:13px;color:#7A766C;width:100%}
@@ -358,6 +361,24 @@
     .viewseg button.on{background:#fff}
     .iconbtn,.calnav button,.back{background:#fff}
     .period{background:var(--card)}
+  }
+
+  /* Respect reduced-motion: the 8s boot watchdog and 4s getSession timeout are JS timers
+     (not CSS animations) and there are no animation/transitionend listeners, so collapsing
+     durations is safe for boot. */
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  }
+  /* Respect reduced-transparency: drop the frosted blur + translucency for opaque fills. */
+  @media (prefers-reduced-transparency: reduce){
+    .topbar{background:rgba(246,245,241,.98);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .sheet,.modal,.cdlg{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .scrim{background:rgba(18,18,26,.7);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .whatif,.qf-banner{background:var(--indigo-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .stat{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .viewseg{background:#EFEEE9;backdrop-filter:none;-webkit-backdrop-filter:none}
+    .viewseg button.on{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
+    .iconbtn,.calnav button,.back,.period{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
   }
 </style>
 </head>
@@ -812,8 +833,19 @@ function sanitizeData(d){
         && (w.type==='percent' || w.type==='dollar'))
       .map(w=>({name:w.name, amount:Number(w.amount), type:w.type}));
   }
-  // differentials: pass objects through; applyData merges each over DIFF_DEFAULTS.
-  if(d.differentials && typeof d.differentials==='object' && !Array.isArray(d.differentials)) out.differentials = d.differentials;
+  // differentials: coerce each entry so `amount` is finite and `type` is valid — a non-numeric
+  // amount or bad type would flow into hourlyRate() and yield NaN take-home. Preserve
+  // name/color/active (needed for custom-* keys with no DIFF_DEFAULTS); applyData merges over defaults.
+  if(d.differentials && typeof d.differentials==='object' && !Array.isArray(d.differentials)){
+    const dd = {};
+    Object.entries(d.differentials).forEach(([k,v])=>{
+      if(!v || typeof v!=='object' || Array.isArray(v)) return;
+      const amt = Number(v.amount);
+      dd[k] = {...v, amount: isFinite(amt) ? amt : 0,
+        type: (v.type==='dollar'||v.type==='multiplier'||v.type==='percent') ? v.type : 'dollar'};
+    });
+    out.differentials = dd;
+  }
   // templates: repeating-shift presets. Cap MAX_TEMPLATES, validate shape, drop malformed entries.
   if(Array.isArray(d.templates)){
     out.templates = d.templates.filter(t=> t && typeof t==='object'
@@ -917,10 +949,6 @@ function track(name, props, userId){
   }catch(_){}
 }
 
-async function loadFromSupabase(userId){
-  const row = await loadCloudRow(userId);
-  return row ? row.data : null;
-}
 /* Full row incl. updated_at — used by initial hydration and the focus-refetch sync. */
 async function loadCloudRow(userId){
   if(!supabase) return null;
@@ -929,7 +957,10 @@ async function loadCloudRow(userId){
     .select('data, updated_at')
     .eq('user_id',userId)
     .single();
-  if(error && error.code!=='PGRST116') console.error('Load error:',error);
+  // PGRST116 = no row yet (expected first-run) → null. Any OTHER error is transient
+  // (network / RLS / timeout): THROW so callers leave hydratedForUser unset and never
+  // clobber the cloud with local/default state (they already catch and degrade locally).
+  if(error){ if(error.code==='PGRST116') return null; console.error('Load error:',error); throw error; }
   return data?.data ? {data:data.data, updatedAt:data.updated_at||null} : null;
 }
 
@@ -1366,7 +1397,7 @@ class ErrorBoundary extends React.Component {
   render(){
     if(this.state.hasError){
       return (
-        <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100dvh',padding:'24px',background:'var(--bg)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100dvh',padding:'24px',background:'var(--paper)'}}>
           <div style={{maxWidth:'440px',background:'var(--paper)',borderRadius:'20px',padding:'28px',textAlign:'center'}}>
             <div style={{fontSize:'48px',marginBottom:'16px'}}>⚠️</div>
             <div style={{fontFamily:'Bricolage Grotesque',fontWeight:'700',fontSize:'22px',color:'var(--ink)',marginBottom:'12px'}}>Something went wrong</div>
@@ -1592,7 +1623,7 @@ function App(){
         try{ ts = await saveToSupabase(user.id, dataToSave); }
         finally{ setSyncing(false); }
         setSyncError(!ts);
-        if(ts){ lastSeenAt.current = ts; }   // remember our own write so the focus-refetch ignores it
+        if(ts){ lastSeenAt.current = ts; try{ localStorage.removeItem(BACKUP_KEY(user.id)); }catch(_){} }   // remember our own write; a successful save makes cloud authoritative, so drop any stale local backup
         else{
           // network drop: mirror to a PER-USER key (not the shared anon STORE_KEY) so nothing is lost and nothing leaks
           try{ localStorage.setItem(BACKUP_KEY(user.id), JSON.stringify(dataToSave)); }catch(_){}
@@ -1613,7 +1644,7 @@ function App(){
       if(!snap) return;
       if(snap.user){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key
-        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts) lastSeenAt.current=ts; }); }catch(_){} }
+        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } }); }catch(_){} }
       }else{
         try{ localStorage.setItem(STORE_KEY, JSON.stringify(snap.data)); }catch(_){}
       }
@@ -1632,7 +1663,7 @@ function App(){
     try{ ts = await saveToSupabase(user.id, serializeState()); }
     finally{ setSyncing(false); }
     setSyncError(!ts);
-    if(ts){ lastSeenAt.current = ts; }
+    if(ts){ lastSeenAt.current = ts; try{ localStorage.removeItem(BACKUP_KEY(user.id)); }catch(_){} }
   };
 
   /* WebKit-safe sign-out. supabase-js signOut() calls getSession() + a /logout network
@@ -1674,7 +1705,7 @@ function App(){
       busy=true;
       try{
         const row = await withTimeout(loadCloudRow(user.id), 6000, 'sync refetch');
-        if(row && row.data && row.updatedAt && (!lastSeenAt.current || row.updatedAt > lastSeenAt.current)){
+        if(row && row.data && row.updatedAt && (!lastSeenAt.current || new Date(row.updatedAt).getTime() > new Date(lastSeenAt.current).getTime())){
           // only apply if the remote content actually differs from what we already show
           // (ignoring the local view period) — otherwise just record that we've seen it.
           if(normalize(row.data) !== normalize(serializeState())){
@@ -1873,9 +1904,11 @@ function App(){
       const prefix = `${y}-${String(m+1).padStart(2,'0')}-`;
       let g=0,h=0,n=0;
       Object.keys(shifts).forEach(k=>{ if(k.indexOf(prefix)===0){ (shifts[k]||[]).forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; n++; }); } });
+      // PTO adds to gross/hours like every other rollup (statOf/calc) — n counts shifts only, not PTO days.
+      Object.keys(dayEvents).forEach(k=>{ if(k.indexOf(prefix)===0){ (dayEvents[k]||[]).forEach(e=>{ if(e.kind==='pto' && e.hours>0){ g+=e.hours*baseRate; h+=e.hours; } }); } });
       return {m,g,h,n};
     });
-  },[calView,calFocus,shifts,baseRate,differentials]);
+  },[calView,calFocus,shifts,dayEvents,baseRate,differentials]);
 
   /* ---- calculations ---- */
   const calc = useMemo(()=>{
@@ -2323,7 +2356,7 @@ function App(){
         <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
         <div className="top-actions">
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
-          {!syncing && syncError && <span onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',marginRight:8,cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</span>}
+          {!syncing && syncError && <button className="linklike" onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',padding:'11px 6px',margin:'-11px 6px -11px 0',display:'inline-flex',alignItems:'center',cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</button>}
           <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); openSheet(k);}}>+ Log a shift</button>
           <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>setShowFeedback(true)}>{Ic.chat}</button>
           <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
@@ -2662,7 +2695,7 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
         <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>What kind of shift is this?</div>
         <div className="chips-grid" style={{marginBottom:22}}>
           {CHIP_OPTS.map(([k,l])=>(
-            <button key={k} className={'chip-sel'+(sel===k?' on':'')} style={{minHeight:44}} onClick={()=>onAnswer(g.key,k)}>
+            <button key={k} className={'chip-sel'+(sel===k?' on':'')} aria-pressed={sel===k} style={{minHeight:44}} onClick={()=>onAnswer(g.key,k)}>
               <i style={{background: k==='skip' ? 'transparent' : (differentials[k]?.color||'#8A93A6')}}></i>{l}
             </button>
           ))}
@@ -2709,7 +2742,12 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
     const isToday = k===today;
     const isActive = !!periodAnchor && periodStartOf(k,periodAnchor)===periodAnchor;
     nodes.push(
-      <button key={k} data-date={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')+(isToday?' today':'')+(isActive?' pp-active':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()}>
+      <button key={k} data-date={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')+(isToday?' today':'')+(isActive?' pp-active':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()
+          + (hasShift ? ', ' + arr.length + ' shift' + (arr.length===1?'':'s') : '')
+          + (hasEvent ? ', ' + evs.length + ' day event' + (evs.length===1?'':'s') : '')
+          + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
+          + (!has ? ', no shifts' : '')
+          + (hasNote ? ', has a note' : '')}>
         <div className="d">{dt.getDate()}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
           ? <div style={{marginTop:'auto'}}>
@@ -2890,7 +2928,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const ptoEvent = events.find(e=>e.kind==='pto');
 
   // A configured-but-not-yet-added shift, clamped to a legal hours range (no blocking alert).
-  const draftShift = ()=>{ const o={id:Date.now(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus}; if(start) o.start=start; return o; };
+  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus}; if(start) o.start=start; return o; };
   const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setDirty(true); configDirtySinceAdd.current=false; };
   const remove = id=>{ setList(list.filter(s=>s.id!==id)); setDirty(true); };
   // Day events (PTO/education/appt/off) toggle: one entry per kind, tap again to remove.
@@ -2985,7 +3023,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         <div className="sec-lab">SHIFT TYPE</div>
         <div className="chips-grid" style={{marginBottom:16}}>
           {active.map(([k,d])=>(
-            <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} onClick={()=>{ setType(k); configDirtySinceAdd.current=true; }}>
+            <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} aria-pressed={shiftType===k} onClick={()=>{ setType(k); configDirtySinceAdd.current=true; }}>
               <i style={{background:d.color||'#8A93A6'}}></i>{d.name}
             </button>
           ))}
@@ -2993,7 +3031,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
         <div className="sec-lab">HOURS</div>
         <div className="hrs" style={{marginBottom:12}}>
-          {[8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} onClick={()=>{ setHours(h); configDirtySinceAdd.current=true; }}>{h}h</button>)}
+          {[8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} aria-pressed={hours===h} onClick={()=>{ setHours(h); configDirtySinceAdd.current=true; }}>{h}h</button>)}
           <div className="inp suf" style={{flex:1}}><NumInput value={hours} onCommit={v=>{ setHours(v); configDirtySinceAdd.current=true; }} step="0.5" min={0.1} max={24} ariaLabel="Hours" style={{padding:'11px 12px',textAlign:'center',fontWeight:700}}/></div>
         </div>
 
@@ -3019,7 +3057,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         <div className="sec-lab" style={{marginTop:4}}>ALSO ON THIS DAY</div>
         <div className="chips-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:ptoEvent?10:16}}>
           {EVENT_KINDS.map(k=>(
-            <button key={k} className={'chip-sel'+(events.some(e=>e.kind===k)?' on':'')}
+            <button key={k} className={'chip-sel'+(events.some(e=>e.kind===k)?' on':'')} aria-pressed={events.some(e=>e.kind===k)}
               style={{justifyContent:'center',padding:'10px 4px',fontSize:12,minHeight:44}}
               onClick={()=>toggleEvent(k)}>{EVENT_KIND_META[k].label}</button>
           ))}
@@ -3153,7 +3191,7 @@ function Settings(props){
 
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
-  const del=k=>{ const n={...differentials}; delete n[k]; setDiff(n); };
+  const del=async k=>{ if(!(await confirmAsync("Any shifts you've logged with this differential will be repriced at your base rate — this can't be undone.",{title:'Delete differential?',confirm:'Delete',danger:true}))) return; const n={...differentials}; delete n[k]; setDiff(n); };
   const addDiff=()=>{ if(newName.trim()){ setDiff({...differentials,['custom-'+Date.now()]:{name:newName,amount:parseFloat(newAmt)||0,type:'dollar',active:true,color:'#5B4FE9'}}); setNewName(''); setNewAmt(0); } };
 
   return (
@@ -3315,7 +3353,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   useEffect(()=>{
     if(!activeGroupId) return;
     let stopped=false;
-    const load = async ()=>{ if(!stopped) await refreshBoardAndMatches(); };
+    const load = async ()=>{ if(!stopped && document.visibilityState!=='hidden') await refreshBoardAndMatches(); };
     setBoardLoading(true);
     load().finally(()=>{ if(!stopped) setBoardLoading(false); });
     const id = setInterval(load, 15000);
@@ -3768,7 +3806,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             {groups.length>1 &&
               <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
                 {groups.map(g=>
-                  <button key={g.id} className={'chip-sel'+(g.id===activeGroupId?' on':'')} style={{minHeight:44}} onClick={()=>setActiveGroupId(g.id)}>{g.name}</button>)}
+                  <button key={g.id} className={'chip-sel'+(g.id===activeGroupId?' on':'')} aria-pressed={g.id===activeGroupId} style={{minHeight:44}} onClick={()=>setActiveGroupId(g.id)}>{g.name}</button>)}
               </div>}
             {!activeGroupId &&
               <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
@@ -3924,7 +3962,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div className="sec-lab">WHAT DO YOU NEED?</div>
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
               {[['give','Give up a shift'],['want','Want a shift'],['avail','Available to work']].map(([k,l])=>
-                <button key={k} className={'chip-sel'+(composerKind===k?' on':'')} style={{minHeight:44,justifyContent:'flex-start'}} onClick={()=>setComposerKind(k)}>{l}</button>)}
+                <button key={k} className={'chip-sel'+(composerKind===k?' on':'')} aria-pressed={composerKind===k} style={{minHeight:44,justifyContent:'flex-start'}} onClick={()=>setComposerKind(k)}>{l}</button>)}
             </div>
 
             {composerKind==='give' &&
@@ -3934,7 +3972,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                     {upcomingShifts.map(({dateKey,shift})=>{
                       const sel = selectedGive && selectedGive.dateKey===dateKey && selectedGive.shift.id===shift.id;
                       return (
-                        <button key={dateKey+'-'+shift.id} className={'chip-sel'+(sel?' on':'')} style={{minHeight:44,justifyContent:'flex-start',textAlign:'left'}}
+                        <button key={dateKey+'-'+shift.id} className={'chip-sel'+(sel?' on':'')} aria-pressed={sel} style={{minHeight:44,justifyContent:'flex-start',textAlign:'left'}}
                           onClick={()=>setSelectedGive({dateKey,shift})}>
                           <span><b>{fmtDateShort(dateKey)}</b> — {giveMetaLine({shiftType:shift.shiftType,hours:shift.hours,start:shift.start}, differentials)}</span>
                         </button>
@@ -3953,7 +3991,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                 <div className="sec-lab">TAP THE DAYS YOU COULD WORK</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
                   {next14Days.map(dk=>
-                    <button key={dk} className={'chip-sel'+(availDates.indexOf(dk)>=0?' on':'')} style={{minHeight:44,padding:'8px 10px',fontSize:12}}
+                    <button key={dk} className={'chip-sel'+(availDates.indexOf(dk)>=0?' on':'')} aria-pressed={availDates.indexOf(dk)>=0} style={{minHeight:44,padding:'8px 10px',fontSize:12}}
                       onClick={()=>toggleAvailDate(dk)}>{fmtDateShort(dk)}</button>)}
                 </div>
               </div>}

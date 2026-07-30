@@ -128,7 +128,10 @@ drop policy if exists "update own posts" on public.swap_posts;
 create policy "update own posts" on public.swap_posts
   for update to authenticated
   using ((select auth.uid()) = author and status = 'open')
-  with check ((select auth.uid()) = author);
+  -- WITH CHECK caps the post-update status to open/withdrawn so an author can edit an open
+  -- post or take it down, but can NOT forge 'proposed'/'matched' outside the propose/reveal
+  -- state machine (those transitions happen only inside the security-definer RPCs).
+  with check ((select auth.uid()) = author and status in ('open','withdrawn'));
 
 -- ANONYMITY CORE: members may read the board but the author column is not
 -- grantable — API queries selecting `author` (or `select *`) fail for others.
@@ -220,12 +223,18 @@ create policy "accept own leg" on public.swap_match_legs
      and exists (select 1 from public.swap_matches m where m.id = match_id and m.status = 'proposed'))
   with check (leg_user = (select auth.uid()));
 
+-- NO direct INSERT on matches/legs: they are created ONLY through the security-definer
+-- propose_swap() RPC, which validates authorship, open-status and group membership in its
+-- FOR UPDATE loop. A raw INSERT grant would let a member fabricate a match + self-named leg
+-- pointing at ANY post_id, then read that post's hidden (non-open) content via match_details()
+-- (which gates only on is_match_party) — bypassing the swap_posts SELECT RLS. Keep select+update
+-- (used by the accept-leg and decline flows).
 revoke all on public.swap_matches from authenticated;
-grant select (id, group_id, status, created_at), insert (id, group_id, proposed_by, status),
+grant select (id, group_id, status, created_at),
   update (status)
   on public.swap_matches to authenticated;
 revoke all on public.swap_match_legs from authenticated;
-grant select (match_id, post_id, accepted), insert (match_id, post_id, leg_user), update (accepted)
+grant select (match_id, post_id, accepted), update (accepted)
   on public.swap_match_legs to authenticated;
 
 -- proposer must name the leg users — but can't read authors. Resolve server-side:
