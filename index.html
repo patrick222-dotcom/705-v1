@@ -140,9 +140,9 @@
   .yrow .ym{font-weight:700;font-size:14.5px;width:84px;flex:0 0 auto}
   .yrow .yd{flex:1;font-size:13px;color:var(--muted);font-weight:500}
   .yrow .ychev{color:#c9c6bc;font-size:18px;font-weight:700;flex:0 0 auto}
-  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-bottom:6px;min-width:320px}
+  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:6px;min-width:320px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
-  .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;min-width:320px}
+  .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;min-width:320px}
   /* month view: continuous vertical scroll of month sections (replaces ‹ › pagination and the
      old Pay period/Week grids). Negative-margin bleed past the card's own padding, own scroll
      container. background:var(--card) is what keeps the bled area (and the sticky header living in it)
@@ -173,7 +173,7 @@
        part of the card, never as a full-bleed band spilling onto the page background. */
     .cal-vscroll-wrap{margin:0 -18px}
     .cal-vscroll{padding:0 8px 20px}
-    .dow,.grid{gap:4px;min-width:0}
+    .dow,.grid{gap:2px;min-width:0}
   }
   /* min-height:0 overrides the grid item's default content-based automatic minimum size, which
      otherwise wins over aspect-ratio and stretches a cell's row taller than its siblings whenever
@@ -182,7 +182,7 @@
      min-height:0 lets aspect-ratio govern every cell's height again. Deliberately no overflow:hidden
      here: that would also clip a wide $ amount (e.g. "$1,120") mid-digit against the cell's own
      horizontal padding. Width containment for the marker row is instead scoped to .dots itself. */
-  .cell{position:relative;aspect-ratio:1/1;min-height:0;border-radius:11px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
+  .cell{position:relative;aspect-ratio:1/1;min-height:0;border-radius:6px;background:#fbfaf7;border:1px solid var(--line);padding:7px 6px;display:flex;flex-direction:column;text-align:left;transition:transform .08s,box-shadow .12s}
   .cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .cell.empty{border-style:dashed;background:#fff;pointer-events:none}
   .cell .d{font-weight:700;font-size:13px}
