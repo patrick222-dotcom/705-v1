@@ -12,6 +12,22 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
    score 8/10, less manual synthesis by the orchestrator, and real mobile testing
    (headless Chromium with iPhone emulation — see Testing below).
 
+## Autonomous nightly loop
+
+A nightly Routine (fresh session per fire) runs a **groom + build** loop against `BACKLOG.md`:
+1. **Groom** — mine `feedback` + `events` (Supabase MCP or the documented curl fallback), review
+   the app, and add/reprioritize P0–P3 items in `BACKLOG.md` (dedupe; skip Done/Blocked).
+2. **Build** — implement the single highest-priority **unblocked, gate-safe** item end-to-end:
+   develop on `claude/clause-md-review-9tqlj8` (restarted from the deploy base each run), test on
+   the iPhone-13 Playwright harness (see Testing), pass the **safety gate**, then PR + squash-merge
+   to the deploy branch (auto-deploys) and verify live. Mark it done in `BACKLOG.md`.
+
+**Rules:** full autonomy but **gate-limited** — never weaken boot hardening / SRI / wage-core;
+one build item per run; if an item is risky/ambiguous or the gate fails, mark it `deferred` with a
+note and take the next safe item or stop (never deploy a failing gate). End with a concise summary
+(delivered via the Routine's completion notification). `BACKLOG.md` is the durable memory — the
+container is ephemeral, so commit everything.
+
 ## Architecture
 
 - **Single-file app**: everything lives in `index.html` — React 18 + Babel standalone
