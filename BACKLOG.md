@@ -23,11 +23,7 @@ _(none)_
 ## Queue
 
 ### P1
-- [ ] **Overtime × differential stacking** — OT is computed at flat 1.5×base, dropping the
-  night/weekend differential. Add an `isOvertime` boolean on the shift + an independent toggle in
-  AddShiftSheet (separate from the mutually-exclusive shiftType chips); in `shiftGross` apply
-  `hourlyRate(base,diff)` then ×1.5 when `isOvertime`. Wage-core change → test hard with the math
-  probes; default old shifts to `isOvertime:false` in `sanitizeData`. Real paycheck accuracy.
+_(none)_
 
 ### P2
 - [ ] **FAB overlap** — the fixed centered "Log a shift" FAB covers calendar/card content
@@ -54,6 +50,14 @@ _(none)_
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
 
 ## Done (log)
+- 2026-08-04 — **Overtime × differential stacking** (P1). `isOvertime` is now an independent
+  per-shift flag (own toggle in AddShiftSheet) instead of a mutually-exclusive shift-type chip;
+  `shiftGross` applies `hourlyRate(base,diff)` then ×1.5 so a night/weekend OT shift keeps its
+  differential (e.g. night OT = 1.5×(base+$10) rather than a flat 1.5×base that dropped it).
+  Per-hour/flat bonuses stay at face value. `overtime` filtered out of the shift-type chips (key
+  kept for legacy shifts + paystub classify); `sanitizeData` coerces `isOvertime` to a strict
+  boolean (old shifts → false); "OT ×1.5" badge on logged shifts. iPhone-13 gate 14/14 (boot
+  happy / hang-getSession / block-babel + 8 wage-math probes + sanitize coercion). SRI intact (5).
 - 2026-07-30 — Liquid Glass UI; 24-item council fix pass; swap board live + 2 RLS holes closed
   (direct-INSERT anonymity bypass, status forge); tighter grid-style month calendar.
 
