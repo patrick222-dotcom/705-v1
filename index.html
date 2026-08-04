@@ -787,7 +787,7 @@ function sanitizeData(d){
           && typeof x.shiftType==='string'
           && isFinite(Number(x.hours)) && Number(x.hours)>0 && Number(x.hours)<=24)
         .map(x=>{
-          const o = {...x, hours:Number(x.hours)};
+          const o = {...x, hours:Number(x.hours), isOvertime:x.isOvertime===true};
           if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
           if(typeof o.icsUid!=='string' || !ICS_UID_RE.test(o.icsUid)) delete o.icsUid;
           return o;
@@ -880,7 +880,12 @@ function hourlyRate(base, diff){
 function shiftGross(base, diff, s){
   const perHr = s.bonusType==='custom' ? 0 : (BONUS[s.bonusType]||0);
   const flat  = s.bonusType==='custom' ? (parseFloat(s.customBonus)||0) : 0;
-  return hourlyRate(base, diff) * s.hours + perHr*s.hours + flat;
+  // Overtime stacks ON TOP of the shift differential: the differential-inclusive hourly rate
+  // is paid at 1.5× (per-hour/flat bonuses stay at face value, matching the legacy 'overtime'
+  // shift-type which only multiplied the hourly rate). isOvertime is an independent flag, so a
+  // night OT shift earns 1.5×(base+night diff) instead of losing the differential to a flat 1.5×base.
+  const otMult = s.isOvertime ? 1.5 : 1;
+  return hourlyRate(base, diff) * otMult * s.hours + perHr*s.hours + flat;
 }
 
 /* ---------- supabase helpers ---------- */
@@ -2905,6 +2910,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const [bonusType,setBonus] = useState('none');
   const [customBonus,setCustomBonus] = useState(0);
   const [start,setStart] = useState('');   // optional "HH:MM" start time for the shift being configured
+  const [isOvertime,setOvertime] = useState(false);   // independent OT flag — stacks 1.5× on top of the shift differential
   const [events,setEvents] = useState((existingEvents||[]).map(e=>({...e})));   // "also on this day" life events
   const [note,setNote] = useState(existingNote||'');
   const [dirty,setDirty] = useState(false);   // list/events/note changed vs incoming props — used to save-on-dismiss
@@ -2918,18 +2924,21 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   // edits and silently captured stale values).
   const configDirtySinceAdd = useRef(true);
 
-  const active = Object.entries(differentials).filter(([_,d])=>d.active);
+  // Exclude 'overtime' from the shift-type chips: OT is now an independent toggle that stacks on
+  // top of the chosen differential (was a mutually-exclusive chip that dropped the differential).
+  // Mirrors the settings differentials editor, which already filters 'overtime' out.
+  const active = Object.entries(differentials).filter(([k,d])=>d.active && k!=='overtime');
   const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
   const dateLabel = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
-  const draft = {shiftType,hours,bonusType,customBonus};
+  const draft = {shiftType,hours,bonusType,customBonus,isOvertime};
   const previewGross = shiftGross(baseRate, differentials[shiftType], draft);
   const previewNet = Math.round(previewGross*keepRatio);
   const ptoEvent = events.find(e=>e.kind==='pto');
 
   // A configured-but-not-yet-added shift, clamped to a legal hours range (no blocking alert).
-  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus}; if(start) o.start=start; return o; };
-  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setDirty(true); configDirtySinceAdd.current=false; };
+  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus, isOvertime}; if(start) o.start=start; return o; };
+  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setOvertime(false); setDirty(true); configDirtySinceAdd.current=false; };
   const remove = id=>{ setList(list.filter(s=>s.id!==id)); setDirty(true); };
   // Day events (PTO/education/appt/off) toggle: one entry per kind, tap again to remove.
   const toggleEvent = (kind)=>{
@@ -3013,6 +3022,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
+                  {s.isOvertime && <span style={{fontSize:12,fontWeight:700,color:'#11A86B'}}>OT ×1.5</span>}
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>+{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
                 <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
@@ -3028,6 +3038,13 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
             </button>
           ))}
         </div>
+
+        <div className="sec-lab">OVERTIME</div>
+        <button className={'chip-sel'+(isOvertime?' on':'')} aria-pressed={isOvertime}
+          style={{width:'100%',marginBottom:16,minHeight:44}}
+          onClick={()=>{ setOvertime(v=>!v); configDirtySinceAdd.current=true; }}>
+          <i style={{background:'#11A86B'}}></i>Overtime — pays 1.5× the hourly rate
+        </button>
 
         <div className="sec-lab">HOURS</div>
         <div className="hrs" style={{marginBottom:12}}>
