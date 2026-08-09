@@ -26,9 +26,6 @@ _(none)_
 _(none)_
 
 ### P2
-- [ ] **FAB overlap** — the fixed centered "Log a shift" FAB covers calendar/card content
-  mid-scroll. Corner-anchor (`right:16px`) or auto-hide on scroll-down; verify no tap-target
-  regression and the safe-area inset stays.
 - [ ] **Calendar memoization** — App re-renders all ~480 month cells on every unrelated state
   change. `useCallback` on statOf/ptoStatOf/keyOf and `React.memo` on MonthSection; verify no
   stale-closure bugs and the scroll machinery (scrollMonthTo/jumpToday/hero-follow) still works.
@@ -49,7 +46,25 @@ _(none)_
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
 
+## Environment notes (scheduled-run limitations — as of 2026-08-09)
+- **Scheduled/Routine-fired sessions CANNOT git push** to this repo: push fails 403 "repo not
+  in this session's authorized repository set." This is an env-level authorization gap and was
+  NOT fixed by running `/web-setup`. Interactive sessions push fine. Until resolved, the nightly
+  run builds+tests but its DEPLOY step falls back to emitting a `git format-patch` in the summary;
+  the owner (or an interactive session) applies + ships it. Verified across 3 scheduled runs
+  (2026-08-04, and both 2026-08-09 runs).
+- **Scheduled runs can't hit the Supabase Management API with auth:** a `Bearer`-header request is
+  denied by the sandbox auto-mode classifier (plain unauth GET → 401 as normal). So the GROOM
+  phase can't mine feedback/events from a scheduled run; grooming is code-review-only there.
+  (Works fine from an interactive session.)
+
 ## Done (log)
+- 2026-08-09 — **FAB overlap** (P2). Corner-anchored the fixed "Log a shift" button to
+  `right:16px` (was centered `left:50%;translateX(-50%)`, which covered calendar/card content
+  mid-scroll); `:active` transform simplified to `translateY(1px)`. 2-line CSS diff; safe-area
+  bottom inset preserved. iPhone-13 gate 14/14, SRI intact (5). NOTE: originally built by the
+  nightly scheduled run but its push was DENIED (403 "repo not in this session's authorized
+  repository set"); reproduced + shipped from an interactive session. See Groom notes.
 - 2026-08-04 — **Overtime × differential stacking** (P1). `isOvertime` is now an independent
   per-shift flag (own toggle in AddShiftSheet) instead of a mutually-exclusive shift-type chip;
   `shiftGross` applies `hourlyRate(base,diff)` then ×1.5 so a night/weekend OT shift keeps its
