@@ -23,7 +23,11 @@ _(none)_
 ## Queue
 
 ### P1
-_(none)_
+- [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
+  patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
+  logging in with Gmail. Likely the getSession 4s-race / loadCloudRow error path surfacing a
+  transient failure as "couldn't sync." INVESTIGATE with a real multi-device/auth repro — NOT
+  gate-safe for a one-run autonomous build; needs focused attention. High user-trust impact.
 
 ### P2
 - [ ] **Calendar memoization** — App re-renders all ~480 month cells on every unrelated state
@@ -59,6 +63,11 @@ _(none)_
   (Works fine from an interactive session.)
 
 ## Done (log)
+- 2026-08-10 — **4-hour shift quick-select** (from user feedback 2026-08-04: "add an option for a
+  4 hour shift"). Added a `4h` preset chip to the Add-Shift HOURS row (now 4/8/12/16 + custom) and
+  `flex-wrap` on `.hrs` so the row never crowds on narrow screens. iPhone-13 gate 14/14 + a 4h-chip
+  e2e probe 6/6 (chip renders 4h/8h/12h/16h, selects on tap, row fits iPhone, no page errors).
+  SRI intact (5). Shipped by the **session-bound nightly run** (first successful autonomous deploy).
 - 2026-08-09 — **FAB overlap** (P2). Corner-anchored the fixed "Log a shift" button to
   `right:16px` (was centered `left:50%;translateX(-50%)`, which covered calendar/card content
   mid-scroll); `:active` transform simplified to `translateY(1px)`. 2-line CSS diff; safe-area
