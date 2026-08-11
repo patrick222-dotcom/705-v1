@@ -42,8 +42,10 @@ _(none)_
   breaking scrollMonthTo/jumpToday/hero-follow (they need measurable rects). Careful.
 - [ ] **Backdrop-filter perf pass** — reproduce jank on older-iPhone emulation FIRST; only then
   trim blur on the ~8 glass surfaces. Don't blind-remove (visual regression).
-- [ ] **Swap poster_key disclosure** — stable per-group key lets a colleague recognize an
-  identified person's other posts. Add copy disclosure and/or per-cycle key rotation.
+- [ ] **Swap poster_key rotation** — copy disclosure SHIPPED 2026-08-11 (see Done log); the
+  optional harder follow-up remains: per-cycle key rotation so a colleague identified via one
+  confirmed match can't correlate that person's *future* posts. Non-trivial (touches the
+  security-definer poster_key derivation) — defer until real demand.
 
 ## Blocked
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
@@ -63,6 +65,17 @@ _(none)_
   (Works fine from an interactive session.)
 
 ## Done (log)
+- 2026-08-11 — **Swap match consent disclosure** (P3, from the CLAUDE.md-documented anonymity
+  gap). After a swap is confirmed and names are revealed, the match card now shows a muted note:
+  colleagues on a confirmed swap can see each other's names and may recognize each other's future
+  posts, while your identity stays hidden from everyone you haven't matched with. Purely additive
+  UI copy inside the `confirmed && reveal` branch of `SwapsSheet` — zero touch to boot hardening /
+  SRI / wage-core / sync. iPhone-13 gate 18/18 (boot happy / hang-getSession / block-babel error
+  screen + 9 wage-math probes incl. night-OT×diff & sanitize isOvertime coercion + disclosure copy
+  present). SRI intact (5). GROOM this run reached feedback+events via the Management API (token
+  present as `$supabase_access_token`): 3 feedback rows (4h shift = already Done; 2× "couldn't
+  sync after Gmail" = existing top P1, not gate-safe), healthy core usage (app_open 54, shift_saved
+  19) — no new actionable items. Session-bound run; git push authorized here.
 - 2026-08-10 — **4-hour shift quick-select** (from user feedback 2026-08-04: "add an option for a
   4 hour shift"). Added a `4h` preset chip to the Add-Shift HOURS row (now 4/8/12/16 + custom) and
   `flex-wrap` on `.hrs` so the row never crowds on narrow screens. iPhone-13 gate 14/14 + a 4h-chip
