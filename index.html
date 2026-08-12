@@ -3288,6 +3288,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   const [creating,setCreating] = useState(false);
   const [joinCode,setJoinCode] = useState('');
   const [joining,setJoining] = useState(false);
+  const [joinMoreOpen,setJoinMoreOpen] = useState(false);   // reveal the "join another board" input once you already have a board
 
   const [posts,setPosts] = useState([]);
   const [boardLoading,setBoardLoading] = useState(false);
@@ -3420,6 +3421,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
     setGroups(prev=> prev.some(g=>g.id===group.id) ? prev : [...prev, group]);
     setActiveGroupId(group.id);
     setJoinCode('');
+    setJoinMoreOpen(false);
     track('swap_group_joined', null, user.id);
   };
 
@@ -3973,6 +3975,30 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                 </div>
               ))}
             </React.Fragment>}
+
+            {/* Join ANOTHER board once you already have one — the create/join cards above only show
+                at zero groups, so without this a colleague's invite code has nowhere to be entered
+                (direct user feedback 2026-08-11: "how do I use a pin someone gives me?"). */}
+            <div style={{marginTop:22,paddingTop:16,borderTop:'1px solid var(--line)'}}>
+              {!joinMoreOpen &&
+                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>setJoinMoreOpen(true)}>
+                  + Join another board with a code
+                </button>}
+              {joinMoreOpen &&
+                <div className="card">
+                  <h3>Join another board</h3>
+                  <div style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.5,marginBottom:10}}>Enter the 6-character code a colleague shared with you.</div>
+                  <div className="inp" style={{marginBottom:10}}>
+                    <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
+                      placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"
+                      onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}/>
+                  </div>
+                  <div style={{display:'flex',gap:10}}>
+                    <button className="btn btn-primary btn-sm" style={{minHeight:44}} disabled={joining} onClick={doJoinGroup}>{joining?'Joining…':'Join board'}</button>
+                    <button className="btn btn-ghost btn-sm" style={{minHeight:44}} disabled={joining} onClick={()=>{ setJoinMoreOpen(false); setJoinCode(''); }}>Cancel</button>
+                  </div>
+                </div>}
+            </div>
           </div>}
 
         {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length>0 && composerOpen &&

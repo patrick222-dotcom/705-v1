@@ -65,6 +65,19 @@ _(none)_
   (Works fine from an interactive session.)
 
 ## Done (log)
+- 2026-08-12 — **Join another swap board with a code** (from direct user feedback 2026-08-11,
+  pghawkins222: "How do I use a pin someone gives me to go to the swap board they created?").
+  Root cause: the "Create board" / "Join with a code" cards only rendered at `groups.length===0`,
+  so once a nurse had ANY board, a colleague's invite code had **nowhere to be entered**. Added a
+  persistent "+ Join another board with a code" affordance at the bottom of the board view
+  (`groups.length>0`) that expands to the same 6-char code input — reuses the existing
+  `joinCode`/`joining`/`doJoinGroup` machinery + `swap_group_joined` analytics; collapses on
+  success. Additive only (one `useState` + one UI block) — no touch to boot hardening / SRI /
+  wage-core / sync. iPhone-13 gate **22/22** (boot happy / hang-getSession / block-babel error
+  screen + 9 wage-math probes + seeded-setup boot past onboarding + feature-wired markers). SRI
+  intact (5). GROOM this run (Management API): new feedback row above (now resolved) + the 2×
+  "couldn't sync" (still top P1, not gate-safe); usage healthy (app_open 56, shift_saved 22,
+  swap_group_created 2, swap_posted 2). Session-bound run; git push authorized here.
 - 2026-08-11 — **Swap match consent disclosure** (P3, from the CLAUDE.md-documented anonymity
   gap). After a swap is confirmed and names are revealed, the match card now shows a muted note:
   colleagues on a confirmed swap can see each other's names and may recognize each other's future
