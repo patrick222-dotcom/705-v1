@@ -3041,10 +3041,12 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
         <div className="sec-lab">OVERTIME</div>
         <button className={'chip-sel'+(isOvertime?' on':'')} aria-pressed={isOvertime}
-          style={{width:'100%',marginBottom:16,minHeight:44}}
+          style={{width:'100%',marginBottom:isOvertime?8:16,minHeight:44}}
           onClick={()=>{ setOvertime(v=>!v); configDirtySinceAdd.current=true; }}>
           <i style={{background:'#11A86B'}}></i>Overtime — pays 1.5× the hourly rate
         </button>
+        {isOvertime &&
+          <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>1.5× is applied to your <b>differential rate</b> — a night/weekend shift earns 1.5×(base + differential), not just 1.5×base. Per-hour add-ons (charge, preceptor, on-call) stay at face value.</div>}
 
         <div className="sec-lab">HOURS</div>
         <div className="hrs" style={{marginBottom:12}}>
