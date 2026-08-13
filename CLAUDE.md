@@ -16,7 +16,12 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 
 A nightly Routine (fresh session per fire) runs a **groom + build** loop against `BACKLOG.md`:
 1. **Groom** — mine `feedback` + `events` (Supabase MCP or the documented curl fallback), review
-   the app, and add/reprioritize P0–P3 items in `BACKLOG.md` (dedupe; skip Done/Blocked).
+   the app, and add/reprioritize P0–P3 items in `BACKLOG.md` (dedupe; skip Done/Blocked). Also run
+   `node scripts/groom_seed.mjs` (Reddit-insights pipeline Phase 1, see
+   `docs/reddit-persona-pipeline.md`): it dedupes the curated `docs/reddit_seed.json` themes against
+   CLAUDE.md + BACKLOG.md and refreshes the source-tagged "Reddit-seeded candidates" managed block
+   (`--apply`). These are candidates for you to promote with judgment — they're not auto-built; the
+   normal safety gate + one-item-per-run rules still apply.
 2. **Build** — implement the single highest-priority **unblocked, gate-safe** item end-to-end:
    develop on `claude/clause-md-review-9tqlj8` (restarted from the deploy base each run), test on
    the iPhone-13 Playwright harness (see Testing), pass the **safety gate**, then PR + squash-merge

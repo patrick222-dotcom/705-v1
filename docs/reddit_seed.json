@@ -1,0 +1,178 @@
+{
+  "_meta": {
+    "purpose": "Phase-1 seed corpus for the Reddit-insights pipeline (see docs/reddit-persona-pipeline.md).",
+    "usage": "The nightly GROOM step reads this + BACKLOG.md and runs scripts/groom_seed.mjs to emit source-tagged, deduped candidate backlog items and to ground persona testers.",
+    "schema": "Each insight: {id, theme, category, signal, paraphrase, mapped_feature, keywords[], confidence, source}. signal: one-off|occasional|recurring|loud. source: seed|reddit-live.",
+    "ethics": "Paraphrased AGGREGATE themes only. No verbatim posts, no usernames, no PII. These are well-established public nurse-scheduling pain patterns, not scraped content.",
+    "priority_map": {"loud": "P1", "recurring": "P2", "occasional": "P3", "one-off": "P3"},
+    "curated": "2026-08-13",
+    "count": 15
+  },
+  "insights": [
+    {
+      "id": "swap-partner-discovery",
+      "theme": "Hard to find a colleague willing to take or trade a specific shift",
+      "category": "shift-swapping",
+      "signal": "recurring",
+      "paraphrase": "Finding a swap partner is word-of-mouth and group texts; there is no easy way to broadcast a shift you want to give up or pick up to the whole unit.",
+      "mapped_feature": "swap-board",
+      "keywords": ["swap", "trade shift", "give up shift", "pick up shift", "cover", "find someone"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "swap-manager-approval-bottleneck",
+      "theme": "Manager sign-off delays or blocks agreed swaps",
+      "category": "shift-swapping",
+      "signal": "recurring",
+      "paraphrase": "Even after two nurses agree to a trade, manager approval stalls or denies it, so nurses want the agreement locked in and easy to present.",
+      "mapped_feature": "swap-board",
+      "keywords": ["manager approval", "sign off", "denied swap", "charge nurse approve"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "swap-falls-through",
+      "theme": "Agreed swaps fall apart last-minute",
+      "category": "shift-swapping",
+      "signal": "occasional",
+      "paraphrase": "A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted.",
+      "mapped_feature": "swap-board",
+      "keywords": ["backed out", "fell through", "last minute", "no-show swap"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "self-schedule-fairness",
+      "theme": "Self-scheduling is a race; late pickers get stuck with bad shifts",
+      "category": "self-scheduling",
+      "signal": "recurring",
+      "paraphrase": "Open self-scheduling favors whoever logs in first; weekends and holidays land unfairly on the same people.",
+      "mapped_feature": "new",
+      "keywords": ["self schedule", "self-scheduling", "fairness", "weekend rotation", "holiday rotation"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "schedule-to-paycheck-preview",
+      "theme": "Want to see what a schedule means for the paycheck before committing",
+      "category": "self-scheduling",
+      "signal": "loud",
+      "paraphrase": "When self-scheduling or picking up, nurses want to project the paycheck impact of a proposed set of shifts before they lock it in.",
+      "mapped_feature": "paycheck-projection",
+      "keywords": ["projection", "preview pay", "before committing", "what will i make"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "last-minute-schedule-changes",
+      "theme": "Managers change posted schedules with little notice",
+      "category": "manager-conflicts",
+      "signal": "recurring",
+      "paraphrase": "Posted schedules get changed on short notice, breaking plans; nurses want to keep their own source-of-truth record of shifts and notes.",
+      "mapped_feature": "shift-logging",
+      "keywords": ["schedule changed", "short notice", "reposted", "flexed off", "notes"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "pto-denials-blackouts",
+      "theme": "PTO requests denied or blocked by blackout dates",
+      "category": "manager-conflicts",
+      "signal": "occasional",
+      "paraphrase": "PTO is hard to plan around denials and blackout windows; nurses track requested vs. approved time off alongside their shifts.",
+      "mapped_feature": "day-events-pto",
+      "keywords": ["pto", "time off", "blackout", "denied vacation", "requested off"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "differential-stacking-confusion",
+      "theme": "Unclear how night/weekend/charge differentials stack and net out",
+      "category": "pay-differentials",
+      "signal": "loud",
+      "paraphrase": "Nurses are unsure how multiple differentials combine (e.g. a night + weekend + charge shift) and what the hourly actually becomes.",
+      "mapped_feature": "differentials",
+      "keywords": ["differential", "diff", "night diff", "weekend diff", "charge pay", "stack"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "overtime-rules-confusion",
+      "theme": "Confusion about when OT kicks in and how it interacts with differentials",
+      "category": "pay-differentials",
+      "signal": "recurring",
+      "paraphrase": "Nurses are unsure whether OT is 1.5x of base or of the differential-inclusive rate, and when daily vs. weekly OT applies.",
+      "mapped_feature": "overtime-flag",
+      "keywords": ["overtime", "ot", "time and a half", "1.5x", "daily ot", "weekly ot"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "take-home-vs-gross",
+      "theme": "Gross is easy; nurses want realistic take-home after taxes/deductions",
+      "category": "pay-differentials",
+      "signal": "loud",
+      "paraphrase": "Nurses know their gross but want a believable net after federal/state tax, FICA, and pre/post-tax deductions.",
+      "mapped_feature": "paycheck-projection",
+      "keywords": ["take home", "net pay", "after taxes", "deductions", "withholding"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "contract-vs-staff-comparison",
+      "theme": "Travel/contract nurses compare take-home against staff roles",
+      "category": "pay-differentials",
+      "signal": "occasional",
+      "paraphrase": "Contract and travel nurses want to compare net pay of a contract vs. a staff position, factoring stipends and differentials.",
+      "mapped_feature": "new",
+      "keywords": ["travel nurse", "contract", "stipend", "staff vs travel", "compare pay"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "pickup-worth-decision",
+      "theme": "Deciding whether an extra shift is worth it hinges on its real value",
+      "category": "staffing-pickups",
+      "signal": "recurring",
+      "paraphrase": "Before picking up an incentive/extra shift, nurses want to know what it nets after differentials and OT to decide if it's worth the time.",
+      "mapped_feature": "paycheck-projection",
+      "keywords": ["pick up", "incentive shift", "worth it", "extra shift", "bonus shift"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "mandatory-ot-floating-tracking",
+      "theme": "Mandatory OT and floating make pay unpredictable",
+      "category": "staffing-pickups",
+      "signal": "occasional",
+      "paraphrase": "Being mandated to stay or floated to another unit changes pay; nurses want to log these and see the effect.",
+      "mapped_feature": "shift-logging",
+      "keywords": ["mandatory overtime", "mandated", "floated", "float pool", "unpredictable"],
+      "confidence": "medium",
+      "source": "seed"
+    },
+    {
+      "id": "nursegrid-schedule-reentry",
+      "theme": "Nurses keep schedules in NurseGrid and don't want to re-enter shifts",
+      "category": "tools",
+      "signal": "recurring",
+      "paraphrase": "Many nurses already track their schedule in NurseGrid; re-typing every shift into another app is a dealbreaker, so import matters.",
+      "mapped_feature": "ics-import",
+      "keywords": ["nursegrid", "import", "ical", "ics", "re-enter", "sync schedule"],
+      "confidence": "high",
+      "source": "seed"
+    },
+    {
+      "id": "employer-app-fatigue-simplicity",
+      "theme": "Distrust of clunky employer apps; want something simple and fast on mobile",
+      "category": "tools",
+      "signal": "recurring",
+      "paraphrase": "Kronos/UKG/Smartlinx feel clunky; nurses want a fast, simple, mobile-first tool that just works without training.",
+      "mapped_feature": "mobile-ux",
+      "keywords": ["kronos", "ukg", "smartlinx", "clunky", "simple", "fast", "mobile"],
+      "confidence": "medium",
+      "source": "seed"
+    }
+  ]
+}
