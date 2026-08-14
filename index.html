@@ -2411,9 +2411,12 @@ function App(){
             <div className="card">
               <div className="cal-head"><div><div className="ttl">Calendar</div></div><div className="sub">{qfMode?'':'Tap a day to add or edit'}</div></div>
               {!qfMode &&
-                <div style={{display:'flex',justifyContent:'space-between',gap:8,marginTop:-6,marginBottom:12}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginTop:-6,marginBottom:12,flexWrap:'wrap'}}>
                   <button className="btn btn-ghost btn-sm" style={{width:'auto',minHeight:44}} onClick={jumpToday}>Today</button>
-                  <button className="btn btn-ghost btn-sm" style={{width:'auto',gap:6,minHeight:44}} onClick={exportICS}>{Ic.calendar}Sync to calendar</button>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    <label className="btn btn-ghost btn-sm" style={{width:'auto',gap:6,minHeight:44,position:'relative',cursor:'pointer'}} title="Import a schedule from NurseGrid or any calendar (.ics)">{Ic.calendar}Import .ics<input type="file" accept=".ics,text/calendar" onChange={onImportICS} style={{display:'none'}}/></label>
+                    <button className="btn btn-ghost btn-sm" style={{width:'auto',gap:6,minHeight:44}} onClick={exportICS}>{Ic.calendar}Sync to calendar</button>
+                  </div>
                 </div>}
               {!qfMode && templates.length>0 &&
                 <button className="btn btn-ghost btn-sm" style={{marginBottom:14,minHeight:44}} onClick={startQuickFill}>⚡ Quick fill</button>}
