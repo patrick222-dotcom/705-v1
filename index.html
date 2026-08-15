@@ -2375,7 +2375,7 @@ function App(){
       <div className="wrap">
         <div className="greet-row">
           <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
-          <div className="period"><button onClick={()=>movePeriod(-1)}>‹</button><span className="num">{periodLabel}</span><button onClick={()=>movePeriod(1)}>›</button></div>
+          <div className="period" role="group" aria-label="Pay period"><button onClick={()=>movePeriod(-1)} aria-label="Previous pay period">‹</button><span className="num" aria-live="polite">{periodLabel}</span><button onClick={()=>movePeriod(1)} aria-label="Next pay period">›</button></div>
         </div>
 
         <div className="dash">
