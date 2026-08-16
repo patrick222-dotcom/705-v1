@@ -233,3 +233,15 @@ download the pinned packages from npm, rewrite the script tags in a scratch copy
 Playwright using the iPhone 13 device profile. Capture `console`, `pageerror`, and
 `requestfailed` events — this is how the mobile spinner bug was found. Test failure
 modes too (block a script, hang `getSession()`), not just the happy path.
+
+**Console-warning diagnostic (dev-build) — catches bugs the prod gate can't see.** The live
+app ships React *production* builds, which silence dev-only warnings (missing `key`,
+controlled/uncontrolled input flips, setState-on-unmounted, invalid DOM nesting). These are
+real defects that never surface as a `pageerror`. To find them: make a second scratch copy that
+points at the **development** React UMD builds (`react.development.js` +
+`react-dom.development.js`, both already in the vendored npm packages), serve it, seed
+`{setupComplete:true,baseRate:50}`, drive the real flows (open Add-Shift, toggle OT, pick
+hours, save; nav the period; open the breakdown), and capture `console` messages of type
+`warning`/`error`. A clean run shows only the two expected notices (the in-browser Babel
+transformer warning + sandbox network `ERR_CONNECTION_RESET` for the blocked CDN/Supabase).
+Anything else is a real bug to fix. (Ran 2026-08-16 — app was clean; no React warnings.)
