@@ -1,0 +1,77 @@
+{
+  "_meta": {
+    "purpose": "Phase-2 grounded personas for the Reddit-insights pipeline (see docs/reddit-persona-pipeline.md).",
+    "usage": "Each persona seeds a reviewer that inspects the app AS that nurse and reports friction/gaps. Findings are verified (reproduce-in-harness OR corroborated by the Reddit seed) before they can influence the build queue — see the design doc's Stage-3 verification gate.",
+    "grounding": "Traits derive from the docs/reddit_seed.json themes (shift-swapping, self-scheduling, manager conflicts, pay/differentials, staffing/pickups, tool fatigue).",
+    "curated": "2026-08-17",
+    "count": 6
+  },
+  "personas": [
+    {
+      "id": "night-shift-nadia",
+      "name": "Night-shift Nadia",
+      "role": "ICU RN, 3×12 nights",
+      "shift_pattern": "three 12h night shifts/week, frequent weekends",
+      "pay_situation": "stacks night + weekend + charge differentials; occasional OT",
+      "tech_comfort": "high",
+      "tools_used": ["NurseGrid"],
+      "goals": ["accurate take-home incl. stacked differentials", "project a pay period fast"],
+      "likely_complaints": ["does OT include my night diff?", "is this number after taxes?"]
+    },
+    {
+      "id": "float-pool-frank",
+      "name": "Float-pool Frank",
+      "role": "Float-pool RN",
+      "shift_pattern": "variable; floated across units",
+      "pay_situation": "differentials vary by assignment; unpredictable",
+      "tech_comfort": "medium",
+      "tools_used": ["Kronos/UKG"],
+      "goals": ["model what a pickup is worth before saying yes"],
+      "likely_complaints": ["my differential changes per shift", "hard to predict my check"]
+    },
+    {
+      "id": "new-grad-nia",
+      "name": "New-grad Nia",
+      "role": "First-year RN",
+      "shift_pattern": "learning her rotation",
+      "pay_situation": "fuzzy on differentials, OT rules, and take-home vs gross",
+      "tech_comfort": "medium",
+      "tools_used": [],
+      "goals": ["understand what she'll actually take home", "no jargon she has to google"],
+      "likely_complaints": ["what's FICA?", "what does 'differential' mean?", "why is take-home less than gross?"]
+    },
+    {
+      "id": "swap-savvy-sam",
+      "name": "Swap-savvy Sam",
+      "role": "Med-surg RN",
+      "shift_pattern": "trades shifts constantly",
+      "pay_situation": "standard staff rates",
+      "tech_comfort": "high",
+      "tools_used": ["group texts", "NurseGrid"],
+      "goals": ["low-friction swaps", "join a colleague's board fast"],
+      "likely_complaints": ["manager approval is slow", "hard to find a swap partner"]
+    },
+    {
+      "id": "per-diem-priya",
+      "name": "Per-diem Priya",
+      "role": "PRN / per-diem RN",
+      "shift_pattern": "picks up extra shifts for money",
+      "pay_situation": "compares pay across potential pickups; no benefits",
+      "tech_comfort": "high",
+      "tools_used": ["ShiftMed", "CareRev"],
+      "goals": ["quickly compare what each pickup nets"],
+      "likely_complaints": ["is this shift worth my time?", "which day pays most?"]
+    },
+    {
+      "id": "veteran-charge-val",
+      "name": "Veteran charge Val",
+      "role": "Charge nurse, 20+ yrs",
+      "shift_pattern": "weekend rotation, charge differential",
+      "pay_situation": "charge + weekend differentials",
+      "tech_comfort": "low-medium, impatient",
+      "tools_used": ["employer app (reluctantly)"],
+      "goals": ["it just works, fast, on my phone", "no bugs, no fuss"],
+      "likely_complaints": ["too slow", "too many taps", "I'll bounce if it's janky"]
+    }
+  ]
+}
