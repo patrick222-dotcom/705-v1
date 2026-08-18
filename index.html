@@ -2999,7 +2999,10 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         <div className="grab"></div>
         <div className="sheet-h">
           <div className="t">Add a shift</div>
-          <div className="row-item" style={{margin:0,padding:'7px 12px',fontWeight:600,fontSize:12.5}}>{dateLabel}</div>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div className="row-item" style={{margin:0,padding:'7px 12px',fontWeight:600,fontSize:12.5}}>{dateLabel}</div>
+            <button className="back" onClick={dismiss} aria-label="Close">{Ic.x}</button>
+          </div>
         </div>
 
         {templates.length>0 &&
