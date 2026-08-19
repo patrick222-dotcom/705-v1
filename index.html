@@ -2026,6 +2026,10 @@ function App(){
   // any entry point that can fire while quick-filling must exit qfMode first, or the two
   // overlays fight over the same taps.
   const openSheet = (k)=>{ if(qfMode){ setQfMode(false); setQfTemplate(null); } setSheetDate(k); };
+  // "Log a shift" should land on TODAY when today is in the viewed pay period (the common case:
+  // logging tonight's shift), not days[0] which is often days in the past. Falls back to days[0]
+  // when today isn't in view (e.g. browsing another period).
+  const openSheetForLog = ()=>{ const t=todayISO(); openSheet(days.some(d=>keyOf(d)===t) ? t : keyOf(days[0])); };
 
   /* ---- shift templates: save / delete / quick-fill across days ---- */
   const saveTemplate = (tpl)=>{
@@ -2483,7 +2487,7 @@ function App(){
               <div className="card" style={{textAlign:'center',padding:'26px 18px'}}>
                 <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:17}}>No shifts yet</div>
                 <div style={{fontSize:13,color:'var(--muted)',margin:'8px 0 16px',lineHeight:1.5}}>Tap a day on the calendar — or log your first shift — to watch your take-home build.</div>
-                <button className="btn btn-soft" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>
+                <button className="btn btn-soft" onClick={openSheetForLog}>+ Log a shift</button>
               </div>}
             <div className="card">
               <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</h3>
@@ -2502,7 +2506,7 @@ function App(){
       </div>
 
       {!qfMode &&
-        <button className="fab" onClick={()=>openSheet(keyOf(days[0]))}>+ Log a shift</button>}
+        <button className="fab" onClick={openSheetForLog}>+ Log a shift</button>}
 
       {sheetDate &&
         <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
