@@ -2829,7 +2829,7 @@ function Breakdown({calc,embedded}){
     <div className={embedded?'card':''}>
       {embedded && <h3>Where it goes</h3>}
       <div className="bd-row">
-        <div className="lh"><span className="nm g">Gross pay</span><span className="vv g num">{fmt(g)}</span></div>
+        <div className="lh"><span className="nm g">Gross pay<span style={{display:'block',fontSize:11,fontWeight:400,color:'var(--muted-2)',marginTop:2}}>before taxes &amp; take-outs</span></span><span className="vv g num">{fmt(g)}</span></div>
         <div className="bar gross"></div>
       </div>
       {rows.map(([nm,v])=>(
@@ -4127,7 +4127,7 @@ function Onboarding(props){
       <Head step={2}/>
       <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
       <div className="q">How does your pay change by shift?</div>
-      <div className="help">We pre-filled common amounts. Toggle what applies and tweak to your contract.</div>
+      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies and tweak to your contract.</div>
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
           <div className={'drow'+(d.active?'':' off')} key={k}>
@@ -4155,7 +4155,7 @@ function Onboarding(props){
           <div className="inp suf" style={{width:90}}><NumInput value={federalTaxRate} onCommit={setFederal} min={0} step="0.1" ariaLabel="Federal income tax percent" style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
         <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>State tax</div><span className="tag est">ESTIMATED</span></div>
           <div className="inp suf" style={{width:90}}><NumInput value={stateTaxRate} onCommit={setState} min={0} step="0.1" ariaLabel="State tax percent" style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>FICA</div><span className="tag auto">AUTO 7.65%</span></div>
+        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>FICA</div><span className="tag auto">AUTO 7.65%</span><div style={{fontSize:11.5,color:'var(--muted-2)',marginTop:2}}>Social Security + Medicare — required, same for everyone</div></div>
           <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:18}}>7.65%</div></div>
         <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Pre-tax · 401k, health</div><div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
           <div className="inp pre" style={{width:110}}><span className="pfx">$</span><NumInput value={pretaxDeductions} onCommit={setPretax} min={0} step="1" ariaLabel="Pre-tax deductions per pay period" style={{textAlign:'right',fontWeight:700}}/></div></div>
