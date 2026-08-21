@@ -3033,7 +3033,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
                   {s.isOvertime && <span style={{fontSize:12,fontWeight:700,color:'#11A86B'}}>OT ×1.5</span>}
-                  {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>+{BONUS_LABEL[s.bonusType]}</span>}
+                  {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
                 <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
               </div>
