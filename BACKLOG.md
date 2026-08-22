@@ -202,6 +202,29 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   r/ICUnursing → r/asknurses, r/IntensiveCare). Tests **23/23** (was 15). Groom re-applied: 18
   candidates. Found but deliberately **deferred** the dedupe-erosion defect above rather than patching
   it blind.
+- 2026-08-22 — **Invite links for the swap board** (owner-requested; follows directly from the
+  re-share item below — the code was reachable, but handing it over still meant a colleague retyping
+  6 characters into a screen they'd have to find first). Sharers now send
+  `…/705-v1/?join=ABC123` via the **native iOS share sheet** (`navigator.share`, straight into
+  Messages), falling back to copying the same link+message wherever `navigator.share` is absent or
+  the user cancels the sheet (AbortError is treated as "chose not to send", not as a failure).
+  Recipients get a **confirm screen, never a silent auto-join** — the board's name can't be shown
+  pre-join (RLS hides `swap_groups` from non-members and `join_swap_group` returns only an id), so
+  the code is what's confirmed and the name lands in the success toast. Handles the two ways the
+  code gets lost on the way in: a **1h-TTL localStorage stash** carries it across the Google OAuth
+  redirect (which returns to a bare origin+pathname), and the URL is consumed on mount but presented
+  only once onboarding is done — a link recipient is exactly the person most likely to be a
+  first-time user. `?join=` is deleted from the address bar immediately; every other query param is
+  written back byte-identical so supabase-js's own PKCE `?code=` is untouched. A code that matches
+  no board retires itself rather than re-prompting; re-tapping your own link says "already in", not
+  "joined". Also collapsed three duplicated clipboard blocks into one module-level `copyText()`.
+  **No RLS / security-definer / poster_key / reveal changes** — the link carries only the invite
+  code, which is exactly what reading it aloud already carried; no wage-core/boot/SRI touched (SRI
+  still 5). iPhone-13 harness **38/38** invite assertions + **4/4** boot gate (happy,
+  `hang-getsession` incl. the invite still rendering behind a deadlocked session, `block-babel`
+  watchdog) + dev-React console-warning run clean. Sandbox can't reach the authenticated board, so
+  the signed-in flow was driven end-to-end against an in-page Supabase stub (fake auth +
+  `join_swap_group`) — the swap-UI standard of #27/#28.
 - 2026-08-22 — **Re-share the invite code from the active swap board** (persona/Swap-savvy-Sam;
   **directly addresses the standing "How do I use a pin someone gives me to go to the swap board?"
   feedback** — pghawkins 2026-08-11). After the one-time "Board created!" screen the invite code was
