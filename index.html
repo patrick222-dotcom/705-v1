@@ -3845,7 +3845,10 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                 <div style={{fontWeight:700,fontSize:15}}>Choose a board above</div>
               </div>}
             {activeGroupId && <React.Fragment>
-              <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+                {activeGroup && activeGroup.invite_code
+                  ? <button className="btn btn-ghost btn-sm" style={{minHeight:44,gap:6}} onClick={()=>copyCode(activeGroup.invite_code)} title="Copy your unit's invite code to share">Invite code · <b>{activeGroup.invite_code}</b></button>
+                  : <span></span>}
                 <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={openComposer}>+ Post to the board</button>
               </div>
 
