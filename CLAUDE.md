@@ -38,6 +38,15 @@ A nightly Routine (fresh session per fire) runs a **groom + build** loop against
    the iPhone-13 Playwright harness (see Testing), pass the **safety gate**, then PR + squash-merge
    to the deploy branch (auto-deploys) and verify live. Mark it done in `BACKLOG.md`.
 
+**Queue shape:** `BACKLOG.md` → `## Queue` holds only work a single run can finish. Items that need
+a live repro, a design call, or delicate surgery live under **`## Needs a dedicated session (NOT for
+the nightly loop)`** — don't pull from there, and move an item there (with a one-line reason) rather
+than re-deferring it nightly. Auto-surfaced candidates carry a **`harness:`** tag: `drivable`
+(verifiable end-to-end in the iPhone-13 sandbox — every build since 2026-08-17 has been one),
+`needs-live-auth` (authenticated swap board; the sandbox can't reach it — verify by the swap-UI
+standard of #27/#28 instead), `unscoped` (maps to no existing surface: a feature to design, not a
+one-run build). Within a priority band, `drivable` is listed first — prefer it.
+
 **Rules:** full autonomy but **gate-limited** — never weaken boot hardening / SRI / wage-core;
 one build item per run; if an item is risky/ambiguous or the gate fails, mark it `deferred` with a
 note and take the next safe item or stop (never deploy a failing gate). End with a concise summary

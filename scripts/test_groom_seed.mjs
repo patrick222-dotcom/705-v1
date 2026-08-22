@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { analyze, validateInsight, renderBlock, applyBlock, stripManagedBlock, sourceTag } from './groom_seed.mjs';
+import { analyze, validateInsight, renderBlock, applyBlock, stripManagedBlock, sourceTag, harnessOf } from './groom_seed.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const seed = JSON.parse(readFileSync(join(ROOT, 'docs', 'reddit_seed.json'), 'utf8'));
@@ -84,6 +84,39 @@ const resultsAfter = analyze(seed, knownAfterApply);
 ok('cross-run: candidate count stable after our block is in BACKLOG',
   resultsAfter.filter(r => r.status === 'candidate').length === candidates.length,
   `before=${candidates.length} after=${resultsAfter.filter(r => r.status === 'candidate').length}`);
+
+// 10. harness classification — the field that predicts whether the nightly can actually ship an item
+ok('harness: swap-board needs live auth', harnessOf({ mapped_feature: 'swap-board' }) === 'needs-live-auth');
+ok('harness: shift-logging is drivable', harnessOf({ mapped_feature: 'shift-logging' }) === 'drivable');
+ok('harness: an unmapped feature is unscoped', harnessOf({ mapped_feature: 'new' }) === 'unscoped');
+ok('harness: unknown feature falls back to unscoped', harnessOf({ mapped_feature: 'not-a-surface' }) === 'unscoped');
+ok('harness: explicit per-insight override wins',
+  harnessOf({ mapped_feature: 'swap-board', harness: 'drivable' }) === 'drivable');
+ok('harness: a bogus override is ignored, not trusted',
+  harnessOf({ mapped_feature: 'shift-logging', harness: 'wishful' }) === 'drivable');
+ok('harness: validator rejects a bad harness value',
+  validateInsight({ id: 'a-b', theme: 't', category: 'tools', signal: 'loud', paraphrase: 'p', mapped_feature: 'new', keywords: ['calendar sync'], confidence: 'high', source: 'seed', harness: 'nope' }, 0).length === 1);
+
+// 11. every candidate is classified, and the tag reaches the rendered line
+ok('harness: every candidate carries a classification',
+  candidates.every(c => ['drivable', 'needs-live-auth', 'unscoped'].includes(c.harness)));
+ok('harness: classification is rendered into the backlog line',
+  candidates.every(c => block.includes(`· ${c.harness}) —`)));
+
+// 12. ordering: within each priority band, drivable candidates are listed before the rest — the
+// build step reads top-down, so this is what actually steers it toward buildable work.
+const RANK = { 'drivable': 0, 'needs-live-auth': 1, 'unscoped': 2 };
+let orderingHolds = true;
+for (const p of ['P1', 'P2', 'P3']) {
+  const inBand = candidates.filter(c => c.priority === p);
+  if (inBand.length < 2) continue;
+  const positions = inBand
+    .map(c => ({ rank: RANK[c.harness], at: block.indexOf(c.theme) }))
+    .filter(x => x.at !== -1)
+    .sort((a, b) => a.at - b.at);
+  for (let i = 1; i < positions.length; i++) if (positions[i].rank < positions[i - 1].rank) orderingHolds = false;
+}
+ok('harness: drivable candidates are ordered first within each priority band', orderingHolds);
 
 console.log(`\n==== groom_seed tests: ${pass} passed / ${fail} failed ====`);
 process.exit(fail === 0 ? 0 : 1);
