@@ -2,11 +2,17 @@
   "_meta": {
     "purpose": "Phase-1 seed corpus for the Reddit-insights pipeline (see docs/reddit-persona-pipeline.md).",
     "usage": "The nightly GROOM step reads this + BACKLOG.md and runs scripts/groom_seed.mjs to emit source-tagged, deduped candidate backlog items and to ground persona testers.",
-    "schema": "Each insight: {id, theme, category, signal, paraphrase, mapped_feature, keywords[], confidence, source}. signal: one-off|occasional|recurring|loud. source: seed|reddit-live.",
+    "schema": "Each insight: {id, theme, category, signal, paraphrase, mapped_feature, keywords[], confidence, source, observed?}. signal: one-off|occasional|recurring|loud. source: seed|reddit-owner|reddit-live.",
     "ethics": "Paraphrased AGGREGATE themes only. No verbatim posts, no usernames, no PII. These are well-established public nurse-scheduling pain patterns, not scraped content.",
-    "priority_map": {"loud": "P1", "recurring": "P2", "occasional": "P3", "one-off": "P3"},
-    "curated": "2026-08-13",
-    "count": 15
+    "priority_map": {
+      "loud": "P1",
+      "recurring": "P2",
+      "occasional": "P3",
+      "one-off": "P3"
+    },
+    "curated": "2026-08-22",
+    "count": 22,
+    "sources": "seed = curated from well-established public pain patterns (2026-08-13). reddit-owner = gathered by the owner browsing Reddit in their own logged-in browser via Claude in Chrome, paraphrased on intake; 'observed' records how widely each theme was actually seen. reddit-live = future direct API mining (gated, see docs/reddit-persona-pipeline.md)."
   },
   "insights": [
     {
@@ -16,7 +22,14 @@
       "signal": "recurring",
       "paraphrase": "Finding a swap partner is word-of-mouth and group texts; there is no easy way to broadcast a shift you want to give up or pick up to the whole unit.",
       "mapped_feature": "swap-board",
-      "keywords": ["swap", "trade shift", "give up shift", "pick up shift", "cover", "find someone"],
+      "keywords": [
+        "swap",
+        "trade shift",
+        "give up shift",
+        "pick up shift",
+        "cover",
+        "find someone"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -27,7 +40,12 @@
       "signal": "recurring",
       "paraphrase": "Even after two nurses agree to a trade, manager approval stalls or denies it, so nurses want the agreement locked in and easy to present.",
       "mapped_feature": "swap-board",
-      "keywords": ["manager approval", "sign off", "denied swap", "charge nurse approve"],
+      "keywords": [
+        "manager approval",
+        "sign off",
+        "denied swap",
+        "charge nurse approve"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -38,7 +56,12 @@
       "signal": "occasional",
       "paraphrase": "A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted.",
       "mapped_feature": "swap-board",
-      "keywords": ["backed out", "fell through", "last minute", "no-show swap"],
+      "keywords": [
+        "backed out",
+        "fell through",
+        "last minute",
+        "no-show swap"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -49,7 +72,13 @@
       "signal": "recurring",
       "paraphrase": "Open self-scheduling favors whoever logs in first; weekends and holidays land unfairly on the same people.",
       "mapped_feature": "new",
-      "keywords": ["self schedule", "self-scheduling", "fairness", "weekend rotation", "holiday rotation"],
+      "keywords": [
+        "self schedule",
+        "self-scheduling",
+        "fairness",
+        "weekend rotation",
+        "holiday rotation"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -60,7 +89,12 @@
       "signal": "loud",
       "paraphrase": "When self-scheduling or picking up, nurses want to project the paycheck impact of a proposed set of shifts before they lock it in.",
       "mapped_feature": "paycheck-projection",
-      "keywords": ["projection", "preview pay", "before committing", "what will i make"],
+      "keywords": [
+        "projection",
+        "preview pay",
+        "before committing",
+        "what will i make"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -71,7 +105,13 @@
       "signal": "recurring",
       "paraphrase": "Posted schedules get changed on short notice, breaking plans; nurses want to keep their own source-of-truth record of shifts and notes.",
       "mapped_feature": "shift-logging",
-      "keywords": ["schedule changed", "short notice", "reposted", "flexed off", "notes"],
+      "keywords": [
+        "schedule changed",
+        "short notice",
+        "reposted",
+        "flexed off",
+        "notes"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -82,7 +122,13 @@
       "signal": "occasional",
       "paraphrase": "PTO is hard to plan around denials and blackout windows; nurses track requested vs. approved time off alongside their shifts.",
       "mapped_feature": "day-events-pto",
-      "keywords": ["pto", "time off", "blackout", "denied vacation", "requested off"],
+      "keywords": [
+        "pto",
+        "time off",
+        "blackout",
+        "denied vacation",
+        "requested off"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -93,7 +139,14 @@
       "signal": "loud",
       "paraphrase": "Nurses are unsure how multiple differentials combine (e.g. a night + weekend + charge shift) and what the hourly actually becomes.",
       "mapped_feature": "differentials",
-      "keywords": ["differential", "diff", "night diff", "weekend diff", "charge pay", "stack"],
+      "keywords": [
+        "differential",
+        "diff",
+        "night diff",
+        "weekend diff",
+        "charge pay",
+        "stack"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -104,7 +157,14 @@
       "signal": "recurring",
       "paraphrase": "Nurses are unsure whether OT is 1.5x of base or of the differential-inclusive rate, and when daily vs. weekly OT applies.",
       "mapped_feature": "overtime-flag",
-      "keywords": ["overtime", "ot", "time and a half", "1.5x", "daily ot", "weekly ot"],
+      "keywords": [
+        "overtime",
+        "ot",
+        "time and a half",
+        "1.5x",
+        "daily ot",
+        "weekly ot"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -115,7 +175,13 @@
       "signal": "loud",
       "paraphrase": "Nurses know their gross but want a believable net after federal/state tax, FICA, and pre/post-tax deductions.",
       "mapped_feature": "paycheck-projection",
-      "keywords": ["take home", "net pay", "after taxes", "deductions", "withholding"],
+      "keywords": [
+        "take home",
+        "net pay",
+        "after taxes",
+        "deductions",
+        "withholding"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -126,7 +192,13 @@
       "signal": "occasional",
       "paraphrase": "Contract and travel nurses want to compare net pay of a contract vs. a staff position, factoring stipends and differentials.",
       "mapped_feature": "new",
-      "keywords": ["travel nurse", "contract", "stipend", "staff vs travel", "compare pay"],
+      "keywords": [
+        "travel nurse",
+        "contract",
+        "stipend",
+        "staff vs travel",
+        "compare pay"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -137,7 +209,13 @@
       "signal": "recurring",
       "paraphrase": "Before picking up an incentive/extra shift, nurses want to know what it nets after differentials and OT to decide if it's worth the time.",
       "mapped_feature": "paycheck-projection",
-      "keywords": ["pick up", "incentive shift", "worth it", "extra shift", "bonus shift"],
+      "keywords": [
+        "pick up",
+        "incentive shift",
+        "worth it",
+        "extra shift",
+        "bonus shift"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -148,7 +226,13 @@
       "signal": "occasional",
       "paraphrase": "Being mandated to stay or floated to another unit changes pay; nurses want to log these and see the effect.",
       "mapped_feature": "shift-logging",
-      "keywords": ["mandatory overtime", "mandated", "floated", "float pool", "unpredictable"],
+      "keywords": [
+        "mandatory overtime",
+        "mandated",
+        "floated",
+        "float pool",
+        "unpredictable"
+      ],
       "confidence": "medium",
       "source": "seed"
     },
@@ -159,7 +243,14 @@
       "signal": "recurring",
       "paraphrase": "Many nurses already track their schedule in NurseGrid; re-typing every shift into another app is a dealbreaker, so import matters.",
       "mapped_feature": "ics-import",
-      "keywords": ["nursegrid", "import", "ical", "ics", "re-enter", "sync schedule"],
+      "keywords": [
+        "nursegrid",
+        "import",
+        "ical",
+        "ics",
+        "re-enter",
+        "sync schedule"
+      ],
       "confidence": "high",
       "source": "seed"
     },
@@ -170,9 +261,150 @@
       "signal": "recurring",
       "paraphrase": "Kronos/UKG/Smartlinx feel clunky; nurses want a fast, simple, mobile-first tool that just works without training.",
       "mapped_feature": "mobile-ux",
-      "keywords": ["kronos", "ukg", "smartlinx", "clunky", "simple", "fast", "mobile"],
+      "keywords": [
+        "kronos",
+        "ukg",
+        "smartlinx",
+        "clunky",
+        "simple",
+        "fast",
+        "mobile"
+      ],
       "confidence": "medium",
       "source": "seed"
+    },
+    {
+      "id": "missed-break-auto-deduction-pay-loss",
+      "theme": "Automatic unpaid-break deductions take pay for breaks that were never taken",
+      "category": "pay-differentials",
+      "signal": "recurring",
+      "paraphrase": "Timekeeping systems auto-deduct one or two unpaid breaks per 12-hour shift regardless of whether staff actually got them, pushing the burden onto nurses to file a manual missed-lunch form to reclaim the pay. Several report employers quietly ceasing to honor those forms, turning it into an ongoing unpaid-wage dispute rather than a one-off gripe.",
+      "mapped_feature": "shift-logging",
+      "keywords": [
+        "auto deduct",
+        "missed lunch form",
+        "unpaid break",
+        "lunch break",
+        "wage theft",
+        "uninterrupted break"
+      ],
+      "confidence": "high",
+      "source": "reddit-owner",
+      "observed": "5+ distinct r/nursing threads over ~1 year"
+    },
+    {
+      "id": "schedule-predictability-anchor-day",
+      "theme": "Pure self-scheduling with no fixed recurring day makes childcare and life planning impossible",
+      "category": "self-scheduling",
+      "signal": "recurring",
+      "paraphrase": "Distinct from general self-schedule fairness: nurses need a locked, recurring anchor day or a cyclic block pattern to coordinate childcare and appointments. Commenters consistently rate fixed or cyclic patterns as far more livable than pure self-schedule systems, where nothing repeats week to week.",
+      "mapped_feature": "shift-logging",
+      "keywords": [
+        "childcare",
+        "set schedule",
+        "cyclic pattern",
+        "block schedule",
+        "recurring shift",
+        "predictability"
+      ],
+      "confidence": "high",
+      "source": "reddit-owner",
+      "observed": "1 major r/nursing thread (~5d old, 194 up / 112 comments), dozens of independent corroborating commenters"
+    },
+    {
+      "id": "swap-channel-manager-visibility",
+      "theme": "Nurses want to negotiate swaps in a channel managers can't see until the trade is final",
+      "category": "shift-swapping",
+      "signal": "occasional",
+      "paraphrase": "Units coordinate swaps in Facebook groups, GroupMe, or Teams that managers also belong to, letting a manager block an already-agreed trade after the fact. The prevailing advice is to find the partner in a management-free channel and bring only the finished trade for sign-off.",
+      "mapped_feature": "swap-board",
+      "keywords": [
+        "group chat",
+        "groupme",
+        "facebook group",
+        "manager veto",
+        "private channel",
+        "finalized trade"
+      ],
+      "confidence": "medium",
+      "source": "reddit-owner",
+      "observed": "1 dedicated r/nursing thread (~1y, 855 up / 99 comments) with broad independent corroboration"
+    },
+    {
+      "id": "swap-eligibility-hidden-rules",
+      "theme": "Swaps get denied by hidden eligibility rules (no-overtime, skill/seniority tier match)",
+      "category": "shift-swapping",
+      "signal": "occasional",
+      "paraphrase": "Facilities require trades to be even in hours so nobody triggers overtime, and to preserve skill mix so a charge-qualified slot only goes to another charge-qualified nurse. These constraints are invisible until a swap is rejected, which reads as arbitrary even when it is a stated policy.",
+      "mapped_feature": "swap-board",
+      "keywords": [
+        "even swap",
+        "skill mix",
+        "charge qualified",
+        "seniority",
+        "trade denied",
+        "eligibility"
+      ],
+      "confidence": "medium",
+      "source": "reddit-owner",
+      "observed": "same r/nursing thread plus scattered one-line confirmations elsewhere"
+    },
+    {
+      "id": "employer-calendar-sync-unreliable",
+      "theme": "Employer schedulers rarely export cleanly to a personal calendar, so nurses re-enter shifts by hand",
+      "category": "tools",
+      "signal": "occasional",
+      "paraphrase": "Nurses ask repeatedly which calendar app to use because the work schedule will not export; the few who find a subscribe-to-calendar option in UKG report it works inconsistently or not at all. Some refuse to install employer device-management or VPN software merely to view a schedule, and cobble together separate apps for schedule, pickups, and messaging.",
+      "mapped_feature": "ics-import",
+      "keywords": [
+        "calendar sync",
+        "subscribe calendar",
+        "google calendar",
+        "device manager",
+        "re-enter shifts",
+        "export schedule"
+      ],
+      "confidence": "medium",
+      "source": "reddit-owner",
+      "observed": "4 low-engagement r/nursing threads over ~2 years, consistent request pattern"
+    },
+    {
+      "id": "agency-payroll-dispute-delay",
+      "theme": "Travel/agency payroll errors take weeks of opaque escalation to get paid for a worked shift",
+      "category": "pay-differentials",
+      "signal": "occasional",
+      "paraphrase": "Separate from understanding contract pay structure: a missed punch or unrecorded shift triggers slow back-and-forth between recruiter, agency payroll, and the facility's vendor-management system, sometimes a month for a few hundred dollars. Nurses are bounced between contacts with no ETA, and want their own defensible record of what they worked.",
+      "mapped_feature": "shift-logging",
+      "keywords": [
+        "missed punch",
+        "payroll dispute",
+        "missing payment",
+        "reimbursement delay",
+        "vendor management",
+        "own record"
+      ],
+      "confidence": "medium",
+      "source": "reddit-owner",
+      "observed": "3 distinct r/TravelNursing threads over ~1 year"
+    },
+    {
+      "id": "off-duty-manager-contact-boundary",
+      "theme": "Managers contacting nurses off shift, on PTO, or on leave to chart or cover",
+      "category": "manager-conflicts",
+      "signal": "one-off",
+      "paraphrase": "Managers reach out about documentation fixes or coverage during vacation, leave, or days off, occasionally escalating to a write-up for not responding off the clock. A boundary/communication-norms complaint distinct from schedule-change or PTO-denial themes. Out of scope for a pay planner; recorded for completeness.",
+      "mapped_feature": "new",
+      "keywords": [
+        "off the clock",
+        "pto contact",
+        "boundaries",
+        "written up",
+        "after hours",
+        "manager text"
+      ],
+      "confidence": "low",
+      "source": "reddit-owner",
+      "observed": "1 r/nursing thread (~2mo, 29 up / 22 comments); could NOT be independently corroborated — signal downgraded from the reporter's 'occasional'"
     }
   ]
 }

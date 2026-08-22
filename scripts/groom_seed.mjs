@@ -27,7 +27,7 @@ const CLAUDEMD_PATH = join(ROOT, 'CLAUDE.md');
 
 const PRIORITY_MAP = { loud: 'P1', recurring: 'P2', occasional: 'P3', 'one-off': 'P3' };
 const VALID_SIGNAL = new Set(Object.keys(PRIORITY_MAP));
-const VALID_SOURCE = new Set(['seed', 'reddit-live']);
+const VALID_SOURCE = new Set(['seed', 'reddit-owner', 'reddit-live']);
 const COVER_THRESHOLD = 2; // distinct keyword hits in the known corpus => treat as already-covered
 const BLOCK_START = '<!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->';
 const BLOCK_END = '<!-- GROOM_SEED:END -->';
@@ -72,14 +72,25 @@ export function analyze(seed, knownText) {
       theme: x.theme,
       paraphrase: x.paraphrase,
       source: x.source,
+      observed: x.observed || '',
     };
   });
 }
 
+// 'seed' predates the source-prefixed names, so it still renders as reddit-seed; anything already
+// carrying a reddit- prefix is used as-is (previously 'reddit-live' rendered as 'reddit-reddit-live').
+export function sourceTag(source) {
+  return String(source).startsWith('reddit-') ? String(source) : 'reddit-' + source;
+}
+
 function backlogLine(r) {
   // one source-tagged, priority-proposed backlog bullet
-  return `- [ ] **${r.theme}** (${r.priority} · source:reddit-${r.source} · ${r.category}) — ${r.paraphrase} `
-    + `Maps to \`${r.mapped_feature}\`. Auto-surfaced from the Reddit seed corpus; groom to confirm priority/scope before build.`;
+  const origin = r.source === 'seed'
+    ? 'Auto-surfaced from the curated Reddit seed corpus'
+    : 'Auto-surfaced from owner-gathered Reddit signal';
+  const seen = r.observed ? ` (observed: ${r.observed})` : '';
+  return `- [ ] **${r.theme}** (${r.priority} · source:${sourceTag(r.source)} · ${r.category}) — ${r.paraphrase} `
+    + `Maps to \`${r.mapped_feature}\`. ${origin}${seen}; groom to confirm priority/scope before build.`;
 }
 
 export function renderBlock(candidates) {
