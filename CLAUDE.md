@@ -17,11 +17,22 @@ Live at: https://patrick222-dotcom.github.io/705-v1/
 A nightly Routine (fresh session per fire) runs a **groom + build** loop against `BACKLOG.md`:
 1. **Groom** — mine `feedback` + `events` (Supabase MCP or the documented curl fallback), review
    the app, and add/reprioritize P0–P3 items in `BACKLOG.md` (dedupe; skip Done/Blocked). Also run
-   `node scripts/groom_seed.mjs` (Reddit-insights pipeline Phase 1, see
-   `docs/reddit-persona-pipeline.md`): it dedupes the curated `docs/reddit_seed.json` themes against
+   `node scripts/groom_seed.mjs` (Reddit-insights pipeline, see
+   `docs/reddit-persona-pipeline.md`): it dedupes the `docs/reddit_seed.json` themes against
    CLAUDE.md + BACKLOG.md and refreshes the source-tagged "Reddit-seeded candidates" managed block
    (`--apply`). These are candidates for you to promote with judgment — they're not auto-built; the
    normal safety gate + one-item-per-run rules still apply.
+   **Seed sources:** `seed` = curated pain patterns (2026-08-13). `reddit-owner` = gathered by the
+   owner browsing Reddit in their own logged-in browser via Claude in Chrome (prompt:
+   `docs/reddit_intake_prompt.md`), paraphrased on intake and carrying an `observed` field recording
+   how widely the theme was actually seen — weight thin `observed` accordingly. `reddit-live` =
+   direct API mining, **not available**: Reddit's Responsible Builder Policy closed self-serve app
+   registration, so API access needs a manually-approved ticket. Don't send the owner to
+   reddit.com/prefs/apps; it's gone. Egress to Reddit is fine — credentials are the gap.
+   **Known dedupe defect:** a theme merely narrated in the Done log as *deferred* counts as covered
+   and drops out of the candidate set (live example: `self-schedule-fairness`). Pinned by a test in
+   `scripts/test_groom_seed.mjs`; don't "fix" it by reducing the Done log to bold titles — that
+   regresses genuinely-shipped themes.
 2. **Build** — implement the single highest-priority **unblocked, gate-safe** item end-to-end:
    develop on `claude/clause-md-review-9tqlj8` (restarted from the deploy base each run), test on
    the iPhone-13 Playwright harness (see Testing), pass the **safety gate**, then PR + squash-merge
