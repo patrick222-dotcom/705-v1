@@ -75,6 +75,30 @@ here so the loop's queue contains only work it can actually finish; pick these u
   hand-roll the redirect to avoid regressing the SRI rule.
   **Why not the nightly loop:** new Edge Function + a new secret-bearing column + a live third-party
   fetch the sandbox can't reach. Needs a dedicated session.
+  **Second candidate — iOS Shortcuts push (researched 2026-08-23, owner's idea; may be the better
+  one).** The owner's insight: most iPhone users already sync Google/Outlook into **iOS Calendar**,
+  so iOS Calendar is the aggregation point and reading *it* is provider-agnostic in a way reading
+  Google's API never is. Route with no native app: a Shortcut using `Find Calendar Events` +
+  `Get Contents of URL` POSTs the events to a ScrubPay ingest endpoint. Distributed as an iCloud
+  link (one tap, no App Store); runnable by voice ("Hey Siri, sync my shifts"); and a **Personal
+  Automation** on a Daily trigger with "Ask Before Running" off runs it unattended, so it syncs
+  while the app is closed — which the iCal-URL option cannot do. Server side is *simpler* than the
+  proxy: the phone pushes to us, so no CORS and no SSRF surface; needs an ingest Edge Function plus
+  a per-user token the app issues and the user pastes into the Shortcut once (same
+  treat-as-credential rules as above).
+  Trade-offs: **iOS-only** (the iCal URL also serves Android/desktop), setup is a shortcut install
+  rather than a paste, and time-of-day automations are best-effort — Apple's developer forums note
+  they can skip when the phone has been locked and idle a long while, so it is "usually daily", not
+  cron. Given the actual user base (a nurse and her unit, all iPhones), Shortcuts-first is the
+  likely call; decide at build time.
+  **Ruled out — native Siri / App Intents.** Checked because iOS 27 (ships Sept 2026) deprecates
+  SiriKit and makes **App Intents the only way Siri talks to a third-party app** (WWDC 2026; App
+  Intents 2.0 adds streaming, multi-turn, on-screen awareness). App Intents is a **Swift-native
+  framework with no web/PWA surface** — an installed PWA appears in Spotlight and App Library search
+  but **Siri cannot find it**, and it gets no widgets, Live Activities, or App Intents. Putting
+  ScrubPay into the new Siri therefore requires a real native app in Swift shipped via the App
+  Store, which contradicts the single-file architecture. Shortcuts is the supported way to reach
+  Siri without going native. Revisit only if ScrubPay ever goes native.
 
 - [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
   patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
