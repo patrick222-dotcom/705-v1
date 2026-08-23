@@ -408,6 +408,27 @@
       localStorage.setItem(ERR_KEY, JSON.stringify(buf));
     } catch(_){ /* quota / disabled storage — never break boot */ }
   };
+  /* console.error mirror. The two listeners below only catch THROWN failures. PostgREST
+     reports failures by RETURNING an error object, so the save path's console.error never
+     reached the ring buffer — which is why the 2026-08-23 sync investigation opened with an
+     empty error log while cloud writes had been failing for 47 days. Mirrored, never replaced:
+     the original console.error still runs, and a throw inside the mirror can't break it. */
+  var __origConsoleError = (window.console && console.error) ? console.error.bind(console) : null;
+  if(__origConsoleError){
+    console.error = function(){
+      try{
+        var parts = [];
+        for(var i=0;i<arguments.length;i++){
+          var a = arguments[i];
+          parts.push(a instanceof Error ? (a.message||String(a))
+            : (typeof a === 'object' && a !== null ? (function(){ try{ return JSON.stringify(a); }catch(_){ return String(a); } })()
+            : String(a)));
+        }
+        window.__logClientError('console.error: ' + parts.join(' '));
+      }catch(_){}
+      return __origConsoleError.apply(null, arguments);
+    };
+  }
   window.addEventListener('error', function(e){
     if(!window.__bootError) window.__bootError = e.message || String(e.error||'');
     window.__logClientError(e.message || String(e.error||''), e.filename, e.lineno, e.error && e.error.stack);
@@ -483,6 +504,10 @@ const supabase = (window.supabase && window.supabase.createClient)
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA'
     )
   : null;
+
+/* Bridge to the boot script's ring buffer for failures that are RETURNED rather than thrown
+   (PostgREST errors, most notably) — those never reach the window error listeners. */
+function logClientError(msg){ try{ if(window.__logClientError) window.__logClientError(msg); }catch(_){} }
 
 /* Race a promise against a timeout — Supabase getSession() can deadlock on Safari/WebKit. */
 const withTimeout = (p, ms, label) => Promise.race([
@@ -895,10 +920,16 @@ async function saveToSupabase(userId, data){
   if(!supabase) return null;
   const updatedAt = new Date().toISOString();
   try{
+    // onConflict MUST be user_id. The table's PK is `id uuid default gen_random_uuid()` and
+    // user_id carries a SEPARATE unique constraint (user_data_user_id_key). Without this option
+    // PostgREST targets the PK, a fresh id is generated so no PK conflict fires, the statement
+    // degrades to a plain INSERT, and that INSERT violates the user_id unique constraint with
+    // 23505 — every save after the very first one, forever. That silently broke cloud sync for
+    // every signed-in user from 2026-07-07 until it was caught on 2026-08-23.
     const {error} = await supabase
       .from('user_data')
-      .upsert({user_id:userId, data, updated_at:updatedAt});
-    if(error){ console.error('Save error:',error); return null; }
+      .upsert({user_id:userId, data, updated_at:updatedAt}, {onConflict:'user_id'});
+    if(error){ logClientError('Supabase save failed: '+(error.message||error.code||'unknown')); return null; }
     return updatedAt;
   }catch(e){
     // rejected fetch (network drop) — never let this leak past the save effect
@@ -1547,6 +1578,25 @@ function App(){
   const oversizeWarned = useRef(false);    // warn once if the blob outgrows the free-tier budget
   const lastSeenAt = useRef(null);         // updated_at of the cloud blob we last wrote/loaded (sync guard)
   const BACKUP_KEY = uid => STORE_KEY + '::' + uid;  // per-user local mirror (never the shared anon key)
+  /* The backup is written ONLY when a cloud save fails, so it always holds work the cloud never
+     received. It carries its own timestamp so hydration can tell whether it is newer than the
+     cloud row instead of guessing. */
+  const writeBackup = (uid, data)=>{
+    try{ localStorage.setItem(BACKUP_KEY(uid), JSON.stringify({savedAt:new Date().toISOString(), data})); }catch(_){}
+  };
+  /* Reads both shapes. Backups written before 2026-08-23 are a bare data object with no savedAt;
+     since one can only exist because a save failed, it is unsent work and outranks any cloud row
+     (savedAt:null is treated as "newer than anything" below). */
+  const readBackup = (uid)=>{
+    try{
+      const raw = localStorage.getItem(BACKUP_KEY(uid));
+      if(!raw) return null;
+      const o = JSON.parse(raw);
+      if(!o || typeof o !== 'object') return null;
+      if(typeof o.savedAt === 'string' && o.data && typeof o.data === 'object') return {savedAt:o.savedAt, data:o.data};
+      return {savedAt:null, data:o};   // legacy format
+    }catch(_){ return null; }
+  };
 
   /* ---- single serializer (used by save effect, export, and flush) ---- */
   const serializeState = ()=>({
@@ -1602,11 +1652,19 @@ function App(){
     loadingRef.current = userId;
     try{
       const row = await withTimeout(loadCloudRow(userId), timeoutMs||6000, 'cloud load');
-      if(row && row.data){ applyData(row.data,{landCurrent:true}); lastSeenAt.current = row.updatedAt; }
-      else{
-        // genuinely no cloud row yet — recover any local backup we mirrored for this user
-        try{ const b = localStorage.getItem(BACKUP_KEY(userId)); if(b) applyData(JSON.parse(b),{landCurrent:true}); }catch(_){}
-      }
+      const backup = readBackup(userId);
+      /* Prefer whichever copy is newer. This used to read the backup ONLY when there was no cloud
+         row — which meant that in the one situation the backup exists for (a save failed, so the
+         cloud row is stale), it was ignored and the stale row overwrote the user's work on every
+         reload. That is how the 2026-07-07 upsert bug ate 47 days of shifts silently. */
+      const backupWins = !!backup && (
+        !row || !row.data || !row.updatedAt || backup.savedAt === null ||
+        new Date(backup.savedAt).getTime() > new Date(row.updatedAt).getTime());
+      if(backupWins) applyData(backup.data,{landCurrent:true});
+      else if(row && row.data) applyData(row.data,{landCurrent:true});
+      // Record what the cloud actually held either way, so the 15s poll doesn't treat the stale
+      // row as new and re-apply it over the backup we just restored.
+      if(row && row.updatedAt) lastSeenAt.current = row.updatedAt;
       hydratedForUser.current = userId;  // ONLY now are cloud saves for this user safe
       setSyncError(false);
       return true;
@@ -1688,7 +1746,7 @@ function App(){
         // realistic pay history (~a few KB), so this only ever trips on corruption/abuse.
         if(JSON.stringify(dataToSave).length > MAX_BLOB_BYTES){
           if(!oversizeWarned.current){ oversizeWarned.current = true; toast('Your data got unusually large — cloud sync paused. Try clearing old shifts.','error'); }
-          try{ localStorage.setItem(BACKUP_KEY(user.id), JSON.stringify(dataToSave)); }catch(_){}
+          writeBackup(user.id, dataToSave);
           setSyncError(true);
           return;
         }
@@ -1699,8 +1757,8 @@ function App(){
         setSyncError(!ts);
         if(ts){ lastSeenAt.current = ts; try{ localStorage.removeItem(BACKUP_KEY(user.id)); }catch(_){} }   // remember our own write; a successful save makes cloud authoritative, so drop any stale local backup
         else{
-          // network drop: mirror to a PER-USER key (not the shared anon STORE_KEY) so nothing is lost and nothing leaks
-          try{ localStorage.setItem(BACKUP_KEY(user.id), JSON.stringify(dataToSave)); }catch(_){}
+          // save failed: mirror to a PER-USER key (not the shared anon STORE_KEY) so nothing is lost and nothing leaks
+          writeBackup(user.id, dataToSave);
         }
       }else{
         try{
