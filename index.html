@@ -987,6 +987,55 @@ function genSwapCode(){
   let s=''; for(let i=0;i<6;i++) s += SWAP_CODE_CHARS[Math.floor(Math.random()*SWAP_CODE_CHARS.length)];
   return s;
 }
+/* ---- invite links: https://…/705-v1/?join=ABC123 ---------------------------------
+   The 6-char code IS the whole secret, so a link carries exactly what reading the code
+   aloud does — no new exposure — but we consume the param the moment it's read so it
+   can't linger in the address bar, re-fire on refresh, or ride along into the Supabase
+   OAuth redirect. Only OUR key is deleted; every other query param (supabase-js PKCE
+   puts its own `?code=` here) is written back byte-identical.
+   The stash is what survives sign-in: Google OAuth navigates away and returns to a bare
+   origin+pathname (see signInWithOAuth's redirectTo), so without it a signed-out nurse
+   tapping a friend's link would lose the code the instant they signed in. TTL-bounded so
+   an abandoned invite can't ambush a session an hour later. */
+const SWAP_INVITE_PARAM = 'join';
+const SWAP_INVITE_KEY = 'scrubpay_pending_invite';
+const SWAP_INVITE_TTL_MS = 60*60*1000;
+
+function normalizeSwapCode(raw){
+  const c = String(raw||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+  return /^[A-Z0-9]{6}$/.test(c) ? c : '';
+}
+function buildSwapInviteLink(code){
+  return location.origin + location.pathname + '?' + SWAP_INVITE_PARAM + '=' + encodeURIComponent(code);
+}
+/* Read AND consume ?join= in one step; '' when absent or malformed. */
+function takeSwapInviteFromUrl(){
+  try{
+    const params = new URLSearchParams(location.search);
+    if(!params.has(SWAP_INVITE_PARAM)) return '';
+    const code = normalizeSwapCode(params.get(SWAP_INVITE_PARAM));
+    params.delete(SWAP_INVITE_PARAM);
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs?'?'+qs:'') + location.hash);
+    return code;
+  }catch(_){ return ''; }
+}
+function stashSwapInvite(code){
+  try{ localStorage.setItem(SWAP_INVITE_KEY, JSON.stringify({code, ts:Date.now()})); }catch(_){}
+}
+function clearSwapInvite(){
+  try{ localStorage.removeItem(SWAP_INVITE_KEY); }catch(_){}
+}
+function readStashedSwapInvite(){
+  try{
+    const raw = localStorage.getItem(SWAP_INVITE_KEY);
+    if(!raw) return '';
+    const o = JSON.parse(raw);
+    if(!o || typeof o.ts!=='number' || Date.now()-o.ts > SWAP_INVITE_TTL_MS){ clearSwapInvite(); return ''; }
+    return normalizeSwapCode(o.code);
+  }catch(_){ clearSwapInvite(); return ''; }
+}
+
 async function fetchSwapProfile(userId){
   if(!supabase) return {profile:null, missing:false};
   try{
@@ -1337,6 +1386,23 @@ function FeedbackSheet({user, onClose}){
 /* ---------- global toast + confirm (module-scoped, avoids prop-drilling) ---------- */
 const _ui = { toastFns:new Set(), confirmFn:null };
 function toast(msg, kind){ _ui.toastFns.forEach(fn=>fn(msg, kind||'info')); }
+/* Clipboard write + result toast. execCommand is the fallback for the older iOS Safari versions
+   where navigator.clipboard is missing outside a trusted gesture; both paths report through the
+   same toast so a silent failure can never look like a success. */
+function copyText(text, okMsg){
+  const done = ok => toast(ok ? okMsg : 'Could not copy — write it down.', ok?'success':'error');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>done(true), ()=>done(false));
+      return;
+    }
+  }catch(_){}
+  try{
+    const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
+  }catch(_){ done(false); }
+}
 function confirmAsync(msg, opts){
   if(_ui.confirmFn) return _ui.confirmFn(msg, opts||{});
   return Promise.resolve(window.confirm(msg));  // fallback if host isn't mounted
@@ -1460,6 +1526,9 @@ function App(){
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
   const [showSwaps,setShowSwaps] = useState(false);   // shift swap board sheet
+  // 6-char code carried in by a ?join= invite link (or stashed across the OAuth round-trip),
+  // awaiting the recipient's confirm inside SwapsSheet. '' when there's nothing pending.
+  const [pendingInvite,setPendingInvite] = useState('');
   // pending swap matches awaiting MY accept, refreshed by SwapsSheet alongside its own board
   // poll (never polled while the sheet is closed — badge just keeps showing the last-known count)
   const [swapPendingCount,setSwapPendingCount] = useState(0);
@@ -1730,6 +1799,25 @@ function App(){
   },[user]);
 
   /* lock scroll behind overlays */
+  /* An invite link opens the swap board straight onto the confirm screen. Two effects, because
+     the code arrives long before there's a board to show it on: onboarding early-returns above
+     the sheet tree, and a friend who taps a link is exactly the person most likely to be a
+     first-time user. So consume the URL param the moment we mount (the address bar is stripped
+     either way) and hand it to the stash; present it only once the app proper is rendering. */
+  useEffect(()=>{
+    const code = takeSwapInviteFromUrl();
+    if(code) stashSwapInvite(code);
+  },[]);
+  useEffect(()=>{
+    if(!ready || !setupComplete) return;
+    const code = readStashedSwapInvite();
+    if(!code) return;
+    setPendingInvite(code);
+    setShowSwaps(true);
+    track('swap_invite_opened', null, user && user.id);
+    // eslint-disable-next-line
+  },[ready,setupComplete]);
+
   useEffect(()=>{
     const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps;
     document.body.style.overflow = open ? 'hidden':'';
@@ -2536,7 +2624,9 @@ function App(){
       {showSwaps &&
         <SwapsSheet user={user} shifts={shifts} dayEvents={dayEvents} notes={notes} saveDayShifts={saveDayShifts} differentials={differentials}
           onClose={()=>setShowSwaps(false)} onOpenAuth={()=>{ setAuthMode('signin'); setShowAuth(true); }}
-          onPendingCount={setSwapPendingCount} />}
+          onPendingCount={setSwapPendingCount}
+          pendingInvite={pendingInvite}
+          onInviteResolved={()=>{ clearSwapInvite(); setPendingInvite(''); }} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
@@ -3286,7 +3376,7 @@ function Settings(props){
 }
 
 /* ---------- Swap board (Phase 1: anonymous groups + posting/browsing; matching is Phase 2) ---------- */
-function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differentials, onClose, onOpenAuth, onPendingCount}){
+function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differentials, onClose, onOpenAuth, onPendingCount, pendingInvite, onInviteResolved}){
   const [loading,setLoading] = useState(true);
   const [loadError,setLoadError] = useState(false);
   const [tablesMissing,setTablesMissing] = useState(false);
@@ -3302,6 +3392,12 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   const [joinCode,setJoinCode] = useState('');
   const [joining,setJoining] = useState(false);
   const [joinMoreOpen,setJoinMoreOpen] = useState(false);   // reveal the "join another board" input once you already have a board
+  /* Code delivered by a ?join= invite link, held until the recipient confirms. Mirrored into
+     local state (not read straight off the prop) so "Not now" can dismiss the screen without
+     the parent having to re-render the sheet. */
+  const [inviteCode,setInviteCode] = useState(pendingInvite||'');
+  useEffect(()=>{ if(pendingInvite) setInviteCode(pendingInvite); },[pendingInvite]);
+  const resolveInvite = ()=>{ setInviteCode(''); if(onInviteResolved) onInviteResolved(); };
 
   const [posts,setPosts] = useState([]);
   const [boardLoading,setBoardLoading] = useState(false);
@@ -3420,38 +3516,63 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
     setCreateName('');
     track('swap_group_created', null, user.id);
   };
-  const doJoinGroup = async ()=>{
-    const code = joinCode.trim().toUpperCase();
-    if(!/^[A-Z0-9]{6}$/.test(code)){ toast('Enter the 6-character code.','error'); return; }
+  /* `viaLink` = the code came from an invite link's confirm screen rather than the typed input:
+     it drives which state to clear afterwards and lets a dead link retire itself instead of
+     re-prompting forever. Called from onClick as ()=>doJoinGroup() — never bare, or React would
+     hand the click event in as the code. */
+  const doJoinGroup = async (codeArg, viaLink)=>{
+    const code = normalizeSwapCode(codeArg!=null ? codeArg : joinCode);
+    if(!code){ toast('Enter the 6-character code.','error'); return; }
     setJoining(true);
     const {group, error} = await joinSwapGroupByCode(code);
     setJoining(false);
     if(!group){
       const msg = String((error&&error.message)||error||'');
-      toast(msg.indexOf('invalid_code')>=0 ? "That code didn't match a board." : "Couldn't join that board — try again.", 'error');
+      const bad = msg.indexOf('invalid_code')>=0;
+      toast(bad ? "That code didn't match a board." : "Couldn't join that board — try again.", 'error');
+      // A bad code won't get better on a retry; drop the invite so the board opens normally.
+      // A network failure might, so leave the confirm screen up in that case.
+      if(viaLink && bad) resolveInvite();
       return;
     }
+    // join_swap_group is `on conflict do nothing`, so re-tapping your own link is a no-op join —
+    // say so rather than claiming they joined something they're already in.
+    const already = groups.some(g=>g.id===group.id);
     setGroups(prev=> prev.some(g=>g.id===group.id) ? prev : [...prev, group]);
     setActiveGroupId(group.id);
     setJoinCode('');
     setJoinMoreOpen(false);
-    track('swap_group_joined', null, user.id);
+    if(viaLink){
+      resolveInvite();
+      toast(already ? `You're already in ${group.name} — opening it.` : `Joined ${group.name}!`, 'success');
+    }
+    track('swap_group_joined', viaLink?{via:'link'}:null, user.id);
   };
 
-  const copyCode = (code)=>{
-    const done = ok => toast(ok?'Code copied!':'Could not copy — write it down.', ok?'success':'error');
-    try{
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(code).then(()=>done(true), ()=>done(false));
+  /* Share the board as a tappable link. navigator.share is the whole point on a phone — it
+     opens the real iOS share sheet straight into Messages, which is how nurses actually pass
+     this around — but it needs a user gesture + a secure context and simply isn't there on
+     most desktop browsers, so every miss falls back to copying the same text. A user who
+     opens the sheet and cancels (AbortError) chose not to send it: that's not a failure, and
+     silently copying behind their back would be worse than doing nothing. */
+  const shareInvite = async (code, name)=>{
+    const link = buildSwapInviteLink(code);
+    const where = name ? `"${name}"` : 'my unit';
+    const text = `Join ${where} on ScrubPay to swap shifts — invite code ${code}`;
+    if(navigator.share){
+      try{
+        await navigator.share({title:'ScrubPay shift swaps', text, url:link});
+        track('swap_invite_shared', {via:'share'}, user.id);
         return;
+      }catch(e){
+        if(e && e.name==='AbortError') return;   // user backed out — leave it be
       }
-    }catch(_){}
-    try{
-      const ta=document.createElement('textarea'); ta.value=code; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      const ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
-    }catch(_){ done(false); }
+    }
+    copyText(text + '\n' + link, 'Invite link copied!');
+    track('swap_invite_shared', {via:'copy'}, user.id);
   };
+
+  const copyCode = (code)=> copyText(code, 'Code copied!');
 
   /* ---- composer ---- */
   const upcomingShifts = useMemo(()=>{
@@ -3682,18 +3803,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   };
 
   const copyPlan = (text)=>{
-    const done = ok => toast(ok?'Swap plan copied!':'Could not copy — write it down.', ok?'success':'error');
-    try{
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(text).then(()=>done(true), ()=>done(false));
-        return;
-      }
-    }catch(_){}
-    try{
-      const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      const ok=document.execCommand('copy'); document.body.removeChild(ta); done(ok);
-    }catch(_){ done(false); }
+    copyText(text, 'Swap plan copied!');
   };
 
   /* "Apply to my calendar": removes the shift I gave (matched by date + shift_meta) and/or adds
@@ -3762,9 +3872,12 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
           {Header}
           <div style={{textAlign:'center',padding:'32px 12px'}}>
             <div style={{fontSize:36,marginBottom:12}} aria-hidden="true">🔄</div>
-            <div className="display" style={{fontWeight:700,fontSize:18,marginBottom:8}}>Trade shifts with your unit</div>
-            <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:20}}>Post shifts you want to give up or pick up — anonymously, until everyone accepts a swap.</div>
-            <button className="btn btn-primary" onClick={onOpenAuth}>Sign in to use swaps</button>
+            <div className="display" style={{fontWeight:700,fontSize:18,marginBottom:8}}>{inviteCode ? 'You were invited to a swap board' : 'Trade shifts with your unit'}</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:20}}>
+              {inviteCode
+                ? <React.Fragment>Sign in and we'll take you straight to it. Your invite code is <b className="num">{inviteCode}</b>.</React.Fragment>
+                : 'Post shifts you want to give up or pick up — anonymously, until everyone accepts a swap.'}</div>
+            <button className="btn btn-primary" onClick={onOpenAuth}>{inviteCode ? 'Sign in to join' : 'Sign in to use swaps'}</button>
           </div>
         </div>
       </div>
@@ -3805,16 +3918,29 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <button className="btn btn-primary" disabled={savingProfile} onClick={saveDisplayName}>{savingProfile?'Saving…':'Continue'}</button>
           </div>}
 
-        {!loading && !loadError && !tablesMissing && profile && justCreated &&
+        {/* Invite-link confirm. The board's name can't be shown yet — RLS hides swap_groups from
+            non-members and join_swap_group only hands back an id once you're in — so the code is
+            what we confirm against, and the name lands in the toast the moment we're through. */}
+        {!loading && !loadError && !tablesMissing && profile && inviteCode &&
+          <div style={{textAlign:'center',padding:'8px 4px 4px'}}>
+            <div style={{fontSize:36,marginBottom:12}} aria-hidden="true">🤝</div>
+            <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Join this swap board?</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>A colleague shared an invite link with you.</div>
+            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:16}}>{inviteCode}</div>
+            <button className="btn btn-primary" style={{marginBottom:10}} disabled={joining} onClick={()=>doJoinGroup(inviteCode, true)}>{joining?'Joining…':'Join board'}</button>
+            <button className="btn btn-ghost" disabled={joining} onClick={resolveInvite}>Not now</button>
+          </div>}
+
+        {!loading && !loadError && !tablesMissing && profile && !inviteCode && justCreated &&
           <div style={{textAlign:'center',padding:'8px 4px 4px'}}>
             <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created!</div>
-            <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Share this code with your unit so they can join.</div>
+            <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Send your unit the link — it drops them straight onto this board.</div>
             <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
-            <button className="btn btn-ghost" style={{marginBottom:10}} onClick={()=>copyCode(justCreated.invite_code)}>Copy code</button>
+            <button className="btn btn-ghost" style={{marginBottom:10}} onClick={()=>shareInvite(justCreated.invite_code, justCreated.name)}>Share invite link</button>
             <button className="btn btn-primary" onClick={()=>setJustCreated(null)}>Continue to board</button>
           </div>}
 
-        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length===0 &&
+        {!loading && !loadError && !tablesMissing && profile && !inviteCode && !justCreated && groups.length===0 &&
           <div>
             <div className="card" style={{marginBottom:14}}>
               <h3>Create your unit's board</h3>
@@ -3829,11 +3955,11 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                 <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
                   placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>
               </div>
-              <button className="btn btn-ghost" disabled={joining} onClick={doJoinGroup}>{joining?'Joining…':'Join board'}</button>
+              <button className="btn btn-ghost" disabled={joining} onClick={()=>doJoinGroup()}>{joining?'Joining…':'Join board'}</button>
             </div>
           </div>}
 
-        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length>0 && !composerOpen &&
+        {!loading && !loadError && !tablesMissing && profile && !inviteCode && !justCreated && groups.length>0 && !composerOpen &&
           <div>
             {groups.length>1 &&
               <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
@@ -3847,7 +3973,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             {activeGroupId && <React.Fragment>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
                 {activeGroup && activeGroup.invite_code
-                  ? <button className="btn btn-ghost btn-sm" style={{minHeight:44,gap:6}} onClick={()=>copyCode(activeGroup.invite_code)} title="Copy your unit's invite code to share">Invite code · <b>{activeGroup.invite_code}</b></button>
+                  ? <button className="btn btn-ghost btn-sm" style={{minHeight:44,gap:6}} onClick={()=>shareInvite(activeGroup.invite_code, activeGroup.name)} title="Send a colleague a link that joins this board">Invite · <b>{activeGroup.invite_code}</b></button>
                   : <span></span>}
                 <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={openComposer}>+ Post to the board</button>
               </div>
@@ -4010,14 +4136,14 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                       onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}/>
                   </div>
                   <div style={{display:'flex',gap:10}}>
-                    <button className="btn btn-primary btn-sm" style={{minHeight:44}} disabled={joining} onClick={doJoinGroup}>{joining?'Joining…':'Join board'}</button>
+                    <button className="btn btn-primary btn-sm" style={{minHeight:44}} disabled={joining} onClick={()=>doJoinGroup()}>{joining?'Joining…':'Join board'}</button>
                     <button className="btn btn-ghost btn-sm" style={{minHeight:44}} disabled={joining} onClick={()=>{ setJoinMoreOpen(false); setJoinCode(''); }}>Cancel</button>
                   </div>
                 </div>}
             </div>
           </div>}
 
-        {!loading && !loadError && !tablesMissing && profile && !justCreated && groups.length>0 && composerOpen &&
+        {!loading && !loadError && !tablesMissing && profile && !inviteCode && !justCreated && groups.length>0 && composerOpen &&
           <div>
             <div className="sec-lab">WHAT DO YOU NEED?</div>
             <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>

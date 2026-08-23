@@ -219,6 +219,13 @@ both insert grants; matches/legs are created ONLY through the security-definer `
 (edit-while-open and the direct withdraw still work). Re-verified: RLS audit 29/29 + 5/5 new
 adversarial probes (both inserts denied, forge blocked, withdraw intact).
 
+**Invite links (2026-08-22):** boards are shared as `…/705-v1/?join=ABC123` through the native
+share sheet (`navigator.share`, clipboard fallback). The recipient always gets a confirm screen —
+the board name is unknowable pre-join, so the code is what's confirmed. The param is consumed on
+mount (other query params preserved for supabase-js PKCE) and stashed in localStorage
+(`scrubpay_pending_invite`, 1h TTL) so it survives the OAuth redirect and onboarding. A link carries
+only the invite code — the same secret as reading it aloud — so no anonymity/RLS surface changed.
+
 Known disclosure gap (still open, by design): poster_key is stable per group, so a
 colleague identified via one confirmed match can recognize that person's other posts
 thereafter — consider copy disclosure or key rotation later.
