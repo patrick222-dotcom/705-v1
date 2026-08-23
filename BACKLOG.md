@@ -40,6 +40,42 @@ sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctl
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
 
+- [ ] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
+  2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
+  ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
+  2026-08-23 over Google OAuth, see the rejected alternative below).
+  **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
+  one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
+  Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
+  Practically indistinguishable from background sync from the user's side.
+  **Reuse — this is why it's cheap:** `parseICSSchedule(text)` (index.html:646) already takes raw
+  .ics *text*, so the only new input path is fetch-instead-of-FileReader (`onImportICS`, :2271).
+  Re-sync idempotency is already solved: the existing `icsUid` keying (:2251) moves shifts on
+  re-import and preserves assigned pay types, which is exactly re-sync semantics.
+  **The one piece that needs building:** a Supabase Edge Function to proxy the fetch — Google's and
+  NurseGrid's .ics endpoints send no CORS headers, so the browser can't read them directly. Keep the
+  proxy narrow: allowlist the two known host patterns, cap response size, no redirects to private
+  ranges (SSRF), and never log the URL.
+  **Treat the URL as a credential.** A secret iCal address is a bearer token — anyone holding it can
+  read that calendar forever. It must NOT go in the `user_data` JSON blob (that blob is exported by
+  "Export data", mirrored to localStorage, and echoed through the sync poll). Give it its own column
+  or table, and keep it out of `events`/analytics entirely.
+  **Privacy:** store dates, start/end and a stable event id only — never event titles. A personal
+  calendar carries appointments and family detail that a wage app has no business retaining.
+  **Rejected alternative — Google OAuth (what it would have cost):** Calendar scopes are *sensitive*,
+  so beyond ~100 test users it needs Google OAuth verification (branding, privacy policy, homepage,
+  demo video). Worse for the async goal specifically: refresh tokens issued while the app is in
+  Testing mode expire after ~7 days, which breaks unattended cron sync until verified. And Supabase
+  deliberately discards the Google token — *"Provider tokens are intentionally not stored in your
+  project's database"* — so `provider_refresh_token` is available exactly once, in the session at
+  sign-in, and true background sync would mean persisting a long-lived key to the user's whole Google
+  account (encrypted, service-role-only, Edge-Function-only). The app holds zero third-party
+  credentials today; that is a large jump in security surface for the same user-visible result.
+  Also note Google's GIS JS library is not a pinned/SRI-able URL, so the OAuth route would have to
+  hand-roll the redirect to avoid regressing the SRI rule.
+  **Why not the nightly loop:** new Edge Function + a new secret-bearing column + a live third-party
+  fetch the sandbox can't reach. Needs a dedicated session.
+
 - [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
   patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
   logging in with Gmail. Likely the getSession 4s-race / loadCloudRow error path surfacing a
