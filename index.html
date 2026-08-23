@@ -3080,7 +3080,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
         <div className="preview">
           <div className="k">This shift adds</div>
-          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
         </div>
 

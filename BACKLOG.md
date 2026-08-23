@@ -87,9 +87,7 @@ Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
 
 ### P2
 - [x] ~~**Re-share the invite code from the active board**~~ — SHIPPED 2026-08-22 (see Done log).
-- [ ] **OT confirmation in the Add-Shift preview** (source:persona/Night-shift-Nadia): the preview
-  total silently ×1.5 when OT is on but nothing says so — append `{isOvertime && <span> · incl. OT
-  ×1.5</span>}` to the "This shift adds" line (~3082). Harness-verifiable (drive OT toggle).
+- [x] ~~**OT confirmation in the Add-Shift preview**~~ — SHIPPED 2026-08-23 (see Done log).
 
 ### P3
 - [ ] **First-run "Join with a code" card lacks the helper line the second one has**
@@ -158,6 +156,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-23 — **OT confirmation in the Add-Shift preview** (persona/Night-shift-Nadia; highest-
+  priority `drivable` item in the newly harness-classified queue). Toggling Overtime silently ×1.5'd
+  the "This shift adds" total with nothing saying so — a differential/OT power user couldn't tell her
+  toggle "took" without mental math. Appended a green "· incl. OT ×1.5" tag to the preview line, gated
+  on `isOvertime` (already-set state). Pure display — **wage-core untouched** (no change to shiftGross/
+  previewNet). iPhone-13 gate **34/34** incl. a live OT-toggle drive (tag hidden → "+$1,080 gross ·
+  +$841 take-home · incl. OT ×1.5" on → hidden off) + fabtoday/bonusfix/addclose/breakdown/invite
+  regressions. SRI intact (5). GROOM: no new feedback; active use continues (swap_posted + signed_in +
+  new setup_completed since 2026-08-22). Noted the council's pipeline upgrades landed while idle
+  (#41 owner-mediated Reddit intake + design doc; #42 harness classification) and a `share-link-swap-
+  board` branch is in flight (untouched — no overlap with this AddShift change).
 - 2026-08-22 — **Queue focus pass: harness classification + park the un-runnable work** (meta-goal /
   council process; docs + scripts only, `index.html` untouched). Owner asked whether a per-run cap on
   auto-added candidates would keep the nightly focused. Evidence said no: the loop already builds
