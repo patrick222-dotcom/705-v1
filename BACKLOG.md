@@ -125,6 +125,30 @@ here so the loop's queue contains only work it can actually finish; pick these u
   confirmed match can't correlate that person's *future* posts. Non-trivial (touches the
   security-definer poster_key derivation) — defer until real demand.
 
+- [ ] **Swap handoff redesign: double-blind + reliability signal + negotiation "market"** —
+  owner design question 2026-08-24; decided via a 5-persona council A/B (Sam, Val, Nadia, Nia,
+  Frank). NOT a nightly build — `needs-live-auth` + RLS/anonymity-critical + a product decision;
+  may overlap the `claude/share-link-swap-board` work.
+  **Council verdict (B wins 3–2, but really "B+"):** go **double-blind** (peers never see each
+  other; only the approver/manager sees both identities to process — you can't be anonymous to the
+  processor, only to peers). The two A-votes (Sam, Frank) weren't asking for names — they wanted
+  *accountability/coordination*, which a **failure-weighted reliability signal** ("completed N
+  swaps, M no-shows"; new users flagged no-history) satisfies. With that signal, B converts all
+  five.
+  **Unanimous must-haves:** (1) the handoff must **reliably complete + show status**
+  (`Submitted → pending (Xd) → Approved/Declined + reason`) — every persona's dealbreaker was
+  silent limbo; (2) the approver package = **both real names + both parties' documented acceptance
+  + an OT/hours-rule flag**, delivered as ONE locked approve/deny (Val's hard constraint: an
+  anonymous-to-the-approver swap is un-enterable in Kronos). Corroborated by real seed themes
+  `swap-manager-approval-bottleneck` + `swap-falls-through`.
+  **Negotiation market — concept yes, chains NO (unanimous):** ship only (a) a `giveaway` vs
+  `trade-only` toggle, (b) a single **atomic paired** swap ("accept only if you also take one of my
+  posts", accept-both-or-neither), and (c) Frank's **availability windows** ("pick up: Tue/Wed
+  days; giving up: Fri nights" → board surfaces overlaps). Plain accept stays the default (Nia's
+  dealbreaker). **Hard rule:** cap conditionals at ONE linked pair, never a chain; resolve the
+  negotiation to a locked package before it reaches the approver. Full multi-way negotiation was
+  rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
+
 ## Persona-sourced candidates (Phase 2 — from the 2026-08-17 persona-review pass)
 _Grounded findings from the `docs/reddit_personas.json` review pass (subagents role-playing real
 nurse personas over the app). Each still needs the reproduce-or-corroborate verification gate +
@@ -137,9 +161,7 @@ the normal safety gate before build. Verdicts noted; promote with judgment._
 
 ### P3 (clarity / nice)
 - [x] ~~**New-grad jargon glosses**~~ — SHIPPED 2026-08-20 (see Done log).
-- [ ] **"Keep ~X%" chip in the hero** (source:persona/Per-diem-Priya) — built + reverted 2026-08-21
-  in favor of the higher-priority BONUS_LABEL bug; ready to ship (add `{calc.hours>0 && <span
-  className="chip">Keep {calc.pct}%</span>}` to the hero chips row, ~2393). Fully harness-verifiable.
+- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (see Done log).
 
 ## Persona-sourced candidates (Phase 2 — from the 2026-08-21 refresh pass)
 _Second persona pass (Swap-savvy Sam on the swap flow — timely, swap board actively used 2026-08-21;
@@ -158,9 +180,8 @@ Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
 - [ ] **Calendar day cells give no OT signal** (source:persona/Night-shift-Nadia, ~2759/2775):
   extend the cell aria-label with ", includes overtime" + a tiny "OT" tag when any shift that day is
   OT (`arr.some(s=>s.isOvertime)`, already stored). Harness-verifiable.
-- [ ] **"Keep ~X%" chip in the hero** (source:persona/Per-diem-Priya): display the already-computed
-  `keepRatio` as a hero chip so any gross figure can be mentally netted. (Note: `calc.pct` already
-  shows take-home% in the breakdown/settings — lower priority, possible redundancy.)
+- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (used `calc.pct`, not `keepRatio`, so
+  it matches the breakdown's "% of gross" exactly; see Done log).
 - [ ] **"Sync to calendar" reads like a live sync but is a one-shot .ics download**
   (source:persona/Veteran-Val): consider relabeling to "Export .ics" (symmetric with the new
   "Import .ics") or "Add to my calendar." One-word copy change — but confirm the owner's preferred
@@ -216,6 +237,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-24 — **"Keep N%" take-home chip on the hero** (persona/Per-diem-Priya; last open drivable
+  persona candidate). The hero showed Gross + Taxes chips but the take-home *ratio* only lived in the
+  breakdown/settings; added a "Keep {calc.pct}%" chip to the hero chips row (gated on `calc.hours>0`,
+  like the hours chip) so any gross figure can be mentally netted at a glance. Used `calc.pct` — the
+  app's canonical net/gross — so it matches the breakdown exactly (no second, slightly-different
+  percentage). Pure display — **wage-core untouched**. iPhone-13 gate **35/35** incl. a live hero
+  drive (seeded a charge shift → "Keep 78%" renders, validated 1–99%). SRI intact (5). GROOM: the
+  "couldn't sync" issue was fixed as a **P0** by another session (#45 — cloud saves were broken for
+  ALL signed-in users since Jul 7); shareable invite links shipped (#43) and are in active use
+  (`swap_invite_shared`/`_opened`/`swap_group_joined` events). Also captured the owner's swap-handoff
+  A/B council decision into the dedicated-session section above.
 - 2026-08-23 — **OT confirmation in the Add-Shift preview** (persona/Night-shift-Nadia; highest-
   priority `drivable` item in the newly harness-classified queue). Toggling Overtime silently ×1.5'd
   the "This shift adds" total with nothing saying so — a differential/OT power user couldn't tell her
