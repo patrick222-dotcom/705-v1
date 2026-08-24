@@ -3350,6 +3350,16 @@ function AuthModal({mode:initialMode,onClose}){
           Continue with Google
         </button>
 
+        {/* Google's consent screen names the identity provider's host, which is currently the raw
+            Supabase project ref (mnnlgcxnvodjwlhhiphq.supabase.co) rather than anything saying
+            "ScrubPay". Nurses reasonably hesitate at an unfamiliar address on a screen asking for
+            their Google account. Naming it a beat early turns a surprise into an expectation; the
+            real fix is a custom auth domain, which is a paid Supabase add-on. */}
+        <div style={{fontSize:12,color:'var(--muted-2)',lineHeight:1.5,textAlign:'center',marginBottom:16,padding:'0 4px'}}>
+          Google will ask you to continue to <b>supabase.co</b> — that's the secure sign-in service
+          ScrubPay uses. Your password is never shared with us.
+        </div>
+
         <div style={{textAlign:'center',fontSize:13}}>
           {mode==='signup'
             ? <span>Have an account? <button className="link" onClick={()=>{setError('');setMode('signin');}}>Sign in</button></span>
