@@ -2537,6 +2537,7 @@ function App(){
               <div className="chips">
                 <span className="chip">Gross {fmt(calc.gross)}</span>
                 <span className="chip">Taxes & deductions –{fmt(calc.ded)}</span>
+                {calc.hours>0 && <span className="chip">Keep {calc.pct}%</span>}
                 {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
               <button className="hero more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
