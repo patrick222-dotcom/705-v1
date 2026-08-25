@@ -177,9 +177,7 @@ Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
   you." under its `<h3>`. Not sandbox-drivable.
 - [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam, ~3934): one muted line
   "Names stay hidden until everyone accepts." above the suggestion cards. Not sandbox-drivable.
-- [ ] **Calendar day cells give no OT signal** (source:persona/Night-shift-Nadia, ~2759/2775):
-  extend the cell aria-label with ", includes overtime" + a tiny "OT" tag when any shift that day is
-  OT (`arr.some(s=>s.isOvertime)`, already stored). Harness-verifiable.
+- [x] ~~**Calendar day cells give no OT signal**~~ — SHIPPED 2026-08-25 (see Done log).
 - [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (used `calc.pct`, not `keepRatio`, so
   it matches the breakdown's "% of gross" exactly; see Done log).
 - [ ] **"Sync to calendar" reads like a live sync but is a one-shot .ics download**
@@ -237,6 +235,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-25 — **Calendar day-cell OT signal** (persona/Night-shift-Nadia; last open drivable
+  persona candidate). A logged OT shift was pixel-identical to a base shift on the month grid, so a
+  differential/OT nurse couldn't spot which days were OT at a glance. Added a tiny green "OT" marker
+  by the date number when any shift that day is OT (`arr.some(s=>s.isOvertime)`, already stored) and
+  ", includes overtime" to the cell aria-label for screen readers. Additive display only — no
+  calendar scroll-machinery, wage-core, boot, or SRI touched. iPhone-13 gate **41/41** incl. a live
+  calendar drive (seeded an OT shift on today → cell shows "OT" + aria "includes overtime"; a
+  no-shift day stays unmarked). SRI intact (5). GROOM: no new feedback/events. This clears the last
+  drivable persona candidate — a fresh persona pass (or one of the parked dedicated-session builds)
+  is next.
 - 2026-08-24 — **"Keep N%" take-home chip on the hero** (persona/Per-diem-Priya; last open drivable
   persona candidate). The hero showed Gross + Taxes chips but the take-home *ratio* only lived in the
   breakdown/settings; added a "Keep {calc.pct}%" chip to the hero chips row (gated on `calc.hours>0`,
