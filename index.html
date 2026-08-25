@@ -2899,6 +2899,7 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
     const evs=(dayEvents&&dayEvents[k])||[];
     const hasShift=arr.length>0, hasEvent=evs.length>0, has=hasShift||hasEvent;
     const hasNote=!!(notes&&notes[k]);
+    const hasOT = arr.some(s=>s.isOvertime);
     const qfOn = qfActive && arr.some(s=>s.templateId===qfTemplateId);
     const isToday = k===today;
     const isActive = !!periodAnchor && periodStartOf(k,periodAnchor)===periodAnchor;
@@ -2907,9 +2908,10 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
           + (hasShift ? ', ' + arr.length + ' shift' + (arr.length===1?'':'s') : '')
           + (hasEvent ? ', ' + evs.length + ' day event' + (evs.length===1?'':'s') : '')
           + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
+          + (hasOT ? ', includes overtime' : '')
           + (!has ? ', no shifts' : '')
           + (hasNote ? ', has a note' : '')}>
-        <div className="d">{dt.getDate()}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
+        <div className="d">{dt.getDate()}{hasOT && <span aria-hidden="true" style={{fontSize:8,fontWeight:800,color:'#11A86B',marginLeft:2,verticalAlign:'top',letterSpacing:'.5px'}}>OT</span>}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
           ? <div style={{marginTop:'auto'}}>
               {/* Shift glyphs and event rings share one marker row (capped to 4 combined) so a day
