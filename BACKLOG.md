@@ -185,6 +185,42 @@ Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
   "Import .ics") or "Add to my calendar." One-word copy change — but confirm the owner's preferred
   wording first (naming call).
 
+## Persona-sourced candidates (Phase 2 — from the 2026-08-26 refresh pass)
+_Fresh pass on under-reviewed surfaces (New-grad-Nia on onboarding/settings; Float-pool-Frank on
+day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy-only unless noted._
+
+### P2
+- [ ] **Paystub "Couldn't read that paystub" is a dead-end** (source:persona/Per-diem-Priya, ~2723;
+  harness:drivable) — the failure modal gives no reason or what-to-try, matching the analytics (1
+  import ever, 0 shifts). Replace the `.help` line with actionable copy (needs a detailed PDF that
+  lists pay rate + hours; a scan/summary won't parse; file stays on device). Verify: drive `onPaystub`
+  with a garbage/text PDF → `empty` → assert the copy.
+- [ ] **PTO day silently vanishes its "DETECTED DIFFERENTIAL ROWS" section when 0 rows**
+  (source:persona/Per-diem-Priya, ~2762/2784; harness:drivable) — when a paystub parses a base rate
+  but no differential rows (the "0 shifts" case), the whole section is omitted with no note. Add an
+  else note: "No differential rows were detected — add night/weekend/holiday rates in the next step."
+- [ ] **Surface that PTO is paid at base rate** (source:persona/Float-pool-Frank, ~3250;
+  harness:drivable) — the PTO hours input never says how PTO is valued, so a $ amount on the calendar
+  is unexplained. Add "Paid at your base rate — about {fmt2(baseRate)}/hr." under the PTO input
+  (`baseRate` already in scope). Verify: open a day → tap PTO chip → assert hint.
+
+### P3
+- [ ] **Onboarding step-2 "tweak to your contract" is misleading** (source:persona/New-grad-Nia,
+  ~4320; harness:drivable) — the differentials step only has on/off toggles (amounts are read-only),
+  so "tweak to your contract" sends Nia hunting for an input that isn't there. Reword to
+  "toggle what applies — you can fine-tune the amounts anytime in Settings."
+- [ ] **Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**
+  (source:persona/New-grad-Nia, ~3403; harness:drivable) — add a one-line hint under the TAXES header:
+  "Starting estimates — check a recent paystub and adjust."
+- [ ] **"Scan a paystub" CTA gives no format/privacy cue** (source:persona/Per-diem-Priya,
+  ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
+  uploaded."
+- [ ] **Calendar day aria-label says "N day events", not which kinds** (source:persona/Float-pool-
+  Frank, ~2909; harness:drivable) — replace the count with the kind labels
+  (`evs.map(e=>EVENT_KIND_META[e.kind]?.label).join(', ')`) so VoiceOver distinguishes PTO vs appt.
+- [ ] **"ALSO ON THIS DAY" header reads oddly on a shift-less day** (source:persona/Float-pool-Frank,
+  ~3238; harness:drivable) — make it `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`.
+
 ## Blocked
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
@@ -235,6 +271,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-26 — **Onboarding "this is just an example" cue on the base rate** (persona/New-grad-Nia;
+  fresh persona pass this run). Step 1 pre-fills the base-rate field with the default $65.15, and a
+  low-confidence new grad could tap Continue leaving a stranger's rate in — silently corrupting
+  **every** projection. Appended a bold cue to the step-1 help: "The amount below is just an example
+  — enter your own rate." Copy only — **wage-core / default state / boot / SRI / sync untouched**.
+  iPhone-13 gate **42/42** incl. an unseeded onboarding drive (cue renders on step 1; confirmed the
+  input is pre-filled with 65.15 so the cue is warranted). SRI intact (5). GROOM: no new feedback;
+  ran a fresh 3-persona pass on under-reviewed surfaces (onboarding/settings, day-events/PTO,
+  paystub import) → new candidates queued below.
 - 2026-08-25 — **Calendar day-cell OT signal** (persona/Night-shift-Nadia; last open drivable
   persona candidate). A logged OT shift was pixel-identical to a base shift on the month grid, so a
   differential/OT nurse couldn't spot which days were OT at a glance. Added a tiny green "OT" marker
