@@ -1000,6 +1000,63 @@ async function loadCloudRow(userId){
   return data?.data ? {data:data.data, updatedAt:data.updated_at||null} : null;
 }
 
+/* ---------- iCal auto-sync subscription ----------
+   A secret .ics feed URL is a BEARER CREDENTIAL — anyone holding it can read that calendar forever.
+   It therefore lives in its OWN table (ical_subscriptions), NEVER in the user_data blob (which is
+   exported by "Export data", mirrored to localStorage, and echoed through the 15s sync poll). RLS is
+   owner-only; analytics/events never touch it. Signed-in users only. */
+async function loadIcalSub(userId){
+  if(!supabase || !userId) return null;
+  const {data,error} = await supabase
+    .from('ical_subscriptions')
+    .select('ical_url, provider, last_synced')
+    .eq('user_id',userId)
+    .single();
+  if(error){ if(error.code==='PGRST116') return null; throw error; }
+  return data ? {icalUrl:data.ical_url, provider:data.provider||null, lastSynced:data.last_synced||null} : null;
+}
+async function saveIcalSub(userId, icalUrl, provider){
+  if(!supabase || !userId) return;
+  const {error} = await supabase
+    .from('ical_subscriptions')
+    .upsert({user_id:userId, ical_url:icalUrl, provider:provider||null, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
+  if(error) throw error;
+}
+async function deleteIcalSub(userId){
+  if(!supabase || !userId) return;
+  const {error} = await supabase.from('ical_subscriptions').delete().eq('user_id',userId);
+  if(error) throw error;
+}
+async function stampIcalSynced(userId){
+  if(!supabase || !userId) return;
+  try{ await supabase.from('ical_subscriptions').update({last_synced:new Date().toISOString()}).eq('user_id',userId); }catch(_){}
+}
+
+/* Pure re-import merge planner (unit-tested in the harness). Given parsed .ics events and a map of
+   existing shifts keyed by their icsUid, split into:
+     toUpdate   — same icsUid already logged: MOVE/UPDATE date/hours/start but KEEP the user's chosen
+                  pay type; `changed` flags whether anything actually differs (so a silent app-open
+                  sync doesn't pop the questionnaire when nothing moved).
+     toClassify — new events with no matching shift: these go through the pay-type questionnaire. */
+function icsPlanFromExisting(events, existingByUid){
+  const toUpdate=[], toClassify=[];
+  (events||[]).forEach(ev=>{
+    const match = ev.uid ? existingByUid[ev.uid] : null;
+    if(match){
+      const prev = match.shift;
+      const changed = !(match.dateKey===ev.dateKey
+        && Number(prev.hours)===Number(ev.hours)
+        && (prev.start||null)===(ev.start||null));
+      toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start, changed,
+        prevDateKey:match.dateKey, prevShiftId:match.shift.id,
+        shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
+    } else {
+      toClassify.push(ev);
+    }
+  });
+  return { toUpdate, toClassify };
+}
+
 /* ---------- swap board (Phase 1): anonymous unit swap groups ---------- */
 /* True when the table/RPC genuinely doesn't exist yet on this project (migration not applied) —
    distinct from a transient network/RLS error. Callers show a friendly "not set up yet" state
@@ -1564,6 +1621,13 @@ function App(){
   // poll (never polled while the sheet is closed — badge just keeps showing the last-known count)
   const [swapPendingCount,setSwapPendingCount] = useState(0);
   const [icsImport,setIcsImport] = useState(null);   // schedule-import stepper state, or null when closed
+  // ---- iCal auto-sync (signed-in only) ----
+  const [icalUrl,setIcalUrl] = useState('');         // the feed URL bound to the Settings input
+  const [icalSub,setIcalSub] = useState(null);       // {icalUrl, provider, lastSynced} saved subscription, or null
+  const [icalBusy,setIcalBusy] = useState(false);    // a save / sync / remove is in flight
+  const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
+  const icalInFlight = useRef(false);                // hard guard against overlapping syncs
+  const icalSyncedForUser = useRef(null);            // user.id already auto-synced this app-open (sync runs once, silently)
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -1666,6 +1730,7 @@ function App(){
       // row as new and re-apply it over the backup we just restored.
       if(row && row.updatedAt) lastSeenAt.current = row.updatedAt;
       hydratedForUser.current = userId;  // ONLY now are cloud saves for this user safe
+      setHydratedUserId(userId);         // drives post-hydrate work (iCal auto-sync)
       setSyncError(false);
       return true;
     }catch(e){
@@ -1719,6 +1784,8 @@ function App(){
         setSyncError(false);
         resetToDefaults();
         lastSeenAt.current = null;
+        // Drop the signed-in user's calendar subscription from memory (never leak it to anon state).
+        setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
         setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
@@ -1732,6 +1799,27 @@ function App(){
       if(raw) applyData(JSON.parse(raw),{landCurrent:true});
     }catch(e){ console.error('load',e); }
   },[]);
+
+  /* After a user's cloud data has hydrated, load their saved calendar subscription and, once per
+     app-open, run a SILENT background sync. Keyed on hydratedUserId (set inside hydrateFromCloud)
+     so the sync always lands on the user's real shifts, never on default/stale state. Any confirm
+     needed (new shifts to classify) surfaces through the normal import stepper. */
+  useEffect(()=>{
+    const uid = hydratedUserId;
+    if(!supabase || !uid || !user || user.id!==uid) return;
+    let cancelled=false;
+    (async ()=>{
+      let sub=null;
+      try{ sub = await loadIcalSub(uid); }catch(_){ return; }
+      if(cancelled) return;
+      setIcalSub(sub); setIcalUrl(sub ? sub.icalUrl : '');
+      if(sub && sub.icalUrl && icalSyncedForUser.current!==uid){
+        icalSyncedForUser.current = uid;
+        runIcalSync({url:sub.icalUrl});   // silent (non-manual): quiet unless there's something to confirm
+      }
+    })();
+    return ()=>{ cancelled=true; };
+  },[hydratedUserId]);
 
   /* save (debounced) */
   useEffect(()=>{
@@ -2313,18 +2401,7 @@ function App(){
     Object.entries(shifts).forEach(([dk,arr])=>{
       (arr||[]).forEach(s=>{ if(s.icsUid) existingByUid[s.icsUid] = {dateKey:dk, shift:s}; });
     });
-    const toUpdate = [], toClassify = [];
-    parsed.events.forEach(ev=>{
-      const match = ev.uid ? existingByUid[ev.uid] : null;
-      if(match){
-        toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start,
-          prevDateKey:match.dateKey, prevShiftId:match.shift.id,
-          shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
-      } else {
-        toClassify.push(ev);
-      }
-    });
-    return { toUpdate, toClassify };
+    return icsPlanFromExisting(parsed.events, existingByUid);
   };
   const onImportICS = (e)=>{
     const f = e.target.files[0]; e.target.value='';
@@ -2399,6 +2476,78 @@ function App(){
     toast(`Added ${added}, updated ${updated} shifts.`,'success');
     track('ics_import_done', {added,updated,skipped}, user?.id);
     setIcsImport(null);
+  };
+
+  /* ---- iCal auto-sync: fetch the saved feed through the SSRF-guarded proxy, then route the parsed
+     schedule through the SAME import stepper as a file import. This is deliberate: auto-sync never
+     silently rewrites wage-affecting `shifts`. Known shifts (matched by icsUid) are moved/updated
+     with their pay type preserved; genuinely new shifts still go through the pay-type questionnaire.
+     `manual` distinguishes a user-tapped "Sync now" (toasts on every outcome) from the silent
+     once-per-app-open background sync (stays quiet unless there's something to confirm). */
+  const providerOf = (url)=>{
+    try{ const h=new URL(String(url).replace(/^webcal:/i,'https:')).hostname.toLowerCase();
+      if(/(^|\.)google\.com$/.test(h)) return 'google';
+      if(/(^|\.)nursegrid\.com$/.test(h)) return 'nursegrid';
+    }catch(_){}
+    return null;
+  };
+  const runIcalSync = async (opts)=>{
+    const manual = !!(opts && opts.manual);
+    const url = (opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl;
+    if(!supabase || !user || hydratedForUser.current!==user.id || !url) return;
+    if(icalInFlight.current) return;
+    icalInFlight.current = true; setIcalBusy(true);
+    try{
+      const {data,error} = await withTimeout(
+        supabase.functions.invoke('ical-proxy',{body:{url}}), 12000, 'ical sync');
+      if(error) throw error;
+      const text = typeof data==='string' ? data : (data && (data.text || data.body)) || '';
+      let parsed;
+      try{ parsed = parseICSSchedule(text); }
+      catch(_){ if(manual) toast("That calendar feed didn't contain any shifts.",'error'); return; }
+      stampIcalSynced(user.id);
+      setIcalSub(s=> s ? {...s, lastSynced:new Date().toISOString()} : s);
+      if(parsed.events.length===0){ if(manual) toast('No shifts found in that calendar.','info'); return; }
+      const plan = buildIcsImportPlan(parsed);
+      const changedUpdates = plan.toUpdate.filter(u=>u.changed);
+      if(changedUpdates.length===0 && plan.toClassify.length===0){
+        if(manual) toast('Your schedule is already up to date.','success');
+        return;
+      }
+      const groups = groupICSEvents(plan.toClassify);
+      const answers = {}; groups.forEach(g=>{ answers[g.key]=inferShiftType(g); });
+      setIcsImport({ groups, toUpdate:changedUpdates, answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true });
+      track('ics_sync_done', {events:parsed.events.length}, user.id);
+    }catch(e){
+      if(manual) toast("Couldn't reach your calendar. Check the link and try again.",'error');
+    }finally{
+      icalInFlight.current = false; setIcalBusy(false);
+    }
+  };
+  const onSaveIcalUrl = async ()=>{
+    if(!user){ toast('Sign in to sync your schedule.','info'); return; }
+    const url = (icalUrl||'').trim();
+    if(url.length<12){ toast('Paste your calendar link first.','error'); return; }
+    if(providerOf(url)===null){
+      toast("That link isn't from a supported calendar yet (Google Calendar for now).",'error'); return;
+    }
+    setIcalBusy(true);
+    try{
+      await saveIcalSub(user.id, url, providerOf(url));
+      setIcalSub({icalUrl:url, provider:providerOf(url), lastSynced:null});
+      icalSyncedForUser.current = user.id;   // this counts as this session's sync
+      toast('Calendar link saved.','success');
+    }catch(e){ toast("Couldn't save that link.",'error'); setIcalBusy(false); return; }
+    setIcalBusy(false);
+    runIcalSync({manual:true, url});
+  };
+  const onRemoveIcalUrl = async ()=>{
+    if(!user) return;
+    if(!(await confirmAsync('Stop auto-syncing this calendar? Shifts you already imported stay.',{title:'Remove calendar link?',confirm:'Remove',danger:true}))) return;
+    setIcalBusy(true);
+    try{ await deleteIcalSub(user.id); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; toast('Calendar link removed.','success'); }
+    catch(e){ toast("Couldn't remove the link.",'error'); }
+    finally{ setIcalBusy(false); }
   };
   const clearAll = async ()=>{
     const signedIn = !!user;
@@ -2678,6 +2827,8 @@ function App(){
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
+            user, icalUrl, setIcalUrl, icalSub, icalBusy,
+            onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showSwaps &&
@@ -2826,9 +2977,11 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
           <div className="sheet-h"><div className="t">Ready to import</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
           {noticeBanner}
           <p style={{fontSize:14,color:'var(--muted)',lineHeight:1.5,margin:'0 0 20px'}}>
-            {toUpdate.length>0
-              ? `Add ${toAdd} shifts to your calendar and update ${toUpdate.length} that already changed?`
-              : `Add ${toAdd} shifts to your calendar?`}
+            {toAdd>0 && toUpdate.length>0
+              ? `Add ${toAdd} shifts to your calendar and update ${toUpdate.length} that changed?`
+              : toUpdate.length>0
+                ? `Update ${toUpdate.length} ${toUpdate.length===1?'shift':'shifts'} that changed in your calendar?`
+                : `Add ${toAdd} shifts to your calendar?`}
             {toSkip>0 && ` (${toSkip} skipped)`}
           </p>
           <div style={{display:'flex',gap:10}}>
@@ -3366,7 +3519,8 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS}=props;
+    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
 
@@ -3427,6 +3581,30 @@ function Settings(props){
         </div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Re-export after schedule changes — your calendar app updates the same events.</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>From NurseGrid: sync your schedule to your phone's calendar, export it as .ics, then import here.</div>
+
+        {user &&
+          <div style={{marginTop:18}}>
+            <div className="sec-lab">CALENDAR SYNC</div>
+            <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
+              Paste your calendar's secret iCal address (in Google Calendar: Settings → your calendar → “Secret address in iCal format”). ScrubPay checks it each time you open the app and pulls in new shifts — you confirm the pay type for anything it hasn't seen. Treat the link like a password: it's stored privately and never shared.
+            </div>
+            <div className="inp">
+              <input type="url" inputMode="url" autoComplete="off" spellCheck={false}
+                placeholder="https://calendar.google.com/…/basic.ics"
+                value={icalUrl} onChange={e=>setIcalUrl(e.target.value)} disabled={icalBusy}
+                aria-label="Calendar iCal address" />
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8,alignItems:'center'}}>
+              <button className="btn btn-primary btn-sm" onClick={onSaveIcalUrl} disabled={icalBusy}>
+                {icalBusy?'Working…':(icalSub?'Update link':'Save & sync')}
+              </button>
+              {icalSub && <button className="btn btn-ghost btn-sm" onClick={onSyncIcal} disabled={icalBusy}>Sync now</button>}
+              {icalSub && <button className="danger-link" onClick={onRemoveIcalUrl} disabled={icalBusy} style={{marginLeft:'auto'}}>Remove</button>}
+            </div>
+            {icalSub && icalSub.lastSynced &&
+              <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>Last synced {new Date(icalSub.lastSynced).toLocaleString()}</div>}
+          </div>}
+
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
 

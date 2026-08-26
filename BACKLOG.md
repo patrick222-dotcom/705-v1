@@ -40,10 +40,23 @@ sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctl
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
 
-- [ ] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
+- [~] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
   2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
   ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
   2026-08-23 over Google OAuth, see the rejected alternative below).
+  **BUILT ON A BRANCH — awaiting owner review + live Supabase apply (2026-08-26).** Branch
+  `claude/ical-subscription-sync`, DRAFT PR (deliberately NOT merged; needs the live migration +
+  Edge Function deploy first). Delivered: (a) SSRF-guarded proxy Edge Function
+  `supabase/functions/ical-proxy/index.ts` (verify_jwt on, host allowlist, https-only, no redirects,
+  size cap, timeout, never logs the URL); (b) migration `supabase/migrations/002_ical_subscription.sql`
+  — a dedicated `ical_subscriptions` table (owner-only RLS) so the secret URL stays OUT of the
+  user_data blob; (c) client wiring in index.html — a paste-URL "CALENDAR SYNC" Settings card
+  (signed-in only), a silent once-per-app-open background sync, and a "Sync now" button, all routed
+  through the EXISTING import stepper so known shifts (icsUid) move with their pay type preserved and
+  only genuinely-new shifts hit the questionnaire. Pure merge planner extracted to `icsPlanFromExisting`
+  and unit-tested in the gate (54/54). **Owner TODO before it's live:** apply the migration, deploy the
+  function (keep verify_jwt on), and confirm/replace the NurseGrid host in the proxy ALLOWLIST from a
+  real feed URL (currently a marked-TODO placeholder). See the PR body for the security review.
   **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
   one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
   Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
