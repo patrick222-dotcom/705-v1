@@ -3244,9 +3244,12 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           ))}
         </div>
         {ptoEvent &&
-          <div className="inp suf" style={{marginBottom:16}}>
-            <NumInput value={ptoEvent.hours!=null?ptoEvent.hours:12} onCommit={setPtoHours} step="0.5" min={0.5} max={24} ariaLabel="PTO hours" style={{fontWeight:700}}/>
-            <span className="sfx">hrs PTO</span>
+          <div style={{marginBottom:16}}>
+            <div className="inp suf">
+              <NumInput value={ptoEvent.hours!=null?ptoEvent.hours:12} onCommit={setPtoHours} step="0.5" min={0.5} max={24} ariaLabel="PTO hours" style={{fontWeight:700}}/>
+              <span className="sfx">hrs PTO</span>
+            </div>
+            <div className="k" style={{marginTop:6}}>Paid at your base rate — about {fmt2(baseRate)}/hr.</div>
           </div>}
 
         <div className="sec-lab">NOTE</div>
