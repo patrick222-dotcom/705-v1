@@ -4320,7 +4320,7 @@ function Onboarding(props){
       <Head step={2}/>
       <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
       <div className="q">How does your pay change by shift?</div>
-      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies and tweak to your contract.</div>
+      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
           <div className={'drow'+(d.active?'':' off')} key={k}>

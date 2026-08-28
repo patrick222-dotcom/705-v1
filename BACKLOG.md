@@ -202,10 +202,7 @@ day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy
 - [x] ~~**Surface that PTO is paid at base rate**~~ — SHIPPED 2026-08-27 (see Done log).
 
 ### P3
-- [ ] **Onboarding step-2 "tweak to your contract" is misleading** (source:persona/New-grad-Nia,
-  ~4320; harness:drivable) — the differentials step only has on/off toggles (amounts are read-only),
-  so "tweak to your contract" sends Nia hunting for an input that isn't there. Reword to
-  "toggle what applies — you can fine-tune the amounts anytime in Settings."
+- [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
 - [ ] **Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**
   (source:persona/New-grad-Nia, ~3403; harness:drivable) — add a one-line hint under the TAXES header:
   "Starting estimates — check a recent paystub and adjust."
@@ -266,6 +263,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-28 — **Onboarding step-2 differentials copy reworded** (persona/New-grad-Nia; harness:drivable).
+  Step 2 shows each differential's amount as read-only text with only an on/off toggle — amounts are
+  editable later in Settings, not here — but the help line read "toggle what applies and tweak to your
+  contract," sending a new grad hunting for an amount input that isn't on the screen. Reworded to
+  "toggle what applies — you can fine-tune the amounts anytime in Settings." Pure onboarding copy —
+  wage-core untouched. iPhone-13 gate **55/55** incl. a live drive (onboarding → Set it up myself →
+  Continue → assert STEP 2 renders the new copy and the old wording is gone) plus the shipped-PTO-hint
+  regression checks. SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): no new
+  feedback since 2026-08-11 (still 4 rows, all triaged: swap-pin → parked P3 join-helper; "4-hour
+  shift" → already built as the [4,8,12,16] HOURS chips; two "couldn't sync after Gmail" → parked
+  dedicated-session live-repro). Events healthy (app_open leads); nothing new to surface.
 - 2026-08-27 — **PTO is paid at base rate — hint under the PTO hours input** (persona/Float-pool-Frank;
   harness:drivable). A PTO day adds a $ figure to the calendar/hero (hours × baseRate, taxed normally),
   but the input never said how PTO is valued, so the number looked unexplained. Added a muted line
