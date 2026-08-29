@@ -2906,7 +2906,7 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
     nodes.push(
       <button key={k} data-date={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')+(isToday?' today':'')+(isActive?' pp-active':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()
           + (hasShift ? ', ' + arr.length + ' shift' + (arr.length===1?'':'s') : '')
-          + (hasEvent ? ', ' + evs.length + ' day event' + (evs.length===1?'':'s') : '')
+          + (hasEvent ? ', ' + evs.map(e=>EVENT_KIND_META[e.kind]?.label||'event').join(', ') : '')
           + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
           + (hasOT ? ', includes overtime' : '')
           + (!has ? ', no shifts' : '')
