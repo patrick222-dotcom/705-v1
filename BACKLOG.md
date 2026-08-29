@@ -209,9 +209,7 @@ day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy
 - [ ] **"Scan a paystub" CTA gives no format/privacy cue** (source:persona/Per-diem-Priya,
   ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
   uploaded."
-- [ ] **Calendar day aria-label says "N day events", not which kinds** (source:persona/Float-pool-
-  Frank, ~2909; harness:drivable) — replace the count with the kind labels
-  (`evs.map(e=>EVENT_KIND_META[e.kind]?.label).join(', ')`) so VoiceOver distinguishes PTO vs appt.
+- [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
 - [ ] **"ALSO ON THIS DAY" header reads oddly on a shift-less day** (source:persona/Float-pool-Frank,
   ~3238; harness:drivable) — make it `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`.
 
@@ -263,6 +261,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-29 — **Calendar day-cell aria-label names the event kinds** (persona/Float-pool-Frank;
+  harness:drivable). The month-grid cell aria-label announced day events as a bare count ("2 day
+  events"), so VoiceOver couldn't tell PTO from an appointment. Replaced the count with the kind
+  labels — `evs.map(e=>EVENT_KIND_META[e.kind]?.label).join(', ')` — so a day now reads e.g.
+  "Sat Aug 29 2026, PTO, Appt, about $467 take-home". Pure a11y/label change, one line, **wage-core
+  untouched**. iPhone-13 gate **57/57** incl. a live drive (seeded a PTO+appointment day → aria-label
+  names both "PTO" and "Appt", no bare "day event" phrase). SRI intact (5), boot hardening untouched.
+  GROOM (Supabase MCP live): feedback=4 (all previously triaged — swap-pin → parked P3, 4h → already
+  built, 2× couldn't-sync → parked live-repro), events healthy; no new signal.
 - 2026-08-28 — **Onboarding step-2 differentials copy reworded** (persona/New-grad-Nia; harness:drivable).
   Step 2 shows each differential's amount as read-only text with only an on/off toggle — amounts are
   editable later in Settings, not here — but the help line read "toggle what applies and tweak to your
