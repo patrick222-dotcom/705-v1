@@ -3235,7 +3235,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
         </div>
 
-        <div className="sec-lab" style={{marginTop:4}}>ALSO ON THIS DAY</div>
+        <div className="sec-lab" style={{marginTop:4}}>{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}</div>
         <div className="chips-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:ptoEvent?10:16}}>
           {EVENT_KINDS.map(k=>(
             <button key={k} className={'chip-sel'+(events.some(e=>e.kind===k)?' on':'')} aria-pressed={events.some(e=>e.kind===k)}

@@ -210,8 +210,7 @@ day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy
   ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
   uploaded."
 - [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
-- [ ] **"ALSO ON THIS DAY" header reads oddly on a shift-less day** (source:persona/Float-pool-Frank,
-  ~3238; harness:drivable) — make it `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`.
+- [x] ~~**"ALSO ON THIS DAY" header reads oddly on a shift-less day**~~ — SHIPPED 2026-08-30 (see Done log).
 
 ## Blocked
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
@@ -261,6 +260,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-30 — **Day-sheet section header reads "MARK THIS DAY" on a shift-less day** (persona/Float-
+  pool-Frank; harness:drivable). The Add-a-shift sheet's day-events section was always labelled "ALSO
+  ON THIS DAY" — but "ALSO" presumes a shift is already logged, so on an empty day it read as a
+  non-sequitur. Made it conditional: `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`. One-line,
+  copy-only; **wage-core untouched**. iPhone-13 gate **58/58** incl. a live drive (open a shift-less
+  day → header "MARK THIS DAY"; open a day with a shift → header "ALSO ON THIS DAY"; zero page errors).
+  SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all previously
+  triaged), events healthy; no new signal.
 - 2026-08-29 — **Calendar day-cell aria-label names the event kinds** (persona/Float-pool-Frank;
   harness:drivable). The month-grid cell aria-label announced day events as a bare count ("2 day
   events"), so VoiceOver couldn't tell PTO from an appointment. Replaced the count with the kind
