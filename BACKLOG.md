@@ -203,9 +203,7 @@ day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy
 
 ### P3
 - [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
-- [ ] **Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**
-  (source:persona/New-grad-Nia, ~3403; harness:drivable) — add a one-line hint under the TAXES header:
-  "Starting estimates — check a recent paystub and adjust."
+- [x] ~~**Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**~~ — SHIPPED 2026-08-31 (see Done log).
 - [ ] **"Scan a paystub" CTA gives no format/privacy cue** (source:persona/Per-diem-Priya,
   ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
   uploaded."
@@ -260,6 +258,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-08-31 — **Settings TAXES "starting estimates" reassurance line** (persona/New-grad-Nia;
+  harness:drivable). Onboarding step 3 tags the tax fields ESTIMATED + says "We estimated these…",
+  but the Settings → TAXES section showed raw %/FICA fields with no such cue, so a returning user had
+  no signal the numbers are defaults to verify. Added a muted hint under the TAXES header: "Starting
+  estimates — check a recent paystub and adjust." Pure additive copy — **wage-core untouched**.
+  iPhone-13 gate **56/56** incl. a live drive (open Settings via the gear → TAXES section shows the
+  reassurance line; zero page errors). SRI intact (5), boot hardening untouched. GROOM (Supabase MCP
+  live): feedback=4 (all previously triaged), events healthy; no new signal.
 - 2026-08-30 — **Day-sheet section header reads "MARK THIS DAY" on a shift-less day** (persona/Float-
   pool-Frank; harness:drivable). The Add-a-shift sheet's day-events section was always labelled "ALSO
   ON THIS DAY" — but "ALSO" presumes a shift is already logged, so on an empty day it read as a
