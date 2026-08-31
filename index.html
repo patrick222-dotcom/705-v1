@@ -3404,6 +3404,7 @@ function Settings(props){
         </div>
 
         <div className="sec-lab" style={{marginTop:18}}>TAXES</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Starting estimates — check a recent paystub and adjust.</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <label className="field" style={{margin:0}}><span className="lab">Federal</span><div className="inp suf"><NumInput value={federalTaxRate} onCommit={setFederal} min={0} step="0.1" ariaLabel="Federal tax rate percent"/><span className="sfx">%</span></div></label>
           <label className="field" style={{margin:0}}><span className="lab">State</span><div className="inp suf"><NumInput value={stateTaxRate} onCommit={setState} min={0} step="0.1" ariaLabel="State tax rate percent"/><span className="sfx">%</span></div></label>
