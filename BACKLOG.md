@@ -22,6 +22,31 @@ _(none)_
 
 ## Queue
 
+### P1
+- [ ] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
+  requested by Courtney 2026-09-01) — `harness: drivable`. Today the app answers "what does this
+  shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
+  night and see it as a fraction of a house down payment, a vacation, a loan payoff.
+  **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
+  your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
+  is an every-shift product. Same math already computed, materially different retention.
+  **Design — two directions, both derived from existing state:**
+  - *Forward:* on a logged/previewed shift — "$612 take-home · 4% of your down payment".
+  - *Reverse:* on the goal — "14 more night shifts" or "on track for Mar 14 at your current schedule".
+  - *The sharpest placement is pre-commitment*, in the Add-Shift / pickup flow: "picking this up moves
+    your goal 9 days closer." That is decision support at the moment of the decision, which is the
+    app's whole thesis — know what a shift is worth **before** you work it.
+  **Cost is low:** purely derived from take-home math + logged shifts. A `goals` array in the existing
+  `user_data` JSON blob — no new Supabase table, no schema migration, no RLS surface. Respect
+  `MAX_BLOB_BYTES`; sanitize goal amounts through the same coercion path as differentials so a
+  malformed target can't produce NaN percentages.
+  **Design constraint — do not build a nudge engine.** This points a motivational loop at a
+  profession with a serious burnout problem, and "just one more shift" is a genuinely harmful thing
+  to automate. Frame strictly as informing a choice the user is already considering: show the number
+  when she opens a shift or a goal. No streaks, no push notifications, no "you're behind on your
+  goal", no encouragement to pick up more. Informed choice, never pressure.
+  **Analytics:** if tracked, coarse only (`goal_created`) — per CLAUDE.md, never wage or goal figures.
+
 ### P2
 - [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
   "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
