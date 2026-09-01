@@ -204,9 +204,7 @@ day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy
 ### P3
 - [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
 - [x] ~~**Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**~~ — SHIPPED 2026-08-31 (see Done log).
-- [ ] **"Scan a paystub" CTA gives no format/privacy cue** (source:persona/Per-diem-Priya,
-  ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
-  uploaded."
+- [x] ~~**"Scan a paystub" CTA gives no format/privacy cue**~~ — SHIPPED 2026-09-01 (see Done log).
 - [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
 - [x] ~~**"ALSO ON THIS DAY" header reads oddly on a shift-less day**~~ — SHIPPED 2026-08-30 (see Done log).
 
@@ -258,6 +256,18 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-01 — **Paystub "read on your device, never uploaded" privacy cue** (persona/Per-diem-Priya;
+  harness:drivable). The "Scan a paystub" CTAs (onboarding welcome step + Settings → DATA) gave no
+  format or privacy cue, so a nurse weighing whether to hand over a paystub had no reassurance it
+  stays on-device — plausibly part of why paystub import is barely used (1 import ever in analytics).
+  Added a muted line under the onboarding CTA ("PDF paystub · read on your device, never uploaded.")
+  and a matching hint in the Settings DATA section. Additive copy — **wage-core untouched**. iPhone-13
+  gate **56/56** incl. a live drive (fresh load → welcome step shows the CTA + the privacy cue; zero
+  page errors). SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all
+  previously triaged), events healthy; no new signal. NOTE: this clears the last clean drivable
+  persona copy item — remaining persona candidates are the two paystub-parse P2s (need a crafted PDF
+  fixture to drive) and needs-live-auth swap items; next nightly should either build a PDF fixture for
+  those or the queue is effectively drained of one-run work (consider a fresh persona pass).
 - 2026-08-31 — **Settings TAXES "starting estimates" reassurance line** (persona/New-grad-Nia;
   harness:drivable). Onboarding step 3 tags the tax fields ESTIMATED + says "We estimated these…",
   but the Settings → TAXES section showed raw %/FICA fields with no such cue, so a returning user had

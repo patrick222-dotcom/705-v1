@@ -3429,7 +3429,8 @@ function Settings(props){
           <label className="btn btn-ghost btn-sm" style={{position:'relative',gap:6}}>{Ic.calendar}Import schedule (.ics)<input type="file" accept=".ics,text/calendar" onChange={onImportICS} style={{display:'none'}}/></label>
           <button className="btn btn-ghost btn-sm" onClick={(e)=>window.__copyErrorLog&&window.__copyErrorLog(e.currentTarget)}>Copy error log</button>
         </div>
-        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Re-export after schedule changes — your calendar app updates the same events.</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Scan paystub: PDF · read on your device, never uploaded.</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>Re-export after schedule changes — your calendar app updates the same events.</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>From NurseGrid: sync your schedule to your phone's calendar, export it as .ics, then import here.</div>
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
@@ -4285,7 +4286,8 @@ function Onboarding(props){
         <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
       </div>
       <div className="spacer"></div>
-      <label className="btn btn-primary" style={{marginBottom:10,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <label className="btn btn-primary" style={{marginBottom:6,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginBottom:12,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
       <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
       <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
     </div>
