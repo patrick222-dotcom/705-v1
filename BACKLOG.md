@@ -1,4 +1,4 @@
-# ScrubPay Backlog
+# BadgeBudget (ScrubPay) Backlog
 
 Durable, git-tracked queue for the **autonomous nightly groom+build loop** (see CLAUDE.md →
 "Autonomous nightly loop"). This file is the loop's memory — the container is ephemeral, so
@@ -23,9 +23,42 @@ _(none)_
 ## Queue
 
 ### P1
+_(empty — the savings-goals feature is parked under "Needs a dedicated session" until its design is
+decided; promote a one-run slice of it, or a candidate from the lists below, with judgment)_
+
+### P2
+- [ ] **Paystub review sheet: say so when 0 differential rows were detected**
+  (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
+  `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
+  rate but no differential rows (the "0 shifts" case), the whole "DETECTED DIFFERENTIAL ROWS" section
+  is omitted with no note. Add an else note: "No differential rows were detected — add
+  night/weekend/holiday rates in the next step." Drivable end-to-end: the nightly's harness has a
+  `makeMinimalPdf(text)` builder (`gate.js`, session-local — rebuild it if the container was
+  reclaimed) that produces a valid PDF pdf.js parses; extend it to emit a "Pay Rate: $X Hourly" line
+  with no HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the note.
+
+### P3
+- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
+  (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`; `index.html` ~4019) — add "Enter the
+  6-character code a colleague shared with you." under its `<h3>`. Corroborated by the 2026-08-11
+  "how do I use a pin" feedback. Verify by the swap-UI standard (`docs/swap-board.md`).
+- [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`;
+  `index.html` ~4129-4130, above "SUGGESTED FOR YOU") — one muted line "Names stay hidden until
+  everyone accepts." above the suggestion cards. Verify by the swap-UI standard (`docs/swap-board.md`).
+
+## Needs a dedicated session (NOT for the nightly loop)
+
+_These are real and wanted, but none can be implemented **and** fully verified inside one
+autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
+sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctly skipped every one
+of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
+here so the loop's queue contains only work it can actually finish; pick these up interactively._
+
 - [ ] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
-  requested by Courtney 2026-09-01) — `harness: drivable`. Today the app answers "what does this
-  shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
+  requested by Courtney 2026-09-01) — `harness:drivable`. **Parked 2026-09-02:** undecided design
+  (two directions below, a new persisted `goals` array) — not a one-run build. When a direction is
+  chosen, split off a one-run slice (one goal in Settings + the forward "% of goal" line in the
+  Add-Shift preview) and promote that. Today the app answers "what does this shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
   night and see it as a fraction of a house down payment, a vacation, a loan payoff.
   **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
   your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
@@ -47,7 +80,6 @@ _(none)_
   goal", no encouragement to pick up more. Informed choice, never pressure.
   **Analytics:** if tracked, coarse only (`goal_created`) — per CLAUDE.md, never wage or goal figures.
 
-### P2
 - [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
   "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
   log as deferred* is counted as built and silently drops out of the candidate set. Live example:
@@ -55,15 +87,9 @@ _(none)_
   no-ship note and has been invisible ever since. **Do not** fix by reducing the Done log to its
   bolded titles — probed 2026-08-22, that regresses genuinely-shipped themes (`swap-partner-discovery`
   reappears as a candidate). Needs a real notion of built-vs-discussed (an explicit shipped-ids list
-  is the likely answer). Defect is pinned by a test so it can't rot silently.
-
-## Needs a dedicated session (NOT for the nightly loop)
-
-_These are real and wanted, but none can be implemented **and** fully verified inside one
-autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
-sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctly skipped every one
-of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
-here so the loop's queue contains only work it can actually finish; pick these up interactively._
+  is the likely answer). Defect is pinned by a test so it can't rot silently. **Parked 2026-09-02:**
+  a tooling change with no harness gate and an open design question (the shipped-ids list) — not a
+  nightly build.
 
 - [ ] **Split test writes off the production database (a second Supabase project)** — raised by
   the owner 2026-09-02 while asking about dev/test/stage/prod environments. **Scope deliberately
@@ -71,7 +97,8 @@ here so the loop's queue contains only work it can actually finish; pick these u
   **The actual exposure:** there is exactly one Supabase project (`mnnlgcxnvodjwlhhiphq`) and it
   holds real wage data for the owner's wife and her friends. Against that same live project we
   currently: mint throwaway confirmed users via the admin API during RLS audits
-  (`scratchpad/rls_audit.js`, 29 assertions + 5 adversarial probes), apply migrations directly
+  (the RLS audit script — never committed, lived in a session scratchpad; 29 assertions + 5
+  adversarial probes), apply migrations directly
   via the Management API, and patch functions live (that is how the `reveal_match` 42702 fix
   landed). None of that is reckless in isolation, but it means a bad migration or a runaway test
   script writes into the only copy of real users' pay history.
@@ -197,80 +224,31 @@ here so the loop's queue contains only work it can actually finish; pick these u
   negotiation to a locked package before it reaches the approver. Full multi-way negotiation was
   rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
 
-## Persona-sourced candidates (Phase 2 — from the 2026-08-17 persona-review pass)
-_Grounded findings from the `docs/reddit_personas.json` review pass (subagents role-playing real
-nurse personas over the app). Each still needs the reproduce-or-corroborate verification gate +
-the normal safety gate before build. Verdicts noted; promote with judgment._
-
-### P2 (verify then build)
-- [x] ~~**Add-Shift sheet has no visible Close (X) button**~~ — SHIPPED 2026-08-18 (see Done log).
-- [x] ~~**Mobile FAB opens Add-Shift on `days[0]` (often a past day), not today**~~ — SHIPPED
-  2026-08-19 (see Done log).
-
-### P3 (clarity / nice)
-- [x] ~~**New-grad jargon glosses**~~ — SHIPPED 2026-08-20 (see Done log).
-- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (see Done log).
-
-## Persona-sourced candidates (Phase 2 — from the 2026-08-21 refresh pass)
-_Second persona pass (Swap-savvy Sam on the swap flow — timely, swap board actively used 2026-08-21;
-Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
-
-### P2
-- [x] ~~**Re-share the invite code from the active board**~~ — SHIPPED 2026-08-22 (see Done log).
-- [x] ~~**OT confirmation in the Add-Shift preview**~~ — SHIPPED 2026-08-23 (see Done log).
-
-### P3
-- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
-  (source:persona/Swap-savvy-Sam, ~3826): add "Enter the 6-character code a colleague shared with
-  you." under its `<h3>`. Not sandbox-drivable.
-- [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam, ~3934): one muted line
-  "Names stay hidden until everyone accepts." above the suggestion cards. Not sandbox-drivable.
-- [x] ~~**Calendar day cells give no OT signal**~~ — SHIPPED 2026-08-25 (see Done log).
-- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (used `calc.pct`, not `keepRatio`, so
-  it matches the breakdown's "% of gross" exactly; see Done log).
-- [ ] **"Sync to calendar" reads like a live sync but is a one-shot .ics download**
-  (source:persona/Veteran-Val): consider relabeling to "Export .ics" (symmetric with the new
-  "Import .ics") or "Add to my calendar." One-word copy change — but confirm the owner's preferred
-  wording first (naming call).
-
-## Persona-sourced candidates (Phase 2 — from the 2026-08-26 refresh pass)
-_Fresh pass on under-reviewed surfaces (New-grad-Nia on onboarding/settings; Float-pool-Frank on
-day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy-only unless noted._
-
-### P2
-- [x] ~~**Paystub "Couldn't read that paystub" is a dead-end**~~ — SHIPPED 2026-09-02 (see Done log).
-- [ ] **PTO day silently vanishes its "DETECTED DIFFERENTIAL ROWS" section when 0 rows**
-  (source:persona/Per-diem-Priya, ~2762/2784; harness:drivable) — when a paystub parses a base rate
-  but no differential rows (the "0 shifts" case), the whole section is omitted with no note. Add an
-  else note: "No differential rows were detected — add night/weekend/holiday rates in the next step."
-  **Now drivable end-to-end:** the nightly harness has a `makeMinimalPdf(text)` builder (gate.js) that
-  produces a valid PDF pdf.js parses — extend it to emit a "Pay Rate: $X Hourly" line with no
-  HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the else note.
-- [x] ~~**Surface that PTO is paid at base rate**~~ — SHIPPED 2026-08-27 (see Done log).
-
-### P3
-- [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
-- [x] ~~**Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**~~ — SHIPPED 2026-08-31 (see Done log).
-- [x] ~~**"Scan a paystub" CTA gives no format/privacy cue**~~ — SHIPPED 2026-09-01 (see Done log).
-- [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
-- [x] ~~**"ALSO ON THIS DAY" header reads oddly on a shift-less day**~~ — SHIPPED 2026-08-30 (see Done log).
-
 ## Blocked
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
+- [ ] **"Sync to calendar" label reads like a live sync but is a one-shot .ics download**
+  (source:persona/Veteran-Val; `harness:drivable`) — relabel to "Export .ics" (symmetric with
+  "Import .ics") or "Add to my calendar." One-word copy change; **blocked on the owner's preferred
+  wording** (naming call).
 
-## Environment notes (scheduled-run limitations — as of 2026-08-09)
-- **Scheduled/Routine-fired sessions CANNOT git push** to this repo: push fails 403 "repo not
-  in this session's authorized repository set." This is an env-level authorization gap and was
-  NOT fixed by running `/web-setup`. Interactive sessions push fine. Until resolved, the nightly
-  run builds+tests but its DEPLOY step falls back to emitting a `git format-patch` in the summary;
-  the owner (or an interactive session) applies + ships it. Verified across 3 scheduled runs
-  (2026-08-04, and both 2026-08-09 runs).
-- **Scheduled runs can't hit the Supabase Management API with auth:** a `Bearer`-header request is
-  denied by the sandbox auto-mode classifier (plain unauth GET → 401 as normal). So the GROOM
-  phase can't mine feedback/events from a scheduled run; grooming is code-review-only there.
-  (Works fine from an interactive session.)
+## Environment notes (for the nightly loop — updated 2026-09-02)
+- **Where it runs:** the Routine fires into a persistent, authorized session (CLAUDE.md → Autonomous
+  nightly loop), where `git push` and the typed Supabase MCP tools both work — every build since
+  2026-08-10 shipped that way, and GROOM has read `feedback`/`events` live via MCP since 2026-08-27.
+  Two earlier limitations are **historical, not current**: fresh-session Routine fires could not push
+  (403 "repo not in this session's authorized repository set", seen 2026-08-04 and 2026-08-09) and
+  could not send an authenticated Management API request. If the loop is ever moved back to
+  fresh-session-per-fire, expect both to return; the `git format-patch` fallback in the Routine prompt
+  exists for that case.
+- **Container reclaim:** the session persists but its container does not. Re-clone the repo and
+  rebuild the harness (CLAUDE.md → Testing) when they are gone, and never branch from a local
+  `claude/migrate-to-github-deploy-3F5RD` ref without fetching first — a stale one has been seen 14
+  commits behind origin.
+- **Sandbox network:** CDNs and Supabase's REST/auth endpoints are blocked from Playwright, so the
+  harness vendors deps from `registry.npmjs.org` and stubs Supabase in-page for swap flows; the
+  Management API and the MCP server are reachable.
 
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
@@ -285,7 +263,6 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 **P2**
 - [ ] **Managers change posted schedules with little notice** (P2 · source:reddit-seed · manager-conflicts · drivable) — Posted schedules get changed on short notice, breaking plans; nurses want to keep their own source-of-truth record of shifts and notes. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Confusion about when OT kicks in and how it interacts with differentials** (P2 · source:reddit-seed · pay-differentials · drivable) — Nurses are unsure whether OT is 1.5x of base or of the differential-inclusive rate, and when daily vs. weekly OT applies. Maps to `overtime-flag` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-- [ ] **Deciding whether an extra shift is worth it hinges on its real value** (P2 · source:reddit-seed · staffing-pickups · drivable) — Before picking up an incentive/extra shift, nurses want to know what it nets after differentials and OT to decide if it's worth the time. Maps to `paycheck-projection` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Automatic unpaid-break deductions take pay for breaks that were never taken** (P2 · source:reddit-owner · pay-differentials · drivable) — Timekeeping systems auto-deduct one or two unpaid breaks per 12-hour shift regardless of whether staff actually got them, pushing the burden onto nurses to file a manual missed-lunch form to reclaim the pay. Several report employers quietly ceasing to honor those forms, turning it into an ongoing unpaid-wage dispute rather than a one-off gripe. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 5+ distinct r/nursing threads over ~1 year); groom to confirm priority/scope before build.
 - [ ] **Pure self-scheduling with no fixed recurring day makes childcare and life planning impossible** (P2 · source:reddit-owner · self-scheduling · drivable) — Distinct from general self-schedule fairness: nurses need a locked, recurring anchor day or a cyclic block pattern to coordinate childcare and appointments. Commenters consistently rate fixed or cyclic patterns as far more livable than pure self-schedule systems, where nothing repeats week to week. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 1 major r/nursing thread (~5d old, 194 up / 112 comments), dozens of independent corroborating commenters); groom to confirm priority/scope before build.
 - [ ] **Manager sign-off delays or blocks agreed swaps** (P2 · source:reddit-seed · shift-swapping · needs-live-auth) — Even after two nurses agree to a trade, manager approval stalls or denies it, so nurses want the agreement locked in and easy to present. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
@@ -664,6 +641,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - **Reddit seed corpus** (`docs/reddit_seed.json`) → run `node scripts/groom_seed.mjs` to see
   deduped, source-tagged candidates, or `--apply` to (re)write the managed "Reddit-seeded
   candidates" block above. See `docs/reddit-persona-pipeline.md` for the full pipeline. Live
-  Reddit mining is Phase 3 (needs owner creds + network allowlist).
+  Reddit API mining is unavailable (Reddit closed self-serve registration); new themes come from the
+  owner's browser intake via `docs/reddit_intake_prompt.md`.
 - Turn signal into P0–P3 items above, each with a one-line rationale. Dedupe; don't re-add
   anything already in Done or Blocked.
