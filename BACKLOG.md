@@ -190,15 +190,14 @@ _Fresh pass on under-reviewed surfaces (New-grad-Nia on onboarding/settings; Flo
 day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy-only unless noted._
 
 ### P2
-- [ ] **Paystub "Couldn't read that paystub" is a dead-end** (source:persona/Per-diem-Priya, ~2723;
-  harness:drivable) — the failure modal gives no reason or what-to-try, matching the analytics (1
-  import ever, 0 shifts). Replace the `.help` line with actionable copy (needs a detailed PDF that
-  lists pay rate + hours; a scan/summary won't parse; file stays on device). Verify: drive `onPaystub`
-  with a garbage/text PDF → `empty` → assert the copy.
+- [x] ~~**Paystub "Couldn't read that paystub" is a dead-end**~~ — SHIPPED 2026-09-02 (see Done log).
 - [ ] **PTO day silently vanishes its "DETECTED DIFFERENTIAL ROWS" section when 0 rows**
   (source:persona/Per-diem-Priya, ~2762/2784; harness:drivable) — when a paystub parses a base rate
   but no differential rows (the "0 shifts" case), the whole section is omitted with no note. Add an
   else note: "No differential rows were detected — add night/weekend/holiday rates in the next step."
+  **Now drivable end-to-end:** the nightly harness has a `makeMinimalPdf(text)` builder (gate.js) that
+  produces a valid PDF pdf.js parses — extend it to emit a "Pay Rate: $X Hourly" line with no
+  HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the else note.
 - [x] ~~**Surface that PTO is paid at base rate**~~ — SHIPPED 2026-08-27 (see Done log).
 
 ### P3
@@ -256,6 +255,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-02 — **Paystub "Couldn't read that paystub" failure modal now actionable** (persona/Per-diem-
+  Priya; harness:drivable). The empty-result modal said only "We couldn't read this paystub format —
+  you can set things up manually," giving no reason or what-to-try — matching the analytics (1 paystub
+  import ever, 0 shifts). Replaced the `.help` line with actionable guidance: names the cause (no pay
+  details found), what works (the **detailed** paystub from a payroll portal — Workday/UKG/Kronos —
+  that lists pay rate + hours; a photo/screenshot/summary won't parse), keeps the on-device
+  reassurance, and points to manual setup. Copy-only in the empty branch — **wage-core / parsePDF
+  untouched**. iPhone-13 gate **59/59**, incl. a real end-to-end drive: a new `makeMinimalPdf()` harness
+  builder emits a structurally-valid PDF (correct xref offsets) with no pay data → `onPaystub` →
+  parsePDF returns empty → the modal renders the new copy; zero page errors. **Reusable win:** that PDF
+  builder unlocks the remaining paystub-parse P2 (0-differential-rows note) for a future nightly. SRI
+  intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all previously triaged),
+  events healthy; no new signal.
 - 2026-09-01 — **Paystub "read on your device, never uploaded" privacy cue** (persona/Per-diem-Priya;
   harness:drivable). The "Scan a paystub" CTAs (onboarding welcome step + Settings → DATA) gave no
   format or privacy cue, so a nurse weighing whether to hand over a paystub had no reassurance it
