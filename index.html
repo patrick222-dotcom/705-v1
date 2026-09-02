@@ -2720,7 +2720,7 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
       <div className="scrim" onClick={onCancel}>
         <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
           <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
-          <div className="help">We couldn't read this paystub format — you can set things up manually.</div>
+          <div className="help">We couldn't find any pay details in this PDF. It works best with the <b>detailed</b> paystub from your payroll portal (Workday, UKG, Kronos…) that lists your pay rate and hours — a photo, a screenshot, or a one-page summary usually won't parse. Your file never left your device. You can set things up manually below.</div>
           <div className="spacer" style={{height:18}}></div>
           <button className="btn btn-primary" onClick={onCancel}>Set it up manually</button>
         </div>
