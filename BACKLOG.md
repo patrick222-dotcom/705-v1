@@ -109,10 +109,15 @@ here so the loop's queue contains only work it can actually finish; pick these u
   non-shift entries get "Not a shift" (a wage-neutral read-only dayEvents chip) or "Ignore these",
   **both remembered by uid** so a dentist appointment can't reopen the questionnaire on every app
   open. Pure merge planner is `icsPlanFromExisting`, unit-tested against the real source.
-  **Owner TODO before it's live:** apply the migration, deploy the function (keep verify_jwt on),
-  supply a test secret iCal address, and give the real NurseGrid feed host for the proxy ALLOWLIST
-  (currently a marked-TODO placeholder — Google works without it). See the PR body for the
-  security review. iOS Shortcuts push is a deliberate follow-up, not in scope here.
+  **Backend APPLIED LIVE 2026-09-02** via the Management API (the stdio MCP config was restored the
+  same day but only takes effect next session; `SUPABASE_ACCESS_TOKEN` + curl worked):
+  `ical_subscriptions` exists with RLS on, four per-command policies and **`anon` absent from the
+  grant list**; Edge Function `ical-proxy` is ACTIVE at v1 with **verify_jwt on** — an
+  unauthenticated POST returns 401, so it is not an open web proxy.
+  **Still owner-side:** (a) the real NurseGrid feed host for the proxy ALLOWLIST — still the
+  marked-TODO wildcard placeholder, Google Calendar works without it; (b) a smoke test with a real
+  secret iCal address; (c) merging PR #57. iOS Shortcuts push is a deliberate follow-up, not in
+  scope here.
   **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
   one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
   Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
