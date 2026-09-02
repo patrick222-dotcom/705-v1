@@ -22,6 +22,31 @@ _(none)_
 
 ## Queue
 
+### P1
+- [ ] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
+  requested by Courtney 2026-09-01) — `harness: drivable`. Today the app answers "what does this
+  shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
+  night and see it as a fraction of a house down payment, a vacation, a loan payoff.
+  **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
+  your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
+  is an every-shift product. Same math already computed, materially different retention.
+  **Design — two directions, both derived from existing state:**
+  - *Forward:* on a logged/previewed shift — "$612 take-home · 4% of your down payment".
+  - *Reverse:* on the goal — "14 more night shifts" or "on track for Mar 14 at your current schedule".
+  - *The sharpest placement is pre-commitment*, in the Add-Shift / pickup flow: "picking this up moves
+    your goal 9 days closer." That is decision support at the moment of the decision, which is the
+    app's whole thesis — know what a shift is worth **before** you work it.
+  **Cost is low:** purely derived from take-home math + logged shifts. A `goals` array in the existing
+  `user_data` JSON blob — no new Supabase table, no schema migration, no RLS surface. Respect
+  `MAX_BLOB_BYTES`; sanitize goal amounts through the same coercion path as differentials so a
+  malformed target can't produce NaN percentages.
+  **Design constraint — do not build a nudge engine.** This points a motivational loop at a
+  profession with a serious burnout problem, and "just one more shift" is a genuinely harmful thing
+  to automate. Frame strictly as informing a choice the user is already considering: show the number
+  when she opens a shift or a goal. No streaks, no push notifications, no "you're behind on your
+  goal", no encouragement to pick up more. Informed choice, never pressure.
+  **Analytics:** if tracked, coarse only (`goal_created`) — per CLAUDE.md, never wage or goal figures.
+
 ### P2
 - [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
   "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
@@ -40,23 +65,54 @@ sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctl
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
 
+- [ ] **Split test writes off the production database (a second Supabase project)** — raised by
+  the owner 2026-09-02 while asking about dev/test/stage/prod environments. **Scope deliberately
+  narrowed to the database**, see reasoning below.
+  **The actual exposure:** there is exactly one Supabase project (`mnnlgcxnvodjwlhhiphq`) and it
+  holds real wage data for the owner's wife and her friends. Against that same live project we
+  currently: mint throwaway confirmed users via the admin API during RLS audits
+  (`scratchpad/rls_audit.js`, 29 assertions + 5 adversarial probes), apply migrations directly
+  via the Management API, and patch functions live (that is how the `reveal_match` 42702 fix
+  landed). None of that is reckless in isolation, but it means a bad migration or a runaway test
+  script writes into the only copy of real users' pay history.
+  **Proposed fix:** create a second Supabase project as `dev`. The free plan allows **2 active
+  projects**, so this costs nothing. Point the RLS audit and any future migration rehearsal at it;
+  apply to prod only after the dev run is clean. Needs a way for the harness to pick a project
+  (env var or a `?env=dev` switch in the scratch copy — NOT a committed prod/dev toggle in
+  `index.html`, which would be a new boot-path branch and a gate risk).
+  **Why NOT four environments (dev/test/stage/prod):** the app is a single HTML file with under a
+  dozen users, and dev+test already exist in the form that matters — the iPhone-13 Playwright
+  harness builds a scratch copy with vendored deps and the safety gate blocks a bad deploy. A
+  staging *site* would also need a second repo or a non-Pages host (GitHub Pages serves one site
+  per repo), and would slow the nightly loop for no one's benefit: staging earns its keep when
+  someone would notice a broken deploy before the users do, and right now nobody is watching.
+  Revisit a staging tier when there are enough users that a bad nightly costs something real.
+
 - [~] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
   2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
   ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
   2026-08-23 over Google OAuth, see the rejected alternative below).
-  **BUILT ON A BRANCH — awaiting owner review + live Supabase apply (2026-08-26).** Branch
-  `claude/ical-subscription-sync`, DRAFT PR (deliberately NOT merged; needs the live migration +
-  Edge Function deploy first). Delivered: (a) SSRF-guarded proxy Edge Function
-  `supabase/functions/ical-proxy/index.ts` (verify_jwt on, host allowlist, https-only, no redirects,
-  size cap, timeout, never logs the URL); (b) migration `supabase/migrations/002_ical_subscription.sql`
-  — a dedicated `ical_subscriptions` table (owner-only RLS) so the secret URL stays OUT of the
+  **BUILT — one PR, awaiting the live Supabase apply (2026-09-02).** All of it now sits on
+  **PR #57** (`claude/ical-branch-progress-4x2baj`), retargeted to the deploy branch and carrying
+  #50's commits; **#50 is closed as superseded**. Keep the branch
+  `claude/ical-subscription-sync` — Invariant 11 — even though its PR is closed.
+  Delivered: (a) SSRF-guarded proxy Edge Function `supabase/functions/ical-proxy/index.ts`
+  (verify_jwt on, host allowlist, https-only, no redirects, 2MB cap, 8s timeout, never logs the
+  URL); (b) migration `supabase/migrations/002_ical_subscription.sql` — a dedicated
+  `ical_subscriptions` table (owner-only RLS, `anon` revoked) so the secret URL stays OUT of the
   user_data blob; (c) client wiring in index.html — a paste-URL "CALENDAR SYNC" Settings card
   (signed-in only), a silent once-per-app-open background sync, and a "Sync now" button, all routed
   through the EXISTING import stepper so known shifts (icsUid) move with their pay type preserved and
-  only genuinely-new shifts hit the questionnaire. Pure merge planner extracted to `icsPlanFromExisting`
-  and unit-tested in the gate (54/54). **Owner TODO before it's live:** apply the migration, deploy the
-  function (keep verify_jwt on), and confirm/replace the NurseGrid host in the proxy ALLOWLIST from a
-  real feed URL (currently a marked-TODO placeholder). See the PR body for the security review.
+  only genuinely-new shifts hit the questionnaire; (d) the **full re-sync lifecycle** — shifts
+  deleted from the calendar are proposed for removal (scoped to the fetched window, suppressed
+  entirely when the 200-event cap truncated the feed, always confirmed and named by date), and
+  non-shift entries get "Not a shift" (a wage-neutral read-only dayEvents chip) or "Ignore these",
+  **both remembered by uid** so a dentist appointment can't reopen the questionnaire on every app
+  open. Pure merge planner is `icsPlanFromExisting`, unit-tested against the real source.
+  **Owner TODO before it's live:** apply the migration, deploy the function (keep verify_jwt on),
+  supply a test secret iCal address, and give the real NurseGrid feed host for the proxy ALLOWLIST
+  (currently a marked-TODO placeholder — Google works without it). See the PR body for the
+  security review. iOS Shortcuts push is a deliberate follow-up, not in scope here.
   **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
   one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
   Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
@@ -203,36 +259,22 @@ _Fresh pass on under-reviewed surfaces (New-grad-Nia on onboarding/settings; Flo
 day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy-only unless noted._
 
 ### P2
-- [ ] **Paystub "Couldn't read that paystub" is a dead-end** (source:persona/Per-diem-Priya, ~2723;
-  harness:drivable) — the failure modal gives no reason or what-to-try, matching the analytics (1
-  import ever, 0 shifts). Replace the `.help` line with actionable copy (needs a detailed PDF that
-  lists pay rate + hours; a scan/summary won't parse; file stays on device). Verify: drive `onPaystub`
-  with a garbage/text PDF → `empty` → assert the copy.
+- [x] ~~**Paystub "Couldn't read that paystub" is a dead-end**~~ — SHIPPED 2026-09-02 (see Done log).
 - [ ] **PTO day silently vanishes its "DETECTED DIFFERENTIAL ROWS" section when 0 rows**
   (source:persona/Per-diem-Priya, ~2762/2784; harness:drivable) — when a paystub parses a base rate
   but no differential rows (the "0 shifts" case), the whole section is omitted with no note. Add an
   else note: "No differential rows were detected — add night/weekend/holiday rates in the next step."
-- [ ] **Surface that PTO is paid at base rate** (source:persona/Float-pool-Frank, ~3250;
-  harness:drivable) — the PTO hours input never says how PTO is valued, so a $ amount on the calendar
-  is unexplained. Add "Paid at your base rate — about {fmt2(baseRate)}/hr." under the PTO input
-  (`baseRate` already in scope). Verify: open a day → tap PTO chip → assert hint.
+  **Now drivable end-to-end:** the nightly harness has a `makeMinimalPdf(text)` builder (gate.js) that
+  produces a valid PDF pdf.js parses — extend it to emit a "Pay Rate: $X Hourly" line with no
+  HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the else note.
+- [x] ~~**Surface that PTO is paid at base rate**~~ — SHIPPED 2026-08-27 (see Done log).
 
 ### P3
-- [ ] **Onboarding step-2 "tweak to your contract" is misleading** (source:persona/New-grad-Nia,
-  ~4320; harness:drivable) — the differentials step only has on/off toggles (amounts are read-only),
-  so "tweak to your contract" sends Nia hunting for an input that isn't there. Reword to
-  "toggle what applies — you can fine-tune the amounts anytime in Settings."
-- [ ] **Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**
-  (source:persona/New-grad-Nia, ~3403; harness:drivable) — add a one-line hint under the TAXES header:
-  "Starting estimates — check a recent paystub and adjust."
-- [ ] **"Scan a paystub" CTA gives no format/privacy cue** (source:persona/Per-diem-Priya,
-  ~4284/3424; harness:drivable) — add a muted line: "PDF paystub · read on your device, never
-  uploaded."
-- [ ] **Calendar day aria-label says "N day events", not which kinds** (source:persona/Float-pool-
-  Frank, ~2909; harness:drivable) — replace the count with the kind labels
-  (`evs.map(e=>EVENT_KIND_META[e.kind]?.label).join(', ')`) so VoiceOver distinguishes PTO vs appt.
-- [ ] **"ALSO ON THIS DAY" header reads oddly on a shift-less day** (source:persona/Float-pool-Frank,
-  ~3238; harness:drivable) — make it `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`.
+- [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
+- [x] ~~**Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**~~ — SHIPPED 2026-08-31 (see Done log).
+- [x] ~~**"Scan a paystub" CTA gives no format/privacy cue**~~ — SHIPPED 2026-09-01 (see Done log).
+- [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
+- [x] ~~**"ALSO ON THIS DAY" header reads oddly on a shift-less day**~~ — SHIPPED 2026-08-30 (see Done log).
 
 ## Blocked
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
@@ -265,7 +307,6 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - [ ] **Managers change posted schedules with little notice** (P2 · source:reddit-seed · manager-conflicts · drivable) — Posted schedules get changed on short notice, breaking plans; nurses want to keep their own source-of-truth record of shifts and notes. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Confusion about when OT kicks in and how it interacts with differentials** (P2 · source:reddit-seed · pay-differentials · drivable) — Nurses are unsure whether OT is 1.5x of base or of the differential-inclusive rate, and when daily vs. weekly OT applies. Maps to `overtime-flag` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Deciding whether an extra shift is worth it hinges on its real value** (P2 · source:reddit-seed · staffing-pickups · drivable) — Before picking up an incentive/extra shift, nurses want to know what it nets after differentials and OT to decide if it's worth the time. Maps to `paycheck-projection` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-- [ ] **Distrust of clunky employer apps; want something simple and fast on mobile** (P2 · source:reddit-seed · tools · drivable) — Kronos/UKG/Smartlinx feel clunky; nurses want a fast, simple, mobile-first tool that just works without training. Maps to `mobile-ux` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Automatic unpaid-break deductions take pay for breaks that were never taken** (P2 · source:reddit-owner · pay-differentials · drivable) — Timekeeping systems auto-deduct one or two unpaid breaks per 12-hour shift regardless of whether staff actually got them, pushing the burden onto nurses to file a manual missed-lunch form to reclaim the pay. Several report employers quietly ceasing to honor those forms, turning it into an ongoing unpaid-wage dispute rather than a one-off gripe. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 5+ distinct r/nursing threads over ~1 year); groom to confirm priority/scope before build.
 - [ ] **Pure self-scheduling with no fixed recurring day makes childcare and life planning impossible** (P2 · source:reddit-owner · self-scheduling · drivable) — Distinct from general self-schedule fairness: nurses need a locked, recurring anchor day or a cyclic block pattern to coordinate childcare and appointments. Commenters consistently rate fixed or cyclic patterns as far more livable than pure self-schedule systems, where nothing repeats week to week. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 1 major r/nursing thread (~5d old, 194 up / 112 comments), dozens of independent corroborating commenters); groom to confirm priority/scope before build.
 - [ ] **Manager sign-off delays or blocks agreed swaps** (P2 · source:reddit-seed · shift-swapping · needs-live-auth) — Even after two nurses agree to a trade, manager approval stalls or denies it, so nurses want the agreement locked in and easy to present. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
@@ -273,7 +314,6 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 **P3**
 - [ ] **PTO requests denied or blocked by blackout dates** (P3 · source:reddit-seed · manager-conflicts · drivable) — PTO is hard to plan around denials and blackout windows; nurses track requested vs. approved time off alongside their shifts. Maps to `day-events-pto` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Mandatory OT and floating make pay unpredictable** (P3 · source:reddit-seed · staffing-pickups · drivable) — Being mandated to stay or floated to another unit changes pay; nurses want to log these and see the effect. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-- [ ] **Employer schedulers rarely export cleanly to a personal calendar, so nurses re-enter shifts by hand** (P3 · source:reddit-owner · tools · drivable) — Nurses ask repeatedly which calendar app to use because the work schedule will not export; the few who find a subscribe-to-calendar option in UKG report it works inconsistently or not at all. Some refuse to install employer device-management or VPN software merely to view a schedule, and cobble together separate apps for schedule, pickups, and messaging. Maps to `ics-import` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 4 low-engagement r/nursing threads over ~2 years, consistent request pattern); groom to confirm priority/scope before build.
 - [ ] **Travel/agency payroll errors take weeks of opaque escalation to get paid for a worked shift** (P3 · source:reddit-owner · pay-differentials · drivable) — Separate from understanding contract pay structure: a missed punch or unrecorded shift triggers slow back-and-forth between recruiter, agency payroll, and the facility's vendor-management system, sometimes a month for a few hundred dollars. Nurses are bounced between contacts with no ETA, and want their own defensible record of what they worked. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 3 distinct r/TravelNursing threads over ~1 year); groom to confirm priority/scope before build.
 - [ ] **Agreed swaps fall apart last-minute** (P3 · source:reddit-seed · shift-swapping · needs-live-auth) — A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Nurses want to negotiate swaps in a channel managers can't see until the trade is final** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Units coordinate swaps in Facebook groups, GroupMe, or Teams that managers also belong to, letting a manager block an already-agreed trade after the fact. The prevailing advice is to find the partner in a management-free channel and bring only the finished trade for sign-off. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: 1 dedicated r/nursing thread (~1y, 855 up / 99 comments) with broad independent corroboration); groom to confirm priority/scope before build.
@@ -284,6 +324,80 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-02 — **Paystub "Couldn't read that paystub" failure modal now actionable** (persona/Per-diem-
+  Priya; harness:drivable). The empty-result modal said only "We couldn't read this paystub format —
+  you can set things up manually," giving no reason or what-to-try — matching the analytics (1 paystub
+  import ever, 0 shifts). Replaced the `.help` line with actionable guidance: names the cause (no pay
+  details found), what works (the **detailed** paystub from a payroll portal — Workday/UKG/Kronos —
+  that lists pay rate + hours; a photo/screenshot/summary won't parse), keeps the on-device
+  reassurance, and points to manual setup. Copy-only in the empty branch — **wage-core / parsePDF
+  untouched**. iPhone-13 gate **59/59**, incl. a real end-to-end drive: a new `makeMinimalPdf()` harness
+  builder emits a structurally-valid PDF (correct xref offsets) with no pay data → `onPaystub` →
+  parsePDF returns empty → the modal renders the new copy; zero page errors. **Reusable win:** that PDF
+  builder unlocks the remaining paystub-parse P2 (0-differential-rows note) for a future nightly. SRI
+  intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all previously triaged),
+  events healthy; no new signal.
+- 2026-09-01 — **Paystub "read on your device, never uploaded" privacy cue** (persona/Per-diem-Priya;
+  harness:drivable). The "Scan a paystub" CTAs (onboarding welcome step + Settings → DATA) gave no
+  format or privacy cue, so a nurse weighing whether to hand over a paystub had no reassurance it
+  stays on-device — plausibly part of why paystub import is barely used (1 import ever in analytics).
+  Added a muted line under the onboarding CTA ("PDF paystub · read on your device, never uploaded.")
+  and a matching hint in the Settings DATA section. Additive copy — **wage-core untouched**. iPhone-13
+  gate **56/56** incl. a live drive (fresh load → welcome step shows the CTA + the privacy cue; zero
+  page errors). SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all
+  previously triaged), events healthy; no new signal. NOTE: this clears the last clean drivable
+  persona copy item — remaining persona candidates are the two paystub-parse P2s (need a crafted PDF
+  fixture to drive) and needs-live-auth swap items; next nightly should either build a PDF fixture for
+  those or the queue is effectively drained of one-run work (consider a fresh persona pass).
+- 2026-08-31 — **Settings TAXES "starting estimates" reassurance line** (persona/New-grad-Nia;
+  harness:drivable). Onboarding step 3 tags the tax fields ESTIMATED + says "We estimated these…",
+  but the Settings → TAXES section showed raw %/FICA fields with no such cue, so a returning user had
+  no signal the numbers are defaults to verify. Added a muted hint under the TAXES header: "Starting
+  estimates — check a recent paystub and adjust." Pure additive copy — **wage-core untouched**.
+  iPhone-13 gate **56/56** incl. a live drive (open Settings via the gear → TAXES section shows the
+  reassurance line; zero page errors). SRI intact (5), boot hardening untouched. GROOM (Supabase MCP
+  live): feedback=4 (all previously triaged), events healthy; no new signal.
+- 2026-08-30 — **Day-sheet section header reads "MARK THIS DAY" on a shift-less day** (persona/Float-
+  pool-Frank; harness:drivable). The Add-a-shift sheet's day-events section was always labelled "ALSO
+  ON THIS DAY" — but "ALSO" presumes a shift is already logged, so on an empty day it read as a
+  non-sequitur. Made it conditional: `{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}`. One-line,
+  copy-only; **wage-core untouched**. iPhone-13 gate **58/58** incl. a live drive (open a shift-less
+  day → header "MARK THIS DAY"; open a day with a shift → header "ALSO ON THIS DAY"; zero page errors).
+  SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): feedback=4 (all previously
+  triaged), events healthy; no new signal.
+- 2026-08-29 — **Calendar day-cell aria-label names the event kinds** (persona/Float-pool-Frank;
+  harness:drivable). The month-grid cell aria-label announced day events as a bare count ("2 day
+  events"), so VoiceOver couldn't tell PTO from an appointment. Replaced the count with the kind
+  labels — `evs.map(e=>EVENT_KIND_META[e.kind]?.label).join(', ')` — so a day now reads e.g.
+  "Sat Aug 29 2026, PTO, Appt, about $467 take-home". Pure a11y/label change, one line, **wage-core
+  untouched**. iPhone-13 gate **57/57** incl. a live drive (seeded a PTO+appointment day → aria-label
+  names both "PTO" and "Appt", no bare "day event" phrase). SRI intact (5), boot hardening untouched.
+  GROOM (Supabase MCP live): feedback=4 (all previously triaged — swap-pin → parked P3, 4h → already
+  built, 2× couldn't-sync → parked live-repro), events healthy; no new signal.
+- 2026-08-28 — **Onboarding step-2 differentials copy reworded** (persona/New-grad-Nia; harness:drivable).
+  Step 2 shows each differential's amount as read-only text with only an on/off toggle — amounts are
+  editable later in Settings, not here — but the help line read "toggle what applies and tweak to your
+  contract," sending a new grad hunting for an amount input that isn't on the screen. Reworded to
+  "toggle what applies — you can fine-tune the amounts anytime in Settings." Pure onboarding copy —
+  wage-core untouched. iPhone-13 gate **55/55** incl. a live drive (onboarding → Set it up myself →
+  Continue → assert STEP 2 renders the new copy and the old wording is gone) plus the shipped-PTO-hint
+  regression checks. SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): no new
+  feedback since 2026-08-11 (still 4 rows, all triaged: swap-pin → parked P3 join-helper; "4-hour
+  shift" → already built as the [4,8,12,16] HOURS chips; two "couldn't sync after Gmail" → parked
+  dedicated-session live-repro). Events healthy (app_open leads); nothing new to surface.
+- 2026-08-27 — **PTO is paid at base rate — hint under the PTO hours input** (persona/Float-pool-Frank;
+  harness:drivable). A PTO day adds a $ figure to the calendar/hero (hours × baseRate, taxed normally),
+  but the input never said how PTO is valued, so the number looked unexplained. Added a muted line
+  under the PTO hours field: "Paid at your base rate — about {fmt2(baseRate)}/hr." Pure additive copy
+  using `baseRate` (already a prop) + the global `fmt2` — **wage-core untouched** (no change to
+  ptoStatOf / statOf / calc). iPhone-13 gate **55/55** incl. a live PTO drive (open a day → tap the PTO
+  chip → assert the hint shows the seeded base rate; a non-PTO day shows no hint). SRI intact (5),
+  boot hardening untouched. GROOM (Supabase MCP live this run): feedback=4, events=198. The 2026-08-04
+  "add a 4-hour shift option" request is **already satisfied** — the Add-Shift HOURS picker chips are
+  `[4,8,12,16]` (index.html ~3367); noted so it isn't re-surfaced. The 2026-08-11 "how do I use a pin
+  someone gives me to join a board?" feedback corroborates the parked P3 "first-run Join-with-a-code
+  card lacks the helper line" item (not sandbox-drivable — swap sheet needs live auth). The two
+  "couldn't sync after Gmail" rows remain the parked dedicated-session live-repro item.
 - 2026-08-26 — **Onboarding "this is just an example" cue on the base rate** (persona/New-grad-Nia;
   fresh persona pass this run). Step 1 pre-fills the base-rate field with the default $65.15, and a
   low-confidence new grad could tap Continue leaving a stranger's rate in — silently corrupting
