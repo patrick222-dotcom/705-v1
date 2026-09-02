@@ -65,6 +65,29 @@ sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctl
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
 
+- [ ] **Split test writes off the production database (a second Supabase project)** — raised by
+  the owner 2026-09-02 while asking about dev/test/stage/prod environments. **Scope deliberately
+  narrowed to the database**, see reasoning below.
+  **The actual exposure:** there is exactly one Supabase project (`mnnlgcxnvodjwlhhiphq`) and it
+  holds real wage data for the owner's wife and her friends. Against that same live project we
+  currently: mint throwaway confirmed users via the admin API during RLS audits
+  (`scratchpad/rls_audit.js`, 29 assertions + 5 adversarial probes), apply migrations directly
+  via the Management API, and patch functions live (that is how the `reveal_match` 42702 fix
+  landed). None of that is reckless in isolation, but it means a bad migration or a runaway test
+  script writes into the only copy of real users' pay history.
+  **Proposed fix:** create a second Supabase project as `dev`. The free plan allows **2 active
+  projects**, so this costs nothing. Point the RLS audit and any future migration rehearsal at it;
+  apply to prod only after the dev run is clean. Needs a way for the harness to pick a project
+  (env var or a `?env=dev` switch in the scratch copy — NOT a committed prod/dev toggle in
+  `index.html`, which would be a new boot-path branch and a gate risk).
+  **Why NOT four environments (dev/test/stage/prod):** the app is a single HTML file with under a
+  dozen users, and dev+test already exist in the form that matters — the iPhone-13 Playwright
+  harness builds a scratch copy with vendored deps and the safety gate blocks a bad deploy. A
+  staging *site* would also need a second repo or a non-Pages host (GitHub Pages serves one site
+  per repo), and would slow the nightly loop for no one's benefit: staging earns its keep when
+  someone would notice a broken deploy before the users do, and right now nobody is watching.
+  Revisit a staging tier when there are enough users that a bad nightly costs something real.
+
 - [ ] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
   2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
   ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
