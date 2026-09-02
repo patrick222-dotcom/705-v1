@@ -2871,7 +2871,7 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
       <div className="scrim" onClick={onCancel}>
         <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
           <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
-          <div className="help">We couldn't read this paystub format — you can set things up manually.</div>
+          <div className="help">We couldn't find any pay details in this PDF. It works best with the <b>detailed</b> paystub from your payroll portal (Workday, UKG, Kronos…) that lists your pay rate and hours — a photo, a screenshot, or a one-page summary usually won't parse. Your file never left your device. You can set things up manually below.</div>
           <div className="spacer" style={{height:18}}></div>
           <button className="btn btn-primary" onClick={onCancel}>Set it up manually</button>
         </div>
@@ -3059,7 +3059,7 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
     nodes.push(
       <button key={k} data-date={k} className={'cell'+(has?' has':'')+(qfOn?' qf-on':'')+(isToday?' today':'')+(isActive?' pp-active':'')} onClick={()=>onPick(k)} aria-label={dt.toDateString()
           + (hasShift ? ', ' + arr.length + ' shift' + (arr.length===1?'':'s') : '')
-          + (hasEvent ? ', ' + evs.length + ' day event' + (evs.length===1?'':'s') : '')
+          + (hasEvent ? ', ' + evs.map(e=>EVENT_KIND_META[e.kind]?.label||'event').join(', ') : '')
           + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
           + (hasOT ? ', includes overtime' : '')
           + (!has ? ', no shifts' : '')
@@ -3388,7 +3388,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
         </div>
 
-        <div className="sec-lab" style={{marginTop:4}}>ALSO ON THIS DAY</div>
+        <div className="sec-lab" style={{marginTop:4}}>{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}</div>
         <div className="chips-grid" style={{gridTemplateColumns:'repeat(4,1fr)',marginBottom:ptoEvent?10:16}}>
           {EVENT_KINDS.map(k=>(
             <button key={k} className={'chip-sel'+(events.some(e=>e.kind===k)?' on':'')} aria-pressed={events.some(e=>e.kind===k)}
@@ -3397,9 +3397,12 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           ))}
         </div>
         {ptoEvent &&
-          <div className="inp suf" style={{marginBottom:16}}>
-            <NumInput value={ptoEvent.hours!=null?ptoEvent.hours:12} onCommit={setPtoHours} step="0.5" min={0.5} max={24} ariaLabel="PTO hours" style={{fontWeight:700}}/>
-            <span className="sfx">hrs PTO</span>
+          <div style={{marginBottom:16}}>
+            <div className="inp suf">
+              <NumInput value={ptoEvent.hours!=null?ptoEvent.hours:12} onCommit={setPtoHours} step="0.5" min={0.5} max={24} ariaLabel="PTO hours" style={{fontWeight:700}}/>
+              <span className="sfx">hrs PTO</span>
+            </div>
+            <div className="k" style={{marginTop:6}}>Paid at your base rate — about {fmt2(baseRate)}/hr.</div>
           </div>}
 
         <div className="sec-lab">NOTE</div>
@@ -3555,6 +3558,7 @@ function Settings(props){
         </div>
 
         <div className="sec-lab" style={{marginTop:18}}>TAXES</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Starting estimates — check a recent paystub and adjust.</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <label className="field" style={{margin:0}}><span className="lab">Federal</span><div className="inp suf"><NumInput value={federalTaxRate} onCommit={setFederal} min={0} step="0.1" ariaLabel="Federal tax rate percent"/><span className="sfx">%</span></div></label>
           <label className="field" style={{margin:0}}><span className="lab">State</span><div className="inp suf"><NumInput value={stateTaxRate} onCommit={setState} min={0} step="0.1" ariaLabel="State tax rate percent"/><span className="sfx">%</span></div></label>
@@ -3579,7 +3583,8 @@ function Settings(props){
           <label className="btn btn-ghost btn-sm" style={{position:'relative',gap:6}}>{Ic.calendar}Import schedule (.ics)<input type="file" accept=".ics,text/calendar" onChange={onImportICS} style={{display:'none'}}/></label>
           <button className="btn btn-ghost btn-sm" onClick={(e)=>window.__copyErrorLog&&window.__copyErrorLog(e.currentTarget)}>Copy error log</button>
         </div>
-        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Re-export after schedule changes — your calendar app updates the same events.</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Scan paystub: PDF · read on your device, never uploaded.</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>Re-export after schedule changes — your calendar app updates the same events.</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>From NurseGrid: sync your schedule to your phone's calendar, export it as .ics, then import here.</div>
 
         {user &&
@@ -4459,7 +4464,8 @@ function Onboarding(props){
         <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
       </div>
       <div className="spacer"></div>
-      <label className="btn btn-primary" style={{marginBottom:10,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <label className="btn btn-primary" style={{marginBottom:6,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginBottom:12,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
       <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
       <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
     </div>
@@ -4495,7 +4501,7 @@ function Onboarding(props){
       <Head step={2}/>
       <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
       <div className="q">How does your pay change by shift?</div>
-      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies and tweak to your contract.</div>
+      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
           <div className={'drow'+(d.active?'':' off')} key={k}>

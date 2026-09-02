@@ -1,7 +1,9 @@
 # ScrubPay — Nursing Wage Planner
 
 Take-home pay planner for bedside nurses (built for the owner's wife and friends).
-Live at: https://patrick222-dotcom.github.io/705-v1/
+Live at: **https://badgebudget.com** (custom domain since 2026-09-02 — see Domains below).
+The old `https://patrick222-dotcom.github.io/705-v1/` URL 301-redirects here, so existing
+bookmarks and invite links still work. **Verify deploys against badgebudget.com**, not github.io.
 
 ## Dual project goals
 
@@ -88,10 +90,50 @@ container is ephemeral, so commit everything.
 ## Deployment
 
 - GitHub Pages via `.github/workflows/deploy.yml`.
+- **Custom domain — `CNAME` must stay in the publish set.** `deploy.yml` stages only
+  `index.html`, `pdf.worker.min.js` and `CNAME` into `_site`. Pages reads the custom domain
+  out of the deployed artifact: **an Actions deploy whose artifact lacks `CNAME` can clear the
+  custom domain setting and knock the site off badgebudget.com.** Never drop that `cp` line.
 - **This repo has no `main` branch.** The de facto default branch is
   `claude/migrate-to-github-deploy-3F5RD` and it is deliberately in the workflow's
   push triggers. If you remove it before a `main` branch exists, all deploys stop
   (this happened once). When work is eventually merged to `main`, remove it.
+
+## Domains (registered 2026-09-02, Porkbun)
+
+Registrar **Porkbun**, account `pathwk`. All four registered 2026-09-02, expire 2027-09-01,
+WHOIS privacy on (verified: no registrant PII in the public RDAP record), transfer lock on
+(`clientTransferProhibited` + `clientDeleteProhibited`).
+
+| Domain | Role | Renewal |
+|---|---|---|
+| **badgebudget.com** | **primary — the live app** | $11.08/yr |
+| badgebudget.app | redirect → badgebudget.com | $14.93/yr |
+| shiftstogo.com | redirect → badgebudget.com | $11.08/yr |
+| shiftstogo.app | redirect → badgebudget.com | $14.93/yr |
+
+**DNS on badgebudget.com** (Porkbun nameservers): four A records to GitHub Pages
+(`185.199.108-111.153`), four AAAA (`2606:50c0:800{0..3}::153`), `www` CNAME →
+`patrick222-dotcom.github.io`. The MX/SPF records for Porkbun email forwarding and the two
+`_acme-challenge` TXT records are deliberately kept — they don't touch web traffic.
+**URL Forwarding must stay OFF on badgebudget.com** — it overrides the A records entirely
+(Porkbun's bundled "Link-in-Bio" turns it on at registration; it was removed).
+
+**The app needed no code changes for the move**: `index.html` has no hardcoded github.io URLs,
+the Google OAuth redirect builds from `window.location.origin + window.location.pathname`, and
+invite links build from the live page URL — all three follow the origin.
+
+**Naming context:** the app is still *branded* ScrubPay in `index.html` (page title, headings,
+onboarding copy) — the rename to BadgeBudget is not done, only the domain. Note that
+"ScrubPay" is a crowded name: a healthcare payroll/ATS company launched on `scrubpay.app` +
+`scrubpay.org` in 2026-08, a 2014 Atlanta medical-bill app used the name, and SCRUBJAY is a
+registered USPTO mark in healthcare staffing. `scrubpay.com` is investor-held on Atom.com.
+
+**Google OAuth consent screen** still shows `mnnlgcxnvodjwlhhiphq.supabase.co` — that string is
+the host of the OAuth callback, which lives on Supabase, so it is not changeable from the app or
+from Google Cloud Console. The only fix is a Supabase Custom Domain: Pro plan (from $25/mo) plus
+the custom-domain add-on ($10/mo). Not worth it at current scale; set the app name + logo on the
+GCP OAuth consent screen instead (free, and it's the more prominent branding).
 
 ## Supabase MCP
 
@@ -110,9 +152,11 @@ container is ephemeral, so commit everything.
 
 1. ~~RLS~~ **Done 2026-07-04**: RLS enabled on `user_data` with per-command policies
    `(select auth.uid()) = user_id` (subselect form per the performance advisor).
-2. ~~Supabase Auth URL config~~ **Done 2026-07-04**: Site URL set to
-   `https://patrick222-dotcom.github.io/705-v1/`, redirect allow list to
-   `https://patrick222-dotcom.github.io/705-v1/**` via Management API.
+2. ~~Supabase Auth URL config~~ **Done 2026-07-04**, **updated 2026-09-02 for the custom
+   domain**: Site URL is now `https://badgebudget.com/`; the redirect allow list is
+   `https://badgebudget.com/**,https://www.badgebudget.com/**,https://patrick222-dotcom.github.io/705-v1/**`
+   (the github.io entry is kept so in-flight invite links and cached sessions still resolve).
+   Set via Management API `PATCH /v1/projects/<ref>/config/auth`.
 3. ~~Verify Google sign-in on a real iPhone~~ **Done 2026-07-07**: owner confirmed Google
    sign-in works end-to-end on a real iPhone.
 4. Rerun the improved agent council against the app (owner's standing request) —
@@ -202,11 +246,11 @@ aliasing the subquery (`select l.post_id from swap_match_legs l`); patched live 
 Management API AND in the migration file. Reveal now returns display names only after full
 acceptance.
 
-Note (env): the Management API token is present but named `supabase_access_token`
-(lowercase) — the MCP server + standard tooling look for `SUPABASE_ACCESS_TOKEN`
-(uppercase, case-sensitive), so rename it in the environment settings to get the typed
-Supabase MCP tools; until then, read `$supabase_access_token` directly in curl and route
-Node's fetch through the egress proxy (`NODE_USE_ENV_PROXY=1`
+Note (env): ~~the Management API token is named `supabase_access_token` (lowercase)~~
+**Fixed — as of 2026-09-02 the variable is `SUPABASE_ACCESS_TOKEN` (uppercase)**, which is what
+the MCP server and standard tooling look for, so the typed Supabase MCP tools should work. The
+curl fallback is `-H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"`; for Node, route fetch
+through the egress proxy (`NODE_USE_ENV_PROXY=1`
 `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`).
 
 **Two more RLS fixes applied live + in migration 2026-07-30 (found by the council run):**
@@ -219,7 +263,7 @@ both insert grants; matches/legs are created ONLY through the security-definer `
 (edit-while-open and the direct withdraw still work). Re-verified: RLS audit 29/29 + 5/5 new
 adversarial probes (both inserts denied, forge blocked, withdraw intact).
 
-**Invite links (2026-08-22):** boards are shared as `…/705-v1/?join=ABC123` through the native
+**Invite links (2026-08-22):** boards are shared as `https://badgebudget.com/?join=ABC123` through the native
 share sheet (`navigator.share`, clipboard fallback). The recipient always gets a confirm screen —
 the board name is unknowable pre-join, so the code is what's confirmed. The param is consumed on
 mount (other query params preserved for supabase-js PKCE) and stashed in localStorage
