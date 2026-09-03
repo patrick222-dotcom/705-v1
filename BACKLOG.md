@@ -23,10 +23,18 @@ _(none)_
 ## Queue
 
 ### P1
-- [ ] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
+- [~] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
   requested by Courtney 2026-09-01) — `harness: drivable`. Today the app answers "what does this
   shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
   night and see it as a fraction of a house down payment, a vacation, a loan payoff.
+  **MVP SHIPPED 2026-09-03 (#build below, see Done log):** goals persist in the `user_data` blob
+  (`goals:[{id,name,target}]`, sanitized + capped at MAX_GOALS, no schema/RLS surface); a Settings →
+  SAVINGS GOALS section adds/edits/removes goals; and the **forward pre-commitment placement** is live
+  — the Add-Shift preview shows the shift's take-home as a % of each goal ("toward your goal: 2.8% of
+  House down payment"). **Remaining (follow-up):** the *reverse* view — "N more night shifts" / "on
+  track for <date>" — which needs an average-shift-take-home model, and the pre-commitment "picking
+  this up moves your goal N days closer" framing. Both are drivable next; keep the no-nudge-engine
+  constraint (no streaks/push/"behind on goal").
   **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
   your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
   is an every-shift product. Same math already computed, materially different retention.
@@ -303,6 +311,22 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
+  harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
+  JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`
+  validates each (name 1–40 chars, target coerced to a finite positive number, capped at MAX_GOALS=12)
+  so a malformed target can't produce NaN percentages. Added to serializeState + the debounced-save
+  deps + applyData + resetToDefaults (same pattern as templates/dayEvents). Settings → **SAVINGS GOALS**
+  section adds/edits/removes goals. The **forward, pre-commitment** placement (the owner's "whole
+  thesis") is live: the Add-Shift preview shows the previewed take-home as a % of each goal — e.g.
+  "toward your goal: 2.8% of House down payment" (up to 3 goals, guarded on `previewNet>0`). Held the
+  line on the **no-nudge-engine** constraint: purely informational at the moment of choice — no streaks,
+  no push, no "behind on your goal." **wage-core untouched.** iPhone-13 gate **63/63** incl. a
+  sanitizer unit test (drops blank/negative/NaN, coerces numeric-string) and a live drive (seed a goal
+  → Add-Shift preview names it with a plausible %; Settings lists it; zero page errors). SRI intact (5),
+  boot hardening untouched. GROOM (Supabase MCP live): events healthy, no new feedback. **Follow-up left
+  in the P1 item:** the reverse view ("N shifts to go" / on-track date) + "moves your goal N days
+  closer" — both need an average-shift model; drivable next.
 - 2026-09-02 — **Paystub "Couldn't read that paystub" failure modal now actionable** (persona/Per-diem-
   Priya; harness:drivable). The empty-result modal said only "We couldn't read this paystub format —
   you can set things up manually," giving no reason or what-to-try — matching the analytics (1 paystub
