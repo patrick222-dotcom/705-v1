@@ -23,10 +23,18 @@ _(none)_
 ## Queue
 
 ### P1
-_(empty — the savings-goals feature is parked under "Needs a dedicated session" until its design is
-decided; promote a one-run slice of it, or a candidate from the lists below, with judgment)_
+_(empty — promote from the candidate lists below with judgment)_
 
 ### P2
+- [ ] **Savings goals, second slice: the reverse view** (owner/Courtney; follows the MVP shipped
+  2026-09-03, see Done log) — `harness:drivable`. The MVP shows a previewed shift as "% of goal". Add
+  the goal's own view: "about N more shifts" and, if the user has logged shifts, "on track for
+  <month>". Model, to keep it one run: average take-home of the shifts logged in the last 8 weeks
+  (fall back to the current preview's take-home when fewer than 3); N = ceil(remaining ÷ average);
+  the date = today + N × (56 days ÷ shifts-in-window). Place it under each goal in Settings → SAVINGS
+  GOALS and, optionally, as "moves your goal ~N days closer" in the Add-Shift preview. **Keep the
+  no-nudge-engine constraint**: informational only — no streaks, no push, no "behind on your goal",
+  no encouragement to pick up more. Derived state only; `goals` shape and `sanitizeData` unchanged.
 - [ ] **Paystub review sheet: say so when 0 differential rows were detected**
   (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
   `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
@@ -53,32 +61,6 @@ autonomous run — each needs a live repro, a design call, or delicate surgery o
 sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctly skipped every one
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
-
-- [ ] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
-  requested by Courtney 2026-09-01) — `harness:drivable`. **Parked 2026-09-02:** undecided design
-  (two directions below, a new persisted `goals` array) — not a one-run build. When a direction is
-  chosen, split off a one-run slice (one goal in Settings + the forward "% of goal" line in the
-  Add-Shift preview) and promote that. Today the app answers "what does this shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
-  night and see it as a fraction of a house down payment, a vacation, a loan payoff.
-  **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
-  your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
-  is an every-shift product. Same math already computed, materially different retention.
-  **Design — two directions, both derived from existing state:**
-  - *Forward:* on a logged/previewed shift — "$612 take-home · 4% of your down payment".
-  - *Reverse:* on the goal — "14 more night shifts" or "on track for Mar 14 at your current schedule".
-  - *The sharpest placement is pre-commitment*, in the Add-Shift / pickup flow: "picking this up moves
-    your goal 9 days closer." That is decision support at the moment of the decision, which is the
-    app's whole thesis — know what a shift is worth **before** you work it.
-  **Cost is low:** purely derived from take-home math + logged shifts. A `goals` array in the existing
-  `user_data` JSON blob — no new Supabase table, no schema migration, no RLS surface. Respect
-  `MAX_BLOB_BYTES`; sanitize goal amounts through the same coercion path as differentials so a
-  malformed target can't produce NaN percentages.
-  **Design constraint — do not build a nudge engine.** This points a motivational loop at a
-  profession with a serious burnout problem, and "just one more shift" is a genuinely harmful thing
-  to automate. Frame strictly as informing a choice the user is already considering: show the number
-  when she opens a shift or a goal. No streaks, no push notifications, no "you're behind on your
-  goal", no encouragement to pick up more. Informed choice, never pressure.
-  **Analytics:** if tracked, coarse only (`goal_created`) — per CLAUDE.md, never wage or goal figures.
 
 - [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
   "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
@@ -280,6 +262,22 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
+  harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
+  JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`
+  validates each (name 1–40 chars, target coerced to a finite positive number, capped at MAX_GOALS=12)
+  so a malformed target can't produce NaN percentages. Added to serializeState + the debounced-save
+  deps + applyData + resetToDefaults (same pattern as templates/dayEvents). Settings → **SAVINGS GOALS**
+  section adds/edits/removes goals. The **forward, pre-commitment** placement (the owner's "whole
+  thesis") is live: the Add-Shift preview shows the previewed take-home as a % of each goal — e.g.
+  "toward your goal: 2.8% of House down payment" (up to 3 goals, guarded on `previewNet>0`). Held the
+  line on the **no-nudge-engine** constraint: purely informational at the moment of choice — no streaks,
+  no push, no "behind on your goal." **wage-core untouched.** iPhone-13 gate **63/63** incl. a
+  sanitizer unit test (drops blank/negative/NaN, coerces numeric-string) and a live drive (seed a goal
+  → Add-Shift preview names it with a plausible %; Settings lists it; zero page errors). SRI intact (5),
+  boot hardening untouched. GROOM (Supabase MCP live): events healthy, no new feedback. **Follow-up left
+  in the P1 item:** the reverse view ("N shifts to go" / on-track date) + "moves your goal N days
+  closer" — both need an average-shift model; drivable next.
 - 2026-09-02 — **Paystub "Couldn't read that paystub" failure modal now actionable** (persona/Per-diem-
   Priya; harness:drivable). The empty-result modal said only "We couldn't read this paystub format —
   you can set things up manually," giving no reason or what-to-try — matching the analytics (1 paystub

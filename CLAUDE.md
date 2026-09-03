@@ -43,8 +43,10 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    against a 4s timeout (WebKit deadlock — iPhone Chrome is WebKit too). These fixed a long-standing
    iPhone infinite spinner.
 2. **SRI on all 5 CDN scripts** (`grep -c 'integrity="sha384-' index.html` → 5), exact pinned versions.
-3. **Wage-core** (`shiftGross`, `hourlyRate`, `calc`, `sanitizeData`, `statOf`/`ptoStatOf`): touch only
-   in a dedicated session, with the wage-math probes, never in a nightly build.
+3. **Wage-core** (`shiftGross`, `hourlyRate`, `calc`, `statOf`/`ptoStatOf`, and the rate/differential
+   coercions in `sanitizeData`): touch only in a dedicated session, with the wage-math probes, never in
+   a nightly build. Adding a sanitizer branch for a *new* data shape (as #62 did for `goals`) is fine
+   in a nightly if it comes with a unit test and the existing probes stay green.
 4. **`saveToSupabase` upserts with `{onConflict:'user_id'}`.** The table's PK is a generated `id` and
    `user_id` carries a separate unique constraint; without the option every save after the first fails
    with 23505. That silently broke cloud sync for every signed-in user from 2026-07-07 to 2026-08-23.
@@ -125,7 +127,9 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   take-home figure with Gross / Taxes / Keep-% chips; an Add-Shift sheet with shift templates,
   quick-fill, day events (PTO paid at base rate) and a live preview — gross, take-home, ≈$/hr
   take-home, OT tag — so a nurse can judge whether picking up an extra shift is worth it *before*
-  working it; a breakdown view; paystub PDF import (parsed on-device, never uploaded); Settings.
+  working it; savings goals (Settings, capped at `MAX_GOALS`=12, stored in the same blob) shown in
+  that preview as "% of goal"; a breakdown view; paystub PDF import (parsed on-device, never
+  uploaded); Settings.
 - **Schedule import/export (calendar sync).** .ics export (deterministic UIDs, no wage data) and
   .ics import with a guided shift-type questionnaire; re-import moves shifts and preserves pay types via `shift.icsUid`.
   An auto-syncing subscription (secret iCal URL + SSRF-guarded Edge Function proxy) is built but
@@ -269,5 +273,5 @@ reproducible from the repo. Committing them under `tests/` is an open item.
 - **Council rerun** (owner's standing request) — last full run 2026-07-30, `docs/history.md`.
 - **Parked engineering** (calendar memoization + virtualization; sync content-equality
   canonicalization — `user_data.data` is `jsonb`, so canonicalize key order before comparing;
-  backdrop-filter perf; poster_key rotation; swap handoff redesign; savings goals): `BACKLOG.md` →
-  Needs a dedicated session.
+  backdrop-filter perf; poster_key rotation; swap handoff redesign): `BACKLOG.md` → Needs a
+  dedicated session. Savings goals shipped its MVP on 2026-09-03 (#62); the reverse view is queued.
