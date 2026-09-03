@@ -519,6 +519,7 @@ const withTimeout = (p, ms, label) => Promise.race([
 const STORE_KEY = 'nursingWagePlannerData';
 const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier safety; real data is a few KB)
 const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
+const MAX_GOALS = 12;      // cap on savings goals (bounds per-row blob growth; keeps the list scannable)
 const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 /* ---- module-level date/period helpers (shared by App + the month-grid components) ---- */
@@ -907,6 +908,20 @@ function sanitizeData(d){
         bonusType: t.bonusType,
         customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0,
         ...(typeof t.start==='string' && TIME_RE.test(t.start) ? {start:t.start} : {})
+      }));
+  }
+  // goals: savings targets — array of {id, name:string(1..40), target:number>0}. Capped at MAX_GOALS.
+  // target is coerced to a finite positive number so a malformed value can't yield NaN percentages
+  // in the shift preview (same defensive coercion as differentials/templates).
+  if(Array.isArray(d.goals)){
+    out.goals = d.goals.filter(g=> g && typeof g==='object'
+        && typeof g.name==='string' && g.name.trim().length>0 && g.name.length<=80
+        && isFinite(Number(g.target)) && Number(g.target)>0)
+      .slice(0,MAX_GOALS)
+      .map(g=>({
+        id: (typeof g.id==='string'||typeof g.id==='number') ? g.id : (Date.now()+Math.random()),
+        name: g.name.trim().slice(0,40),
+        target: Number(g.target),
       }));
   }
   if('setupComplete' in d) out.setupComplete = d.setupComplete;
@@ -1667,6 +1682,7 @@ function App(){
   const [customWithholdings,setCW] = useState([]);
   const [differentials,setDiff] = useState(DIFF_DEFAULTS);
   const [templates,setTemplates] = useState([]);   // saved shift presets for quick logging
+  const [goals,setGoals] = useState([]);           // savings goals [{id,name,target}] — a shift's worth toward a goal
   const [dayEvents,setDayEvents] = useState({});   // 'YYYY-MM-DD' -> [{id,kind,hours?}] (PTO/education/appt/off)
   const [notes,setNotes] = useState({});           // 'YYYY-MM-DD' -> short free-text note
   const [icsIgnored,setIcsIgnored] = useState({}); // { icsUid: true } calendar entries dismissed as "not a shift"
@@ -1737,7 +1753,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -1771,6 +1787,7 @@ function App(){
     if(d.dayEvents) setDayEvents(d.dayEvents);
     if(d.notes) setNotes(d.notes);
     if(d.icsIgnored) setIcsIgnored(d.icsIgnored);
+    if(d.goals) setGoals(d.goals);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -1779,7 +1796,7 @@ function App(){
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
-    setDayEvents({}); setNotes({}); setIcsIgnored({}); setSetupComplete(false);
+    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setSetupComplete(false);
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -1927,7 +1944,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2951,7 +2968,7 @@ function App(){
         <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
           existing={shifts[sheetDate]||[]} existingEvents={dayEvents[sheetDate]||[]} existingNote={notes[sheetDate]||''}
           baseRate={baseRate} keepRatio={keepRatio}
-          templates={templates} onSaveTemplate={saveTemplate} onDeleteTemplate={deleteTemplate} userId={user?.id}
+          templates={templates} goals={goals} onSaveTemplate={saveTemplate} onDeleteTemplate={deleteTemplate} userId={user?.id}
           onClose={()=>setSheetDate(null)} onSave={(arr,events,note)=>{ saveDayShifts(sheetDate,arr,events,note); setSheetDate(null); }} />}
 
       {showBreakdown &&
@@ -2968,6 +2985,7 @@ function App(){
         <Settings onClose={()=>setShowSettings(false)}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+            goals,setGoals,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
@@ -3394,7 +3412,7 @@ function giveMetaLine(meta, differentials){
 }
 
 /* ---------- Add Shift Sheet ---------- */
-function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
+function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,goals,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
   const [list,setList] = useState(existing.map(s=>({...s})));
   const [shiftType,setType] = useState('night');
   const [hours,setHours] = useState(12);
@@ -3566,6 +3584,8 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           <div className="k">This shift adds</div>
           <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
+          {goals && goals.length>0 && previewNet>0 &&
+            <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>`${Math.round(previewNet/g.target*1000)/10}% of ${g.name}`).join(' · ')}</div>}
         </div>
 
         <div className="sec-lab" style={{marginTop:4}}>{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}</div>
@@ -3702,10 +3722,17 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+    goals,setGoals,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
+  const [goalName,setGoalName]=useState('');
+  const [goalTarget,setGoalTarget]=useState(0);
+  const addGoal=()=>{ const nm=goalName.trim(); const t=parseFloat(goalTarget)||0;
+    if(nm && t>0 && (goals||[]).length<MAX_GOALS){ setGoals([...(goals||[]),{id:Date.now()+Math.random(),name:nm.slice(0,40),target:t}]); setGoalName(''); setGoalTarget(0); } };
+  const updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:parseFloat(v)||0} : g));
+  const delGoal=id=>setGoals((goals||[]).filter(g=>g.id!==id));
 
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
@@ -3753,6 +3780,23 @@ function Settings(props){
           <label className="field" style={{margin:0}}><span className="lab">Pre-tax</span><div className="inp pre"><span className="pfx">$</span><NumInput value={pretaxDeductions} onCommit={setPretax} min={0} ariaLabel="Pre-tax deductions"/></div></label>
           <label className="field" style={{margin:0}}><span className="lab">Post-tax</span><div className="inp pre"><span className="pfx">$</span><NumInput value={posttaxDeductions} onCommit={setPosttax} min={0} ariaLabel="Post-tax deductions"/></div></label>
         </div>
+
+        <div className="sec-lab" style={{marginTop:18}}>SAVINGS GOALS</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Name what you're saving for. When you add a shift, you'll see what its take-home is worth toward each goal.</div>
+        {(goals||[]).map(g=>(
+          <div className="drow" key={g.id}>
+            <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
+            <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
+            <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
+            <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+          </div>
+        ))}
+        {(goals||[]).length<MAX_GOALS &&
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <div className="inp" style={{flex:1}}><input value={goalName} placeholder="e.g. House down payment" maxLength={40} onChange={e=>setGoalName(e.target.value)}/></div>
+            <div className="inp pre" style={{width:120}}><span className="pfx">$</span><NumInput value={goalTarget} onCommit={setGoalTarget} min={0} ariaLabel="New goal target amount"/></div>
+            <button className="btn btn-soft btn-sm" onClick={addGoal}>Add</button>
+          </div>}
 
         <div className="sec-lab" style={{marginTop:18}}>DATA</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
