@@ -140,7 +140,7 @@
   .yrow .ym{font-weight:700;font-size:14.5px;width:84px;flex:0 0 auto}
   .yrow .yd{flex:1;font-size:13px;color:var(--muted);font-weight:500}
   .yrow .ychev{color:#c9c6bc;font-size:18px;font-weight:700;flex:0 0 auto}
-  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:6px;min-width:320px}
+  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;min-width:320px}
   .dow div{text-align:center;font-weight:700;font-size:11px;color:#A8A498}
   .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;min-width:320px}
   /* month view: continuous vertical scroll of month sections (replaces ‹ › pagination and the
@@ -157,7 +157,14 @@
   .cal-vscroll-fade{position:absolute;left:0;right:0;bottom:20px;height:34px;background:linear-gradient(to bottom, transparent, var(--card));pointer-events:none}
   .cal-month-sec{margin-bottom:20px}
   .cal-month-sec:last-child{margin-bottom:2px}
-  .cal-month-h{position:sticky;top:0;z-index:2;background:var(--card);padding:2px 0 9px;margin-bottom:1px;font-family:'Bricolage Grotesque';font-weight:700;font-size:17.5px;color:var(--ink);border-bottom:1px solid var(--line)}
+  /* The month label AND the weekday letters stick together as one block. They must be ONE sticky
+     wrapper, not two stacked sticky elements: a separately-sticky .dow would need a hardcoded
+     `top` equal to the label's rendered height, which drifts the moment the font, size or padding
+     changes. The 6px gap above the grid is the wrapper's padding, NOT a margin on .dow — a bottom
+     margin would collapse out of the sticky box, leaving a 6px window through which day cells
+     scroll visibly behind the header. */
+  .cal-month-head{position:sticky;top:0;z-index:2;background:var(--card);padding-bottom:6px}
+  .cal-month-h{padding:2px 0 9px;margin-bottom:1px;font-family:'Bricolage Grotesque';font-weight:700;font-size:17.5px;color:var(--ink);border-bottom:1px solid var(--line)}
   /* pay-period boundary divider inside the month grid — a full-width grid row (grid-column:1/-1
      forces a line break at row auto-placement) rendered at a week-row boundary, never mid-week,
      so the 7-column day alignment is never disturbed. */
@@ -3289,8 +3296,10 @@ function MonthSection({y,m,keyOf,statOf,differentials,shifts,dayEvents,notes,onP
   const label = new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
   return (
     <div className="cal-month-sec" ref={secRef}>
-      <div className="cal-month-h">{label}</div>
-      <div className="dow">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+      <div className="cal-month-head">
+        <div className="cal-month-h">{label}</div>
+        <div className="dow" aria-hidden="true">{['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d}>{d[0]}</div>)}</div>
+      </div>
       <Calendar days={days} keyOf={keyOf} statOf={statOf} differentials={differentials} shifts={shifts}
         dayEvents={dayEvents} notes={notes} onPick={onPick}
         qfActive={qfActive} qfTemplateId={qfTemplateId} keepRatio={keepRatio}
