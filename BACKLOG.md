@@ -96,10 +96,36 @@ here so the loop's queue contains only work it can actually finish; pick these u
   someone would notice a broken deploy before the users do, and right now nobody is watching.
   Revisit a staging tier when there are enough users that a bad nightly costs something real.
 
-- [ ] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
+- [~] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
   2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
   ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
   2026-08-23 over Google OAuth, see the rejected alternative below).
+  **BUILT — one PR, awaiting the live Supabase apply (2026-09-02).** All of it now sits on
+  **PR #57** (`claude/ical-branch-progress-4x2baj`), retargeted to the deploy branch and carrying
+  #50's commits; **#50 is closed as superseded**. Keep the branch
+  `claude/ical-subscription-sync` — Invariant 11 — even though its PR is closed.
+  Delivered: (a) SSRF-guarded proxy Edge Function `supabase/functions/ical-proxy/index.ts`
+  (verify_jwt on, host allowlist, https-only, no redirects, 2MB cap, 8s timeout, never logs the
+  URL); (b) migration `supabase/migrations/002_ical_subscription.sql` — a dedicated
+  `ical_subscriptions` table (owner-only RLS, `anon` revoked) so the secret URL stays OUT of the
+  user_data blob; (c) client wiring in index.html — a paste-URL "CALENDAR SYNC" Settings card
+  (signed-in only), a silent once-per-app-open background sync, and a "Sync now" button, all routed
+  through the EXISTING import stepper so known shifts (icsUid) move with their pay type preserved and
+  only genuinely-new shifts hit the questionnaire; (d) the **full re-sync lifecycle** — shifts
+  deleted from the calendar are proposed for removal (scoped to the fetched window, suppressed
+  entirely when the 200-event cap truncated the feed, always confirmed and named by date), and
+  non-shift entries get "Not a shift" (a wage-neutral read-only dayEvents chip) or "Ignore these",
+  **both remembered by uid** so a dentist appointment can't reopen the questionnaire on every app
+  open. Pure merge planner is `icsPlanFromExisting`, unit-tested against the real source.
+  **Backend APPLIED LIVE 2026-09-02** via the Management API (the stdio MCP config was restored the
+  same day but only takes effect next session; `SUPABASE_ACCESS_TOKEN` + curl worked):
+  `ical_subscriptions` exists with RLS on, four per-command policies and **`anon` absent from the
+  grant list**; Edge Function `ical-proxy` is ACTIVE at v1 with **verify_jwt on** — an
+  unauthenticated POST returns 401, so it is not an open web proxy.
+  **Still owner-side:** (a) the real NurseGrid feed host for the proxy ALLOWLIST — still the
+  marked-TODO wildcard placeholder, Google Calendar works without it; (b) a smoke test with a real
+  secret iCal address; (c) merging PR #57. iOS Shortcuts push is a deliberate follow-up, not in
+  scope here.
   **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
   one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
   Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.

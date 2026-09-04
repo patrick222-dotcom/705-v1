@@ -620,6 +620,8 @@ const ICS_UID_RE = /^[A-Za-z0-9@._-]{1,128}$/;
 const ICS_IMPORT_MAX_EVENTS = 200;       // hard cap per import
 const ICS_IMPORT_PAST_DAYS = 60;         // import window: 60 days back...
 const ICS_IMPORT_FUTURE_DAYS = 366;      // ...to 366 days forward
+const ICS_IGNORED_MAX = 500;             // remembered "not a shift, hide it" uids (bounds blob growth)
+const ICS_EVENT_KIND = 'appointment';    // dayEvents kind used for read-only imported calendar entries
 
 /* Unfold RFC 5545 §3.1 folded lines: a CRLF|LF immediately followed by a space or tab is
    a continuation of the previous logical line, not a line break. */
@@ -719,7 +721,12 @@ function parseICSSchedule(text){
     });
   });
   events.sort((a,b)=> a.dateKey===b.dateKey ? (a.start||'').localeCompare(b.start||'') : a.dateKey.localeCompare(b.dateKey));
-  return { events, droppedRepeating, droppedOwn, droppedWindow, droppedCap };
+  /* The window bounds and a truncation flag travel WITH the parse so the merge planner can scope
+     removals. "Absent from this feed" only means "deleted from the calendar" inside the window we
+     actually asked for, and means nothing at all once the event cap truncated the feed. */
+  const winKey = dt => keyOfYMD(dt.getFullYear(), dt.getMonth()+1, dt.getDate());
+  return { events, droppedRepeating, droppedOwn, droppedWindow, droppedCap,
+    windowStartKey: winKey(winStart), windowEndKey: winKey(winEnd), truncated: droppedCap>0 };
 }
 
 /* Build the compact "Skipped: ..." drop-reason summary for a completed .ics parse. Only
@@ -835,11 +842,24 @@ function sanitizeData(d){
         seenKinds.add(x.kind);
         const ev = { id:(typeof x.id==='string'||typeof x.id==='number')?x.id:(Date.now()+Math.random()), kind:x.kind };
         if(x.hours!=null){ const n=Number(x.hours); if(isFinite(n) && n>=0 && n<=24) ev.hours = n; }
+        // Imported calendar entries carry their source uid so the next sync recognises them
+        // instead of re-asking. Same validation as shifts' icsUid.
+        if(typeof x.icsUid==='string' && ICS_UID_RE.test(x.icsUid)) ev.icsUid = x.icsUid;
         clean.push(ev);
       });
       if(clean.length) de[k] = clean.slice(0,MAX_DAY_EVENTS);
     });
     out.dayEvents = de;
+  }
+  /* icsIgnored: { icsUid: true } — calendar entries the user dismissed as "not a shift, hide it".
+     Remembered so a silent app-open sync never re-opens the questionnaire for the same personal
+     event again. Bounded so a huge shared calendar can't grow the blob past MAX_BLOB_BYTES. */
+  if(d.icsIgnored && typeof d.icsIgnored==='object' && !Array.isArray(d.icsIgnored)){
+    const ig = {};
+    Object.keys(d.icsIgnored).slice(0, ICS_IGNORED_MAX).forEach(u=>{
+      if(typeof u==='string' && ICS_UID_RE.test(u) && d.icsIgnored[u]) ig[u] = true;
+    });
+    out.icsIgnored = ig;
   }
   // notes: date-key -> short free-text string, trimmed and capped.
   if(d.notes && typeof d.notes==='object' && !Array.isArray(d.notes)){
@@ -1013,6 +1033,112 @@ async function loadCloudRow(userId){
   // clobber the cloud with local/default state (they already catch and degrade locally).
   if(error){ if(error.code==='PGRST116') return null; console.error('Load error:',error); throw error; }
   return data?.data ? {data:data.data, updatedAt:data.updated_at||null} : null;
+}
+
+/* ---------- iCal auto-sync subscription ----------
+   A secret .ics feed URL is a BEARER CREDENTIAL — anyone holding it can read that calendar forever.
+   It therefore lives in its OWN table (ical_subscriptions), NEVER in the user_data blob (which is
+   exported by "Export data", mirrored to localStorage, and echoed through the 15s sync poll). RLS is
+   owner-only; analytics/events never touch it. Signed-in users only. */
+async function loadIcalSub(userId){
+  if(!supabase || !userId) return null;
+  const {data,error} = await supabase
+    .from('ical_subscriptions')
+    .select('ical_url, provider, last_synced')
+    .eq('user_id',userId)
+    .single();
+  if(error){ if(error.code==='PGRST116') return null; throw error; }
+  return data ? {icalUrl:data.ical_url, provider:data.provider||null, lastSynced:data.last_synced||null} : null;
+}
+async function saveIcalSub(userId, icalUrl, provider){
+  if(!supabase || !userId) return;
+  const {error} = await supabase
+    .from('ical_subscriptions')
+    .upsert({user_id:userId, ical_url:icalUrl, provider:provider||null, updated_at:new Date().toISOString()}, {onConflict:'user_id'});
+  if(error) throw error;
+}
+async function deleteIcalSub(userId){
+  if(!supabase || !userId) return;
+  const {error} = await supabase.from('ical_subscriptions').delete().eq('user_id',userId);
+  if(error) throw error;
+}
+async function stampIcalSynced(userId){
+  if(!supabase || !userId) return;
+  try{ await supabase.from('ical_subscriptions').update({last_synced:new Date().toISOString()}).eq('user_id',userId); }catch(_){}
+}
+
+/* Pure re-import merge planner (unit-tested in the harness). Given parsed .ics events and a map of
+   existing shifts keyed by their icsUid, split into:
+     toUpdate   — same icsUid already logged: MOVE/UPDATE date/hours/start but KEEP the user's chosen
+                  pay type; `changed` flags whether anything actually differs (so a silent app-open
+                  sync doesn't pop the questionnaire when nothing moved).
+     toClassify — new events with no matching shift: these go through the pay-type questionnaire. */
+function icsPlanFromExisting(events, existingByUid, opts){
+  const o = opts || {};
+  const eventsByUid = o.eventsByUid || {};      // already-imported NON-shift entries, keyed by icsUid
+  const ignoredUids = o.ignoredUids || {};      // uids the user dismissed as "not a shift, hide it"
+  const toUpdate=[], toClassify=[], toUpdateEvents=[];
+  const seen = Object.create(null);
+  (events||[]).forEach(ev=>{
+    if(ev.uid) seen[ev.uid] = true;
+    /* Already classified as a read-only personal event: move it if the day changed, but NEVER put
+       it back through the questionnaire. Without this, one dentist appointment in the synced
+       calendar reopens the import stepper on every single app open, forever. */
+    const evMatch = ev.uid ? eventsByUid[ev.uid] : null;
+    if(evMatch){
+      if(evMatch.dateKey !== ev.dateKey){
+        toUpdateEvents.push({ uid:ev.uid, dateKey:ev.dateKey,
+          prevDateKey:evMatch.dateKey, prevEventId:evMatch.event.id, kind:evMatch.event.kind });
+      }
+      return;
+    }
+    if(ev.uid && ignoredUids[ev.uid]) return;   // dismissed once, remembered — never re-asked
+    const match = ev.uid ? existingByUid[ev.uid] : null;
+    if(match){
+      const prev = match.shift;
+      const changed = !(match.dateKey===ev.dateKey
+        && Number(prev.hours)===Number(ev.hours)
+        && (prev.start||null)===(ev.start||null));
+      toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start, changed,
+        prevDateKey:match.dateKey, prevShiftId:match.shift.id,
+        shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
+    } else {
+      toClassify.push(ev);
+    }
+  });
+
+  /* Removals. A shift deleted from the calendar must come OUT of ScrubPay — otherwise a dropped or
+     cancelled shift keeps inflating the projected paycheck, which is the wrong direction of error
+     for a wage app. But absence from a fetch is only EVIDENCE of deletion under strict conditions,
+     because parseICSSchedule drops events on its own:
+       * outside the 60-days-back..366-days-forward window -> only ever consider dates INSIDE it,
+         so history and far-future shifts are never touched;
+       * past the 200-event cap (feed truncated)           -> consider nothing at all;
+       * repeating (RRULE) events                          -> never imported in the first place, so
+         the one residual false positive is a one-off event the user later made recurring.
+     That last case is why removals are proposed through the confirm step and never applied
+     silently — the stepper lists the dates and the user has to agree. */
+  const toRemove=[], toRemoveEvents=[];
+  const ws=o.windowStartKey, we=o.windowEndKey;
+  if(ws && we && !o.truncated){
+    const inWindow = dk => typeof dk==='string' && dk>=ws && dk<=we;   // 'YYYY-MM-DD' sorts lexically
+    Object.keys(existingByUid).forEach(uid=>{
+      if(seen[uid]) return;
+      const rec = existingByUid[uid];
+      if(!inWindow(rec.dateKey)) return;
+      toRemove.push({ uid, dateKey:rec.dateKey, shiftId:rec.shift.id,
+        hours:rec.shift.hours, shiftType:rec.shift.shiftType });
+    });
+    Object.keys(eventsByUid).forEach(uid=>{
+      if(seen[uid]) return;
+      const rec = eventsByUid[uid];
+      if(!inWindow(rec.dateKey)) return;
+      toRemoveEvents.push({ uid, dateKey:rec.dateKey, eventId:rec.event.id, kind:rec.event.kind });
+    });
+    toRemove.sort((a,b)=> a.dateKey.localeCompare(b.dateKey));
+    toRemoveEvents.sort((a,b)=> a.dateKey.localeCompare(b.dateKey));
+  }
+  return { toUpdate, toClassify, toRemove, toUpdateEvents, toRemoveEvents };
 }
 
 /* ---------- swap board (Phase 1): anonymous unit swap groups ---------- */
@@ -1559,6 +1685,8 @@ function App(){
   const [goals,setGoals] = useState([]);           // savings goals [{id,name,target}] — a shift's worth toward a goal
   const [dayEvents,setDayEvents] = useState({});   // 'YYYY-MM-DD' -> [{id,kind,hours?}] (PTO/education/appt/off)
   const [notes,setNotes] = useState({});           // 'YYYY-MM-DD' -> short free-text note
+  const [icsIgnored,setIcsIgnored] = useState({}); // { icsUid: true } calendar entries dismissed as "not a shift"
+
 
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
   const [showSettings,setShowSettings] = useState(false);
@@ -1580,6 +1708,13 @@ function App(){
   // poll (never polled while the sheet is closed — badge just keeps showing the last-known count)
   const [swapPendingCount,setSwapPendingCount] = useState(0);
   const [icsImport,setIcsImport] = useState(null);   // schedule-import stepper state, or null when closed
+  // ---- iCal auto-sync (signed-in only) ----
+  const [icalUrl,setIcalUrl] = useState('');         // the feed URL bound to the Settings input
+  const [icalSub,setIcalSub] = useState(null);       // {icalUrl, provider, lastSynced} saved subscription, or null
+  const [icalBusy,setIcalBusy] = useState(false);    // a save / sync / remove is in flight
+  const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
+  const icalInFlight = useRef(false);                // hard guard against overlapping syncs
+  const icalSyncedForUser = useRef(null);            // user.id already auto-synced this app-open (sync runs once, silently)
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -1618,7 +1753,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,goals,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -1651,6 +1786,7 @@ function App(){
     if(d.templates) setTemplates(d.templates);
     if(d.dayEvents) setDayEvents(d.dayEvents);
     if(d.notes) setNotes(d.notes);
+    if(d.icsIgnored) setIcsIgnored(d.icsIgnored);
     if(d.goals) setGoals(d.goals);
     setSetupComplete(d.setupComplete!==false);
   };
@@ -1660,7 +1796,7 @@ function App(){
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
-    setDayEvents({}); setNotes({}); setGoals([]); setSetupComplete(false);
+    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setSetupComplete(false);
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -1683,6 +1819,7 @@ function App(){
       // row as new and re-apply it over the backup we just restored.
       if(row && row.updatedAt) lastSeenAt.current = row.updatedAt;
       hydratedForUser.current = userId;  // ONLY now are cloud saves for this user safe
+      setHydratedUserId(userId);         // drives post-hydrate work (iCal auto-sync)
       setSyncError(false);
       return true;
     }catch(e){
@@ -1736,6 +1873,8 @@ function App(){
         setSyncError(false);
         resetToDefaults();
         lastSeenAt.current = null;
+        // Drop the signed-in user's calendar subscription from memory (never leak it to anon state).
+        setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
         setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
@@ -1749,6 +1888,27 @@ function App(){
       if(raw) applyData(JSON.parse(raw),{landCurrent:true});
     }catch(e){ console.error('load',e); }
   },[]);
+
+  /* After a user's cloud data has hydrated, load their saved calendar subscription and, once per
+     app-open, run a SILENT background sync. Keyed on hydratedUserId (set inside hydrateFromCloud)
+     so the sync always lands on the user's real shifts, never on default/stale state. Any confirm
+     needed (new shifts to classify) surfaces through the normal import stepper. */
+  useEffect(()=>{
+    const uid = hydratedUserId;
+    if(!supabase || !uid || !user || user.id!==uid) return;
+    let cancelled=false;
+    (async ()=>{
+      let sub=null;
+      try{ sub = await loadIcalSub(uid); }catch(_){ return; }
+      if(cancelled) return;
+      setIcalSub(sub); setIcalUrl(sub ? sub.icalUrl : '');
+      if(sub && sub.icalUrl && icalSyncedForUser.current!==uid){
+        icalSyncedForUser.current = uid;
+        runIcalSync({url:sub.icalUrl});   // silent (non-manual): quiet unless there's something to confirm
+      }
+    })();
+    return ()=>{ cancelled=true; };
+  },[hydratedUserId]);
 
   /* save (debounced) */
   useEffect(()=>{
@@ -1784,7 +1944,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,goals,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2330,18 +2490,14 @@ function App(){
     Object.entries(shifts).forEach(([dk,arr])=>{
       (arr||[]).forEach(s=>{ if(s.icsUid) existingByUid[s.icsUid] = {dateKey:dk, shift:s}; });
     });
-    const toUpdate = [], toClassify = [];
-    parsed.events.forEach(ev=>{
-      const match = ev.uid ? existingByUid[ev.uid] : null;
-      if(match){
-        toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start,
-          prevDateKey:match.dateKey, prevShiftId:match.shift.id,
-          shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
-      } else {
-        toClassify.push(ev);
-      }
+    // Non-shift entries already pulled in from the feed — recognised, never re-asked about.
+    const eventsByUid = {};
+    Object.entries(dayEvents).forEach(([dk,arr])=>{
+      (arr||[]).forEach(ev=>{ if(ev.icsUid) eventsByUid[ev.icsUid] = {dateKey:dk, event:ev}; });
     });
-    return { toUpdate, toClassify };
+    return icsPlanFromExisting(parsed.events, existingByUid, {
+      eventsByUid, ignoredUids:icsIgnored, windowStartKey:parsed.windowStartKey,
+      windowEndKey:parsed.windowEndKey, truncated:parsed.truncated });
   };
   const onImportICS = (e)=>{
     const f = e.target.files[0]; e.target.value='';
@@ -2372,7 +2528,9 @@ function App(){
       // sit directly over the shift-type chips and Next/Confirm button on a 390px screen,
       // blocking taps for ~3.6s until it auto-dismisses. See icsDropSummary for wording.
       const dropNotice = icsDropSummary(parsed);
-      setIcsImport({ groups, toUpdate:plan.toUpdate, answers, stepIdx:0, dropNotice });
+      setIcsImport({ groups, toUpdate:plan.toUpdate, toRemove:plan.toRemove,
+        toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
+        answers, stepIdx:0, dropNotice });
     };
     r.onerror = ()=> toast("Couldn't read that calendar file.",'error');
     r.readAsText(f);
@@ -2385,26 +2543,41 @@ function App(){
   const icsConfirmImport = ()=>{
     if(!icsImport) return;
     const { groups, toUpdate, answers } = icsImport;
-    let added=0, skipped=0;
-    groups.forEach(g=>{ if(answers[g.key]==='skip') skipped+=g.items.length; else added+=g.items.length; });
+    const toRemove = icsImport.toRemove || [];
+    const toUpdateEvents = icsImport.toUpdateEvents || [];
+    const toRemoveEvents = icsImport.toRemoveEvents || [];
+    let added=0, skipped=0, shown=0;
+    groups.forEach(g=>{
+      const a = answers[g.key];
+      if(a==='skip') skipped+=g.items.length;
+      else if(a==='event') shown+=g.items.length;
+      else added+=g.items.length;
+    });
     const updated = toUpdate.length;
+    const removed = toRemove.length + toRemoveEvents.length;
 
     setShifts(prev=>{
       const next = {...prev};
       const dayArr = k => (next[k] ? [...next[k]] : []);
+      const dropShift = (dk,id)=>{
+        if(!next[dk]) return;
+        const filtered = next[dk].filter(s=>s.id!==id);
+        if(filtered.length) next[dk]=filtered; else delete next[dk];
+      };
       toUpdate.forEach(u=>{
-        if(next[u.prevDateKey]){
-          const filtered = next[u.prevDateKey].filter(s=>s.id!==u.prevShiftId);
-          if(filtered.length) next[u.prevDateKey]=filtered; else delete next[u.prevDateKey];
-        }
+        dropShift(u.prevDateKey, u.prevShiftId);
         const newShift = { id:u.prevShiftId, shiftType:u.shiftType, hours:u.hours, bonusType:u.bonusType, customBonus:u.customBonus||0, icsUid:u.uid };
         if(u.start) newShift.start = u.start;
         next[u.dateKey] = [...dayArr(u.dateKey), newShift];
       });
+      // Shifts the nurse deleted from her calendar come out here — scoped to the fetched window and
+      // always user-confirmed (see icsPlanFromExisting). Leaving them in would overstate her pay.
+      toRemove.forEach(r=> dropShift(r.dateKey, r.shiftId));
       groups.forEach(g=>{
-        if(answers[g.key]==='skip') return;
+        const a = answers[g.key];
+        if(a==='skip' || a==='event') return;
         g.items.forEach(ev=>{
-          const newShift = { id:Date.now()+Math.random(), shiftType:answers[g.key], hours:ev.hours, bonusType:'none', customBonus:0 };
+          const newShift = { id:Date.now()+Math.random(), shiftType:a, hours:ev.hours, bonusType:'none', customBonus:0 };
           if(ev.start) newShift.start = ev.start;
           if(ev.uid) newShift.icsUid = ev.uid;
           next[ev.dateKey] = [...dayArr(ev.dateKey), newShift];
@@ -2413,9 +2586,128 @@ function App(){
       return next;
     });
 
-    toast(`Added ${added}, updated ${updated} shifts.`,'success');
-    track('ics_import_done', {added,updated,skipped}, user?.id);
+    /* Non-shift calendar entries become read-only dayEvents chips: visible on the calendar so she
+       doesn't have to hop back to her calendar app, and wage-neutral because only 'pto' is
+       wage-bearing. Computed eagerly (not in a functional updater) so an entry that CAN'T be
+       placed — the day already has an appointment chip, or is at MAX_DAY_EVENTS — is still
+       recorded as dismissed, and therefore still never re-asked about. */
+    const nextEvents = {}; Object.entries(dayEvents).forEach(([k,v])=>{ nextEvents[k]=[...(v||[])]; });
+    const nextIgnored = {...icsIgnored};
+    const dropEvent = (dk,id)=>{
+      if(!nextEvents[dk]) return;
+      const f = nextEvents[dk].filter(e=>e.id!==id);
+      if(f.length) nextEvents[dk]=f; else delete nextEvents[dk];
+    };
+    const addEvent = (dk,entry)=>{
+      const arr = nextEvents[dk] || [];
+      if(arr.length>=MAX_DAY_EVENTS || arr.some(e=>e.kind===entry.kind)) return false;
+      nextEvents[dk] = [...arr, entry];
+      return true;
+    };
+    toUpdateEvents.forEach(u=>{
+      dropEvent(u.prevDateKey, u.prevEventId);
+      if(!addEvent(u.dateKey, {id:u.prevEventId, kind:u.kind, icsUid:u.uid})) nextIgnored[u.uid]=true;
+    });
+    toRemoveEvents.forEach(r=> dropEvent(r.dateKey, r.eventId));
+    groups.forEach(g=>{
+      const a = answers[g.key];
+      if(a==='skip'){ g.items.forEach(ev=>{ if(ev.uid) nextIgnored[ev.uid]=true; }); return; }
+      if(a!=='event') return;
+      g.items.forEach(ev=>{
+        const entry = { id:Date.now()+Math.random(), kind:ICS_EVENT_KIND };
+        if(ev.uid) entry.icsUid = ev.uid;
+        if(!addEvent(ev.dateKey, entry) && ev.uid) nextIgnored[ev.uid]=true;
+      });
+    });
+    setDayEvents(nextEvents);
+    setIcsIgnored(nextIgnored);
+
+    const parts = [];
+    if(added) parts.push(`added ${added}`);
+    if(updated) parts.push(`updated ${updated}`);
+    if(removed) parts.push(`removed ${removed}`);
+    if(shown) parts.push(`${shown} shown as events`);
+    toast(parts.length ? parts.join(', ').replace(/^./,c=>c.toUpperCase())+'.' : 'Calendar already up to date.','success');
+    track('ics_import_done', {added,updated,skipped,removed,shown}, user?.id);
     setIcsImport(null);
+  };
+
+  /* ---- iCal auto-sync: fetch the saved feed through the SSRF-guarded proxy, then route the parsed
+     schedule through the SAME import stepper as a file import. This is deliberate: auto-sync never
+     silently rewrites wage-affecting `shifts`. Known shifts (matched by icsUid) are moved/updated
+     with their pay type preserved; genuinely new shifts still go through the pay-type questionnaire.
+     `manual` distinguishes a user-tapped "Sync now" (toasts on every outcome) from the silent
+     once-per-app-open background sync (stays quiet unless there's something to confirm). */
+  const providerOf = (url)=>{
+    try{ const h=new URL(String(url).replace(/^webcal:/i,'https:')).hostname.toLowerCase();
+      if(/(^|\.)google\.com$/.test(h)) return 'google';
+      if(/(^|\.)nursegrid\.com$/.test(h)) return 'nursegrid';
+    }catch(_){}
+    return null;
+  };
+  const runIcalSync = async (opts)=>{
+    const manual = !!(opts && opts.manual);
+    const url = (opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl;
+    if(!supabase || !user || hydratedForUser.current!==user.id || !url) return;
+    if(icalInFlight.current) return;
+    icalInFlight.current = true; setIcalBusy(true);
+    try{
+      const {data,error} = await withTimeout(
+        supabase.functions.invoke('ical-proxy',{body:{url}}), 12000, 'ical sync');
+      if(error) throw error;
+      const text = typeof data==='string' ? data : (data && (data.text || data.body)) || '';
+      let parsed;
+      try{ parsed = parseICSSchedule(text); }
+      catch(_){ if(manual) toast("That calendar feed didn't contain any shifts.",'error'); return; }
+      stampIcalSynced(user.id);
+      setIcalSub(s=> s ? {...s, lastSynced:new Date().toISOString()} : s);
+      if(parsed.events.length===0){ if(manual) toast('No shifts found in that calendar.','info'); return; }
+      const plan = buildIcsImportPlan(parsed);
+      const changedUpdates = plan.toUpdate.filter(u=>u.changed);
+      // Removals and event moves count as "something to confirm" too — otherwise a shift deleted
+      // from the calendar would never surface and the projection would stay too high.
+      const pending = changedUpdates.length + plan.toClassify.length
+        + plan.toRemove.length + plan.toUpdateEvents.length + plan.toRemoveEvents.length;
+      if(pending===0){
+        if(manual) toast('Your schedule is already up to date.','success');
+        return;
+      }
+      const groups = groupICSEvents(plan.toClassify);
+      const answers = {}; groups.forEach(g=>{ answers[g.key]=inferShiftType(g); });
+      setIcsImport({ groups, toUpdate:changedUpdates, toRemove:plan.toRemove,
+        toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
+        answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true });
+      track('ics_sync_done', {events:parsed.events.length}, user.id);
+    }catch(e){
+      if(manual) toast("Couldn't reach your calendar. Check the link and try again.",'error');
+    }finally{
+      icalInFlight.current = false; setIcalBusy(false);
+    }
+  };
+  const onSaveIcalUrl = async ()=>{
+    if(!user){ toast('Sign in to sync your schedule.','info'); return; }
+    const url = (icalUrl||'').trim();
+    if(url.length<12){ toast('Paste your calendar link first.','error'); return; }
+    if(providerOf(url)===null){
+      toast("That link isn't from a supported calendar yet (Google Calendar for now).",'error'); return;
+    }
+    setIcalBusy(true);
+    try{
+      await saveIcalSub(user.id, url, providerOf(url));
+      setIcalSub({icalUrl:url, provider:providerOf(url), lastSynced:null});
+      icalSyncedForUser.current = user.id;   // this counts as this session's sync
+      toast('Calendar link saved.','success');
+    }catch(e){ toast("Couldn't save that link.",'error'); setIcalBusy(false); return; }
+    setIcalBusy(false);
+    runIcalSync({manual:true, url});
+  };
+  const onRemoveIcalUrl = async ()=>{
+    if(!user) return;
+    if(!(await confirmAsync('Stop auto-syncing this calendar? Shifts you already imported stay.',{title:'Remove calendar link?',confirm:'Remove',danger:true}))) return;
+    setIcalBusy(true);
+    try{ await deleteIcalSub(user.id); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; toast('Calendar link removed.','success'); }
+    catch(e){ toast("Couldn't remove the link.",'error'); }
+    finally{ setIcalBusy(false); }
   };
   const clearAll = async ()=>{
     const signedIn = !!user;
@@ -2696,6 +2988,8 @@ function App(){
             goals,setGoals,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
+            user, icalUrl, setIcalUrl, icalSub, icalBusy,
+            onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showSwaps &&
@@ -2816,13 +3110,27 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
    groupICSEvents), pre-filled by inferShiftType, ending in a confirm-all summary card.
    Re-import matches (icsImport.state.toUpdate) never reach this component — they're
    applied directly on confirm. */
+/* 'YYYY-MM-DD' -> "Sep 5". Removals delete logged shifts, so the confirm step names the days in
+   plain language rather than raw date keys. */
+function fmtRemovalDate(dateKey){
+  const [y,m,d] = String(dateKey||'').split('-').map(Number);
+  if(!y||!m||!d) return dateKey;
+  return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
 function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
   const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
+  const toRemove = state.toRemove || [];
+  const toUpdateEvents = state.toUpdateEvents || [];
+  const toRemoveEvents = state.toRemoveEvents || [];
   const total = groups.length;
   const isFinal = stepIdx >= total;
+  /* 'event' and 'skip' are both "this isn't a shift" answers, and BOTH are remembered by uid so the
+     app-open sync never re-asks: 'event' keeps it visible on the calendar (wage-neutral), 'skip'
+     hides it entirely. Without them, one personal appointment reopens this stepper every launch. */
   const CHIP_OPTS = [
     ['base','Day'], ['night','Night'], ['weekend-day','Weekend day'],
-    ['weekend-eve','Weekend night'], ['holiday','Holiday'], ['skip','Skip these'],
+    ['weekend-eve','Weekend night'], ['holiday','Holiday'],
+    ['event','Not a shift'], ['skip','Ignore these'],
   ];
 
   // Parse-time drop notice (repeating / cap / window — see icsDropSummary) shown as a compact,
@@ -2835,20 +3143,37 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
   );
 
   if(isFinal){
-    const toAdd = groups.reduce((n,g)=> n + (answers[g.key]!=='skip' ? g.items.length : 0), 0);
+    const isShift = k => k!=='skip' && k!=='event';
+    const toAdd = groups.reduce((n,g)=> n + (isShift(answers[g.key]) ? g.items.length : 0), 0);
     const toSkip = groups.reduce((n,g)=> n + (answers[g.key]==='skip' ? g.items.length : 0), 0);
+    const toShow = groups.reduce((n,g)=> n + (answers[g.key]==='event' ? g.items.length : 0), 0);
+    const removals = [...toRemove, ...toRemoveEvents];
+    const clauses = [];
+    if(toAdd>0) clauses.push(`add ${toAdd} ${toAdd===1?'shift':'shifts'}`);
+    if(toUpdate.length>0) clauses.push(`update ${toUpdate.length} that changed`);
+    if(removals.length>0) clauses.push(`remove ${removals.length} no longer on your calendar`);
+    if(toShow>0) clauses.push(`show ${toShow} as ${toShow===1?'an event':'events'}`);
+    if(toUpdateEvents.length>0) clauses.push(`move ${toUpdateEvents.length} ${toUpdateEvents.length===1?'event':'events'}`);
+    const sentence = clauses.length
+      ? clauses.join(', ').replace(/^./,c=>c.toUpperCase()) + '?'
+      : 'Nothing to change.';
     return (
       <div className="scrim" onClick={onCancel}>
         <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm schedule import">
           <div className="grab"></div>
           <div className="sheet-h"><div className="t">Ready to import</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
           {noticeBanner}
-          <p style={{fontSize:14,color:'var(--muted)',lineHeight:1.5,margin:'0 0 20px'}}>
-            {toUpdate.length>0
-              ? `Add ${toAdd} shifts to your calendar and update ${toUpdate.length} that already changed?`
-              : `Add ${toAdd} shifts to your calendar?`}
-            {toSkip>0 && ` (${toSkip} skipped)`}
+          <p style={{fontSize:14,color:'var(--muted)',lineHeight:1.5,margin:'0 0 12px'}}>
+            {sentence}
+            {toSkip>0 && ` (${toSkip} ignored)`}
           </p>
+          {/* Removals delete logged shifts, so they are spelled out by date rather than folded
+              into the count — this is the only destructive thing the stepper does. */}
+          {removals.length>0 &&
+            <div style={{fontSize:12.5,color:'var(--muted-2)',lineHeight:1.5,margin:'0 0 20px'}}>
+              Removing {removals.slice(0,6).map(r=>fmtRemovalDate(r.dateKey)).join(', ')}
+              {removals.length>6 ? ` +${removals.length-6} more` : ''} — gone from your calendar feed.
+            </div>}
           <div style={{display:'flex',gap:10}}>
             {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
             <button className="btn btn-primary" style={{flex:1}} onClick={onConfirm}>Confirm</button>
@@ -2872,10 +3197,18 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
         </div>
         <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:6}}>{groupLabel(g)}</div>
         <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>What kind of shift is this?</div>
+        {(sel==='event'||sel==='skip') &&
+          <div style={{fontSize:12,color:'var(--muted-2)',marginTop:-12,marginBottom:16,lineHeight:1.45}}>
+            {sel==='event'
+              ? "Shows on your calendar so you can see it here, and never counts toward pay. We won't ask about it again."
+              : "Hidden from ScrubPay entirely. We won't ask about it again."}
+          </div>}
         <div className="chips-grid" style={{marginBottom:22}}>
           {CHIP_OPTS.map(([k,l])=>(
             <button key={k} className={'chip-sel'+(sel===k?' on':'')} aria-pressed={sel===k} style={{minHeight:44}} onClick={()=>onAnswer(g.key,k)}>
-              <i style={{background: k==='skip' ? 'transparent' : (differentials[k]?.color||'#8A93A6')}}></i>{l}
+              <i style={{background: k==='skip' ? 'transparent'
+                : k==='event' ? (EVENT_KIND_META[ICS_EVENT_KIND]?.color||'#8A93A6')
+                : (differentials[k]?.color||'#8A93A6')}}></i>{l}
             </button>
           ))}
         </div>
@@ -3390,7 +3723,8 @@ function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,
-    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS}=props;
+    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -3476,6 +3810,30 @@ function Settings(props){
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:8}}>Scan paystub: PDF · read on your device, never uploaded.</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>Re-export after schedule changes — your calendar app updates the same events.</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:4}}>From NurseGrid: sync your schedule to your phone's calendar, export it as .ics, then import here.</div>
+
+        {user &&
+          <div style={{marginTop:18}}>
+            <div className="sec-lab">CALENDAR SYNC</div>
+            <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
+              Paste your calendar's secret iCal address (in Google Calendar: Settings → your calendar → “Secret address in iCal format”). ScrubPay checks it each time you open the app and pulls in new shifts — you confirm the pay type for anything it hasn't seen. Treat the link like a password: it's stored privately and never shared.
+            </div>
+            <div className="inp">
+              <input type="url" inputMode="url" autoComplete="off" spellCheck={false}
+                placeholder="https://calendar.google.com/…/basic.ics"
+                value={icalUrl} onChange={e=>setIcalUrl(e.target.value)} disabled={icalBusy}
+                aria-label="Calendar iCal address" />
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8,alignItems:'center'}}>
+              <button className="btn btn-primary btn-sm" onClick={onSaveIcalUrl} disabled={icalBusy}>
+                {icalBusy?'Working…':(icalSub?'Update link':'Save & sync')}
+              </button>
+              {icalSub && <button className="btn btn-ghost btn-sm" onClick={onSyncIcal} disabled={icalBusy}>Sync now</button>}
+              {icalSub && <button className="danger-link" onClick={onRemoveIcalUrl} disabled={icalBusy} style={{marginLeft:'auto'}}>Remove</button>}
+            </div>
+            {icalSub && icalSub.lastSynced &&
+              <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>Last synced {new Date(icalSub.lastSynced).toLocaleString()}</div>}
+          </div>}
+
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
 
