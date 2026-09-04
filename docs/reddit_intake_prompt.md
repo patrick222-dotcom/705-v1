@@ -16,7 +16,7 @@ node -e "console.log(JSON.parse(require('fs').readFileSync('docs/reddit_seed.jso
 ---
 
 ```
-You're gathering research themes for ScrubPay, a take-home-pay planner for bedside
+You're gathering research themes for BadgeBudget, a take-home-pay planner for bedside
 nurses (logs shifts + differentials, projects a paycheck, has an anonymous shift-swap
 board). I need to know what nurses actually complain about so the backlog reflects
 real pain, not guesses.

@@ -1,6 +1,7 @@
-# Nursing Wage Planner
+# BadgeBudget — Shift Pay Planner
 
 A web-based tool to help nurses plan their schedules and forecast take-home pay.
+Live at **https://badgebudget.com**.
 
 ## Features
 

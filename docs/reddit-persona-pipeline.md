@@ -4,7 +4,7 @@
 in PR #29 and never merged, which left every reference to this file dangling — the nightly agent was
 told to follow a spec it could not read. Landed here with Phase 3 rewritten to match reality.
 
-**Why:** the ScrubPay meta-goal (see `CLAUDE.md` → "Dual project goals") is to refine a reusable
+**Why:** the BadgeBudget meta-goal (see `CLAUDE.md` → "Dual project goals") is to refine a reusable
 multi-agent development council. The crawler originally groomed from one signal source — Supabase
 `feedback` + `events` (a couple of real users, a handful of rows). That's thin. This pipeline adds a
 second, much richer signal — real nurses talking about scheduling/swap/manager pain on Reddit — and
@@ -83,7 +83,7 @@ public). Verified working set:
   "category": "shift-swapping",
   "signal": "recurring",                 // one-off | occasional | recurring | loud
   "paraphrase": "2-3 sentences in our own words",
-  "mapped_feature": "swap-board",        // ScrubPay surface this touches (or 'new')
+  "mapped_feature": "swap-board",        // BadgeBudget surface this touches (or 'new')
   "keywords": ["swap approval", "manager veto"],
   "confidence": "high",
   "source": "reddit-owner",              // seed | reddit-owner | reddit-live
@@ -125,7 +125,7 @@ fix — reduce the Done log to its bolded shipped titles — regresses genuinely
 
 Synthetic nurse personas whose traits come from the Stage-1 insights, in
 `docs/reddit_personas.json` (6 personas, curated 2026-08-17). Each seeds a subagent that uses
-ScrubPay *as that nurse* and reports friction.
+BadgeBudget *as that nurse* and reports friction.
 
 ### How personas test
 - **Drive the iPhone-13 Playwright harness** (the same one the safety gate uses) through their flow.
@@ -173,7 +173,7 @@ The reusable browser prompt lives in `docs/reddit_intake_prompt.md`. First run (
 ever sees paraphrases. No credential to leak, no approval queue, no ToS ambiguity about automated
 collection — and the `observed` field makes signal strength auditable in a way a raw API count isn't.
 
-**If Phase 3 proper is ever wanted:** file the non-commercial Data API request describing ScrubPay
+**If Phase 3 proper is ever wanted:** file the non-commercial Data API request describing BadgeBudget
 as a personal, non-commercial tool, and if approved swap the intake for `oauth.reddit.com` mining on
 a weekly cadence. Nothing downstream changes — `reddit-live` is already a valid source.
 
