@@ -1,4 +1,4 @@
-# ScrubPay — Nursing Wage Planner
+# BadgeBudget — Shift Pay Planner
 
 Take-home pay planner for bedside nurses (built for the owner's wife and friends).
 Live at: **https://badgebudget.com** (custom domain since 2026-09-02 — see Domains below).
@@ -123,11 +123,19 @@ WHOIS privacy on (verified: no registrant PII in the public RDAP record), transf
 the Google OAuth redirect builds from `window.location.origin + window.location.pathname`, and
 invite links build from the live page URL — all three follow the origin.
 
-**Naming context:** the app is still *branded* ScrubPay in `index.html` (page title, headings,
-onboarding copy) — the rename to BadgeBudget is not done, only the domain. Note that
-"ScrubPay" is a crowded name: a healthcare payroll/ATS company launched on `scrubpay.app` +
-`scrubpay.org` in 2026-08, a 2014 Atlanta medical-bill app used the name, and SCRUBJAY is a
-registered USPTO mark in healthcare staffing. `scrubpay.com` is investor-held on Atom.com.
+**Naming context:** the visible rename is **done (2026-09-04)** — `index.html` (page title,
+wordmarks, boot-failure screen, export filenames, .ics PRODID/CALNAME, share copy) now reads
+BadgeBudget, as do `design-system/`, `README.md` and `BACKLOG.md`. **The storage keys were
+deliberately NOT renamed** and must never be: `nursingWagePlannerData` (+ its `::<uid>` backup),
+`scrubpay_anon_id`, `scrubpay_feedback_pending`, `scrubpay_pending_invite`, `ERR_KEY`
+(`'scrubpayErrors'`), the `.ics` UID scheme `scrubpay-<date>-<id>@scrubpay` and the `@scrubpay`
+self-recognition check on import, and the `'scrubpay-swaps'` md5 salt in the deployed
+`swap_board()` function. Renaming any of them orphans user data, re-imports every previously
+exported calendar event as a duplicate, or breaks swap-board anonymity.
+Why the name changed: "ScrubPay" is a crowded name — a healthcare payroll/ATS company launched on
+`scrubpay.app` + `scrubpay.org` in 2026-08, a 2014 Atlanta medical-bill app used the name, and
+SCRUBJAY is a registered USPTO mark in healthcare staffing. `scrubpay.com` is investor-held on
+Atom.com. Those three domains belong to other parties — never rewrite them.
 
 **Google OAuth consent screen** still shows `mnnlgcxnvodjwlhhiphq.supabase.co` — that string is
 the host of the OAuth callback, which lives on Supabase, so it is not changeable from the app or
@@ -194,7 +202,7 @@ GCP OAuth consent screen instead (free, and it's the more prominent branding).
    start times, .ics export (deterministic UIDs, no wage data), and .ics import with a
    grouped Intuit-style shift-type questionnaire (re-import moves shifts, preserves assigned
    pay types via shift.icsUid). Original research below for reference.** Goal: pull a
-   nurse's NurseGrid schedule into ScrubPay so they can project paychecks while self-scheduling.
+   nurse's NurseGrid schedule into BadgeBudget so they can project paychecks while self-scheduling.
    Research: NurseGrid has **no public API**; it offers an iCal feed/calendar sync + a shareable
    schedule link. Ready-to-build spec when demand appears:
    - **Import**: start with **.ics file upload** (most reliable, works offline on the static
@@ -213,7 +221,7 @@ GCP OAuth consent screen instead (free, and it's the more prominent branding).
      pre-authorized hStreamID + "Request Access" approval + becoming **hStream-Certified**;
      data is a health *system's* authorized data (not an individual nurse's consent), so it
      near-certainly needs contracts + a **HIPAA BAA**. Not accessible to a personal/PoC app.
-     This is the *legitimate* path to live NurseGrid sync **only if ScrubPay becomes a real
+     This is the *legitimate* path to live NurseGrid sync **only if BadgeBudget becomes a real
      product** and pursues certified-partner status — a business/legal step, not a code task.
      Revisit only with real demand + intent to commercialize.
 

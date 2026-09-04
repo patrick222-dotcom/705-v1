@@ -1,4 +1,4 @@
-# ScrubPay Backlog
+# BadgeBudget Backlog
 
 Durable, git-tracked queue for the **autonomous nightly groom+build loop** (see CLAUDE.md →
 "Autonomous nightly loop"). This file is the loop's memory — the container is ephemeral, so
@@ -161,7 +161,7 @@ here so the loop's queue contains only work it can actually finish; pick these u
   one).** The owner's insight: most iPhone users already sync Google/Outlook into **iOS Calendar**,
   so iOS Calendar is the aggregation point and reading *it* is provider-agnostic in a way reading
   Google's API never is. Route with no native app: a Shortcut using `Find Calendar Events` +
-  `Get Contents of URL` POSTs the events to a ScrubPay ingest endpoint. Distributed as an iCloud
+  `Get Contents of URL` POSTs the events to a BadgeBudget ingest endpoint. Distributed as an iCloud
   link (one tap, no App Store); runnable by voice ("Hey Siri, sync my shifts"); and a **Personal
   Automation** on a Daily trigger with "Ask Before Running" off runs it unattended, so it syncs
   while the app is closed — which the iCal-URL option cannot do. Server side is *simpler* than the
@@ -178,9 +178,9 @@ here so the loop's queue contains only work it can actually finish; pick these u
   Intents 2.0 adds streaming, multi-turn, on-screen awareness). App Intents is a **Swift-native
   framework with no web/PWA surface** — an installed PWA appears in Spotlight and App Library search
   but **Siri cannot find it**, and it gets no widgets, Live Activities, or App Intents. Putting
-  ScrubPay into the new Siri therefore requires a real native app in Swift shipped via the App
+  BadgeBudget into the new Siri therefore requires a real native app in Swift shipped via the App
   Store, which contradicts the single-file architecture. Shortcuts is the supported way to reach
-  Siri without going native. Revisit only if ScrubPay ever goes native.
+  Siri without going native. Revisit only if BadgeBudget ever goes native.
 
 - [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
   patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
