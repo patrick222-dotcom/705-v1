@@ -31,10 +31,13 @@ _(none)_
   (`goals:[{id,name,target}]`, sanitized + capped at MAX_GOALS, no schema/RLS surface); a Settings →
   SAVINGS GOALS section adds/edits/removes goals; and the **forward pre-commitment placement** is live
   — the Add-Shift preview shows the shift's take-home as a % of each goal ("toward your goal: 2.8% of
-  House down payment"). **Remaining (follow-up):** the *reverse* view — "N more night shifts" / "on
-  track for <date>" — which needs an average-shift-take-home model, and the pre-commitment "picking
-  this up moves your goal N days closer" framing. Both are drivable next; keep the no-nudge-engine
-  constraint (no streaks/push/"behind on goal").
+  House down payment"). **Reverse count SHIPPED 2026-09-04 (see Done log):** the same preview line now
+  also shows how many shifts *like the one being previewed* reach each goal — "House down payment 2.8%
+  (≈36 shifts)" — precise per-shift math off `previewNet`, no approximation. **Remaining (follow-up):**
+  the *goal-view* projection — total "shifts to go" across the user's actual history/cadence and an
+  "on track for <date>" estimate (needs an average-shift-take-home + shifts-per-week model, more than
+  the per-previewed-shift count). Drivable next; keep the no-nudge-engine constraint
+  (no streaks/push/"behind on goal").
   **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
   your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
   is an every-shift product. Same math already computed, materially different retention.
@@ -337,6 +340,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-04 — **Savings goals — reverse "≈N shifts" count in the Add-Shift preview** (owner/Courtney
+  P1 follow-up; harness:drivable). Extended yesterday's per-goal preview line so each goal now shows
+  not just the % but how many shifts *like the one being previewed* would reach it — e.g. "House down
+  payment 2.8% (≈36 shifts)". `n = Math.ceil(target / previewNet)` — precise per-shift math off the
+  already-computed take-home, no averaging/approximation, guarded on `previewNet>0`. This is the
+  reverse framing the owner asked for ("14 more night shifts"), placed at the pre-commitment moment.
+  Still no nudge engine — informational only. One-line change; **wage-core untouched**. iPhone-13 gate
+  **64/64** incl. a live drive asserting the "≈N shifts" count (n=36 for a $20k goal) alongside the %.
+  SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): events healthy, no new feedback.
+  Note: base advanced overnight — the owner shipped their own iCal auto-sync (#57, superseding the
+  closed PR #50), rebranded ScrubPay→BadgeBudget (#64), and sticky weekday letters (#63); built on
+  that. **Follow-up left in the P1 item:** goal-view total "shifts to go" across real history + on-track
+  date (needs an average-shift + cadence model).
 - 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
   harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
   JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`
