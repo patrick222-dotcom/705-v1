@@ -337,6 +337,38 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-04 — **Pattern lab — design a rotation, see the paycheck it makes and the life it makes**
+  (owner-directed creative session, chosen over four alternatives; addresses the Reddit-owner P2
+  "pure self-scheduling with no fixed recurring day makes childcare and life planning impossible"
+  theme and the seed P1 "see what a schedule means for the paycheck before committing"). New
+  top-nav item + dashboard card + empty-state CTA ("Design a rotation instead") open a modal lab:
+  **presets** nurses actually describe (Mon–Wed nights; 3 on/1 off/3 on/7 off; 2-2-3 Pitman; 4 on/4 off
+  nights; Fri–Sun weekend program) or a blank cycle of 7/8/14/28/custom days anchored on a date;
+  **paint** cells with Day/Night 12h/8h brushes or any saved template (weekend cells auto-resolve to
+  the weekend differential, same inference as .ics import). Live readout: **money** (take-home per
+  paycheck via the same tax model as the hero, gross, hours, ≈/yr, and the *reverse goal view* the
+  savings-goals P1 asked for — "House down payment: 7 paychecks (about 3 months)", framed honestly as
+  "if every paycheck went to it") and **the life it makes** (shifts/cycle + hrs/wk, longest stretch and
+  longest break computed cyclically, weekends worked as a reduced fraction, **which weekdays are always
+  off** — or the explicit "drifts across the week" warning for cycles that don't divide 7, which is
+  exactly the childcare pain). Saved patterns get a **side-by-side compare table** (no "best"
+  highlighting — informational only, per the no-nudge constraint). **Put it on the calendar**: pick a
+  start date + 4/6/8/12 weeks, preview "adds N · skips K already scheduled", never clobbers existing
+  shifts unless the replace switch is on; placed shifts carry `patternId` so the card's "Remove them"
+  pulls back only the upcoming shifts the pattern added. Data: `patterns[]` in the user_data blob
+  (sanitized, cap 8) — no schema/RLS surface. **Wage-core change, deliberately:** the per-paycheck tax
+  math moved out of `calc()` into a pure module-level `computeNet()` so the lab and the hero can't
+  drift; the harness compares hero + breakdown + take-home text against the deployed build on a seed
+  with pre/post-tax, custom FICA %, percent + dollar withholdings, OT and PTO — byte-identical.
+  iPhone-13 gate **123/123**: boot happy + hang-getsession + block-babel, wage equality, 17 pure-math
+  unit tests (preset rotation onto any anchor weekday, cyclic runs, flips, weekend pricing, index wrap
+  before the anchor, skip-vs-replace planning, sanitizer), a full lab drive (preset → paint → save →
+  compare → apply 10/skip 2 → persisted with patternId → remove → delete → custom cycle → drift note →
+  discard-confirm), and the dev-React console diagnostic (clean). Analytics: coarse `pattern_*` events
+  only. SRI intact (5), boot hardening untouched.
+  **Follow-ups (not built):** per-cell start-time/bonus editing beyond what a template brush carries;
+  "off every other week" as a softer sibling of "always off" for 14-day cycles; holiday awareness;
+  exporting a pattern to the swap board as availability.
 - 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
   harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
   JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`

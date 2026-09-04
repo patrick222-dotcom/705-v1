@@ -10,6 +10,7 @@ Live at **https://badgebudget.com**.
 - Tax withholding estimates (FICA, State)
 - Customizable hourly rates and bonuses
 - Real-time earnings forecasting
+- Pattern lab: design a repeating rotation, see the paycheck it makes and the life it makes (longest stretch, longest break, weekends worked, which weekdays stay free), compare rotations side by side, and put one on the calendar
 
 ## Deployment
 
