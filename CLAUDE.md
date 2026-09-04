@@ -76,10 +76,21 @@ container is ephemeral, so commit everything.
 - **Analytics** (privacy-light): in-app `track(name, props)` inserts to Supabase `events`
   (insert-only RLS, same private model as `feedback`). Coarse events only — **never wage
   figures**: `app_open`, `setup_completed`, `shift_saved`, `paystub_imported`, `view_changed`
-  (props `{view}`), `feedback_submitted`, `signed_in`. A stable per-device `anon_id`
+  (props `{view}`), `feedback_submitted`, `signed_in`, plus the pattern-lab set `pattern_lab_opened`,
+  `pattern_saved` (props `{cycle}`), `pattern_applied` (props `{shifts,weeks}`),
+  `pattern_shifts_removed` (props `{n}`) — counts only, never rates or amounts. (The full list is
+  longer — grep `track(` in `index.html`.) A stable per-device `anon_id`
   (localStorage `scrubpay_anon_id`) lets you count distinct anonymous users without PII. Query
   as owner: `select name, count(*) from public.events group by name order by 2 desc;` or
   `select created_at, name, props, anon_id, user_id from public.events order by created_at desc;`
+- **Pattern lab** (2026-09-04): repeating rotations live in the `user_data` blob as
+  `patterns:[{id,name,anchor,cells:[cell|null]}]` (sanitized, capped at `MAX_PATTERNS`=8; a cell is
+  `{kind:'day'|'night'|'fixed', hours, start?, shiftType?, bonusType?, customBonus?}`). Generic
+  day/night cells resolve to the weekend differential on Sat/Sun at apply time (same inference as the
+  .ics import). `patternMetrics()` prices a rotation over `lcm(cycle,14)` days with `computeNet()` —
+  the per-paycheck tax model factored out of `calc()` so both use identical math (the harness asserts
+  hero/breakdown equality against the deployed build). Shifts placed by the lab carry `patternId` so
+  "Remove them" can pull back only upcoming shifts it added. Presets are in `PATTERN_PRESETS`.
 - **Auth**: Supabase email/password + Google OAuth. Project ref: `mnnlgcxnvodjwlhhiphq`.
 - **Boot hardening** (do not remove): plain-JS boot watchdog in `index.html` shows an
   error screen if the app hasn't rendered in 8s; Supabase client creation is
