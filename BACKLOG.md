@@ -70,6 +70,17 @@ _(none)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Agent gateway — one domain, two surfaces (UI + MCP)** — owner-directed 2026-09-04, scoped in
+  `docs/agent-gateway-scope.md`. Five layers, each its own session: (1) extract the pure wage/pattern/
+  sanitizer core out of `index.html` into `core/` with a build step that inlines it back (deployed
+  artifact stays single-file); (2) `apply_ops(ops, expected_version)` RPC + `version` column so the app
+  and agents write semantic ops instead of overwriting the blob, Realtime replaces the 15s poll;
+  (3) read-only MCP server as a Supabase Edge Function, auth via Supabase Auth's OAuth 2.1 server so
+  **existing RLS applies to the agent unchanged**; (4) write tools + an ops manifest that generates the
+  tool list and gates parity; (5) dogfood. **Owner decisions pending** (see the doc): build step yes/no,
+  rehearsal project, agent swap-board writes, custom auth domain, create `main`. First session = step 1
+  only; not a nightly item — it changes the build.
+
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
 sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctly skipped every one
