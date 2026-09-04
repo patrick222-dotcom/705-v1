@@ -463,7 +463,7 @@
      buffer to the clipboard so a user can paste it into a bug report. */
   window.__copyErrorLog = function(btn){
     var text;
-    try { text = localStorage.getItem('scrubpayErrors') || '[]'; } catch(_){ text = '[]'; }
+    try { text = localStorage.getItem(ERR_KEY) || '[]'; } catch(_){ text = '[]'; }
     var done = function(ok){ if(btn){ var o=btn.textContent; btn.textContent = ok?'Copied!':'Copy failed'; setTimeout(function(){ btn.textContent=o; }, 1600); } };
     try {
       if(navigator.clipboard && navigator.clipboard.writeText){
