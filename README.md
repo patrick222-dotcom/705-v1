@@ -1,8 +1,8 @@
-# BadgeBudget (ScrubPay)
+# BadgeBudget — Shift Pay Planner
 
 Take-home pay planner for bedside nurses: log shifts and differentials, see what a shift is worth
-before you work it, import and export your schedule as `.ics`, and swap shifts anonymously within
-your unit.
+before you work it, keep your schedule in sync from a calendar's secret iCal address (or import and
+export `.ics` files), track savings goals, and swap shifts anonymously within your unit.
 
 **Live:** https://badgebudget.com — the old `patrick222-dotcom.github.io/705-v1` URL redirects there.
 
@@ -12,7 +12,8 @@ your unit.
   browser, no build step. CDN dependencies are version-pinned with SRI hashes; the pdf.js worker is
   served from this repo.
 - Supabase (email/password + Google sign-in) stores signed-in users' data; anonymous users stay in
-  localStorage. Feedback and coarse analytics go to insert-only tables.
+  localStorage. Feedback and coarse analytics go to insert-only tables. Calendar auto-sync goes
+  through a small Edge Function proxy (`supabase/functions/ical-proxy`) with its own owner-only table.
 - The working agreement for humans and agents — invariants, architecture, the nightly loop, testing —
   is `CLAUDE.md`. Design notes, the swap-board security model, domain/DNS facts and the project
   history are under `docs/`.

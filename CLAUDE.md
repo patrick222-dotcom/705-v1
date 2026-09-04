@@ -1,4 +1,4 @@
-# BadgeBudget (ScrubPay) — Nursing Wage Planner
+# BadgeBudget — Shift Pay Planner
 
 Take-home pay planner for bedside nurses, built for the owner's wife and her unit. Logs shifts +
 differentials, shows what a shift is worth *before* it's worked, imports/exports .ics schedules, and
@@ -7,8 +7,9 @@ hosts an anonymous shift-swap board.
 - **Live:** https://badgebudget.com (custom domain since 2026-09-02). The old
   `https://patrick222-dotcom.github.io/705-v1/` URL 301-redirects there. **Verify deploys against
   badgebudget.com.**
-- **Naming:** the domain is BadgeBudget; the app is still *branded* ScrubPay inside `index.html`.
-  The rename is unscoped and unstarted (see Open items). Why the name changed:
+- **Naming:** renamed from ScrubPay on 2026-09-04 (#64), visible strings only — the storage keys, the
+  .ics UID scheme and the swap salt still say `scrubpay` on purpose (Invariants 5–7). The `scrubpay.*`
+  domains belong to other parties; never present them as ours. Why the name changed:
   `docs/session-2026-09-02-domain-and-naming.md`.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
@@ -24,7 +25,8 @@ hosts an anonymous shift-swap board.
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
 | `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/001_swap_board.sql` | swap-board schema — the only migration (`user_data`/`feedback`/`events` exist only in the live project) |
+| `supabase/migrations/` | `001_swap_board.sql` (swap board) and `002_ical_subscription.sql` (the iCal feed table); `user_data`/`feedback`/`events` still exist only in the live project |
+| `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite (the only tracked tests) |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
@@ -56,10 +58,10 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    joins: `nursingWagePlannerData` (anonymous users' data — contains no brand string, so a
    ScrubPay→BadgeBudget find/replace misses it) and `nursingWagePlannerData::<uid>` (per-user
    failed-save backup); `scrubpay_anon_id`; `scrubpay_feedback_pending`; `scrubpay_pending_invite`;
-   `scrubpayErrors` — defined as `ERR_KEY` in the boot script **and hardcoded again as a bare literal
-   inside `__copyErrorLog`** (change both or neither).
-6. **`@scrubpay` is the .ics self-recognition sentinel**: export stamps UIDs with it, import drops any
-   UID containing it. Change it and every previously exported event re-imports as a duplicate.
+   `scrubpayErrors` (`ERR_KEY` in the boot script; every read goes through it since #64).
+6. **`@scrubpay` is the .ics self-recognition sentinel**: export stamps UIDs as
+   `scrubpay-<date>-<id>@scrubpay`, import drops any UID containing `@scrubpay`. Change either half and
+   every previously exported event re-imports as a duplicate.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
    function. It is the swap board's anonymity model, not a string.
 8. **`CNAME` stays in the publish set** (`cp CNAME _site/` in `deploy.yml`). Pages reads the custom
@@ -70,9 +72,13 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 10. **Fetch before touching the deploy branch.** Fresh checkouts are shallow and have been seen 14
     commits behind origin. Always `git fetch origin claude/migrate-to-github-deploy-3F5RD` and branch
     from `origin/…`, never from the local ref.
-11. **Don't delete `claude/ical-subscription-sync`** (base of open PR #50; PR #57 stacks on it) or
-    `claude/clause-md-review-9tqlj8` (the nightly's working branch).
+11. **Don't delete `claude/clause-md-review-9tqlj8`** (the nightly's working branch) or the head of any
+    open PR. Merged heads are fair game (see Open items for the current list).
 12. **URL Forwarding stays OFF on badgebudget.com at Porkbun** — it overrides the A records entirely.
+13. **The iCal feed URL is a bearer credential.** It lives only in `ical_subscriptions` (owner-only RLS,
+    no `anon` grants), is absent from `serializeState` so it never enters the `user_data` blob (which
+    is exported, mirrored to localStorage and echoed by the sync poll), never goes into `events`, and
+    is never logged by `ical-proxy`. The parser stores dates, times, hours and UIDs — never titles.
 
 ## Architecture
 
@@ -84,7 +90,8 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   Sans) is a fourth external vendor — stylesheet only, no SRI possible, graceful fallback. pdf.js
   `getDocument` uses `isEvalSupported:false` (CVE-2024-4367). The `<meta>` CSP covers every runtime
   host; `frame-ancestors` can't be set via meta and Pages sends no `X-Frame-Options`, so clickjacking
-  protection is simply unavailable on this host.
+  protection is simply unavailable on this host. The `<head>` also carries an inline SVG data-URI
+  favicon, a meta description and a theme-color (#64) — head-only, so the 3-file publish set holds.
 - **Data.** Signed-in → Supabase `user_data`: one `jsonb` blob per user, upserted on `user_id`,
   debounced 500ms, capped at `MAX_BLOB_BYTES` = 512KB (free-tier guard). Anonymous → localStorage.
   Cross-device sync is a 15s poll while the tab is visible, guarded by `updated_at` vs `lastSeenAt`
@@ -100,10 +107,10 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 28: `app_open`, `setup_completed`,
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 29: `app_open`, `setup_completed`,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
-  `ics_import_parsed/done`, `feedback_submitted`, `swap_group_created/joined`,
+  `ics_import_parsed/done`, `ics_sync_done`, `feedback_submitted`, `swap_group_created/joined`,
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`. (`health_check` rows in the
   table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
@@ -128,12 +135,21 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   quick-fill, day events (PTO paid at base rate) and a live preview — gross, take-home, ≈$/hr
   take-home, OT tag — so a nurse can judge whether picking up an extra shift is worth it *before*
   working it; savings goals (Settings, capped at `MAX_GOALS`=12, stored in the same blob) shown in
-  that preview as "% of goal"; a breakdown view; paystub PDF import (parsed on-device, never
+  that preview as "% of goal (≈N shifts)"; a month-first calendar whose month label + weekday row stay
+  pinned while scrolling (#63); a breakdown view; paystub PDF import (parsed on-device, never
   uploaded); Settings.
 - **Schedule import/export (calendar sync).** .ics export (deterministic UIDs, no wage data) and
-  .ics import with a guided shift-type questionnaire; re-import moves shifts and preserves pay types via `shift.icsUid`.
-  An auto-syncing subscription (secret iCal URL + SSRF-guarded Edge Function proxy) is built but
-  unmerged in PRs #50/#57 — see Open items.
+  .ics import with a guided shift-type questionnaire; re-import moves shifts and preserves pay types via
+  `shift.icsUid`. **Auto-sync (#57, 2026-09-03):** Settings → CALENDAR SYNC takes a calendar's *secret
+  iCal address* (signed-in users only); the app re-fetches it through `ical-proxy` once per app open
+  and on "Sync now", and routes the result through the same import stepper, so auto-sync never
+  silently rewrites wage-affecting shifts. Re-sync lifecycle: matched-by-UID shifts move and keep their
+  pay type; shifts that vanished from the feed are proposed for removal only inside the fetched window
+  (60 days back, 366 forward) and never when the 200-event cap truncated the feed; "Not a shift" files a
+  wage-neutral day-event chip and "Ignore these" hides it, both remembered by UID. Proxy: host allowlist
+  (Google Calendar hosts only so far — the NurseGrid feed host is still a TODO), https only, no
+  redirects, 2MB cap, 8s timeout. Known limits: the confirm step is all-or-nothing, and a local edit to a
+  synced shift's hours loses to the feed on the next sync.
 
 ## Deployment
 
@@ -199,8 +215,10 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
 
 - Project `mnnlgcxnvodjwlhhiphq`, free tier, and **the only project** — it holds real users' pay
   history while RLS audits and migrations run against it (a dev project is a parked item). Tables,
-  all RLS-enabled: `user_data`, `feedback`, `events`, `swap_profiles`, `swap_groups`, `swap_members`,
-  `swap_posts`, `swap_matches`, `swap_match_legs`.
+  all RLS-enabled: `user_data`, `feedback`, `events`, `ical_subscriptions` (migration 002, applied
+  2026-09-02; 4 per-command policies, `anon` unlisted), `swap_profiles`, `swap_groups`, `swap_members`,
+  `swap_posts`, `swap_matches`, `swap_match_legs`. One Edge Function: `ical-proxy` (ACTIVE, `verify_jwt`
+  on — an unauthenticated POST is 401, so it is not an open proxy).
 - **MCP.** `.mcp.json` runs `@supabase/mcp-server-supabase` over stdio with `SUPABASE_ACCESS_TOKEN`
   from the environment (uppercase; set in the cloud environment settings, never committed). Network
   policy must allow `api.supabase.com`. Prefer the typed tools (`execute_sql`, `get_advisors`,
@@ -210,7 +228,7 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   https://api.supabase.com/v1/projects/<ref>/…` — `database/query` (POST, SQL), `config/auth`
   (GET/PATCH), `advisors/{security,performance}`, `usage`. Node fetch needs
   `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`.
-- **Advisor state (2026-09-02).** No ERRORs. 16 WARNs that the 8 swap security-definer functions are
+- **Advisor state (2026-09-04, unchanged by migration 002).** No ERRORs. 16 WARNs that the 8 swap security-definer functions are
   executable by `anon`/`authenticated` — expected: those RPCs *are* the anonymity boundary and gate on
   membership/party checks inside (audited 2026-07-30). Plus "leaked password protection disabled" —
   HIBP is Pro-only; the API silently ignores it on free.
@@ -248,21 +266,30 @@ and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 the admin API) only ever lived in session scratchpads, so the "N/N" figures in the Done log are not
 reproducible from the repo. Committing them under `tests/` is an open item.
 
-## Open items (state as of 2026-09-02 — the work queue itself is `BACKLOG.md`)
+## Open items (state as of 2026-09-04 — the work queue itself is `BACKLOG.md`)
 
-- **Open PRs.** #50 + #57 — iCal auto-sync (Edge Function proxy + migration 002); drafts, blocked on
-  the owner applying the migration and deploying the function. **Their diff deletes `CNAME` and three
-  lines of `deploy.yml`** because they branched before the domain work: rebase first and confirm
-  `cp CNAME _site/` survives. #46 — ten lines of AuthModal copy naming supabase.co before Google does;
-  decide it alongside the consent-screen note above.
-- **Anonymous users lost their saved shifts in the domain move** (localStorage is per-origin). Decide:
-  a migration notice, or confirm the affected users have accounts.
-- **ScrubPay → BadgeBudget rename** — its own session. Eight user-visible strings in `index.html`
-  (title, splash/header/onboarding wordmarks, boot-failure heading, .ics PRODID + CALNAME, share text,
-  export filenames), plus `design-system/` and docs. Never the storage keys, the `@scrubpay` sentinel
-  or the salt (Invariants 5–7). Also set the app name + logo on the GCP OAuth consent screen (free).
-- **Bare `'scrubpayErrors'` literal in `__copyErrorLog`** → use `ERR_KEY`. One line; land before any
-  rename.
+- **Open PRs.** #65 — "pattern lab" (design a rotation, see the paycheck and the life it makes):
+  a 668-line feature from a separate session, draft, **currently un-mergeable against the deploy
+  branch** (`dirty`) after the overnight commits. It moves the per-paycheck tax math out of `calc()`
+  into a module-level `computeNet()`, i.e. it **touches wage-core on purpose** — it carries a
+  hero-equality harness against the deployed build; rerun that after rebasing, and re-verify Invariant
+  3 before merging. Adds `patterns[]` to the blob and four `pattern_*` analytics names. #46 — ten lines
+  of AuthModal copy naming supabase.co before Google does (still says "ScrubPay"; rebase + rename
+  before merging, or close it in favour of the GCP consent-screen branding).
+- **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;
+  Google Calendar works); do a smoke test with a real secret address. Follow-ups (per-item confirm,
+  "locally edited" protection for synced shifts, the iOS Shortcuts push alternative) are in `BACKLOG.md`.
+- **Merged branches to delete** (delete pushes are 403 from agent sessions — do it in the GitHub UI):
+  `claude/reddit-agent-personas-threads-q3mobt`, `claude/reddit-seed-phase1`,
+  `docs/reddit-persona-pipeline`, `crawler-pushtest`, `claude/scrubpay-domain-purchase-j9cqf6`,
+  `claude/ical-subscription-sync`, `claude/ical-branch-progress-4x2baj`,
+  `claude/rename-scrubpay-badgebudget-5jesy5`.
+- **Google consent screen** still names `mnnlgcxnvodjwlhhiphq.supabase.co`; set the app name + logo on
+  the GCP OAuth consent screen (free). The nightly Routine's prompt still curls the github.io URL for
+  its live check (a 301 with no body) — change it to `https://badgebudget.com/index.html?cb=N`.
+- **Anonymous users and the domain move:** checked 2026-09-02 — no device that saved a shift or
+  completed setup without also signing in, so nobody lost data. Every phone did mint a fresh `anon_id`
+  on the new origin, so distinct-device counts are inflated across the cutover.
 - **Feedback → email** (Resend Edge Function + DB webhook on `feedback` INSERT): blocked on the owner's
   `re_...` key + destination address. Spec in `BACKLOG.md` → Blocked.
 - **Second Supabase project for dev/test** (free plan allows two) so audits and migrations stop
@@ -274,4 +301,4 @@ reproducible from the repo. Committing them under `tests/` is an open item.
 - **Parked engineering** (calendar memoization + virtualization; sync content-equality
   canonicalization — `user_data.data` is `jsonb`, so canonicalize key order before comparing;
   backdrop-filter perf; poster_key rotation; swap handoff redesign): `BACKLOG.md` → Needs a
-  dedicated session. Savings goals shipped its MVP on 2026-09-03 (#62); the reverse view is queued.
+  dedicated session.

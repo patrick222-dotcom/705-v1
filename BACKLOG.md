@@ -1,4 +1,4 @@
-# BadgeBudget (ScrubPay) Backlog
+# BadgeBudget Backlog
 
 Durable, git-tracked queue for the **autonomous nightly groom+build loop** (see CLAUDE.md →
 "Autonomous nightly loop"). This file is the loop's memory — the container is ephemeral, so
@@ -26,15 +26,15 @@ _(none)_
 _(empty — promote from the candidate lists below with judgment)_
 
 ### P2
-- [ ] **Savings goals, second slice: the reverse view** (owner/Courtney; follows the MVP shipped
-  2026-09-03, see Done log) — `harness:drivable`. The MVP shows a previewed shift as "% of goal". Add
-  the goal's own view: "about N more shifts" and, if the user has logged shifts, "on track for
-  <month>". Model, to keep it one run: average take-home of the shifts logged in the last 8 weeks
-  (fall back to the current preview's take-home when fewer than 3); N = ceil(remaining ÷ average);
-  the date = today + N × (56 days ÷ shifts-in-window). Place it under each goal in Settings → SAVINGS
-  GOALS and, optionally, as "moves your goal ~N days closer" in the Add-Shift preview. **Keep the
-  no-nudge-engine constraint**: informational only — no streaks, no push, no "behind on your goal",
-  no encouragement to pick up more. Derived state only; `goals` shape and `sanitizeData` unchanged.
+- [ ] **Savings goals, third slice: the goal-view projection** (owner/Courtney; follows the MVP #62
+  and the "≈N shifts like this" count #66, see Done log) — `harness:drivable`. The Add-Shift preview
+  now shows "% of goal (≈N shifts)" per previewed shift. Add the goal's own view under each goal in
+  Settings → SAVINGS GOALS: "about N more shifts at your usual pace" and, when there are logged shifts,
+  "on track for <month>". Model, to keep it one run: average take-home of the shifts logged in the last
+  8 weeks (fall back to the base-rate 12h shift when fewer than 3); N = ceil(remaining ÷ average);
+  date = today + N × (56 days ÷ shifts-in-window). **Keep the no-nudge-engine constraint**:
+  informational only — no streaks, no push, no "behind on your goal", no encouragement to pick up more.
+  Derived state only; the `goals` shape and `sanitizeData` unchanged.
 - [ ] **Paystub review sheet: say so when 0 differential rows were detected**
   (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
   `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
@@ -97,71 +97,19 @@ here so the loop's queue contains only work it can actually finish; pick these u
   someone would notice a broken deploy before the users do, and right now nobody is watching.
   Revisit a staging tier when there are enough users that a bad nightly costs something real.
 
-- [ ] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
-  2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
-  ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
-  2026-08-23 over Google OAuth, see the rejected alternative below).
-  **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
-  one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
-  Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
-  Practically indistinguishable from background sync from the user's side.
-  **Reuse — this is why it's cheap:** `parseICSSchedule(text)` (index.html:646) already takes raw
-  .ics *text*, so the only new input path is fetch-instead-of-FileReader (`onImportICS`, :2271).
-  Re-sync idempotency is already solved: the existing `icsUid` keying (:2251) moves shifts on
-  re-import and preserves assigned pay types, which is exactly re-sync semantics.
-  **The one piece that needs building:** a Supabase Edge Function to proxy the fetch — Google's and
-  NurseGrid's .ics endpoints send no CORS headers, so the browser can't read them directly. Keep the
-  proxy narrow: allowlist the two known host patterns, cap response size, no redirects to private
-  ranges (SSRF), and never log the URL.
-  **Treat the URL as a credential.** A secret iCal address is a bearer token — anyone holding it can
-  read that calendar forever. It must NOT go in the `user_data` JSON blob (that blob is exported by
-  "Export data", mirrored to localStorage, and echoed through the sync poll). Give it its own column
-  or table, and keep it out of `events`/analytics entirely.
-  **Privacy:** store dates, start/end and a stable event id only — never event titles. A personal
-  calendar carries appointments and family detail that a wage app has no business retaining.
-  **Rejected alternative — Google OAuth (what it would have cost):** Calendar scopes are *sensitive*,
-  so beyond ~100 test users it needs Google OAuth verification (branding, privacy policy, homepage,
-  demo video). Worse for the async goal specifically: refresh tokens issued while the app is in
-  Testing mode expire after ~7 days, which breaks unattended cron sync until verified. And Supabase
-  deliberately discards the Google token — *"Provider tokens are intentionally not stored in your
-  project's database"* — so `provider_refresh_token` is available exactly once, in the session at
-  sign-in, and true background sync would mean persisting a long-lived key to the user's whole Google
-  account (encrypted, service-role-only, Edge-Function-only). The app holds zero third-party
-  credentials today; that is a large jump in security surface for the same user-visible result.
-  Also note Google's GIS JS library is not a pinned/SRI-able URL, so the OAuth route would have to
-  hand-roll the redirect to avoid regressing the SRI rule.
-  **Why not the nightly loop:** new Edge Function + a new secret-bearing column + a live third-party
-  fetch the sandbox can't reach. Needs a dedicated session.
-  **Second candidate — iOS Shortcuts push (researched 2026-08-23, owner's idea; may be the better
-  one).** The owner's insight: most iPhone users already sync Google/Outlook into **iOS Calendar**,
-  so iOS Calendar is the aggregation point and reading *it* is provider-agnostic in a way reading
-  Google's API never is. Route with no native app: a Shortcut using `Find Calendar Events` +
-  `Get Contents of URL` POSTs the events to a ScrubPay ingest endpoint. Distributed as an iCloud
-  link (one tap, no App Store); runnable by voice ("Hey Siri, sync my shifts"); and a **Personal
-  Automation** on a Daily trigger with "Ask Before Running" off runs it unattended, so it syncs
-  while the app is closed — which the iCal-URL option cannot do. Server side is *simpler* than the
-  proxy: the phone pushes to us, so no CORS and no SSRF surface; needs an ingest Edge Function plus
-  a per-user token the app issues and the user pastes into the Shortcut once (same
-  treat-as-credential rules as above).
-  Trade-offs: **iOS-only** (the iCal URL also serves Android/desktop), setup is a shortcut install
-  rather than a paste, and time-of-day automations are best-effort — Apple's developer forums note
-  they can skip when the phone has been locked and idle a long while, so it is "usually daily", not
-  cron. Given the actual user base (a nurse and her unit, all iPhones), Shortcuts-first is the
-  likely call; decide at build time.
-  **Ruled out — native Siri / App Intents.** Checked because iOS 27 (ships Sept 2026) deprecates
-  SiriKit and makes **App Intents the only way Siri talks to a third-party app** (WWDC 2026; App
-  Intents 2.0 adds streaming, multi-turn, on-screen awareness). App Intents is a **Swift-native
-  framework with no web/PWA surface** — an installed PWA appears in Spotlight and App Library search
-  but **Siri cannot find it**, and it gets no widgets, Live Activities, or App Intents. Putting
-  ScrubPay into the new Siri therefore requires a real native app in Swift shipped via the App
-  Store, which contradicts the single-file architecture. Shortcuts is the supported way to reach
-  Siri without going native. Revisit only if ScrubPay ever goes native.
+- [ ] **iCal auto-sync follow-ups** — the subscription shipped 2026-09-03 (#57, see Done log; design
+  history and the rejected alternatives in `docs/history.md`). Three real gaps remain, each needing a
+  live feed to verify, so not nightly work: (a) the confirm step is all-or-nothing — let the nurse
+  accept some proposed adds/removals and skip others; (b) a local edit to a synced shift's hours loses
+  to the feed on the next sync — add a per-shift "edited here" flag that wins over the feed until the
+  feed itself changes; (c) the **iOS Shortcuts push** alternative (a Shortcut reads iOS Calendar and
+  POSTs to an ingest endpoint on a daily automation — syncs while the app is closed, provider-agnostic,
+  iOS-only; needs an ingest Edge Function + a per-user token with the same treat-as-credential rules as
+  the feed URL). Never move the feed URL out of `ical_subscriptions` (CLAUDE.md Invariant 13).
 
-- [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
-  patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
-  logging in with Gmail. Likely the getSession 4s-race / loadCloudRow error path surfacing a
-  transient failure as "couldn't sync." INVESTIGATE with a real multi-device/auth repro — NOT
-  gate-safe for a one-run autonomous build; needs focused attention. High user-trust impact.
+- [x] ~~**"Couldn't sync" after Google sign-in**~~ — root-caused and fixed by #45 (2026-08-23): the
+  toast was the `user_data` upsert failing with 23505 on every save after the first, not the
+  `getSession` race the original note guessed. No repro needed; retired 2026-09-04.
 
 - [ ] **Calendar memoization** — App re-renders all ~480 month cells on every unrelated state
   change. `useCallback` on statOf/ptoStatOf/keyOf and `React.memo` on MonthSection; verify no
@@ -207,6 +155,9 @@ here so the loop's queue contains only work it can actually finish; pick these u
   rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
 
 ## Blocked
+- [ ] **iCal proxy allowlist: the real NurseGrid feed host** + a smoke test with a real secret iCal
+  address — owner-side (the allowlist in `supabase/functions/ical-proxy/index.ts` covers Google
+  Calendar's hosts; the NurseGrid entry is a marked TODO). Redeploy the function after editing.
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
@@ -262,6 +213,44 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-04 — **Savings goals — reverse "≈N shifts" count in the Add-Shift preview** (owner/Courtney
+  P1 follow-up; harness:drivable). Extended yesterday's per-goal preview line so each goal now shows
+  not just the % but how many shifts *like the one being previewed* would reach it — e.g. "House down
+  payment 2.8% (≈36 shifts)". `n = Math.ceil(target / previewNet)` — precise per-shift math off the
+  already-computed take-home, no averaging/approximation, guarded on `previewNet>0`. This is the
+  reverse framing the owner asked for ("14 more night shifts"), placed at the pre-commitment moment.
+  Still no nudge engine — informational only. One-line change; **wage-core untouched**. iPhone-13 gate
+  **64/64** incl. a live drive asserting the "≈N shifts" count (n=36 for a $20k goal) alongside the %.
+  SRI intact (5), boot hardening untouched. GROOM (Supabase MCP live): events healthy, no new feedback.
+  Note: base advanced overnight — the owner shipped their own iCal auto-sync (#57, superseding the
+  closed PR #50), rebranded ScrubPay→BadgeBudget (#64), and sticky weekday letters (#63); built on
+  that. **Follow-up left in the P1 item:** goal-view total "shifts to go" across real history + on-track
+  date (needs an average-shift + cadence model).
+- 2026-09-04 — **Visible rename ScrubPay → BadgeBudget** (#64, dedicated session). 13 sites in
+  `index.html` (title, wordmarks, boot-failure heading, export filenames, .ics PRODID/CALNAME, share
+  copy) plus `design-system/`, README, BACKLOG and two docs. **Storage keys, the .ics UID scheme, the
+  `@scrubpay` sentinel and the swap salt left byte-identical** (Invariants 5–7). The bare
+  `'scrubpayErrors'` literal in `__copyErrorLog` now reads `ERR_KEY`. Header wordmark 18px → 14px so
+  "badgebudget" fits beside the Sign-in pill on an iPhone 13. Also added an inline SVG favicon, meta
+  description and theme-color (head-only; publish set unchanged). Gate 50/50 incl. an .ics
+  export/re-import round-trip and a storage-key survival probe; SRI 5.
+- 2026-09-04 — **Calendar: month label + weekday row stay pinned while scrolling** (#63, owner-reported
+  while testing iCal sync). The weekday row scrolled away under the sticky month label; the two are
+  now one sticky unit (`.cal-month-head`), the 6px gap moved from a collapsing margin to wrapper
+  padding, and the letter row is `aria-hidden` (each cell's aria-label already carries the weekday).
+  Verified at five scroll offsets that the top month shows its own weekday row. Gate 71/71 + 3 sticky
+  assertions; SRI 5; CNAME intact.
+- 2026-09-03 — **Auto-sync the schedule from a secret iCal URL, full re-sync lifecycle** (#57,
+  dedicated session; supersedes #50). Settings → CALENDAR SYNC (signed-in only) stores the address in
+  its own `ical_subscriptions` table (migration 002, owner-only RLS, `anon` revoked — never in the
+  `user_data` blob, never in analytics); `ical-proxy` Edge Function (verify_jwt on, host allowlist,
+  https-only, no redirects, 2MB cap, 8s timeout, never logs the URL) fetches it once per app open and
+  on "Sync now"; everything routes through the existing import stepper. Re-sync: matched-by-UID shifts
+  move and keep pay type; removals proposed only inside the fetched 60-back/366-forward window and
+  suppressed when the 200-event cap truncated the feed; "Not a shift" / "Ignore these" remembered by
+  UID. Parser stores dateKey/start/hours/uid only — never titles. Backend applied live 2026-09-02.
+  Gate 71/71 (26 planner, 17 stepper e2e, 10 boot/persistence/credential-safety, 10 .ics round-trip,
+  8 wage math); CNAME + `cp CNAME _site/` intact; SRI 5. Known limits → parked follow-ups above.
 - 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
   harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
   JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`

@@ -57,10 +57,13 @@ users are unaffected (their data is in Supabase). No migration notice was built.
 
 ## Naming context
 
-The app is still *branded* ScrubPay in `index.html`; only the domain moved. "ScrubPay" is crowded:
+The visible rename shipped on 2026-09-04 (#64): page title, wordmarks, boot-failure screen, export
+filenames, .ics PRODID/CALNAME and share copy now read BadgeBudget; the storage keys, .ics UID
+scheme and swap salt were deliberately left alone (CLAUDE.md Invariants 5–7). "ScrubPay" is crowded:
 a healthcare payroll/ATS company launched on `scrubpay.app` + `scrubpay.org` in 2026-08, a 2014
 Atlanta medical-bill app used the name, and SCRUBJAY is a registered USPTO mark in healthcare
-staffing. `scrubpay.com` is investor-held on Atom.com. `BadgePay` was rejected: taken, and "badge
+staffing. `scrubpay.com` is investor-held on Atom.com. Those domains belong to other parties — never
+link to them as ours. `BadgePay` was rejected: taken, and "badge
 pay" already names employee-badge cafeteria/vending payment systems.
 
 ## Google OAuth consent screen

@@ -4,6 +4,28 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-03 → 09-04 — iCal auto-sync, rename, sticky weekdays, goals (#57, #63, #64, #62, #66)
+
+Four sessions landed in one night. **iCal auto-sync (#57, superseding #50):** a nurse pastes her
+calendar's secret iCal address once and the app re-fetches it on every open through an SSRF-guarded
+Edge Function (`ical-proxy`), routing everything through the existing import stepper so wage-affecting
+shifts are never rewritten silently; removals, "not a shift" and "ignore" are remembered by UID. The
+URL is treated as a bearer credential in its own table (`ical_subscriptions`, migration 002). The
+backend was applied live on 2026-09-02. **Rejected on the way:** Google Calendar OAuth (sensitive
+scopes → Google verification beyond ~100 users; refresh tokens expire in Testing mode; Supabase
+discards provider tokens, so background sync would mean persisting a long-lived key to the user's
+whole Google account); native Siri / App Intents (Swift-only, no PWA surface). Kept as a follow-up:
+an iOS Shortcuts push (`Find Calendar Events` → POST to an ingest endpoint), which would sync while
+the app is closed and is provider-agnostic via iOS Calendar, at the cost of being iOS-only.
+**Rename (#64):** visible ScrubPay → BadgeBudget in `index.html`, `design-system/` and docs; storage
+keys, the .ics UID scheme and the swap salt untouched; the bare `'scrubpayErrors'` literal now goes
+through `ERR_KEY`; inline SVG favicon, meta description and theme-color added; header wordmark
+shrunk to fit 11 characters on an iPhone 13. **Sticky weekday row (#63):** the month label and the
+S M T W T F S row became one sticky unit, found by the owner while testing sync. **Savings goals:**
+the MVP (#62, % of goal in the Add-Shift preview) and the "≈N shifts like this" count (#66), both
+from the nightly loop. A fifth session opened #65, a "pattern lab" for designing a rotation and
+seeing its paycheck and livability, which deliberately refactors the tax math into `computeNet()`.
+
 ## 2026-09-02 — custom domain, naming decision, docs split
 
 ScrubPay → BadgeBudget (domain only; the app is still branded ScrubPay). Four domains registered at
