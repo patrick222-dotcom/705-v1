@@ -3905,7 +3905,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
           {goals && goals.length>0 && previewNet>0 &&
-            <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>`${Math.round(previewNet/g.target*1000)/10}% of ${g.name}`).join(' · ')}</div>}
+            <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
         </div>
 
         <div className="sec-lab" style={{marginTop:4}}>{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}</div>
