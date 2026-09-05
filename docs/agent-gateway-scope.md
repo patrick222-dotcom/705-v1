@@ -7,6 +7,8 @@ lockstep, a sequence that can be executed one session at a time, and the places 
 likely to be wrong. Facts about third-party platforms were checked on 2026-09-04 and are cited;
 re-verify before building on them, this space moves monthly. **Path B** at the end of this document
 (added 2026-09-05) is the near-term bridge: a Siri Shortcut writing to an ops inbox the app confirms.
+The Shortcut build guide, wire contract and drift-proofing (version handshake, `app_config`,
+server-driven menus, the calendar-aware "Plan shifts" flow) live in `siri-shortcut.md`.
 
 ## The thesis, restated as a constraint
 
