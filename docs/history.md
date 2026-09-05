@@ -15,7 +15,7 @@ drift, and proved it with a byte-identical hero/breakdown comparison against the
 the first wage-core change since the OT stacking work, and the model for how to do one. **Goals on
 the goal (#68)**, the nightly's third goals increment, put "≈ N typical 12h shifts to reach this"
 under each goal in Settings; the cadence-based on-track date was flagged as a design call and parked.
-**Agent gateway scoping (#67, open)**: the same session wrote `docs/agent-gateway-scope.md` — the
+**Agent gateway scoping (#67, merged 09-05)**: the same session wrote `docs/agent-gateway-scope.md` — the
 app as one domain with two surfaces (UI and MCP), a `core/` module inlined back into the single file
 by a build step, versioned `apply_ops` instead of whole-blob writes, an MCP Edge Function
 authenticated by Supabase's OAuth 2.1 server so RLS applies to the agent unchanged, and an ops

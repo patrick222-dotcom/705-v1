@@ -33,6 +33,7 @@ hosts an anonymous shift-swap board.
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
+| `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 
@@ -291,14 +292,16 @@ reproducible from the repo. Committing them under `tests/` is an open item.
 
 ## Open items (state as of 2026-09-05 — the work queue itself is `BACKLOG.md`)
 
-- **Open PRs.** #67 — `docs/agent-gateway-scope.md` + a BACKLOG pointer: the scoping design for "one
-  domain, two surfaces" (extract the wage core into `core/` with a build step that inlines it back;
-  versioned `apply_ops` instead of whole-blob writes; an MCP Edge Function authenticated by Supabase's
-  OAuth 2.1 server so RLS applies to the agent unchanged; an ops manifest that gates UI/tool parity).
-  Docs-only, mergeable. It ends with five owner decisions: build step yes/no, rehearsal project, agent
-  swap-board writes, custom auth domain, create `main`. #46 — ten lines of AuthModal copy naming
-  supabase.co before Google does (still says "ScrubPay"; rebase + rename before merging, or close it
-  in favour of the GCP consent-screen branding).
+- **Agent gateway** (`docs/agent-gateway-scope.md`, merged 2026-09-05 via #67): the scoping design for
+  "one domain, two surfaces" — extract the wage core into `core/` with a build step that inlines it
+  back; versioned `apply_ops` instead of whole-blob writes; an MCP Edge Function authenticated by
+  Supabase's OAuth 2.1 server so RLS applies to the agent unchanged; an ops manifest that gates UI/tool
+  parity. **Nothing is built.** Five owner decisions gate the first session: build step yes/no,
+  rehearsal project, agent swap-board writes, custom auth domain, create `main`. The doc's own advice:
+  step 1 (core extraction, zero behavior change) then step 3 (read-only gateway) is the cheapest route
+  to a connector on a real phone; writes wait for step 2 (versioned ops).
+- **Open PRs.** #46 — ten lines of AuthModal copy naming supabase.co before Google does (still says
+  "ScrubPay"; rebase + rename before merging, or close it in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;
   Google Calendar works); do a smoke test with a real secret address. Follow-ups (per-item confirm,
   "locally edited" protection for synced shifts, the iOS Shortcuts push alternative) are in `BACKLOG.md`.
