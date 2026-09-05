@@ -4,6 +4,22 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-05 — Siri bridge, Session A (agent gateway Path B)
+
+Owner-directed session building the cheapest write path from a phone: a Siri Shortcut POSTs a
+structured op with a per-user code to a new `siri-ingest` Edge Function, which hashes the code,
+validates the op with the app's own coercions and queues one *pending* row in `ops_inbox`; the app's
+15 s poll surfaces it in a "From Siri" sheet and the nurse taps Add or Skip per item, Add running
+through the Add-Shift sheet's own save path. Migration 003 (`siri_tokens`, `ops_inbox`) was applied
+live through the MCP — the first migration recorded in `supabase_migrations` — with owner-only RLS,
+no client insert policy on the inbox and zero `anon` grants; advisors unchanged. Invariant 14 records
+the model: codes are write-only, hashed at rest, revocable, and the app stays the sole writer to
+`user_data`. The Shortcut itself is the owner's to build from the spec in
+`docs/agent-gateway-scope.md` → Path B; dictation (Claude parsing) is Session B. Two things worth
+keeping from the session: the hero-equality check against the deployed build caught nothing because
+nothing in the wage core moved, which is the point; and the in-page Supabase stub made the whole
+signed-in path (poll, sheet, save effect, analytics) drivable in the sandbox without a live account.
+
 ## 2026-09-04 → 09-05 — pattern lab, goals on the goal, the agent-gateway thesis (#65, #68, #67)
 
 **Pattern lab (#65)** merged on the afternoon of 09-04 from an owner-directed creative session:
