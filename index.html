@@ -295,6 +295,40 @@
   .tag.est{color:#C2820A;background:#FDF3DD}
   .tag.auto{color:var(--indigo);background:var(--indigo-soft)}
 
+  /* pattern lab */
+  .pl-cmp{width:100%;border-collapse:collapse;font-size:12.5px;min-width:300px}
+  .pl-cmp th,.pl-cmp td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  .pl-cmp thead th{font-size:11.5px;color:var(--ink);font-weight:700;min-width:84px;max-width:140px;line-height:1.3}
+  .pl-cmp tbody th{font-size:11.5px;color:var(--muted-2);font-weight:600;white-space:nowrap}
+  .pl-cmp td.v{font-weight:700;color:var(--money-ink)}
+  .pl-card{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:9px;overflow:hidden}
+  .pl-card-main{display:block;width:100%;text-align:left;padding:13px 15px;background:transparent;border:0;font:inherit;color:inherit;cursor:pointer}
+  .pl-card-main:hover{background:#fbfaf7}
+  .pl-card .t{font-weight:700;font-size:14.5px}
+  .pl-card .s{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .pl-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--muted-2);background:#fbfaf7}
+  .pl-mini{display:flex;gap:2px;flex-wrap:wrap;margin-top:7px}
+  .pl-mini i{width:10px;height:10px;border-radius:3px;background:#E7E5DE;display:block}
+  .pl-brushes{display:flex;flex-wrap:wrap;gap:8px}
+  .pl-brushes .chip-sel{width:auto;min-height:44px}
+  .pl-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  .pl-cell{aspect-ratio:1/1;min-height:0;border-radius:9px;background:#fbfaf7;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;transition:transform .08s,box-shadow .12s}
+  .pl-cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
+  .pl-cell.wk{background:#F3F2EC}
+  .pl-cell.on{background:#fff;border-color:var(--line-2);box-shadow:0 1px 3px rgba(20,20,30,.06)}
+  .pl-cell .dw{font-size:9.5px;font-weight:700;color:var(--muted-2);letter-spacing:.02em}
+  .pl-cell .g{font-size:15px;line-height:1;font-weight:700}
+  .pl-cell .g.off{color:#cfccc2;font-size:17px}
+  .pl-cell .h{font-size:9.5px;font-weight:700;color:var(--ink)}
+  .pl-money{background:var(--ink);border-radius:16px;padding:16px 18px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
+  .pl-money .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
+  .pl-money .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em;line-height:1.1;margin-top:2px}
+  .pl-money .s{font-size:12px;color:#B9BCC8;margin-top:6px;line-height:1.45}
+  .pl-life{display:flex;flex-direction:column;gap:8px}
+  .pl-life .li{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:13px;line-height:1.45;color:var(--ink)}
+  .pl-life .li .ic{flex:0 0 18px;text-align:center;font-size:14px;line-height:1.35;color:var(--indigo)}
+  .pl-life .li b{font-weight:700}
+
   /* progress */
   .prog{flex:1;height:6px;border-radius:3px;background:#E5E3DC;overflow:hidden}
   .prog i{display:block;height:100%;background:var(--indigo);border-radius:3px;transition:width .3s}
@@ -934,6 +968,35 @@ function sanitizeData(d){
         target: Number(g.target),
       }));
   }
+  // patterns: saved rotations — [{id, name:string(1..40), anchor:'YYYY-MM-DD', cells:[cell|null]}],
+  // capped at MAX_PATTERNS. Each cell is re-validated (kind, hours 0.1..24, optional start/bonus)
+  // so a malformed cell can't reach shiftGross() as NaN hours or an unknown bonus type.
+  if(Array.isArray(d.patterns)){
+    const bonusKeys = Object.keys(BONUS_LABEL);
+    const validISO = s => typeof s==='string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && keyOfDate(parseISODate(s))===s;
+    out.patterns = d.patterns.filter(p=> p && typeof p==='object'
+        && typeof p.name==='string' && p.name.trim().length>0
+        && validISO(p.anchor)
+        && Array.isArray(p.cells) && p.cells.length>=PATTERN_MIN_CYCLE && p.cells.length<=PATTERN_MAX_CYCLE)
+      .slice(0,MAX_PATTERNS)
+      .map(p=>({
+        id: (typeof p.id==='string'||typeof p.id==='number') ? p.id : (Date.now()+Math.random()),
+        name: p.name.trim().slice(0,40),
+        anchor: p.anchor,
+        cells: p.cells.map(c=>{
+          if(!c || typeof c!=='object' || PATTERN_KINDS.indexOf(c.kind)<0) return null;
+          const h = Number(c.hours);
+          if(!isFinite(h) || h<0.1 || h>24) return null;
+          if(c.kind==='fixed' && typeof c.shiftType!=='string') return null;
+          const o = {kind:c.kind, hours:h};
+          if(c.kind==='fixed') o.shiftType = c.shiftType;
+          if(typeof c.start==='string' && TIME_RE.test(c.start)) o.start = c.start;
+          if(typeof c.bonusType==='string' && bonusKeys.indexOf(c.bonusType)>=0 && c.bonusType!=='none') o.bonusType = c.bonusType;
+          if(o.bonusType==='custom'){ const cb=Number(c.customBonus); o.customBonus = isFinite(cb)?cb:0; }
+          return o;
+        }),
+      }));
+  }
   if('setupComplete' in d) out.setupComplete = d.setupComplete;
   return out;
 }
@@ -956,6 +1019,191 @@ function shiftGross(base, diff, s){
   // night OT shift earns 1.5×(base+night diff) instead of losing the differential to a flat 1.5×base.
   const otMult = s.isOvertime ? 1.5 : 1;
   return hourlyRate(base, diff) * otMult * s.hours + perHr*s.hours + flat;
+}
+
+
+/* ---------- Pattern lab: repeating rotations ----------
+   A pattern is a cycle of N days (7 / 8 / 14 / 28…) where each cell is either off (null) or a
+   shift brush {kind:'day'|'night'|'fixed', hours, start?, shiftType?, bonusType?, customBonus?}.
+   Generic 'day'/'night' cells resolve to the weekend differential when they land on a Sat/Sun
+   (the same inference the .ics import uses); 'fixed' cells (built from a template) keep their
+   shiftType. Everything in this section is pure so the harness can test it against the wage core. */
+const MAX_PATTERNS = 8;
+const PATTERN_MIN_CYCLE = 2, PATTERN_MAX_CYCLE = 42;
+const PATTERN_KINDS = ['day','night','fixed'];
+const PATTERN_CYCLE_CHOICES = [7,8,14,28];
+const PATTERN_APPLY_WEEKS = [4,6,8,12];
+const DOW_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const gcd = (a,b)=>{ a=Math.abs(a); b=Math.abs(b); while(b){ const t=a%b; a=b; b=t; } return a||1; };
+const lcm = (a,b)=> a*b/gcd(a,b);
+
+/* Rotations nurses actually describe. `cells` is written by weekday from Sunday (a 14-day preset
+   is two Sunday-start weeks) and rotated onto the anchor date's weekday when picked; a
+   `byDow:false` preset (4 on / 4 off) has no weekday meaning and is used as-is.
+   D = 12h day starting 07:00, N = 12h night starting 19:00, _ = off. */
+const PATTERN_PRESETS = [
+  { id:'mtw-nights', name:'Mon–Wed nights', cycle:7, byDow:true, cells:'_NNN___',
+    blurb:'Three 12s back to back, the same days every week.' },
+  { id:'3-1-3-7', name:'3 on, 1 off, 3 on, 7 off', cycle:14, byDow:true, cells:'_____DD'+'D_DDD__',
+    blurb:'Every other weekend worked, then a whole week off.' },
+  { id:'pitman', name:'2-2-3 (Pitman)', cycle:14, byDow:true, cells:'_DD__DD'+'D__DD__',
+    blurb:'Never more than 3 in a row; every other weekend is a 3-day one.' },
+  { id:'4on4off', name:'4 on, 4 off nights', cycle:8, byDow:false, cells:'NNNN____',
+    blurb:'Long breaks — but the days drift across the week.' },
+  { id:'weekend', name:'Weekend program (Fri–Sun)', cycle:7, byDow:true, cells:'D____DD',
+    blurb:'Weekdays free, priced with your weekend differentials.' },
+];
+const PATTERN_BRUSHES = [
+  { key:'day12',   kind:'day',   hours:12, start:'07:00', label:'Day' },
+  { key:'night12', kind:'night', hours:12, start:'19:00', label:'Night' },
+  { key:'day8',    kind:'day',   hours:8,  start:'07:00', label:'Day' },
+  { key:'night8',  kind:'night', hours:8,  start:'23:00', label:'Night' },
+];
+function presetCell(ch){
+  if(ch==='D') return {kind:'day', hours:12, start:'07:00'};
+  if(ch==='N') return {kind:'night', hours:12, start:'19:00'};
+  return null;
+}
+/* Instantiate a preset anchored on `anchorISO`: cell i lands on anchor+i, whose weekday is
+   (anchorDow+i)%7, so a by-weekday preset is read at (anchorDow+i) % cycle. */
+function patternFromPreset(preset, anchorISO){
+  const w = parseISODate(anchorISO).getDay();
+  const cells = Array.from({length:preset.cycle},(_,i)=> presetCell(preset.cells[preset.byDow ? (w+i)%preset.cycle : i]));
+  return { id:Date.now()+Math.random(), name:preset.name, anchor:anchorISO, cells };
+}
+function blankPattern(anchorISO, cycle){
+  return { id:Date.now()+Math.random(), name:'', anchor:anchorISO, cells:Array.from({length:cycle||7},()=>null) };
+}
+/* Two cells paint the same thing (re-painting a cell with its own brush clears it). */
+function patternCellEq(a,b){
+  if(!a || !b) return !a && !b;
+  return a.kind===b.kind && Number(a.hours)===Number(b.hours) && (a.start||'')===(b.start||'')
+    && (a.shiftType||'')===(b.shiftType||'') && (a.bonusType||'none')===(b.bonusType||'none')
+    && Number(a.customBonus||0)===Number(b.customBonus||0);
+}
+/* 'day' | 'night' for any cell — fixed cells are classified by their differential key. */
+function patternCellClass(cell){
+  if(!cell) return null;
+  if(cell.kind!=='fixed') return cell.kind;
+  return /night|eve/.test(String(cell.shiftType||'')) ? 'night' : 'day';
+}
+function patternCellShiftType(cell, dateObj, differentials){
+  if(!cell) return null;
+  if(cell.kind==='fixed') return cell.shiftType;
+  const isWeekend = dateObj.getDay()===0 || dateObj.getDay()===6;
+  const active = k => !!(differentials && differentials[k] && differentials[k].active);
+  if(cell.kind==='night'){
+    if(isWeekend && active('weekend-eve')) return 'weekend-eve';
+    return active('night') ? 'night' : 'base';
+  }
+  return (isWeekend && active('weekend-day')) ? 'weekend-day' : 'base';
+}
+/* The concrete shift a cell produces on a date (no id — callers assign one). */
+function patternCellToShift(cell, dateObj, differentials){
+  const st = patternCellShiftType(cell, dateObj, differentials);
+  if(!st) return null;
+  const s = { shiftType:st, hours:Number(cell.hours), bonusType:cell.bonusType||'none', customBonus:Number(cell.customBonus||0), isOvertime:false };
+  if(cell.start) s.start = cell.start;
+  return s;
+}
+/* Cell index a date falls on; the cycle extends both ways from the anchor. */
+function patternIndexFor(pattern, dateObj){
+  const a = parseISODate(pattern.anchor);
+  const diff = Math.round((new Date(dateObj.getFullYear(),dateObj.getMonth(),dateObj.getDate()) - a)/86400000);
+  const n = pattern.cells.length;
+  return ((diff % n) + n) % n;
+}
+
+/* The per-paycheck tax model, factored out of App's calc() so the pattern lab prices a rotation
+   with exactly the math the hero uses. `t` carries the same per-period inputs calc() reads. */
+function computeNet(gross, t){
+  const pretax = Number(t.pretaxDeductions)||0, posttax = Number(t.posttaxDeductions)||0;
+  // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
+  // deferrals only reduce income-tax wages. Keep the two bases separate.
+  const ficaBase = gross;
+  const incomeTaxBase = Math.max(0, gross - pretax);
+  let fica = 0;
+  if(t.ficaType==='standard') fica = ficaBase*0.0765;
+  else if(t.ficaType==='percent') fica = ficaBase*((parseFloat(t.ficaPct)||0)/100);
+  const fed = incomeTaxBase*((Number(t.federalTaxRate)||0)/100);
+  const st  = incomeTaxBase*((Number(t.stateTaxRate)||0)/100);
+  let cw = 0;
+  (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent' ? incomeTaxBase*((parseFloat(w.amount)||0)/100) : (parseFloat(w.amount)||0); });
+  const ded = pretax+fica+fed+st+posttax+cw;
+  const net = Math.max(0, gross-ded);
+  // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum.
+  const flatCapTotal = Math.max(0, gross - (fica+fed+st+cw));
+  const dispPre  = Math.min(pretax, flatCapTotal);
+  const dispPost = Math.min(posttax, Math.max(0, flatCapTotal - dispPre));
+  return {gross,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost, pct: gross>0 ? Math.round(net/gross*100) : 0};
+}
+
+/* Everything the lab shows about a pattern — the money AND the shape of the life it makes.
+   Money is averaged over lcm(cycle,14) days so a cycle that doesn't divide a fortnight (the 8-day
+   "4 on 4 off") still yields an honest per-paycheck figure. Runs are cyclic: the pattern repeats,
+   so a stretch of shifts that wraps the cycle boundary counts as one run. */
+function patternMetrics(pattern, baseRate, differentials, taxes){
+  const cells = (pattern && pattern.cells) || [];
+  const n = cells.length;
+  const out = { n, shifts:0, hours:0, hoursPerWeek:0, nights:0, days:0, longestRun:0, longestBreak:0, flips:0,
+    weekendsWorked:0, weekendsTotal:0, weekendEvery:null, alwaysOff:[], drifts:n%7!==0,
+    periodGross:0, periodNet:0, periodHours:0, yearNet:0, mix:'none' };
+  if(!n) return out;
+  const on = cells.map(c=>!!c);
+  out.shifts = on.filter(Boolean).length;
+  cells.forEach(c=>{ if(!c) return; out.hours += Number(c.hours)||0; if(patternCellClass(c)==='night') out.nights++; else out.days++; });
+  const run = want => { let best=0,cur=0; for(let i=0;i<2*n;i++){ if(on[i%n]===want){ cur++; if(cur>best) best=Math.min(cur,n); } else cur=0; } return best; };
+  out.longestRun = run(true);
+  out.longestBreak = run(false);
+  // back-to-back day/night flips: consecutive WORKING days whose class differs (cyclic)
+  if(n>1) for(let i=0;i<n;i++){ const a=cells[i], b=cells[(i+1)%n]; if(a && b && patternCellClass(a)!==patternCellClass(b)) out.flips++; }
+  out.mix = out.nights && out.days ? 'mixed' : out.nights ? 'nights' : out.days ? 'days' : 'none';
+  if(!out.drifts){
+    const w = parseISODate(pattern.anchor).getDay();
+    const worked = new Set();
+    cells.forEach((c,i)=>{ if(c) worked.add((w+i)%7); });
+    out.alwaysOff = [0,1,2,3,4,5,6].filter(d=>!worked.has(d));
+  }
+  // money + weekends over lcm(cycle, 14) days from the anchor (whole weeks, so every Saturday in
+  // the span is a full weekend — its Sunday is cell (i+1)%n, inside the repeating cycle)
+  const span = lcm(n, 14);
+  const a = parseISODate(pattern.anchor);
+  let gross=0, hours=0;
+  for(let i=0;i<span;i++){
+    const dt = new Date(a.getFullYear(), a.getMonth(), a.getDate()+i);
+    if(dt.getDay()===6){ out.weekendsTotal++; if(cells[i%n] || cells[(i+1)%n]) out.weekendsWorked++; }
+    const cell = cells[i%n];
+    if(!cell) continue;
+    const s = patternCellToShift(cell, dt, differentials);
+    gross += shiftGross(baseRate, differentials[s.shiftType], s);
+    hours += s.hours;
+  }
+  if(out.weekendsTotal){ const g=gcd(out.weekendsWorked,out.weekendsTotal); out.weekendEvery = [out.weekendsWorked/g, out.weekendsTotal/g]; }
+  const periods = span/14;
+  out.periodGross = gross/periods;
+  out.periodHours = hours/periods;
+  out.hoursPerWeek = hours*7/span;
+  out.periodNet = computeNet(out.periodGross, taxes).net;
+  out.yearNet = out.periodNet*26;
+  return out;
+}
+
+/* Pure apply planner: which days get a shift, which are skipped because they already hold one
+   (never clobbered unless `replace`). Feeds both the lab's "Adds N shifts" preview and the apply. */
+function planPatternApply(pattern, shifts, differentials, opts){
+  const start = parseISODate(opts.startISO);
+  const total = Math.max(1, Math.round(opts.weeks||4))*7;
+  const adds=[]; let skipped=0, replaced=0;
+  for(let i=0;i<total;i++){
+    const dt = new Date(start.getFullYear(),start.getMonth(),start.getDate()+i);
+    const cell = pattern.cells[patternIndexFor(pattern, dt)];
+    if(!cell) continue;
+    const k = keyOfDate(dt);
+    if((shifts[k]||[]).length){ if(!opts.replace){ skipped++; continue; } replaced++; }
+    adds.push({k, shift:patternCellToShift(cell, dt, differentials)});
+  }
+  const endDt = new Date(start.getFullYear(),start.getMonth(),start.getDate()+total-1);
+  return {adds, skipped, replaced, startKey:keyOfDate(start), endKey:keyOfDate(endDt)};
 }
 
 /* ---------- supabase helpers ---------- */
@@ -1696,6 +1944,7 @@ function App(){
   const [dayEvents,setDayEvents] = useState({});   // 'YYYY-MM-DD' -> [{id,kind,hours?}] (PTO/education/appt/off)
   const [notes,setNotes] = useState({});           // 'YYYY-MM-DD' -> short free-text note
   const [icsIgnored,setIcsIgnored] = useState({}); // { icsUid: true } calendar entries dismissed as "not a shift"
+  const [patterns,setPatterns] = useState([]);     // pattern lab: saved rotations [{id,name,anchor,cells}]
 
 
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
@@ -1711,6 +1960,7 @@ function App(){
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
   const [showSwaps,setShowSwaps] = useState(false);   // shift swap board sheet
+  const [showPatterns,setShowPatterns] = useState(false);   // pattern lab modal
   // 6-char code carried in by a ?join= invite link (or stashed across the OAuth round-trip),
   // awaiting the recipient's confirm inside SwapsSheet. '' when there's nothing pending.
   const [pendingInvite,setPendingInvite] = useState('');
@@ -1763,7 +2013,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -1798,6 +2048,7 @@ function App(){
     if(d.notes) setNotes(d.notes);
     if(d.icsIgnored) setIcsIgnored(d.icsIgnored);
     if(d.goals) setGoals(d.goals);
+    if(d.patterns) setPatterns(d.patterns);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -1806,7 +2057,7 @@ function App(){
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
-    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setSetupComplete(false);
+    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false);
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -1954,7 +2205,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2064,10 +2315,10 @@ function App(){
   },[ready,setupComplete]);
 
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns]);
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -2248,6 +2499,10 @@ function App(){
     });
   },[calView,calFocus,shifts,dayEvents,baseRate,differentials]);
 
+  /* the per-paycheck tax inputs, as one stable object — read by calc() and the pattern lab */
+  const taxInputs = useMemo(()=>({pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings}),
+    [pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+
   /* ---- calculations ---- */
   const calc = useMemo(()=>{
     let gross=0, hours=0;
@@ -2269,26 +2524,10 @@ function App(){
         if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
       });
     });
-    // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
-    // deferrals only reduce income-tax wages. Keep the two bases separate.
-    const ficaBase = gross;
-    const incomeTaxBase = Math.max(0, gross - pretaxDeductions);
-    let fica = 0;
-    if(ficaType==='standard') fica = ficaBase*0.0765;
-    else if(ficaType==='percent') fica = ficaBase*((parseFloat(ficaPct)||0)/100);
-    const fed = incomeTaxBase*(federalTaxRate/100);
-    const st  = incomeTaxBase*(stateTaxRate/100);
-    let cw = 0;
-    customWithholdings.forEach(w=>{ cw += w.type==='percent' ? incomeTaxBase*((parseFloat(w.amount)||0)/100) : (parseFloat(w.amount)||0); });
-    const ded = pretaxDeductions+fica+fed+st+posttaxDeductions+cw;
-    const net = Math.max(0, gross-ded);
-    // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum.
-    const flatCapTotal = Math.max(0, gross - (fica+fed+st+cw));
-    const dispPre  = Math.min(pretaxDeductions, flatCapTotal);
-    const dispPost = Math.min(posttaxDeductions, Math.max(0, flatCapTotal - dispPre));
-    return {gross,hours,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost,
-      pct: gross>0 ? Math.round(net/gross*100) : 0};
-  },[shifts,dayEvents,days,baseRate,differentials,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+    // The tax model itself lives in computeNet() (module level) so the pattern lab prices a
+    // rotation with exactly this math. Same inputs, same output shape as before.
+    return {...computeNet(gross, taxInputs), hours};
+  },[shifts,dayEvents,days,baseRate,differentials,taxInputs]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
   const periodShiftCount = useMemo(()=>{
@@ -2404,6 +2643,63 @@ function App(){
       const n2={...prev}; if(next.length) n2[k]=next; else delete n2[k]; return n2;
     });
     qfTouched.current.add(k);
+  };
+
+  /* ---- pattern lab: save / delete / put on the calendar / pull back off ---- */
+  const openPatternLab = ()=>{ if(qfMode){ setQfMode(false); setQfTemplate(null); } setShowPatterns(true); track('pattern_lab_opened', null, user?.id); };
+  const savePattern = (p)=>{
+    const isNew = !patterns.some(x=>x.id===p.id);
+    if(isNew && patterns.length>=MAX_PATTERNS){ toast(`You can keep up to ${MAX_PATTERNS} patterns — delete one to add another.`,'error'); return false; }
+    setPatterns(prev=>{
+      const idx = prev.findIndex(x=>x.id===p.id);
+      if(idx>=0){ const next=[...prev]; next[idx]=p; return next; }
+      return prev.length>=MAX_PATTERNS ? prev : [...prev, p];
+    });
+    if(isNew) track('pattern_saved', {cycle:p.cells.length}, user?.id);
+    return true;
+  };
+  const deletePattern = async (p)=>{
+    if(!(await confirmAsync(`Delete "${p.name||'this pattern'}"? Shifts already on your calendar stay.`,{title:'Delete pattern?',confirm:'Delete',danger:true}))) return false;
+    setPatterns(prev=>prev.filter(x=>x.id!==p.id));
+    return true;
+  };
+  /* Upcoming shifts each pattern put on the calendar (today onward) — drives "Remove them". */
+  const patternFutureCounts = useMemo(()=>{
+    const t = todayISO(), m = {};
+    Object.entries(shifts).forEach(([k,arr])=>{ if(k<t) return; (arr||[]).forEach(s=>{ if(s.patternId!=null) m[s.patternId]=(m[s.patternId]||0)+1; }); });
+    return m;
+  },[shifts]);
+  const applyPattern = (pattern, opts)=>{
+    const plan = planPatternApply(pattern, shifts, differentials, opts);
+    if(!plan.adds.length){ toast('Nothing to add — those days are already scheduled.','info'); return; }
+    const replace = !!opts.replace;
+    setShifts(prev=>{
+      const next = {...prev};
+      plan.adds.forEach(({k,shift})=>{
+        if(!replace && (next[k]||[]).length) return;   // re-check against live state, never clobber
+        next[k] = [{id:Date.now()+Math.random(), ...shift, patternId:pattern.id}];
+      });
+      return next;
+    });
+    // land the calendar on the first week of the new rotation
+    setPPS(periodStartOf(opts.startISO, payPeriodStart));
+    setCalView('month'); setCalFocus(opts.startISO);
+    toast(`Added ${plan.adds.length} shift${plan.adds.length===1?'':'s'} to your calendar.`,'success');
+    track('pattern_applied', {shifts:plan.adds.length, weeks:opts.weeks}, user?.id);
+    setShowPatterns(false);
+  };
+  const removePatternShifts = async (p)=>{
+    const n = patternFutureCounts[p.id]||0;
+    if(!n) return;
+    if(!(await confirmAsync(`Remove the ${n} upcoming shift${n===1?'':'s'} this pattern added? Past shifts stay.`,{title:'Remove its shifts?',confirm:'Remove',danger:true}))) return;
+    const t = todayISO();
+    setShifts(prev=>{
+      const next = {};
+      Object.entries(prev).forEach(([k,arr])=>{ const keep = k<t ? arr : arr.filter(s=>s.patternId!==p.id); if(keep.length) next[k]=keep; });
+      return next;
+    });
+    toast(`Removed ${n} shift${n===1?'':'s'}.`,'success');
+    track('pattern_shifts_removed', {n}, user?.id);
   };
 
   /* analytics: one event per app load */
@@ -2827,7 +3123,7 @@ function App(){
     <div>
       <div className="topbar">
         <div className="brand"><span className="b-dot"></span>badgebudget</div>
-        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
+        <nav className="topnav"><span className="on">Planner</span><button className="linklike" onClick={()=>document.querySelector('.cal-head')?.scrollIntoView({block:'start'})}>Calendar</button><button className="linklike" onClick={openPatternLab}>Patterns</button><button className="linklike" onClick={()=>setShowSwaps(true)}>Swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</button><button className="linklike" onClick={()=>setShowSettings(true)}>Settings</button></nav>
         <div className="top-actions">
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <button className="linklike" onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',padding:'11px 6px',margin:'-11px 6px -11px 0',display:'inline-flex',alignItems:'center',cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</button>}
@@ -2865,6 +3161,11 @@ function App(){
             <div className="stats">
               <div className="stat"><div className="v num">{calc.hours.toFixed(calc.hours%1?1:0)}</div><div className="k">hours this period</div></div>
               <div className="stat"><div className="v num">{periodShiftCount}</div><div className="k">shifts this period</div></div>
+            </div>
+
+            <div className="whatif">
+              <div style={{flex:1}}><div className="t">Pattern lab</div><div className="s">Design a rotation — see the paycheck it makes and the life it makes.</div></div>
+              <button onClick={openPatternLab}>Open</button>
             </div>
 
             <div className="whatif mob-only">
@@ -2954,6 +3255,7 @@ function App(){
                 <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:17}}>No shifts yet</div>
                 <div style={{fontSize:13,color:'var(--muted)',margin:'8px 0 16px',lineHeight:1.5}}>Tap a day on the calendar — or log your first shift — to watch your take-home build.</div>
                 <button className="btn btn-soft" onClick={openSheetForLog}>+ Log a shift</button>
+                <button className="btn btn-ghost" style={{marginTop:8}} onClick={openPatternLab}>Design a rotation instead</button>
               </div>}
             <div className="card">
               <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</h3>
@@ -2995,7 +3297,7 @@ function App(){
         <Settings onClose={()=>setShowSettings(false)}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-            goals,setGoals,
+            goals,setGoals,keepRatio,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
@@ -3008,6 +3310,12 @@ function App(){
           onPendingCount={setSwapPendingCount}
           pendingInvite={pendingInvite}
           onInviteResolved={()=>{ clearSwapInvite(); setPendingInvite(''); }} />}
+
+      {showPatterns &&
+        <PatternLab patterns={patterns} templates={templates} differentials={differentials} baseRate={baseRate} taxes={taxInputs}
+          goals={goals} payPeriodStart={payPeriodStart} shifts={shifts} futureCounts={patternFutureCounts}
+          onSave={savePattern} onDelete={deletePattern} onApply={applyPattern} onRemoveShifts={removePatternShifts}
+          onClose={()=>setShowPatterns(false)} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
@@ -3643,6 +3951,295 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   );
 }
 
+/* ---------- Pattern lab ----------
+   Design a repeating rotation, see the paycheck it makes AND the shape of the life it makes
+   (longest stretch, longest break, which weekdays are reliably free, weekends worked), compare
+   saved patterns side by side, and put one on the calendar for N weeks. The math lives in
+   patternMetrics / planPatternApply above; this component only holds edit state.
+   Deliberately informational — no "best" highlighting, no nudging toward more shifts. */
+function PatternLab({patterns, templates, differentials, baseRate, taxes, goals, payPeriodStart, shifts, futureCounts, onSave, onDelete, onApply, onRemoveShifts, onClose}){
+  const [draft,setDraft] = useState(null);          // pattern being edited, or null for the list
+  const [brush,setBrush] = useState('night12');     // PATTERN_BRUSHES key | 'tpl:<id>' | 'off'
+  const [dirty,setDirty] = useState(false);
+  const [applyOpen,setApplyOpen] = useState(false);
+  const [applyStart,setApplyStart] = useState(payPeriodStart);
+  const [applyWeeks,setApplyWeeks] = useState(6);
+  const [applyReplace,setApplyReplace] = useState(false);
+
+  const isSaved = !!draft && patterns.some(p=>p.id===draft.id);
+  const metrics = useMemo(()=> draft ? patternMetrics(draft, baseRate, differentials, taxes) : null, [draft,baseRate,differentials,taxes]);
+  const allMetrics = useMemo(()=> patterns.map(p=>({p, m:patternMetrics(p, baseRate, differentials, taxes)})), [patterns,baseRate,differentials,taxes]);
+  const applyPlan = useMemo(()=> (draft && applyOpen)
+    ? planPatternApply(draft, shifts, differentials, {startISO:applyStart, weeks:applyWeeks, replace:applyReplace}) : null,
+    [draft,applyOpen,shifts,differentials,applyStart,applyWeeks,applyReplace]);
+
+  const fmtHrs = h => String(Math.round(h*10)/10);
+  const cellColor = c => {
+    if(!c) return '#E7E5DE';
+    const key = c.kind==='fixed' ? c.shiftType : (c.kind==='night' ? 'night' : 'base');
+    return (differentials[key] && differentials[key].color) || '#8A93A6';
+  };
+  const cellLabel = c => {
+    if(!c) return 'off';
+    const nm = c.kind==='fixed' ? ((differentials[c.shiftType]&&differentials[c.shiftType].name)||c.shiftType) : (c.kind==='night'?'Night':'Day');
+    return `${nm} ${c.hours}h${c.start?' from '+fmtTime12(c.start):''}`;
+  };
+  const weekendShort = m => {
+    if(!m.weekendEvery || !m.weekendsWorked) return 'none';
+    const [a,b] = m.weekendEvery;
+    return a===b ? 'every' : (a===1&&b===2) ? 'every other' : `${a} of ${b}`;
+  };
+  const weekendLine = m => {
+    if(!m.weekendEvery || !m.weekendsWorked) return <>Weekends: <b>none worked</b></>;
+    const [a,b] = m.weekendEvery;
+    if(a===b) return <>Weekends: <b>every weekend</b></>;
+    if(a===1 && b===2) return <>Weekends: <b>every other weekend</b></>;
+    return <>Weekends: <b>{a} of every {b}</b> worked</>;
+  };
+  const fmtMonths = n => { const mo = n/26*12; return mo<1.5 ? 'under 2 months' : mo<12 ? `about ${Math.round(mo)} months` : `about ${Math.round(mo/12*10)/10} years`; };
+  const lifeLines = m => {
+    if(!m || !m.shifts) return [{ic:'·', text:'Paint some shifts onto the cycle to see the shape of this rotation.'}];
+    const L = [];
+    L.push({ic:'⏱', text:<><b>{m.shifts} shift{m.shifts===1?'':'s'} every {m.n} days</b> · about {fmtHrs(m.hoursPerWeek)} hrs a week</>});
+    L.push({ic:'↔', text:<>Longest stretch <b>{m.longestRun} in a row</b> · longest break <b>{m.longestBreak} day{m.longestBreak===1?'':'s'} off</b></>});
+    L.push({ic:'◐', text:weekendLine(m)});
+    L.push({ic:'⌂', text: m.drifts
+      ? <>No weekday is always free — {[8,11,18].indexOf(m.n)>=0?'an':'a'} {m.n}-day cycle <b>drifts across the week</b>, so any given weekday is worked some cycles and off others.</>
+      : (m.alwaysOff.length
+          ? <>Always off: <b>{m.alwaysOff.map(d=>DOW_SHORT[d]).join(', ')}</b> — the same every week, so plans can count on them.</>
+          : <>Every weekday gets worked at some point in the cycle — nothing is reliably free.</>)});
+    if(m.mix==='mixed') L.push({ic:'☾', text:<>Days and nights mixed · <b>{m.flips} back-to-back flip{m.flips===1?'':'s'}</b> per cycle</>});
+    else if(m.mix==='nights') L.push({ic:'☾', text:<>Nights only</>});
+    else L.push({ic:'☀', text:<>Days only</>});
+    return L;
+  };
+  const goalLine = m => (goals && goals.length && m && m.periodNet>0)
+    ? goals.slice(0,3).map(g=>{ const n=Math.max(1,Math.ceil(g.target/m.periodNet)); return `${g.name}: ${n} paycheck${n===1?'':'s'} (${fmtMonths(n)})`; }).join(' · ')
+    : null;
+
+  /* ---- editing ---- */
+  const brushCell = ()=>{
+    if(brush==='off') return null;
+    if(brush.indexOf('tpl:')===0){
+      const t = templates.find(x=>String(x.id)===brush.slice(4));
+      if(!t) return null;
+      const c = {kind:'fixed', shiftType:t.shiftType, hours:t.hours};
+      if(t.start) c.start = t.start;
+      if(t.bonusType && t.bonusType!=='none'){ c.bonusType=t.bonusType; if(t.bonusType==='custom') c.customBonus=t.customBonus||0; }
+      return c;
+    }
+    const b = PATTERN_BRUSHES.find(x=>x.key===brush);
+    return b ? {kind:b.kind, hours:b.hours, start:b.start} : null;
+  };
+  const paint = (i)=>{
+    const c = brushCell();
+    setDraft(d=>{ const cells=[...d.cells]; cells[i] = (c && !patternCellEq(cells[i], c)) ? c : null; return {...d, cells}; });
+    setDirty(true);
+  };
+  const setCycle = (n)=>{
+    n = Math.max(PATTERN_MIN_CYCLE, Math.min(PATTERN_MAX_CYCLE, Math.round(n)||7));
+    setDraft(d=>({...d, cells:Array.from({length:n},(_,i)=> i<d.cells.length ? d.cells[i] : null)}));
+    setDirty(true);
+  };
+  const setAnchor = (v)=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(v) || keyOfDate(parseISODate(v))!==v) return;
+    setDraft(d=>({...d, anchor:v})); setApplyStart(v); setDirty(true);
+  };
+  const open = (p)=>{ setDraft({...p, cells:[...p.cells]}); setDirty(false); setApplyOpen(false); setApplyStart(p.anchor); };
+  const startPreset = (preset)=>{ open(preset ? patternFromPreset(preset, payPeriodStart) : blankPattern(payPeriodStart, 7)); setDirty(true); };
+  const named = ()=> ({...draft, name:(draft.name||'').trim().slice(0,40) || 'My rotation'});
+  const save = ()=>{
+    const p = named();
+    if(!onSave(p)) return false;
+    setDraft(p); setDirty(false);
+    toast(`Saved "${p.name}".`,'success');
+    return true;
+  };
+  const back = async ()=>{
+    if(dirty && metrics && metrics.shifts && !(await confirmAsync('Leave without saving this pattern?',{title:'Discard changes?',confirm:'Discard',danger:true}))) return;
+    setDraft(null); setApplyOpen(false); setDirty(false);
+  };
+  const dismiss = async ()=>{
+    if(draft && dirty && metrics && metrics.shifts && !(await confirmAsync('Close without saving this pattern?',{title:'Discard changes?',confirm:'Discard',danger:true}))) return;
+    onClose();
+  };
+  const del = async ()=>{ if(await onDelete(draft)){ setDraft(null); setApplyOpen(false); setDirty(false); } };
+  const confirmApply = ()=>{
+    if(!applyPlan || !applyPlan.adds.length) return;
+    const p = named();
+    if(!onSave(p)) return;   // applied shifts carry patternId, so the pattern must exist to be pulled back off later
+    onApply(p, {startISO:applyStart, weeks:applyWeeks, replace:applyReplace});
+  };
+
+  /* ---- list mode ---- */
+  if(!draft){
+    return (
+      <div className="scrim" onClick={dismiss}>
+        <div className="modal" onClick={e=>e.stopPropagation()}>
+          <div className="sheet-h"><div className="t">Pattern lab</div><button className="back" onClick={dismiss} aria-label="Close">{Ic.x}</button></div>
+          <div className="hint" style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Design a rotation and see two things before you commit to it: the paycheck it makes, and the life it makes — longest stretch, longest break, which days stay yours.</div>
+
+          {allMetrics.length>=2 && <>
+            <div className="sec-lab">SIDE BY SIDE</div>
+            <div style={{overflowX:'auto',marginBottom:18}}>
+              <table className="pl-cmp">
+                <thead><tr><th></th>{allMetrics.map(({p})=><th key={p.id} scope="col">{p.name}</th>)}</tr></thead>
+                <tbody>
+                  <tr><th scope="row">Take-home / paycheck</th>{allMetrics.map(({p,m})=><td key={p.id} className="v num">{fmt(m.periodNet)}</td>)}</tr>
+                  <tr><th scope="row">Hours / week</th>{allMetrics.map(({p,m})=><td key={p.id} className="num">{fmtHrs(m.hoursPerWeek)}</td>)}</tr>
+                  <tr><th scope="row">Longest stretch</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.longestRun} on</td>)}</tr>
+                  <tr><th scope="row">Longest break</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.longestBreak} off</td>)}</tr>
+                  <tr><th scope="row">Weekends</th>{allMetrics.map(({p,m})=><td key={p.id}>{weekendShort(m)}</td>)}</tr>
+                  <tr><th scope="row">Always off</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.drifts ? 'drifts' : (m.alwaysOff.map(d=>DOW_SHORT[d]).join(' ') || '—')}</td>)}</tr>
+                </tbody>
+              </table>
+            </div>
+          </>}
+
+          {patterns.length>0 && <div className="sec-lab">YOUR PATTERNS</div>}
+          {allMetrics.map(({p,m})=>{
+            const fc = futureCounts[p.id]||0;
+            return (
+              <div key={p.id} className="pl-card">
+                <button type="button" className="pl-card-main" onClick={()=>open(p)}>
+                  <div className="t">{p.name}</div>
+                  <div className="pl-mini" aria-hidden="true">{p.cells.map((c,i)=><i key={i} style={{background:cellColor(c)}}></i>)}</div>
+                  <div className="s"><b className="num">{fmt(m.periodNet)}</b> / paycheck · {fmtHrs(m.hoursPerWeek)} hrs/wk · {m.longestRun} in a row max · {weekendShort(m)} weekends</div>
+                </button>
+                {fc>0 &&
+                  <div className="pl-card-foot">
+                    <span>{fc} upcoming shift{fc===1?'':'s'} on your calendar</span>
+                    <button className="danger-link" onClick={()=>onRemoveShifts(p)}>Remove them</button>
+                  </div>}
+              </div>);
+          })}
+
+          <div className="sec-lab" style={{marginTop:patterns.length?18:4}}>START FROM A ROTATION NURSES USE</div>
+          {PATTERN_PRESETS.map(pr=>
+            <div key={pr.id} className="pl-card">
+              <button type="button" className="pl-card-main" onClick={()=>startPreset(pr)}>
+                <div className="t">{pr.name}</div>
+                <div className="s">{pr.blurb}</div>
+              </button>
+            </div>)}
+          <button className="btn btn-ghost" style={{marginTop:6}} onClick={()=>startPreset(null)}>Start from blank</button>
+          {patterns.length>=MAX_PATTERNS &&
+            <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:10,textAlign:'center'}}>You've saved the maximum of {MAX_PATTERNS} patterns — delete one to keep another.</div>}
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- edit mode ---- */
+  const w = parseISODate(draft.anchor).getDay();
+  const n = draft.cells.length;
+  const cycleEnd = keyOfDate(new Date(parseISODate(draft.anchor).getFullYear(), parseISODate(draft.anchor).getMonth(), parseISODate(draft.anchor).getDate()+n-1));
+  const isCustomCycle = PATTERN_CYCLE_CHOICES.indexOf(n)<0;
+  const brushes = [
+    ...PATTERN_BRUSHES.map(b=>({key:b.key, label:`${b.kind==='night'?'☾':'☀'} ${b.label} ${b.hours}h`, color:cellColor({kind:b.kind})})),
+    ...templates.map(t=>({key:'tpl:'+t.id, label:`⚡ ${t.name} ×${t.hours}h`, color:cellColor({kind:'fixed',shiftType:t.shiftType})})),
+    {key:'off', label:'Off (erase)', color:'#E7E5DE'},
+  ];
+  const gl = goalLine(metrics);
+
+  return (
+    <div className="scrim" onClick={dismiss}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="sheet-h">
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <button className="back" onClick={back} aria-label="Back to your patterns">‹</button>
+            <div className="t">{isSaved?'Edit pattern':'New pattern'}</div>
+          </div>
+          <button className="back" onClick={dismiss} aria-label="Close">{Ic.x}</button>
+        </div>
+
+        <div className="inp" style={{marginBottom:14}}>
+          <input value={draft.name} maxLength={40} placeholder="Name this rotation (e.g. My nights)" aria-label="Pattern name"
+            onChange={e=>{ setDraft(d=>({...d, name:e.target.value})); setDirty(true); }} />
+        </div>
+
+        <div className="sec-lab">REPEATS EVERY</div>
+        <div className="hrs" style={{marginBottom:12}}>
+          {PATTERN_CYCLE_CHOICES.map(c=><button key={c} className={'hc'+(n===c?' on':'')} style={{fontSize:13,padding:'11px 4px',whiteSpace:'nowrap'}} aria-pressed={n===c} onClick={()=>setCycle(c)}>{c} days</button>)}
+          <div className="inp suf" style={{flex:'1 1 100%'}}><NumInput value={n} onCommit={setCycle} step="1" min={PATTERN_MIN_CYCLE} max={PATTERN_MAX_CYCLE} ariaLabel="Custom cycle length in days" style={{padding:'11px 12px',textAlign:'center',fontWeight:700,...(isCustomCycle?{borderColor:'var(--ink)'}:{})}}/><span className="sfx">days</span></div>
+        </div>
+
+        <div className="sec-lab">DAY 1 FALLS ON</div>
+        <div className="inp" style={{marginBottom:4}}>
+          <input type="date" value={draft.anchor} onChange={e=>setAnchor(e.target.value)} aria-label="Cycle start date" />
+        </div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginBottom:14}}>Cycle 1 runs {fmtDateShort(draft.anchor)} – {fmtDateShort(cycleEnd)}, then repeats.</div>
+
+        <div className="sec-lab">PAINT WITH</div>
+        <div className="pl-brushes" style={{marginBottom:12}}>
+          {brushes.map(b=>
+            <button key={b.key} type="button" className={'chip-sel'+(brush===b.key?' on':'')} aria-pressed={brush===b.key} onClick={()=>setBrush(b.key)}>
+              <i style={{background:b.color}}></i>{b.label}
+            </button>)}
+        </div>
+        <div className="pl-grid" role="group" aria-label="Rotation cycle — tap a day to paint it">
+          {draft.cells.map((c,i)=>{
+            const dow=(w+i)%7, wk = dow===0||dow===6;
+            const cls = patternCellClass(c);
+            return (
+              <button key={i} type="button" className={'pl-cell'+(c?' on':'')+(wk&&!metrics.drifts?' wk':'')} onClick={()=>paint(i)}
+                aria-pressed={!!c} aria-label={`Day ${i+1}${metrics.drifts?'':' · '+DOW_SHORT[dow]}: ${cellLabel(c)}`}>
+                <span className="dw">{metrics.drifts ? i+1 : DOW_SHORT[dow][0]}</span>
+                {c ? <><span className="g" style={{color:cellColor(c)}}>{cls==='night'?'☾':'☀'}</span><span className="h num">{c.hours}h</span></>
+                   : <span className="g off">·</span>}
+              </button>);
+          })}
+        </div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',margin:'8px 0 16px'}}>
+          {metrics.drifts
+            ? `${[8,11,18].indexOf(n)>=0?'An':'A'} ${n}-day cycle doesn't line up with the week, so the weekday each cell lands on changes every cycle.`
+            : 'Tap a day to paint the selected shift; tap again to clear it. Weekend days pick up your weekend differentials automatically.'}
+        </div>
+
+        <div className="pl-money">
+          <div className="k">Take-home per paycheck</div>
+          <div className="v num">{fmt(metrics.periodNet)}</div>
+          <div className="s">{fmt(metrics.periodGross)} gross · {fmtHrs(metrics.periodHours)} hrs · ≈ <span className="num">{fmt(metrics.yearNet)}</span> a year</div>
+          {gl && <div className="s" style={{marginTop:8}}>If every paycheck went to it — {gl}</div>}
+        </div>
+
+        <div className="sec-lab" style={{marginTop:16}}>THE LIFE IT MAKES</div>
+        <div className="pl-life" style={{marginBottom:18}}>
+          {lifeLines(metrics).map((l,i)=><div key={i} className="li"><span className="ic" aria-hidden="true">{l.ic}</span><span>{l.text}</span></div>)}
+        </div>
+
+        {!applyOpen ? <>
+          <button className="btn btn-primary" style={{marginBottom:10}} disabled={!metrics.shifts} onClick={()=>{ setApplyStart(draft.anchor); setApplyOpen(true); }}>Put it on the calendar</button>
+          <button className="btn btn-ghost" disabled={isSaved && !dirty} onClick={save}>{isSaved ? (dirty?'Save changes':'Saved') : 'Save pattern'}</button>
+          {isSaved && <button className="danger-link" style={{display:'block',margin:'18px auto 0'}} onClick={del}>Delete this pattern</button>}
+        </> : <div className="pl-apply">
+          <div className="sec-lab">PUT IT ON THE CALENDAR</div>
+          <label className="field"><span className="lab">Starting</span><div className="inp"><input type="date" value={applyStart} onChange={e=>{ const v=e.target.value; if(/^\d{4}-\d{2}-\d{2}$/.test(v) && keyOfDate(parseISODate(v))===v) setApplyStart(v); }} /></div></label>
+          <div className="sec-lab">FOR</div>
+          <div className="hrs" style={{marginBottom:12}}>
+            {PATTERN_APPLY_WEEKS.map(wk=><button key={wk} className={'hc'+(applyWeeks===wk?' on':'')} aria-pressed={applyWeeks===wk} onClick={()=>setApplyWeeks(wk)}>{wk} wks</button>)}
+          </div>
+          <div className="drow" style={{marginBottom:12}}>
+            <button type="button" role="switch" aria-checked={applyReplace} aria-label="Replace shifts already on those days" className={'tg'+(applyReplace?' on':'')} onClick={()=>setApplyReplace(v=>!v)}><div className="knob"></div></button>
+            <span className="nm" style={{whiteSpace:'normal'}} onClick={()=>setApplyReplace(v=>!v)}>Replace shifts already on those days</span>
+          </div>
+          {applyPlan &&
+            <div className="preview" style={{margin:'0 0 14px'}}>
+              <div className="k">This adds</div>
+              <div className="v">{applyPlan.adds.length} shift{applyPlan.adds.length===1?'':'s'} · {fmtDateShort(applyPlan.startKey)} – {fmtDateShort(applyPlan.endKey)}</div>
+              {applyPlan.skipped>0 && <div className="k" style={{marginTop:6}}>{applyPlan.skipped} day{applyPlan.skipped===1?'':'s'} already scheduled — left alone</div>}
+              {applyPlan.replaced>0 && <div className="k" style={{marginTop:6,color:'var(--danger)'}}>{applyPlan.replaced} day{applyPlan.replaced===1?'':'s'} will be replaced</div>}
+            </div>}
+          <button className="btn btn-primary" style={{marginBottom:10}} disabled={!applyPlan || !applyPlan.adds.length} onClick={confirmApply}>
+            {applyPlan && applyPlan.adds.length ? `Add ${applyPlan.adds.length} shift${applyPlan.adds.length===1?'':'s'}` : 'Nothing to add'}
+          </button>
+          <button className="btn btn-ghost" onClick={()=>setApplyOpen(false)}>Back</button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Auth Modal ---------- */
 function AuthModal({mode:initialMode,onClose}){
   const [mode,setMode] = useState(initialMode||'signin');
@@ -3734,7 +4331,7 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-    goals,setGoals,
+    goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
@@ -3795,14 +4392,23 @@ function Settings(props){
 
         <div className="sec-lab" style={{marginTop:18}}>SAVINGS GOALS</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Name what you're saving for. When you add a shift, you'll see what its take-home is worth toward each goal.</div>
-        {(goals||[]).map(g=>(
-          <div className="drow" key={g.id}>
-            <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
-            <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
-            <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
-            <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+        {(goals||[]).map(g=>{
+          // Goal-view reverse: how many "typical 12h shifts" (base rate × 12 × keep-ratio, the same
+          // per-shift take-home the Add-Shift preview uses for a base shift) reach this target.
+          const per = baseRate*12*keepRatio;
+          const n = (per>0 && g.target>0) ? Math.ceil(g.target/per) : null;
+          return (
+          <div key={g.id}>
+            <div className="drow">
+              <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
+              <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
+              <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
+              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+            </div>
+            {n!=null && <div className="k" style={{margin:'-4px 0 8px 22px',fontSize:11,color:'var(--muted-2)'}}>≈ {n.toLocaleString('en-US')} typical 12h shift{n===1?'':'s'} to reach this</div>}
           </div>
-        ))}
+          );
+        })}
         {(goals||[]).length<MAX_GOALS &&
           <div style={{display:'flex',gap:8,marginTop:4}}>
             <div className="inp" style={{flex:1}}><input value={goalName} placeholder="e.g. House down payment" maxLength={40} onChange={e=>setGoalName(e.target.value)}/></div>

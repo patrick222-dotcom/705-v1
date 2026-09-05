@@ -1,8 +1,9 @@
 # BadgeBudget — Shift Pay Planner
 
 Take-home pay planner for bedside nurses: log shifts and differentials, see what a shift is worth
-before you work it, keep your schedule in sync from a calendar's secret iCal address (or import and
-export `.ics` files), track savings goals, and swap shifts anonymously within your unit.
+before you work it, design a repeating rotation and see both the paycheck and the life it makes,
+keep your schedule in sync from a calendar's secret iCal address (or import and export `.ics` files),
+track savings goals, and swap shifts anonymously within your unit.
 
 **Live:** https://badgebudget.com — the old `patrick222-dotcom.github.io/705-v1` URL redirects there.
 

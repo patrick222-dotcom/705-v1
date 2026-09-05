@@ -45,8 +45,10 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    against a 4s timeout (WebKit deadlock — iPhone Chrome is WebKit too). These fixed a long-standing
    iPhone infinite spinner.
 2. **SRI on all 5 CDN scripts** (`grep -c 'integrity="sha384-' index.html` → 5), exact pinned versions.
-3. **Wage-core** (`shiftGross`, `hourlyRate`, `calc`, `statOf`/`ptoStatOf`, and the rate/differential
-   coercions in `sanitizeData`): touch only in a dedicated session, with the wage-math probes, never in
+3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
+   hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`, and the
+   rate/differential coercions in `sanitizeData`): touch only in a dedicated session, with the
+   wage-math probes **and the hero/breakdown equality assertion against the deployed build**, never in
    a nightly build. Adding a sanitizer branch for a *new* data shape (as #62 did for `goals`) is fine
    in a nightly if it comes with a unit test and the existing probes stay green.
 4. **`saveToSupabase` upserts with `{onConflict:'user_id'}`.** The table's PK is a generated `id` and
@@ -93,7 +95,11 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   protection is simply unavailable on this host. The `<head>` also carries an inline SVG data-URI
   favicon, a meta description and a theme-color (#64) — head-only, so the 3-file publish set holds.
 - **Data.** Signed-in → Supabase `user_data`: one `jsonb` blob per user, upserted on `user_id`,
-  debounced 500ms, capped at `MAX_BLOB_BYTES` = 512KB (free-tier guard). Anonymous → localStorage.
+  debounced 500ms, capped at `MAX_BLOB_BYTES` = 512KB (free-tier guard). The blob holds pay settings,
+  shifts, differentials, templates, day events, notes, `goals` (≤ `MAX_GOALS` 12) and `patterns`
+  (≤ `MAX_PATTERNS` 8); every array goes through `sanitizeData` on load. Anonymous → localStorage.
+  Writes are whole-blob, last-writer-wins, no version — fine for one human on two devices, not for an
+  agent writing concurrently (the agent-gateway scoping doc, PR #67, starts from this fact).
   Cross-device sync is a 15s poll while the tab is visible, guarded by `updated_at` vs `lastSeenAt`
   and a content-equality check so two devices never ping-pong writes; `applyData(...,{keepPeriod:true})`
   leaves the viewed pay period alone. Not push: Realtime would need the table in the
@@ -107,10 +113,11 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 29: `app_open`, `setup_completed`,
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 33: `app_open`, `setup_completed`,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
-  `ics_import_parsed/done`, `ics_sync_done`, `feedback_submitted`, `swap_group_created/joined`,
+  `ics_import_parsed/done`, `ics_sync_done`, `pattern_lab_opened`, `pattern_saved` `{cycle}`,
+  `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`, `feedback_submitted`, `swap_group_created/joined`,
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`. (`health_check` rows in the
   table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
@@ -135,9 +142,22 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   quick-fill, day events (PTO paid at base rate) and a live preview — gross, take-home, ≈$/hr
   take-home, OT tag — so a nurse can judge whether picking up an extra shift is worth it *before*
   working it; savings goals (Settings, capped at `MAX_GOALS`=12, stored in the same blob) shown in
-  that preview as "% of goal (≈N shifts)"; a month-first calendar whose month label + weekday row stay
-  pinned while scrolling (#63); a breakdown view; paystub PDF import (parsed on-device, never
+  that preview as "% of goal (≈N shifts)" and on each goal in Settings as "≈ N typical 12h shifts to
+  reach this" (#68); a month-first calendar whose month label + weekday row stay pinned while scrolling
+  (#63); a breakdown view; paystub PDF import (parsed on-device, never
   uploaded); Settings.
+- **Pattern lab (#65, 2026-09-04).** Top-nav "Patterns", a dashboard card and the empty-state CTA open
+  a modal lab: presets nurses actually describe (Mon–Wed nights, 3/1/3/7, 2-2-3 Pitman, 4 on/4 off,
+  Fri–Sun weekend program) or a blank 7/8/14/28/custom-day cycle anchored on a date; paint cells with
+  Day/Night 12h/8h brushes or a saved template (weekend cells resolve to the weekend differential at
+  apply time, same inference as .ics import). Readout: take-home per paycheck via `computeNet()`
+  over `lcm(cycle,14)` days (`patternMetrics()`), gross, hours, ≈/yr, the reverse goal view, and the
+  life shape — shifts/cycle, hrs/wk, longest stretch and break (cyclic), weekends worked, which
+  weekdays are always off, or a "drifts across the week" warning when the cycle doesn't divide 7.
+  Saved patterns compare side by side with no "best" highlighting (no-nudge rule). "Put it on the
+  calendar" previews adds/skips and never clobbers existing shifts unless the replace switch is on;
+  placed shifts carry `patternId` so "Remove them" pulls back only what the pattern added. Shape:
+  `patterns:[{id,name,anchor,cells:[cell|null]}]`, presets in `PATTERN_PRESETS`.
 - **Schedule import/export (calendar sync).** .ics export (deterministic UIDs, no wage data) and
   .ics import with a guided shift-type questionnaire; re-import moves shifts and preserves pay types via
   `shift.icsUid`. **Auto-sync (#57, 2026-09-03):** Settings → CALENDAR SYNC takes a calendar's *secret
@@ -249,7 +269,10 @@ CDNs and Supabase but allows `registry.npmjs.org`, so the harness is rebuilt per
    `console`, `pageerror` and `requestfailed` (that is how the spinner bug was found).
 4. Top-level function declarations are globals, so unit-test the real `shiftGross`/`hourlyRate`/
    `sanitizeData` via `page.evaluate`. Seed `localStorage['nursingWagePlannerData']` with
-   `{setupComplete:true, baseRate:50}` to skip onboarding. A `makeMinimalPdf(text)` builder that emits a
+   `{setupComplete:true, baseRate:50}` to skip onboarding. For any wage-core change, also render the
+   same seed against the *deployed* build and assert the hero, chips, breakdown rows and take-home
+   text are byte-identical (the #65 harness did this with pre/post-tax deductions, custom FICA %,
+   percent + dollar withholdings, OT and PTO). A `makeMinimalPdf(text)` builder that emits a
    structurally valid PDF drives the paystub path.
 5. Test failure modes, not just the happy path: block Babel (expect the boot error screen), hang
    `getSession()` (expect the app to render anyway).
@@ -266,16 +289,16 @@ and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 the admin API) only ever lived in session scratchpads, so the "N/N" figures in the Done log are not
 reproducible from the repo. Committing them under `tests/` is an open item.
 
-## Open items (state as of 2026-09-04 — the work queue itself is `BACKLOG.md`)
+## Open items (state as of 2026-09-05 — the work queue itself is `BACKLOG.md`)
 
-- **Open PRs.** #65 — "pattern lab" (design a rotation, see the paycheck and the life it makes):
-  a 668-line feature from a separate session, draft, **currently un-mergeable against the deploy
-  branch** (`dirty`) after the overnight commits. It moves the per-paycheck tax math out of `calc()`
-  into a module-level `computeNet()`, i.e. it **touches wage-core on purpose** — it carries a
-  hero-equality harness against the deployed build; rerun that after rebasing, and re-verify Invariant
-  3 before merging. Adds `patterns[]` to the blob and four `pattern_*` analytics names. #46 — ten lines
-  of AuthModal copy naming supabase.co before Google does (still says "ScrubPay"; rebase + rename
-  before merging, or close it in favour of the GCP consent-screen branding).
+- **Open PRs.** #67 — `docs/agent-gateway-scope.md` + a BACKLOG pointer: the scoping design for "one
+  domain, two surfaces" (extract the wage core into `core/` with a build step that inlines it back;
+  versioned `apply_ops` instead of whole-blob writes; an MCP Edge Function authenticated by Supabase's
+  OAuth 2.1 server so RLS applies to the agent unchanged; an ops manifest that gates UI/tool parity).
+  Docs-only, mergeable. It ends with five owner decisions: build step yes/no, rehearsal project, agent
+  swap-board writes, custom auth domain, create `main`. #46 — ten lines of AuthModal copy naming
+  supabase.co before Google does (still says "ScrubPay"; rebase + rename before merging, or close it
+  in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;
   Google Calendar works); do a smoke test with a real secret address. Follow-ups (per-item confirm,
   "locally edited" protection for synced shifts, the iOS Shortcuts push alternative) are in `BACKLOG.md`.

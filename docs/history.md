@@ -4,6 +4,24 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-04 → 09-05 — pattern lab, goals on the goal, the agent-gateway thesis (#65, #68, #67)
+
+**Pattern lab (#65)** merged on the afternoon of 09-04 from an owner-directed creative session:
+design a repeating rotation from presets nurses actually describe, paint it, and read both the
+paycheck it makes and the life it makes (longest stretch, longest break, weekends worked, which
+weekdays stay free, or a warning that the cycle drifts across the week). It deliberately moved the
+per-paycheck tax math out of `calc()` into a shared `computeNet()` so the lab and the hero cannot
+drift, and proved it with a byte-identical hero/breakdown comparison against the deployed build —
+the first wage-core change since the OT stacking work, and the model for how to do one. **Goals on
+the goal (#68)**, the nightly's third goals increment, put "≈ N typical 12h shifts to reach this"
+under each goal in Settings; the cadence-based on-track date was flagged as a design call and parked.
+**Agent gateway scoping (#67, open)**: the same session wrote `docs/agent-gateway-scope.md` — the
+app as one domain with two surfaces (UI and MCP), a `core/` module inlined back into the single file
+by a build step, versioned `apply_ops` instead of whole-blob writes, an MCP Edge Function
+authenticated by Supabase's OAuth 2.1 server so RLS applies to the agent unchanged, and an ops
+manifest that gates parity. Five owner decisions gate the first session (build step, rehearsal
+project, agent swap writes, custom auth domain, create `main`).
+
 ## 2026-09-03 → 09-04 — iCal auto-sync, rename, sticky weekdays, goals (#57, #63, #64, #62, #66)
 
 Four sessions landed in one night. **iCal auto-sync (#57, superseding #50):** a nurse pastes her
