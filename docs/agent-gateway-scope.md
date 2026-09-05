@@ -5,7 +5,8 @@ not a build log: nothing below is implemented. It records the thesis, what the c
 actually permits, the target shape, the mechanism that keeps the app and the agent surface in
 lockstep, a sequence that can be executed one session at a time, and the places the idea is most
 likely to be wrong. Facts about third-party platforms were checked on 2026-09-04 and are cited;
-re-verify before building on them, this space moves monthly.
+re-verify before building on them, this space moves monthly. **Path B** at the end of this document
+(added 2026-09-05) is the near-term bridge: a Siri Shortcut writing to an ops inbox the app confirms.
 
 ## The thesis, restated as a constraint
 
@@ -294,3 +295,158 @@ Change one line in `deploy.yml` to run the build before staging. Run the Playwri
 the built file; the wage-equality check must pass against the previous deploy. Commit the gate
 under `tests/`. Open the PR. That session leaves the app unchanged for users and leaves the repo
 ready for a gateway to import the money.
+
+---
+
+## Path B — the Siri Shortcut bridge (added 2026-09-05)
+
+Owner's question that produced this: *"What if we made a link to a Siri Shortcut that we preconfigure
+to take actions directly in the app, so it's not hinged on how to configure various LLM clients?"*
+The answer is yes, on one condition that turns it from a detour into an early arrival of step 2: **the
+Shortcut never writes to `user_data`.** It writes to an inbox; the app stays the only writer.
+
+### Why this shape
+
+The gateway plan (steps 1–5 above) parks writes behind versioned ops because the app's save path is
+whole-blob, last-writer-wins, 500 ms debounced. A second writer can silently erase what the nurse just
+typed. An inbox sidesteps that entirely: the Shortcut enqueues a *proposed* op, the app's existing 15 s
+poll notices it, and the nurse confirms it in a sheet that applies the op through the exact handler a
+finger tap would use. No concurrency, no version column, no wage math server-side.
+
+It also shrinks the credential problem to something acceptable. A Shortcut can only persist a secret as
+plaintext (a file in its iCloud folder), and Shortcuts get shared. So the Siri code is **write-only and
+confirm-gated**: a leaked code can queue shifts the owner still has to approve; it can never read a pay
+figure. Reads ("what's my paycheck?") stay out of this path on purpose and arrive with step 3, behind
+OAuth, where the token is short-lived and the identity is real.
+
+What it does **not** do: it is not a conversation. Siri prompts for each input, or takes one dictation;
+there is no follow-up question. It is iOS-only (the unit is all iPhones today). It bridges *"how do I
+connect an action"*, not *"how do I talk to my planner"*. The gateway remains the destination; this path
+builds its op vocabulary and its first real client.
+
+### Shape
+
+```
+  Shortcut (phone) ── POST {code, op | transcript} ──▶ Edge Function `siri-ingest`
+                                                          │ hash(code) → siri_tokens → user_id
+                                                          │ validate op against the allowlist
+                                                          │ (dictation: Claude parses → ops, same validation)
+                                                          ▼
+                                                     ops_inbox (pending)
+                                                          │
+  app (already polling every 15 s) ◀──────────────────────┘
+      └─ "From Siri" confirm sheet: per-item Add / Skip → existing handlers → user_data
+```
+
+**Migration `003_siri_inbox.sql`.**
+
+- `siri_tokens(id uuid pk, user_id uuid → auth.users on delete cascade, token_hash text unique,
+  label text, created_at, last_used_at, revoked_at)`. RLS owner-only for `authenticated`
+  (`user_id = (select auth.uid())`), no `anon` grants. The app stores only `sha256(code)`; the plaintext
+  is shown once.
+- `ops_inbox(id uuid pk, user_id uuid → auth.users, source text check in ('siri','ical','mcp'),
+  ops jsonb, transcript text, status text default 'pending' check in ('pending','applied',
+  'rejected','expired'), created_at, resolved_at)`. RLS: owner-only `select`/`update`/`delete` for
+  `authenticated`; **no client `insert`** — rows are created only by the Edge Function with the
+  service role after it has resolved the code to a user. Index on `(user_id, status)`.
+- `transcript` is the nurse's own dictation, kept so the confirm sheet can say "Siri heard: …" and
+  deleted with the row on apply/reject. It never goes to `events`.
+
+**Edge Function `siri-ingest`** (`verify_jwt` **off** — callers hold a Siri code, not a JWT, so the
+function is public and must defend itself):
+
+1. Body `{code, mode:'form'|'dictation', op?, transcript?, today?, tz?}`. Hash the code, look it up,
+   reject 401 if missing or revoked. Never log the code; never echo it.
+2. Rate-limit: reject 429 if the user has more than 10 inbox rows in the last 60 s or more than 20
+   pending. Expire pending rows older than 7 days on the way through.
+3. `form` mode: validate `op` against the allowlist — `add_shift {date, shiftType, hours, start?}`,
+   `add_day_event {date, kind, hours?}`, `set_note {date, text}` — same coercions as `sanitizeData`
+   (finite positive hours ≤ 24, ISO date within ±400 days, enum shift types, note ≤ 500 chars).
+   Anything else is 400.
+4. `dictation` mode (second increment): call Claude with a JSON schema (tool use, forced) that returns
+   `{ops:[…], unresolved?:string}` given the transcript, `today` and `tz`. Validate the result through
+   the *same* allowlist; drop anything invalid; enqueue what survives. The model is a small fast one,
+   chosen from the `claude-api` reference at build time, key in Supabase secrets. The transcript is
+   the nurse's own words, so prompt-injection exposure is low, but the schema + allowlist mean the
+   worst outcome of a bad parse is a wrong proposal she declines.
+5. Insert one `ops_inbox` row (service role), `last_used_at = now()`, return
+   `{ok:true, queued:n, summary:"Fri Sep 12 · Night · 12h"}` for the Shortcut to speak.
+
+**App (`index.html`).**
+
+- Settings → **SIRI** card (signed-in only — the inbox is per `user_id`): "Connect Siri" generates a
+  code with WebCrypto (`BB-XXXX-XXXX-XXXX-XXXX`, ~80 bits), shows it once with Copy, inserts the hash
+  into `siri_tokens`; lists codes with Revoke; a "Get the Shortcut" link to the iCloud URL
+  (`SIRI_SHORTCUT_URL`, owner-provided after the Shortcut is built).
+- Inbox: the existing 15 s `refetch` also selects pending `ops_inbox` rows for the signed-in user. If
+  any, a **"From Siri"** sheet lists each proposed op in plain language ("Fri Sep 12 · Night · 12h",
+  with "Siri heard: …" when a transcript exists) with **per-item Add / Skip** — a deliberate
+  improvement on the iCal confirm step, which is all-or-nothing. Add applies through the existing
+  Add-Shift save path (so sanitization, OT rules and the pay-type inference all run); Skip marks the
+  row `rejected`. Nothing is ever applied silently.
+- Analytics, coarse only: `siri_connected`, `siri_op_confirmed {n}`, `siri_op_rejected {n}`. Never the
+  transcript, never amounts.
+- Boot hardening, SRI and wage-core untouched; the inbox is additive UI over existing handlers.
+
+**Invariant to add when it ships (Invariant 14):** *Siri codes are write-only and hashed at rest; the
+inbox is the only table they can touch; the app remains the sole writer to `user_data`.*
+
+### How it relates to the five steps
+
+The op vocabulary the ingest function accepts (`add_shift`, `add_day_event`, `set_note`, …) **is the
+ops manifest of step 4, written down for the first time and exercised by a real client.** When the MCP
+gateway exists, its write tools emit the same ops — into this inbox while writes stay confirm-gated,
+or into `apply_ops` once step 2 lands. The iCal "iOS Shortcuts push" alternative already in the
+backlog is the same pipe with `Find Calendar Events` as the input action and `source:'ical'`. One
+endpoint, three sources. Nothing here requires the build step, so it can run before step 1.
+
+### Sequence
+
+- **Session A (one dedicated session):** migration 003 (rehearse on the dev project if it exists by
+  then, otherwise apply live via the Management API as 002 was), `siri-ingest` in `form` mode, the
+  Settings SIRI card, the inbox confirm sheet, analytics, harness probes (token hash round-trip,
+  401/429/400 paths, a seeded pending row renders the sheet, Add applies through the real handler,
+  Skip marks rejected, wage-core equality untouched). Ships with the Shortcut link constant empty.
+- **Owner (≈1 hour):** build the Shortcut from the spec below in the Shortcuts app, test against the
+  live function with your own code, share → Copy iCloud Link, paste into `SIRI_SHORTCUT_URL` (one-line
+  PR), send the link to Courtney.
+- **Session B:** `dictation` mode (Claude parse, schema-validated), the dictation variant of the
+  Shortcut, and the `siri_*` events review after a week of use.
+
+### The Shortcut, action by action (v1 — form)
+
+Build in the Shortcuts app; name it **"Log a shift"** (the name is the Siri phrase). Keep every piece of
+logic server-side so this artifact rarely changes — a changed Shortcut means a new link and everyone
+re-adding it.
+
+| # | Action | Configuration |
+|---|---|---|
+| 1 | Get File | Service: Shortcuts folder · Path `BadgeBudget/siri-code.txt` · Show Document Picker **off** · Error If Not Found **off** → variable `Code` |
+| 2 | If | `Code` **has no value** |
+| 3 | ↳ Ask for Input | Type Text · Prompt "Paste your BadgeBudget Siri code (open the app → Settings → Siri)" |
+| 4 | ↳ Save File | Service: Shortcuts folder · Destination `BadgeBudget/siri-code.txt` · Overwrite **on** · Ask Where to Save **off** |
+| 5 | ↳ Set Variable | `Code` ← Provided Input · **End If** |
+| 6 | Ask for Input | Type **Date** · Prompt "Which day?" · Default Current Date → `Day` |
+| 7 | Choose from Menu | Prompt "What kind of shift?" · items: `Day 12h`, `Night 12h`, `Day 8h`, `Night 8h`, `Other…` |
+| 8 | ↳ each branch | two **Text** actions → Set Variable `Type` (`day` / `night`) and `Hours` (`12` / `8`). `Other…`: Ask for Input (Number) "How many hours?" → `Hours`; Choose from Menu "Day or night?" → `Type` · **End Menu** |
+| 9 | Format Date | `Day` · Format **Custom** · `yyyy-MM-dd` → `DateKey` |
+| 10 | Dictionary | `code`: Code · `mode`: `form` · `op`: {Dictionary} `type`: `add_shift`, `date`: DateKey, `shiftType`: Type, `hours`: Hours (Number) |
+| 11 | Get Contents of URL | URL `https://mnnlgcxnvodjwlhhiphq.supabase.co/functions/v1/siri-ingest` · Method **POST** · Headers `Content-Type: application/json` · Request Body **JSON** = the Dictionary |
+| 12 | Get Dictionary Value | key `ok` from Contents of URL → `OK` |
+| 13 | If | `OK` **is** `true` → Get Dictionary Value `summary` → **Show Result** / **Speak Text**: "Queued: [summary]. Open BadgeBudget to confirm." |
+| 14 | Otherwise | Get Dictionary Value `error` → Show Result "BadgeBudget: [error]". If `error` is `invalid_code`: **Delete Files** `BadgeBudget/siri-code.txt` (Ask Before Deleting **off**) so the next run re-prompts · **End If** |
+
+Settings on the Shortcut: Show in Share Sheet off; add to Home Screen optional; map to the Action
+Button if she wants one-press. Siri: "Hey Siri, log a shift" → steps 6–7 as spoken prompts.
+
+**v2 — dictation** (Session B): replace 6–9 with **Dictate Text** (or accept **Shortcut Input** so Siri
+passes the sentence) → `Transcript`; the Dictionary becomes `code`, `mode`: `dictation`, `transcript`,
+`today`: Format Date(Current Date, `yyyy-MM-dd`), `tz`: Format Date(Current Date, `VV`) — verify on
+device that `VV` yields an IANA zone id; fall back to a fixed `America/New_York` if not. The function
+returns one summary line per parsed op; the confirm sheet in the app does the rest.
+
+### Owner decisions for this path
+
+- Go / no-go on Path B ahead of step 1 (it needs none of the five gateway decisions).
+- Apply migration 003 live or wait for the rehearsal project.
+- Whether `add_day_event` and `set_note` ship in v1 or `add_shift` alone.
