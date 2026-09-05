@@ -1,46 +1,38 @@
 # BadgeBudget — Shift Pay Planner
 
-A web-based tool to help nurses plan their schedules and forecast take-home pay.
-Live at **https://badgebudget.com**.
+Take-home pay planner for bedside nurses: log shifts and differentials, see what a shift is worth
+before you work it, design a repeating rotation and see both the paycheck and the life it makes,
+keep your schedule in sync from a calendar's secret iCal address (or import and export `.ics` files),
+track savings goals, and swap shifts anonymously within your unit.
 
-## Features
+**Live:** https://badgebudget.com — the old `patrick222-dotcom.github.io/705-v1` URL redirects there.
 
-- 14-day pay period calendar
-- Shift differential calculations
-- Tax withholding estimates (FICA, State)
-- Customizable hourly rates and bonuses
-- Real-time earnings forecasting
-- Pattern lab: design a repeating rotation, see the paycheck it makes and the life it makes (longest stretch, longest break, weekends worked, which weekdays stay free), compare rotations side by side, and put one on the calendar
+## How it's built
+
+- One file. `index.html` is the whole app: React 18 + Babel standalone, JSX transformed in the
+  browser, no build step. CDN dependencies are version-pinned with SRI hashes; the pdf.js worker is
+  served from this repo.
+- Supabase (email/password + Google sign-in) stores signed-in users' data; anonymous users stay in
+  localStorage. Feedback and coarse analytics go to insert-only tables. Calendar auto-sync goes
+  through a small Edge Function proxy (`supabase/functions/ical-proxy`) with its own owner-only table.
+- The working agreement for humans and agents — invariants, architecture, the nightly loop, testing —
+  is `CLAUDE.md`. Design notes, the swap-board security model, domain/DNS facts and the project
+  history are under `docs/`.
 
 ## Deployment
 
-This project is automatically deployed to GitHub Pages using GitHub Actions.
+GitHub Pages via `.github/workflows/deploy.yml`. A push to `claude/migrate-to-github-deploy-3F5RD`
+(the deploy branch — there is no `main` yet) publishes exactly three files, `index.html`,
+`pdf.worker.min.js` and `CNAME`, and is live in about a minute. `CNAME` carries the custom domain
+and must stay in that list.
 
-### Setup Instructions
+## Local development
 
-1. **Enable GitHub Pages**:
-   - Go to your repository settings
-   - Navigate to "Pages" in the sidebar
-   - Under "Source", select "GitHub Actions"
+Serve the directory (`python3 -m http.server`) and open `index.html`; opening the file directly also
+works, apart from the same-origin pdf.js worker. The device-emulation test harness (Playwright,
+iPhone 13) is described in `CLAUDE.md` → Testing.
 
-2. **Automatic Deployment**:
-   - Any push to the `main` or `master` branch will automatically deploy
-   - You can also manually trigger deployment from the Actions tab
+## Backlog
 
-3. **Access Your Site**:
-   - After deployment, your site will be available at:
-   - `https://<your-username>.github.io/<repository-name>/`
-
-## Local Development
-
-Simply open `index.html` in your web browser to test locally.
-
-## Bug Fixes & Updates
-
-With GitHub deployment:
-1. Make changes to `index.html`
-2. Commit and push to the main branch
-3. GitHub Actions automatically deploys your updates
-4. Changes appear live within 1-2 minutes
-
-No manual Netlify deployment needed!
+`BACKLOG.md` is groomed and built from nightly by an autonomous loop; see `CLAUDE.md` → Autonomous
+nightly loop for how an item gets from there to production.

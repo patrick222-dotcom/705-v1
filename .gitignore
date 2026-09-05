@@ -1,0 +1,24 @@
+# dependencies / vendored harness packages
+node_modules/
+vendor/
+
+# secrets — tokens live in the environment, never in the tree
+.env
+.env.*
+*.pem
+*.key
+.claude/settings.local.json
+
+# session scratch (the Playwright harness, audit scripts and throwaway data live here until
+# they move under tests/)
+scratchpad/
+_site/
+
+# test output
+test-results/
+playwright-report/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db

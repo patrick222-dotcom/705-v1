@@ -23,55 +23,27 @@ _(none)_
 ## Queue
 
 ### P1
-- [~] **Savings goals — "what is this shift worth toward the thing I actually want"** (feature,
-  requested by Courtney 2026-09-01) — `harness: drivable`. Today the app answers "what does this
-  shift pay" in dollars. The ask is to answer it in **the goal the money is for**: pick up a 12h
-  night and see it as a fraction of a house down payment, a vacation, a loan payoff.
-  **MVP SHIPPED 2026-09-03 (#build below, see Done log):** goals persist in the `user_data` blob
-  (`goals:[{id,name,target}]`, sanitized + capped at MAX_GOALS, no schema/RLS surface); a Settings →
-  SAVINGS GOALS section adds/edits/removes goals; and the **forward pre-commitment placement** is live
-  — the Add-Shift preview shows the shift's take-home as a % of each goal ("toward your goal: 2.8% of
-  House down payment"). **Reverse count SHIPPED 2026-09-04 (see Done log):** the same preview line now
-  also shows how many shifts *like the one being previewed* reach each goal — "House down payment 2.8%
-  (≈36 shifts)" — precise per-shift math off `previewNet`, no approximation. **Goal-view "shifts to
-  go" SHIPPED 2026-09-05 (see Done log):** the Settings → SAVINGS GOALS section now shows a reverse
-  count *on each goal itself* — "≈ 43 typical 12h shifts to reach this" — using a base-rate × 12 ×
-  keep-ratio "typical shift" model (keepRatio threaded into Settings). It reads on the goal (not only
-  in the Add-Shift preview) so the number is visible when planning, not just when logging a shift.
-  **Remaining (follow-up):** the cadence-based *"on track for &lt;date&gt;"* estimate — needs a
-  shifts-per-week model over the user's actual history (more than the per-goal typical-shift count).
-  Flagged as a possible **design call** (which cadence: trailing average? scheduled future shifts?),
-  so route it to a dedicated session rather than the nightly loop. Keep the no-nudge-engine constraint
-  (no streaks/push/"behind on goal").
-  **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
-  your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
-  is an every-shift product. Same math already computed, materially different retention.
-  **Design — two directions, both derived from existing state:**
-  - *Forward:* on a logged/previewed shift — "$612 take-home · 4% of your down payment".
-  - *Reverse:* on the goal — "14 more night shifts" or "on track for Mar 14 at your current schedule".
-  - *The sharpest placement is pre-commitment*, in the Add-Shift / pickup flow: "picking this up moves
-    your goal 9 days closer." That is decision support at the moment of the decision, which is the
-    app's whole thesis — know what a shift is worth **before** you work it.
-  **Cost is low:** purely derived from take-home math + logged shifts. A `goals` array in the existing
-  `user_data` JSON blob — no new Supabase table, no schema migration, no RLS surface. Respect
-  `MAX_BLOB_BYTES`; sanitize goal amounts through the same coercion path as differentials so a
-  malformed target can't produce NaN percentages.
-  **Design constraint — do not build a nudge engine.** This points a motivational loop at a
-  profession with a serious burnout problem, and "just one more shift" is a genuinely harmful thing
-  to automate. Frame strictly as informing a choice the user is already considering: show the number
-  when she opens a shift or a goal. No streaks, no push notifications, no "you're behind on your
-  goal", no encouragement to pick up more. Informed choice, never pressure.
-  **Analytics:** if tracked, coarse only (`goal_created`) — per CLAUDE.md, never wage or goal figures.
+_(empty — promote from the candidate lists below with judgment)_
 
 ### P2
-- [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
-  "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
-  log as deferred* is counted as built and silently drops out of the candidate set. Live example:
-  `self-schedule-fairness` matched `self schedule` / `self-scheduling` / `fairness` in the 2026-08-16
-  no-ship note and has been invisible ever since. **Do not** fix by reducing the Done log to its
-  bolded titles — probed 2026-08-22, that regresses genuinely-shipped themes (`swap-partner-discovery`
-  reappears as a candidate). Needs a real notion of built-vs-discussed (an explicit shipped-ids list
-  is the likely answer). Defect is pinned by a test so it can't rot silently.
+- [ ] **Paystub review sheet: say so when 0 differential rows were detected**
+  (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
+  `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
+  rate but no differential rows (the "0 shifts" case), the whole "DETECTED DIFFERENTIAL ROWS" section
+  is omitted with no note. Add an else note: "No differential rows were detected — add
+  night/weekend/holiday rates in the next step." Drivable end-to-end: the nightly's harness has a
+  `makeMinimalPdf(text)` builder (`gate.js`, session-local — rebuild it if the container was
+  reclaimed) that produces a valid PDF pdf.js parses; extend it to emit a "Pay Rate: $X Hourly" line
+  with no HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the note.
+
+### P3
+- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
+  (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`; `index.html` ~4019) — add "Enter the
+  6-character code a colleague shared with you." under its `<h3>`. Corroborated by the 2026-08-11
+  "how do I use a pin" feedback. Verify by the swap-UI standard (`docs/swap-board.md`).
+- [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`;
+  `index.html` ~4129-4130, above "SUGGESTED FOR YOU") — one muted line "Names stay hidden until
+  everyone accepts." above the suggestion cards. Verify by the swap-UI standard (`docs/swap-board.md`).
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
@@ -92,13 +64,37 @@ sandbox can't exercise. They lived in P1–P3 for weeks and the nightly correctl
 of them, every night, which cost a full scan each run and produced one no-ship (2026-08-16). Parked
 here so the loop's queue contains only work it can actually finish; pick these up interactively._
 
+- [ ] **Savings goals: cadence-based "on track for <month>"** — the last goals increment. Shipped so
+  far: % of goal + "≈N shifts like this" in the Add-Shift preview (#62, #66) and "≈ N typical 12h
+  shifts to reach this" on each goal in Settings (#68, base-rate × 12 × keep-ratio). A date needs a
+  shifts-per-week model over the user's actual history — trailing average? scheduled future shifts?
+  pattern-lab rotation if one is applied? — which the nightly correctly flagged as a design call.
+  Decide the model, then it is one run. No-nudge constraint stands (no "behind", no deadline pressure).
+- [ ] **Pattern lab follow-ups** (from the #65 ship, 2026-09-04): per-cell start-time/bonus editing
+  beyond what a template brush carries; "off every other week" as a softer sibling of "always off" for
+  14-day cycles (`harness:drivable`, probably one run); holiday awareness; exporting a pattern to the
+  swap board as availability windows (overlaps the parked swap-handoff redesign — decide together).
+  `patternMetrics`/`computeNet` are wage-core (Invariant 3): any change re-runs the hero-equality check.
+
+- [ ] **Groom dedupe erodes deferred themes** (tooling, found 2026-08-22) — `groom_seed.mjs` decides
+  "covered" by keyword hits against CLAUDE.md + BACKLOG.md, so a theme merely *narrated in the Done
+  log as deferred* is counted as built and silently drops out of the candidate set. Live example:
+  `self-schedule-fairness` matched `self schedule` / `self-scheduling` / `fairness` in the 2026-08-16
+  no-ship note and has been invisible ever since. **Do not** fix by reducing the Done log to its
+  bolded titles — probed 2026-08-22, that regresses genuinely-shipped themes (`swap-partner-discovery`
+  reappears as a candidate). Needs a real notion of built-vs-discussed (an explicit shipped-ids list
+  is the likely answer). Defect is pinned by a test so it can't rot silently. **Parked 2026-09-02:**
+  a tooling change with no harness gate and an open design question (the shipped-ids list) — not a
+  nightly build.
+
 - [ ] **Split test writes off the production database (a second Supabase project)** — raised by
   the owner 2026-09-02 while asking about dev/test/stage/prod environments. **Scope deliberately
   narrowed to the database**, see reasoning below.
   **The actual exposure:** there is exactly one Supabase project (`mnnlgcxnvodjwlhhiphq`) and it
   holds real wage data for the owner's wife and her friends. Against that same live project we
   currently: mint throwaway confirmed users via the admin API during RLS audits
-  (`scratchpad/rls_audit.js`, 29 assertions + 5 adversarial probes), apply migrations directly
+  (the RLS audit script — never committed, lived in a session scratchpad; 29 assertions + 5
+  adversarial probes), apply migrations directly
   via the Management API, and patch functions live (that is how the `reveal_match` 42702 fix
   landed). None of that is reckless in isolation, but it means a bad migration or a runaway test
   script writes into the only copy of real users' pay history.
@@ -115,97 +111,19 @@ here so the loop's queue contains only work it can actually finish; pick these u
   someone would notice a broken deploy before the users do, and right now nobody is watching.
   Revisit a staging tier when there are enough users that a bad nightly costs something real.
 
-- [~] **Auto-syncing calendar subscription (replace one-shot .ics file upload)** — owner-requested
-  2026-08-23. Today importing a schedule means exporting a file and uploading it by hand, once. The
-  ask: it should just stay in sync. **Chosen approach: secret iCal URL + proxy** (owner picked it
-  2026-08-23 over Google OAuth, see the rejected alternative below).
-  **BUILT — one PR, awaiting the live Supabase apply (2026-09-02).** All of it now sits on
-  **PR #57** (`claude/ical-branch-progress-4x2baj`), retargeted to the deploy branch and carrying
-  #50's commits; **#50 is closed as superseded**. Keep the branch
-  `claude/ical-subscription-sync` — Invariant 11 — even though its PR is closed.
-  Delivered: (a) SSRF-guarded proxy Edge Function `supabase/functions/ical-proxy/index.ts`
-  (verify_jwt on, host allowlist, https-only, no redirects, 2MB cap, 8s timeout, never logs the
-  URL); (b) migration `supabase/migrations/002_ical_subscription.sql` — a dedicated
-  `ical_subscriptions` table (owner-only RLS, `anon` revoked) so the secret URL stays OUT of the
-  user_data blob; (c) client wiring in index.html — a paste-URL "CALENDAR SYNC" Settings card
-  (signed-in only), a silent once-per-app-open background sync, and a "Sync now" button, all routed
-  through the EXISTING import stepper so known shifts (icsUid) move with their pay type preserved and
-  only genuinely-new shifts hit the questionnaire; (d) the **full re-sync lifecycle** — shifts
-  deleted from the calendar are proposed for removal (scoped to the fetched window, suppressed
-  entirely when the 200-event cap truncated the feed, always confirmed and named by date), and
-  non-shift entries get "Not a shift" (a wage-neutral read-only dayEvents chip) or "Ignore these",
-  **both remembered by uid** so a dentist appointment can't reopen the questionnaire on every app
-  open. Pure merge planner is `icsPlanFromExisting`, unit-tested against the real source.
-  **Backend APPLIED LIVE 2026-09-02** via the Management API (the stdio MCP config was restored the
-  same day but only takes effect next session; `SUPABASE_ACCESS_TOKEN` + curl worked):
-  `ical_subscriptions` exists with RLS on, four per-command policies and **`anon` absent from the
-  grant list**; Edge Function `ical-proxy` is ACTIVE at v1 with **verify_jwt on** — an
-  unauthenticated POST returns 401, so it is not an open web proxy.
-  **Still owner-side:** (a) the real NurseGrid feed host for the proxy ALLOWLIST — still the
-  marked-TODO wildcard placeholder, Google Calendar works without it; (b) a smoke test with a real
-  secret iCal address; (c) merging PR #57. iOS Shortcuts push is a deliberate follow-up, not in
-  scope here.
-  **Design:** the nurse pastes a calendar's *secret iCal address* once — Google Calendar publishes
-  one per calendar, and NurseGrid publishes one for its schedule feed, so this covers both the
-  Google route and NurseGrid directly. Store it, then re-fetch + re-parse on every app open.
-  Practically indistinguishable from background sync from the user's side.
-  **Reuse — this is why it's cheap:** `parseICSSchedule(text)` (index.html:646) already takes raw
-  .ics *text*, so the only new input path is fetch-instead-of-FileReader (`onImportICS`, :2271).
-  Re-sync idempotency is already solved: the existing `icsUid` keying (:2251) moves shifts on
-  re-import and preserves assigned pay types, which is exactly re-sync semantics.
-  **The one piece that needs building:** a Supabase Edge Function to proxy the fetch — Google's and
-  NurseGrid's .ics endpoints send no CORS headers, so the browser can't read them directly. Keep the
-  proxy narrow: allowlist the two known host patterns, cap response size, no redirects to private
-  ranges (SSRF), and never log the URL.
-  **Treat the URL as a credential.** A secret iCal address is a bearer token — anyone holding it can
-  read that calendar forever. It must NOT go in the `user_data` JSON blob (that blob is exported by
-  "Export data", mirrored to localStorage, and echoed through the sync poll). Give it its own column
-  or table, and keep it out of `events`/analytics entirely.
-  **Privacy:** store dates, start/end and a stable event id only — never event titles. A personal
-  calendar carries appointments and family detail that a wage app has no business retaining.
-  **Rejected alternative — Google OAuth (what it would have cost):** Calendar scopes are *sensitive*,
-  so beyond ~100 test users it needs Google OAuth verification (branding, privacy policy, homepage,
-  demo video). Worse for the async goal specifically: refresh tokens issued while the app is in
-  Testing mode expire after ~7 days, which breaks unattended cron sync until verified. And Supabase
-  deliberately discards the Google token — *"Provider tokens are intentionally not stored in your
-  project's database"* — so `provider_refresh_token` is available exactly once, in the session at
-  sign-in, and true background sync would mean persisting a long-lived key to the user's whole Google
-  account (encrypted, service-role-only, Edge-Function-only). The app holds zero third-party
-  credentials today; that is a large jump in security surface for the same user-visible result.
-  Also note Google's GIS JS library is not a pinned/SRI-able URL, so the OAuth route would have to
-  hand-roll the redirect to avoid regressing the SRI rule.
-  **Why not the nightly loop:** new Edge Function + a new secret-bearing column + a live third-party
-  fetch the sandbox can't reach. Needs a dedicated session.
-  **Second candidate — iOS Shortcuts push (researched 2026-08-23, owner's idea; may be the better
-  one).** The owner's insight: most iPhone users already sync Google/Outlook into **iOS Calendar**,
-  so iOS Calendar is the aggregation point and reading *it* is provider-agnostic in a way reading
-  Google's API never is. Route with no native app: a Shortcut using `Find Calendar Events` +
-  `Get Contents of URL` POSTs the events to a BadgeBudget ingest endpoint. Distributed as an iCloud
-  link (one tap, no App Store); runnable by voice ("Hey Siri, sync my shifts"); and a **Personal
-  Automation** on a Daily trigger with "Ask Before Running" off runs it unattended, so it syncs
-  while the app is closed — which the iCal-URL option cannot do. Server side is *simpler* than the
-  proxy: the phone pushes to us, so no CORS and no SSRF surface; needs an ingest Edge Function plus
-  a per-user token the app issues and the user pastes into the Shortcut once (same
-  treat-as-credential rules as above).
-  Trade-offs: **iOS-only** (the iCal URL also serves Android/desktop), setup is a shortcut install
-  rather than a paste, and time-of-day automations are best-effort — Apple's developer forums note
-  they can skip when the phone has been locked and idle a long while, so it is "usually daily", not
-  cron. Given the actual user base (a nurse and her unit, all iPhones), Shortcuts-first is the
-  likely call; decide at build time.
-  **Ruled out — native Siri / App Intents.** Checked because iOS 27 (ships Sept 2026) deprecates
-  SiriKit and makes **App Intents the only way Siri talks to a third-party app** (WWDC 2026; App
-  Intents 2.0 adds streaming, multi-turn, on-screen awareness). App Intents is a **Swift-native
-  framework with no web/PWA surface** — an installed PWA appears in Spotlight and App Library search
-  but **Siri cannot find it**, and it gets no widgets, Live Activities, or App Intents. Putting
-  BadgeBudget into the new Siri therefore requires a real native app in Swift shipped via the App
-  Store, which contradicts the single-file architecture. Shortcuts is the supported way to reach
-  Siri without going native. Revisit only if BadgeBudget ever goes native.
+- [ ] **iCal auto-sync follow-ups** — the subscription shipped 2026-09-03 (#57, see Done log; design
+  history and the rejected alternatives in `docs/history.md`). Three real gaps remain, each needing a
+  live feed to verify, so not nightly work: (a) the confirm step is all-or-nothing — let the nurse
+  accept some proposed adds/removals and skip others; (b) a local edit to a synced shift's hours loses
+  to the feed on the next sync — add a per-shift "edited here" flag that wins over the feed until the
+  feed itself changes; (c) the **iOS Shortcuts push** alternative (a Shortcut reads iOS Calendar and
+  POSTs to an ingest endpoint on a daily automation — syncs while the app is closed, provider-agnostic,
+  iOS-only; needs an ingest Edge Function + a per-user token with the same treat-as-credential rules as
+  the feed URL). Never move the feed URL out of `ical_subscriptions` (CLAUDE.md Invariant 13).
 
-- [ ] **"Couldn't sync" after Google sign-in** — recurring in feedback (2 of 3 rows: 2026-08-04
-  patrickguthrie222@gmail.com, 2026-07-19 pghawkins222@gmail.com): users hit a sync error after
-  logging in with Gmail. Likely the getSession 4s-race / loadCloudRow error path surfacing a
-  transient failure as "couldn't sync." INVESTIGATE with a real multi-device/auth repro — NOT
-  gate-safe for a one-run autonomous build; needs focused attention. High user-trust impact.
+- [x] ~~**"Couldn't sync" after Google sign-in**~~ — root-caused and fixed by #45 (2026-08-23): the
+  toast was the `user_data` upsert failing with 23505 on every save after the first, not the
+  `getSession` race the original note guessed. No repro needed; retired 2026-09-04.
 
 - [ ] **Calendar memoization** — App re-renders all ~480 month cells on every unrelated state
   change. `useCallback` on statOf/ptoStatOf/keyOf and `React.memo` on MonthSection; verify no
@@ -250,80 +168,34 @@ here so the loop's queue contains only work it can actually finish; pick these u
   negotiation to a locked package before it reaches the approver. Full multi-way negotiation was
   rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
 
-## Persona-sourced candidates (Phase 2 — from the 2026-08-17 persona-review pass)
-_Grounded findings from the `docs/reddit_personas.json` review pass (subagents role-playing real
-nurse personas over the app). Each still needs the reproduce-or-corroborate verification gate +
-the normal safety gate before build. Verdicts noted; promote with judgment._
-
-### P2 (verify then build)
-- [x] ~~**Add-Shift sheet has no visible Close (X) button**~~ — SHIPPED 2026-08-18 (see Done log).
-- [x] ~~**Mobile FAB opens Add-Shift on `days[0]` (often a past day), not today**~~ — SHIPPED
-  2026-08-19 (see Done log).
-
-### P3 (clarity / nice)
-- [x] ~~**New-grad jargon glosses**~~ — SHIPPED 2026-08-20 (see Done log).
-- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (see Done log).
-
-## Persona-sourced candidates (Phase 2 — from the 2026-08-21 refresh pass)
-_Second persona pass (Swap-savvy Sam on the swap flow — timely, swap board actively used 2026-08-21;
-Night-shift Nadia on differential/OT surfaces). Verify + gate before build._
-
-### P2
-- [x] ~~**Re-share the invite code from the active board**~~ — SHIPPED 2026-08-22 (see Done log).
-- [x] ~~**OT confirmation in the Add-Shift preview**~~ — SHIPPED 2026-08-23 (see Done log).
-
-### P3
-- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
-  (source:persona/Swap-savvy-Sam, ~3826): add "Enter the 6-character code a colleague shared with
-  you." under its `<h3>`. Not sandbox-drivable.
-- [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam, ~3934): one muted line
-  "Names stay hidden until everyone accepts." above the suggestion cards. Not sandbox-drivable.
-- [x] ~~**Calendar day cells give no OT signal**~~ — SHIPPED 2026-08-25 (see Done log).
-- [x] ~~**"Keep ~X%" chip in the hero**~~ — SHIPPED 2026-08-24 (used `calc.pct`, not `keepRatio`, so
-  it matches the breakdown's "% of gross" exactly; see Done log).
-- [ ] **"Sync to calendar" reads like a live sync but is a one-shot .ics download**
-  (source:persona/Veteran-Val): consider relabeling to "Export .ics" (symmetric with the new
-  "Import .ics") or "Add to my calendar." One-word copy change — but confirm the owner's preferred
-  wording first (naming call).
-
-## Persona-sourced candidates (Phase 2 — from the 2026-08-26 refresh pass)
-_Fresh pass on under-reviewed surfaces (New-grad-Nia on onboarding/settings; Float-pool-Frank on
-day-events/PTO/templates; Per-diem-Priya on paystub import). All drivable + copy-only unless noted._
-
-### P2
-- [x] ~~**Paystub "Couldn't read that paystub" is a dead-end**~~ — SHIPPED 2026-09-02 (see Done log).
-- [ ] **PTO day silently vanishes its "DETECTED DIFFERENTIAL ROWS" section when 0 rows**
-  (source:persona/Per-diem-Priya, ~2762/2784; harness:drivable) — when a paystub parses a base rate
-  but no differential rows (the "0 shifts" case), the whole section is omitted with no note. Add an
-  else note: "No differential rows were detected — add night/weekend/holiday rates in the next step."
-  **Now drivable end-to-end:** the nightly harness has a `makeMinimalPdf(text)` builder (gate.js) that
-  produces a valid PDF pdf.js parses — extend it to emit a "Pay Rate: $X Hourly" line with no
-  HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the else note.
-- [x] ~~**Surface that PTO is paid at base rate**~~ — SHIPPED 2026-08-27 (see Done log).
-
-### P3
-- [x] ~~**Onboarding step-2 "tweak to your contract" is misleading**~~ — SHIPPED 2026-08-28 (see Done log).
-- [x] ~~**Settings TAXES lacks the onboarding "ESTIMATED / verify" reassurance**~~ — SHIPPED 2026-08-31 (see Done log).
-- [x] ~~**"Scan a paystub" CTA gives no format/privacy cue**~~ — SHIPPED 2026-09-01 (see Done log).
-- [x] ~~**Calendar day aria-label says "N day events", not which kinds**~~ — SHIPPED 2026-08-29 (see Done log).
-- [x] ~~**"ALSO ON THIS DAY" header reads oddly on a shift-less day**~~ — SHIPPED 2026-08-30 (see Done log).
-
 ## Blocked
+- [ ] **iCal proxy allowlist: the real NurseGrid feed host** + a smoke test with a real secret iCal
+  address — owner-side (the allowlist in `supabase/functions/ical-proxy/index.ts` covers Google
+  Calendar's hosts; the NurseGrid entry is a marked TODO). Redeploy the function after editing.
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
+- [ ] **"Sync to calendar" label reads like a live sync but is a one-shot .ics download**
+  (source:persona/Veteran-Val; `harness:drivable`) — relabel to "Export .ics" (symmetric with
+  "Import .ics") or "Add to my calendar." One-word copy change; **blocked on the owner's preferred
+  wording** (naming call).
 
-## Environment notes (scheduled-run limitations — as of 2026-08-09)
-- **Scheduled/Routine-fired sessions CANNOT git push** to this repo: push fails 403 "repo not
-  in this session's authorized repository set." This is an env-level authorization gap and was
-  NOT fixed by running `/web-setup`. Interactive sessions push fine. Until resolved, the nightly
-  run builds+tests but its DEPLOY step falls back to emitting a `git format-patch` in the summary;
-  the owner (or an interactive session) applies + ships it. Verified across 3 scheduled runs
-  (2026-08-04, and both 2026-08-09 runs).
-- **Scheduled runs can't hit the Supabase Management API with auth:** a `Bearer`-header request is
-  denied by the sandbox auto-mode classifier (plain unauth GET → 401 as normal). So the GROOM
-  phase can't mine feedback/events from a scheduled run; grooming is code-review-only there.
-  (Works fine from an interactive session.)
+## Environment notes (for the nightly loop — updated 2026-09-02)
+- **Where it runs:** the Routine fires into a persistent, authorized session (CLAUDE.md → Autonomous
+  nightly loop), where `git push` and the typed Supabase MCP tools both work — every build since
+  2026-08-10 shipped that way, and GROOM has read `feedback`/`events` live via MCP since 2026-08-27.
+  Two earlier limitations are **historical, not current**: fresh-session Routine fires could not push
+  (403 "repo not in this session's authorized repository set", seen 2026-08-04 and 2026-08-09) and
+  could not send an authenticated Management API request. If the loop is ever moved back to
+  fresh-session-per-fire, expect both to return; the `git format-patch` fallback in the Routine prompt
+  exists for that case.
+- **Container reclaim:** the session persists but its container does not. Re-clone the repo and
+  rebuild the harness (CLAUDE.md → Testing) when they are gone, and never branch from a local
+  `claude/migrate-to-github-deploy-3F5RD` ref without fetching first — a stale one has been seen 14
+  commits behind origin.
+- **Sandbox network:** CDNs and Supabase's REST/auth endpoints are blocked from Playwright, so the
+  harness vendors deps from `registry.npmjs.org` and stubs Supabase in-page for swap flows; the
+  Management API and the MCP server are reachable.
 
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
@@ -331,14 +203,9 @@ _Generated by `scripts/groom_seed.mjs` from `docs/reddit_seed.json`. Deduped aga
 
 _Within each priority, **`drivable` items come first** — they are the ones the nightly can verify end-to-end in the iPhone-13 harness, which is what every shipped build since 2026-08-17 has been. `needs-live-auth` and `unscoped` items are real but are not one-run builds; prefer them only when nothing drivable remains._
 
-**P1**
-- [ ] **Want to see what a schedule means for the paycheck before committing** (P1 · source:reddit-seed · self-scheduling · drivable) — When self-scheduling or picking up, nurses want to project the paycheck impact of a proposed set of shifts before they lock it in. Maps to `paycheck-projection` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-- [ ] **Gross is easy; nurses want realistic take-home after taxes/deductions** (P1 · source:reddit-seed · pay-differentials · drivable) — Nurses know their gross but want a believable net after federal/state tax, FICA, and pre/post-tax deductions. Maps to `paycheck-projection` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-
 **P2**
 - [ ] **Managers change posted schedules with little notice** (P2 · source:reddit-seed · manager-conflicts · drivable) — Posted schedules get changed on short notice, breaking plans; nurses want to keep their own source-of-truth record of shifts and notes. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Confusion about when OT kicks in and how it interacts with differentials** (P2 · source:reddit-seed · pay-differentials · drivable) — Nurses are unsure whether OT is 1.5x of base or of the differential-inclusive rate, and when daily vs. weekly OT applies. Maps to `overtime-flag` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
-- [ ] **Deciding whether an extra shift is worth it hinges on its real value** (P2 · source:reddit-seed · staffing-pickups · drivable) — Before picking up an incentive/extra shift, nurses want to know what it nets after differentials and OT to decide if it's worth the time. Maps to `paycheck-projection` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Automatic unpaid-break deductions take pay for breaks that were never taken** (P2 · source:reddit-owner · pay-differentials · drivable) — Timekeeping systems auto-deduct one or two unpaid breaks per 12-hour shift regardless of whether staff actually got them, pushing the burden onto nurses to file a manual missed-lunch form to reclaim the pay. Several report employers quietly ceasing to honor those forms, turning it into an ongoing unpaid-wage dispute rather than a one-off gripe. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 5+ distinct r/nursing threads over ~1 year); groom to confirm priority/scope before build.
 - [ ] **Pure self-scheduling with no fixed recurring day makes childcare and life planning impossible** (P2 · source:reddit-owner · self-scheduling · drivable) — Distinct from general self-schedule fairness: nurses need a locked, recurring anchor day or a cyclic block pattern to coordinate childcare and appointments. Commenters consistently rate fixed or cyclic patterns as far more livable than pure self-schedule systems, where nothing repeats week to week. Maps to `shift-logging` (harness:drivable — verifiable end-to-end in the iPhone-13 sandbox). Auto-surfaced from owner-gathered Reddit signal (observed: 1 major r/nursing thread (~5d old, 194 up / 112 comments), dozens of independent corroborating commenters); groom to confirm priority/scope before build.
 - [ ] **Manager sign-off delays or blocks agreed swaps** (P2 · source:reddit-seed · shift-swapping · needs-live-auth) — Even after two nurses agree to a trade, manager approval stalls or denies it, so nurses want the agreement locked in and easy to present. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
@@ -415,6 +282,31 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   closed PR #50), rebranded ScrubPay→BadgeBudget (#64), and sticky weekday letters (#63); built on
   that. **Follow-up left in the P1 item:** goal-view total "shifts to go" across real history + on-track
   date (needs an average-shift + cadence model).
+- 2026-09-04 — **Visible rename ScrubPay → BadgeBudget** (#64, dedicated session). 13 sites in
+  `index.html` (title, wordmarks, boot-failure heading, export filenames, .ics PRODID/CALNAME, share
+  copy) plus `design-system/`, README, BACKLOG and two docs. **Storage keys, the .ics UID scheme, the
+  `@scrubpay` sentinel and the swap salt left byte-identical** (Invariants 5–7). The bare
+  `'scrubpayErrors'` literal in `__copyErrorLog` now reads `ERR_KEY`. Header wordmark 18px → 14px so
+  "badgebudget" fits beside the Sign-in pill on an iPhone 13. Also added an inline SVG favicon, meta
+  description and theme-color (head-only; publish set unchanged). Gate 50/50 incl. an .ics
+  export/re-import round-trip and a storage-key survival probe; SRI 5.
+- 2026-09-04 — **Calendar: month label + weekday row stay pinned while scrolling** (#63, owner-reported
+  while testing iCal sync). The weekday row scrolled away under the sticky month label; the two are
+  now one sticky unit (`.cal-month-head`), the 6px gap moved from a collapsing margin to wrapper
+  padding, and the letter row is `aria-hidden` (each cell's aria-label already carries the weekday).
+  Verified at five scroll offsets that the top month shows its own weekday row. Gate 71/71 + 3 sticky
+  assertions; SRI 5; CNAME intact.
+- 2026-09-03 — **Auto-sync the schedule from a secret iCal URL, full re-sync lifecycle** (#57,
+  dedicated session; supersedes #50). Settings → CALENDAR SYNC (signed-in only) stores the address in
+  its own `ical_subscriptions` table (migration 002, owner-only RLS, `anon` revoked — never in the
+  `user_data` blob, never in analytics); `ical-proxy` Edge Function (verify_jwt on, host allowlist,
+  https-only, no redirects, 2MB cap, 8s timeout, never logs the URL) fetches it once per app open and
+  on "Sync now"; everything routes through the existing import stepper. Re-sync: matched-by-UID shifts
+  move and keep pay type; removals proposed only inside the fetched 60-back/366-forward window and
+  suppressed when the 200-event cap truncated the feed; "Not a shift" / "Ignore these" remembered by
+  UID. Parser stores dateKey/start/hours/uid only — never titles. Backend applied live 2026-09-02.
+  Gate 71/71 (26 planner, 17 stepper e2e, 10 boot/persistence/credential-safety, 10 .ics round-trip,
+  8 wage math); CNAME + `cp CNAME _site/` intact; SRI 5. Known limits → parked follow-ups above.
 - 2026-09-03 — **Savings goals — MVP: a shift's take-home as % of a goal** (owner/Courtney P1;
   harness:drivable). First slice of the goal-tracker feature. Goals live in the existing `user_data`
   JSON blob (`goals:[{id,name,target}]`) — no new Supabase table, no schema/RLS surface; `sanitizeData`
@@ -792,6 +684,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - **Reddit seed corpus** (`docs/reddit_seed.json`) → run `node scripts/groom_seed.mjs` to see
   deduped, source-tagged candidates, or `--apply` to (re)write the managed "Reddit-seeded
   candidates" block above. See `docs/reddit-persona-pipeline.md` for the full pipeline. Live
-  Reddit mining is Phase 3 (needs owner creds + network allowlist).
+  Reddit API mining is unavailable (Reddit closed self-serve registration); new themes come from the
+  owner's browser intake via `docs/reddit_intake_prompt.md`.
 - Turn signal into P0–P3 items above, each with a one-line rationale. Dedupe; don't re-add
   anything already in Done or Blocked.
