@@ -47,6 +47,17 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway) — Session A shipped 2026-09-05 (#70,
+  see Done log); remaining: the owner's Shortcut (≈1 h) and Session B.** Owner-directed 2026-09-05, scoped
+  in `docs/agent-gateway-scope.md` → *Path B*. A shared iCloud Shortcut POSTs a proposed op (or a
+  dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
+  which validates it against the op allowlist and inserts an `ops_inbox` row; the app's existing 15 s
+  poll surfaces a per-item Add/Skip confirm sheet and applies through the normal Add-Shift handler.
+  **The app stays the only writer to `user_data`** — no concurrency surface, no wage math server-side,
+  no OAuth, no build step. Two sessions (A: migration 003 + function form mode + Settings SIRI card +
+  inbox sheet + probes; B: dictation → Claude parse, schema-validated) plus ~1 owner hour to build the
+  Shortcut from the spec and paste the iCloud link. Not nightly work: new tables, a public function, a
+  migration on the live project. Becomes Invariant 14 when it ships.
 - [ ] **Agent gateway — one domain, two surfaces (UI + MCP)** — owner-directed 2026-09-04, scoped in
   `docs/agent-gateway-scope.md`. Five layers, each its own session: (1) extract the pure wage/pattern/
   sanitizer core out of `index.html` into `core/` with a build step that inlines it back (deployed
@@ -56,7 +67,7 @@ _(empty — promote from the candidate lists below with judgment)_
   **existing RLS applies to the agent unchanged**; (4) write tools + an ops manifest that generates the
   tool list and gates parity; (5) dogfood. **Owner decisions pending** (see the doc): build step yes/no,
   rehearsal project, agent swap-board writes, custom auth domain, create `main`. First session = step 1
-  only; not a nightly item — it changes the build.
+  only; not a nightly item — it changes the build. Path B is the item above.
 
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
@@ -119,7 +130,9 @@ here so the loop's queue contains only work it can actually finish; pick these u
   feed itself changes; (c) the **iOS Shortcuts push** alternative (a Shortcut reads iOS Calendar and
   POSTs to an ingest endpoint on a daily automation — syncs while the app is closed, provider-agnostic,
   iOS-only; needs an ingest Edge Function + a per-user token with the same treat-as-credential rules as
-  the feed URL). Never move the feed URL out of `ical_subscriptions` (CLAUDE.md Invariant 13).
+  the feed URL — **both now exist** as `siri-ingest` + `siri_tokens` (2026-09-05); (c) reduces to a
+  Shortcut that reads iOS Calendar and posts `add_shift` ops, which would land in the same confirm
+  sheet). Never move the feed URL out of `ical_subscriptions` (CLAUDE.md Invariant 13).
 
 - [x] ~~**"Couldn't sync" after Google sign-in**~~ — root-caused and fixed by #45 (2026-08-23): the
   toast was the `user_data` upsert failing with 23505 on every save after the first, not the
@@ -223,6 +236,35 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-05 — **Siri bridge, Session A (agent gateway Path B): Siri Shortcut → ops inbox → "From Siri"
+  confirm sheet.** Owner-directed session. Backend: migration `003_siri_inbox.sql` — `siri_tokens` (a
+  code is stored only as its SHA-256; `revoked_at` retires it) and `ops_inbox` (one pending row per op,
+  `status` pending/applied/rejected/expired, index `(user_id,status)`), owner-only `authenticated`
+  policies, **no client insert policy on `ops_inbox`**, column-level update grants, zero `anon` grants;
+  applied live via MCP `apply_migration`, verified (relrowsecurity, 5 policies, grants, indexes), security
+  advisors unchanged (no ERRORs). Edge Function `siri-ingest` (`verify_jwt` off by design): canonicalizes
+  + hashes the code, 401 on unknown/revoked, `form` mode only (dictation → 501 until Session B), ops
+  allowlisted and coerced like `sanitizeData` (real ISO date ±400d, 0<hours≤24, shift type in the enum
+  with friendly aliases, event kind in the enum, note ≤240), 10/min + 20-pending rate limits → 429,
+  7-day expiry sweep, inserts with the service role, stamps `last_used_at`, returns
+  `{ok,queued,summary}` ("Sat Sep 12 · Night · 12h · 7:00 PM"); never logs or echoes the code. Proven
+  with curl against the deployed function (401 / 400 / 501 / 200 ×4 / 429 burst) on a throwaway user,
+  then deleted. App: Settings → SIRI (signed-in): Connect Siri mints `BB-XXXX-XXXX-XXXX-XXXX` with
+  `crypto.getRandomValues`, shows it once with Copy, stores the `crypto.subtle` hash; codes list with
+  Revoke; "Get the Shortcut" disabled + "coming soon" while `SIRI_SHORTCUT_URL` is empty. The 15s
+  signed-in poll also pulls pending `ops_inbox` rows; a "From Siri" sheet lists them in plain language
+  with per-item Add / Skip — Add runs `siriShiftFromOp` (pattern-lab weekend/active inference) then
+  `saveDayShifts`, the Add-Shift sheet's own write point; Skip marks `rejected`; nothing applies without
+  a tap. Analytics `siri_connected`, `siri_op_confirmed {n,op}`, `siri_op_rejected {n,op}` (36 names).
+  iPhone-13 gate **74/74**: boot happy + hang-getsession (4.4s) + block-babel error screen, SRI=5, boot
+  hardening/storage keys/ics sentinel intact, wage probes + hero/stats/breakdown **byte-identical** to
+  the deployed build on the rich seed (pre/post-tax, custom FICA %, % + $ withholdings, OT, PTO,
+  bonuses), 37 Siri probes (card, code format + Node sha256 round-trip, plaintext never in a query,
+  seeded rows → correct lines, Add → blob + calendar glyph + `applied`, Skip → `rejected` and no note,
+  15s poll surfaces a new row in 12s, Revoke sets `revoked_at`, signed-out: no card and zero
+  `ops_inbox`/`siri_tokens` queries), dev-React console clean, zero non-network page errors. Not built
+  (by scope): Session B dictation / Claude parsing; the Shortcut itself (owner builds it from the spec in
+  `docs/agent-gateway-scope.md` → Path B and pastes the iCloud link into `SIRI_SHORTCUT_URL`).
 - 2026-09-05 — **Savings goals — goal-view "shifts to go" (reverse count on the goal itself).**
   Nightly build (P1 savings-goals increment). The forward Add-Shift preview (#66) already showed how
   many shifts *like the one being previewed* reach a goal; this puts the reverse count where you plan,
