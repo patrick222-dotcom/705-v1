@@ -4,7 +4,7 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
-## 2026-09-05 — Siri bridge, Session A (agent gateway Path B)
+## 2026-09-05 — Siri bridge, Session A shipped (agent gateway Path B, #70)
 
 Owner-directed session building the cheapest write path from a phone: a Siri Shortcut POSTs a
 structured op with a per-user code to a new `siri-ingest` Edge Function, which hashes the code,
@@ -14,11 +14,23 @@ through the Add-Shift sheet's own save path. Migration 003 (`siri_tokens`, `ops_
 live through the MCP — the first migration recorded in `supabase_migrations` — with owner-only RLS,
 no client insert policy on the inbox and zero `anon` grants; advisors unchanged. Invariant 14 records
 the model: codes are write-only, hashed at rest, revocable, and the app stays the sole writer to
-`user_data`. The Shortcut itself is the owner's to build from the spec in
-`docs/agent-gateway-scope.md` → Path B; dictation (Claude parsing) is Session B. Two things worth
+`user_data`. Built against the Path B spec written earlier the same day (#69, below); the deliberate
+deviations — one inbox row per op, `code_hash`, a 240-char note cap, both wire formats — are recorded
+in the doc's "As built" subsection. The Shortcut itself is the owner's to build from the spec;
+dictation (Claude parsing) is Session B. Two things worth
 keeping from the session: the hero-equality check against the deployed build caught nothing because
 nothing in the wage core moved, which is the point; and the in-page Supabase stub made the whole
 signed-in path (poll, sheet, save effect, analytics) drivable in the sandbox without a live account.
+
+## 2026-09-05 — Path B: the Siri Shortcut bridge
+
+Same day #61 and #67 merged, the owner asked whether a preconfigured Siri Shortcut could take actions
+in the app directly, so nurses aren't hinged on configuring an LLM client. Decision: yes, as an
+**ops inbox** rather than a direct write — the Shortcut proposes, the app confirms and stays the sole
+writer to `user_data`; Siri codes are write-only, hashed and revocable, so a leaked one can queue
+shifts but never read pay. Reads stay behind OAuth (gateway step 3). The op vocabulary the inbox
+accepts is the step-4 manifest written down early; the iCal Shortcuts-push idea becomes the same pipe
+with a different input. Design and the action-by-action Shortcut spec: `agent-gateway-scope.md` → Path B.
 
 ## 2026-09-04 → 09-05 — pattern lab, goals on the goal, the agent-gateway thesis (#65, #68, #67)
 

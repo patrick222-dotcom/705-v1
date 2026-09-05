@@ -34,7 +34,7 @@ hosts an anonymous shift-swap board.
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
-| `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
+| `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest (Path A, design only) — plus **Path B**, the Siri Shortcut → ops inbox bridge, whose Session A shipped 2026-09-05 (its "As built" subsection is the record) |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 

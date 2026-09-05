@@ -8,7 +8,7 @@
 //
 // SECURITY (verify_jwt is OFF — the caller is a Shortcut holding a code, not a signed-in JWT — so
 // this function defends itself; review carefully):
-//   * The Siri code is a BEARER CREDENTIAL. It is hashed (SHA-256) and looked up by hash; it is
+//   * The Siri code is a BEARER CREDENTIAL. It is hashed (SHA-256) and looked up by hash (`siri_tokens.code_hash`); it is
 //     never logged, never echoed, never stored in plaintext anywhere. Errors are deliberately vague.
 //   * Unknown or revoked code → 401 invalid_code. Nothing here can enumerate users or codes.
 //   * Rate limits per user: 10 inbox rows per 60 s, 20 pending at once → 429.
@@ -21,7 +21,7 @@
 //     service-role client is created from the runtime's injected env and never leaves this process.
 //
 // Deploy: `supabase functions deploy siri-ingest --no-verify-jwt` (or the MCP deploy tool with
-// verify_jwt=false). Success response: {ok:true, queued:true, summary:"Fri Sep 12 · Night · 12h"}.
+// verify_jwt=false). Success response: {ok:true, queued:1, summary:"Fri Sep 12 · Night · 12h"}.
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
@@ -221,10 +221,20 @@ Deno.serve(async (req: Request) => {
   const mode = typeof body.mode === "string" ? body.mode.trim().toLowerCase() : "form";
   if (mode === "dictation") return bad(501, "mode_not_available", "Dictation isn't available yet — use the form.");
   if (mode !== "form") return bad(400, "bad_mode", "Mode should be form.");
-  const op = typeof body.op === "string" ? body.op.trim().toLowerCase().replace(/[\s-]+/g, "_") : "";
+  // Wire format, per docs/agent-gateway-scope.md → Path B: `op` is an object `{type, date, ...}`
+  // (what the Shortcut's Dictionary action builds). A flat `{op:"add_shift", date, ...}` or
+  // `{op, args:{...}}` is accepted too, so a hand-built Shortcut can't get this wrong.
+  let opName = "", fields: Record<string, unknown> = body;
+  if (body.op && typeof body.op === "object" && !Array.isArray(body.op)) {
+    const o = body.op as Record<string, unknown>;
+    opName = typeof o.type === "string" ? o.type : (typeof o.op === "string" ? o.op : "");
+    fields = o;
+  } else {
+    opName = typeof body.op === "string" ? body.op : "";
+    if (body.args && typeof body.args === "object" && !Array.isArray(body.args)) fields = body.args as Record<string, unknown>;
+  }
+  const op = opName.trim().toLowerCase().replace(/[\s-]+/g, "_");
   if (!OPS.includes(op)) return bad(400, "bad_op", "I can add a shift, add a day event, or set a note.");
-  const fields = (body.args && typeof body.args === "object" && !Array.isArray(body.args))
-    ? body.args as Record<string, unknown> : body;
   const built = buildOp(op, fields);
   if (built instanceof Response) return built;
 
@@ -252,5 +262,5 @@ Deno.serve(async (req: Request) => {
   if (insErr) return bad(502, "queue_failed", "BadgeBudget couldn't save that right now. Try again.");   // vague on purpose
   await admin.from("siri_tokens").update({ last_used_at: nowISO }).eq("id", tok.id);
 
-  return json(200, { ok: true, queued: true, summary: built.summary });
+  return json(200, { ok: true, queued: 1, summary: built.summary });   // queued = rows enqueued (dictation may return >1)
 });

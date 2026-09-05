@@ -47,6 +47,17 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway) — Session A shipped 2026-09-05 (#70,
+  see Done log); remaining: the owner's Shortcut (≈1 h) and Session B.** Owner-directed 2026-09-05, scoped
+  in `docs/agent-gateway-scope.md` → *Path B*. A shared iCloud Shortcut POSTs a proposed op (or a
+  dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
+  which validates it against the op allowlist and inserts an `ops_inbox` row; the app's existing 15 s
+  poll surfaces a per-item Add/Skip confirm sheet and applies through the normal Add-Shift handler.
+  **The app stays the only writer to `user_data`** — no concurrency surface, no wage math server-side,
+  no OAuth, no build step. Two sessions (A: migration 003 + function form mode + Settings SIRI card +
+  inbox sheet + probes; B: dictation → Claude parse, schema-validated) plus ~1 owner hour to build the
+  Shortcut from the spec and paste the iCloud link. Not nightly work: new tables, a public function, a
+  migration on the live project. Becomes Invariant 14 when it ships.
 - [ ] **Agent gateway — one domain, two surfaces (UI + MCP)** — owner-directed 2026-09-04, scoped in
   `docs/agent-gateway-scope.md`. Five layers, each its own session: (1) extract the pure wage/pattern/
   sanitizer core out of `index.html` into `core/` with a build step that inlines it back (deployed
@@ -56,13 +67,7 @@ _(empty — promote from the candidate lists below with judgment)_
   **existing RLS applies to the agent unchanged**; (4) write tools + an ops manifest that generates the
   tool list and gates parity; (5) dogfood. **Owner decisions pending** (see the doc): build step yes/no,
   rehearsal project, agent swap-board writes, custom auth domain, create `main`. First session = step 1
-  only; not a nightly item — it changes the build. **Path B (Siri Shortcut → ops inbox) — Session A
-  shipped 2026-09-05** (see Done log): migration 003, `siri-ingest`, SIRI card, "From Siri" sheet.
-  Remaining: (1) **owner** builds the Shortcut from the spec in the doc, tests it with their own code,
-  pastes the iCloud share link into `SIRI_SHORTCUT_URL` (one-line change, nightly-safe); (2) **Session B**
-  — dictation mode: the Shortcut sends the transcript, `siri-ingest` (or a sibling function) asks Claude
-  to parse it into the same three ops, still queued to `ops_inbox`, still confirmed by a tap. Design call:
-  parse in the function (transcript leaves the phone) vs on-device — decide before building.
+  only; not a nightly item — it changes the build. Path B is the item above.
 
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
