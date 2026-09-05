@@ -414,8 +414,11 @@ endpoint, three sources. Nothing here requires the build step, so it can run bef
 - **Owner (≈1 hour):** build the Shortcut from the spec below in the Shortcuts app, test against the
   live function with your own code, share → Copy iCloud Link, paste into `SIRI_SHORTCUT_URL` (one-line
   PR), send the link to Courtney.
-- **Session B:** `dictation` mode (Claude parse, schema-validated), the dictation variant of the
-  Shortcut, and the `siri_*` events review after a week of use.
+- **Session B — shipped 2026-09-05, see `siri-shortcut.md` → "As built — Session B".** `siri-ingest`
+  v4 (Shortcut envelope, `app_config` version handshake, `meta`, template-resolved `form`, `form_multi`,
+  `dictation` behind a forced strict tool schema), migration 005, the card reading its install links
+  from `app_config`, the grouped sheet. Still owner-side: the two Shortcuts, the `ANTHROPIC_API_KEY`
+  secret, and the `siri_*` events review after a week of use.
 
 ### As built — Session A (2026-09-05, #70)
 

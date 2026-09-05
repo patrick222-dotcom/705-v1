@@ -25,16 +25,17 @@ hosts an anonymous shift-swap board.
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
 | `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `001_swap_board.sql` (swap board), `002_ical_subscription.sql` (the iCal feed table) and `003_siri_inbox.sql` + `004_siri_inbox_spec_align.sql` (`siri_tokens` + `ops_inbox`, the Siri bridge); `user_data`/`feedback`/`events` still exist only in the live project |
+| `supabase/migrations/` | `001_swap_board.sql` (swap board), `002_ical_subscription.sql` (the iCal feed table) and `003_siri_inbox.sql` + `004_siri_inbox_spec_align.sql` (`siri_tokens` + `ops_inbox`, the Siri bridge) and `005_app_config.sql` (`app_config`: public key/value rows — the two Shortcut install links and shell versions); `user_data`/`feedback`/`events` still exist only in the live project |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
-| `supabase/functions/siri-ingest/index.ts` | The Siri Shortcut's ingest endpoint: hashes the Siri code, validates one `form`-mode op, queues one `ops_inbox` row with the service role (deployed, `verify_jwt` **off** by design — it authenticates by code; see Invariant 14) |
+| `supabase/functions/siri-ingest/index.ts` | The Siri Shortcuts' ingest endpoint (v4): hashes the Siri code, then `form` / `form_multi` (one `ops_inbox` row per date, cap 14) / `meta` (template names, start, hours — the one read a code has) / `dictation` (Claude parse → the same allowlist); Shortcut callers get HTTP 200 + a string `status`; version handshake against `app_config` (deployed, `verify_jwt` **off** by design — it authenticates by code; Invariant 14, `docs/siri-shortcut.md`) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite (the only tracked tests) |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
-| `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest (Path A, design only) — plus **Path B**, the Siri Shortcut → ops inbox bridge, whose Session A shipped 2026-09-05 (its "As built" subsection is the record) |
+| `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest (Path A, design only) — plus **Path B**, the Siri Shortcut → ops inbox bridge, whose Sessions A + B shipped 2026-09-05 (its "As built" subsection is Session A's record) |
+| `docs/siri-shortcut.md` | the two Shortcuts action by action ("Log a shift", "Plan shifts"), the `siri-ingest` v4 wire contract (Shortcut envelope, modes, `app_config` version handshake), the privacy boundary, the owner's test checklist, how to publish a new shell version; "As built — Session B" records the deviations |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 
@@ -83,16 +84,22 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
     no `anon` grants), is absent from `serializeState` so it never enters the `user_data` blob (which
     is exported, mirrored to localStorage and echoed by the sync poll), never goes into `events`, and
     is never logged by `ical-proxy`. The parser stores dates, times, hours and UIDs — never titles.
-14. **Siri codes are write-only, hashed at rest, revocable — and the app stays the sole writer to
-    `user_data`.** A code (`BB-XXXX-XXXX-XXXX-XXXX`) is shown once, stored only as its SHA-256 in
-    `siri_tokens`, and refused by `siri-ingest` once `revoked_at` is set. The only table a code can
-    touch is `ops_inbox`, and only by inserting a *pending* row through the Edge Function (there is no
-    client insert policy on `ops_inbox`; the function inserts with the service role after validating
-    the op). A queued op reaches the calendar — and therefore the `user_data` blob — only when the nurse
-    taps **Add** in the "From Siri" sheet, which runs `saveDayShifts`, the Add-Shift sheet's own write
-    point. `siri-ingest` never logs or echoes the code; the app never stores the plaintext. Don't add an
-    insert policy, don't let the function write anything but `ops_inbox`, don't hash with anything but
+14. **A Siri code can queue ops and read the owner's shift templates (name, start, hours) — never pay
+    figures, differentials, logged shifts or dates worked. Calendar conflict checks run on the phone;
+    the server never receives calendar data.** Codes are hashed at rest and revocable, and the app stays
+    the sole writer to `user_data`. A code (`BB-XXXX-XXXX-XXXX-XXXX`) is shown once, stored only as its
+    SHA-256 in `siri_tokens`, and refused by `siri-ingest` once `revoked_at` is set. The only table a
+    code can write is `ops_inbox`, and only by inserting *pending* rows through the Edge Function (there
+    is no client insert policy on `ops_inbox`; the function inserts with the service role after
+    validating every op). Its only read is `user_data.data->templates`, selected by JSON path so nothing
+    else in the blob enters the function, and answered as labels, keys, start times and hours. A queued
+    op reaches the calendar — and therefore the `user_data` blob — only when the nurse taps **Add** in
+    the "From Siri" sheet, which runs `saveDayShifts`, the Add-Shift sheet's own write point.
+    `siri-ingest` never logs or echoes the code or a transcript; the app never stores the plaintext
+    code. Don't add an insert policy, don't let the function write anything but `ops_inbox`, don't
+    widen its read past templates, don't accept calendar data server-side, don't hash with anything but
     SHA-256 of the canonical dashed string (the app and the function must agree byte-for-byte).
+    `app_config` is public by design — never put a secret in it.
 
 ## Architecture
 
@@ -125,7 +132,7 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 36: `app_open`, `setup_completed`,
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 37: `app_open`, `setup_completed`,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
   `ics_import_parsed/done`, `ics_sync_done`, `pattern_lab_opened`, `pattern_saved` `{cycle}`,
@@ -133,7 +140,8 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`, `siri_connected`,
   `siri_op_confirmed` `{n,op}`, `siri_op_rejected` `{n,op}` (op name only — never the payload, the
-  note text or the summary). (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
+  note text or the summary), `siri_plan_queued` `{n}` (a "Plan shifts" batch surfaced — the count only,
+  never the dates). (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
   by 2 desc;`
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
   domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
@@ -183,17 +191,21 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   (Google Calendar hosts only so far — the NurseGrid feed host is still a TODO), https only, no
   redirects, 2MB cap, 8s timeout. Known limits: the confirm step is all-or-nothing, and a local edit to a
   synced shift's hours loses to the feed on the next sync.
-- **Siri bridge (agent gateway Path B, Session A — 2026-09-05).** Settings → SIRI (signed-in only):
-  "Connect Siri" mints a code with `crypto.getRandomValues`, shows it once with Copy, stores only its
-  `crypto.subtle` SHA-256 in `siri_tokens`; codes list with Revoke; "Get the Shortcut" is bound to
-  `SIRI_SHORTCUT_URL` and renders disabled + "coming soon" while that constant is empty. The 15s
+- **Siri bridge (agent gateway Path B, Sessions A + B — 2026-09-05).** Settings → SIRI (signed-in
+  only): "Connect Siri" mints a code with `crypto.getRandomValues`, shows it once with Copy, stores only
+  its `crypto.subtle` SHA-256 in `siri_tokens`; codes list with Revoke; "Get the Shortcut" and "Get
+  Plan shifts" read `siri_shortcut_url` / `siri_plan_url` from `app_config` when Settings opens and
+  render disabled + "coming soon" while a row is empty (only an https value is ever rendered). The 15s
   signed-in poll also selects pending `ops_inbox` rows; when new ones arrive and no other overlay is
   open, a **"From Siri"** sheet lists each op in plain language (`siriOpLine`) with per-item **Add /
-  Skip**. Add builds the shift with `siriShiftFromOp` (the pattern lab's weekend / active-differential
-  inference, so "Night" on a Saturday becomes Weekend night) and commits through `saveDayShifts`; Skip
-  marks the row `rejected`. Ops: `add_shift{date,shiftType,hours,start?}`, `add_day_event{date,kind,
-  hours?}`, `set_note{date,text}` — `form` mode only; dictation / Claude parsing is Session B. The
-  spec, the Shortcut build steps and the sequence: `docs/agent-gateway-scope.md` → Path B.
+  Skip**; rows queued together (`payload.batch` — one "Plan shifts" run or one dictation) sit under a
+  single header, "Siri heard: “…”" when the rows carry a transcript. Add builds the shift with
+  `siriShiftFromOp` (the pattern lab's weekend / active-differential inference, so "Night" on a
+  Saturday becomes Weekend night; a template-resolved op keeps the template's bonus) and commits
+  through `saveDayShifts`; Skip marks the row `rejected`. Ops: `add_shift{date,shiftType,hours,start?,
+  bonusType?,customBonus?,templateId?,templateName?}`, `add_day_event{date,kind,hours?}`,
+  `set_note{date,text}`. The Shortcuts, the wire contract and the owner's test checklist:
+  `docs/siri-shortcut.md`; the why: `docs/agent-gateway-scope.md` → Path B.
 
 ## Deployment
 
@@ -263,11 +275,19 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   2026-09-02; 4 per-command policies, `anon` unlisted), `siri_tokens` + `ops_inbox` (migrations 003 + 004,
   applied 2026-09-05 via MCP `apply_migration` — the first migrations recorded in
   `supabase_migrations`; owner-only `authenticated` policies, **no** client insert policy on
-  `ops_inbox`, column-level update grants, owner delete, `anon` has zero grants), `swap_profiles`, `swap_groups`,
+  `ops_inbox`, column-level update grants, owner delete, `anon` has zero grants), `app_config`
+  (migration 005, applied 2026-09-05: public key/value config — `siri_shortcut_url`/`_v`,
+  `siri_plan_url`/`_v`, optional `*_min_v` and `siri_dictation_model`; one SELECT policy for `anon` +
+  `authenticated`, no other grants; the owner edits rows from the dashboard or the Management API —
+  **never a secret in it**), `swap_profiles`, `swap_groups`,
   `swap_members`, `swap_posts`, `swap_matches`, `swap_match_legs`. Two Edge Functions: `ical-proxy`
   (ACTIVE, `verify_jwt` on — an unauthenticated POST is 401, so it is not an open proxy) and
-  `siri-ingest` (ACTIVE, `verify_jwt` **off** — it authenticates by hashed Siri code, rate-limits 10/min
-  and 20 pending per user, expires pending rows after 7 days; Invariant 14).
+  `siri-ingest` (v4, ACTIVE, `verify_jwt` **off** — it authenticates by hashed Siri code; `form` /
+  `form_multi` / `meta` / `dictation`, the Shortcut envelope, the `app_config` version handshake cached
+  ≤60 s; rate-limits 10 rows/min and 20 pending per user, expires pending rows after 7 days; Invariant
+  14). Function secrets: `ANTHROPIC_API_KEY` is **not set yet** — dictation answers
+  `dictation_unavailable` until the owner adds it (dashboard → Edge Functions → Secrets, or
+  `supabase secrets set`).
 - **MCP.** `.mcp.json` runs `@supabase/mcp-server-supabase` over stdio with `SUPABASE_ACCESS_TOKEN`
   from the environment (uppercase; set in the cloud environment settings, never committed). Network
   policy must allow `api.supabase.com`. Prefer the typed tools (`execute_sql`, `get_advisors`,
@@ -328,9 +348,12 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   step yes/no, rehearsal project, agent swap-board writes, custom auth domain, create `main`. The doc's
   own advice: step 1 (core extraction, zero behavior change) then step 3 (read-only gateway) is the
   cheapest route to a connector on a real phone; writes wait for step 2 (versioned ops). **Path B (Siri
-  Shortcut → ops inbox) Session A shipped 2026-09-05**: migration 003, `siri-ingest`, the SIRI card and
-  the "From Siri" sheet. Still open: the owner builds the Shortcut from the doc's spec, tests it with
-  their own code, pastes the iCloud link into `SIRI_SHORTCUT_URL`; Session B adds dictation.
+  Shortcut → ops inbox): Sessions A (#70) and B shipped 2026-09-05** — migrations 003–005,
+  `siri-ingest` v4 (form / form_multi / meta / dictation, Shortcut envelope, version handshake), the
+  SIRI card reading its two install links from `app_config`, the grouped "From Siri" sheet. Still open,
+  owner-side: build both Shortcuts from `docs/siri-shortcut.md`, run its test checklist with your own
+  code, paste the two iCloud links into `app_config` (`siri_shortcut_url`, `siri_plan_url` — one SQL
+  update each, no deploy), and set the `ANTHROPIC_API_KEY` function secret if dictation is wanted.
 - **Open PRs.** #46 — ten lines of AuthModal copy naming supabase.co before Google does (still says
   "ScrubPay"; rebase + rename before merging, or close it in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;

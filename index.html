@@ -1325,14 +1325,25 @@ async function stampIcalSynced(userId){
   try{ await supabase.from('ical_subscriptions').update({last_synced:new Date().toISOString()}).eq('user_id',userId); }catch(_){}
 }
 
-/* ---------- Siri bridge (agent gateway Path B, Session A) ----------
+/* ---------- Siri bridge (agent gateway Path B, Sessions A + B) ----------
    A Siri code is a BEARER CREDENTIAL that lives inside an iOS Shortcut. The app shows it exactly once,
    stores only its SHA-256 in siri_tokens (owner-only RLS), and the siri-ingest Edge Function looks
    incoming codes up by hash. Whatever Siri sends lands in ops_inbox as a PENDING row; nothing reaches
    the calendar — or the user_data blob — until the nurse taps Add in the "From Siri" sheet, and that
-   Add goes through saveDayShifts(), the same write point as the Add-Shift sheet. A code can only
-   queue: it has no read path and can never touch user_data (CLAUDE.md Invariant 14). */
-const SIRI_SHORTCUT_URL = '';   // iCloud share link for the BadgeBudget Shortcut — empty until the owner builds and shares it (docs/agent-gateway-scope.md → Path B)
+   Add goes through saveDayShifts(), the same write point as the Add-Shift sheet. A code can queue ops
+   and read the owner's shift templates (name, start, hours) — never pay figures, differentials, logged
+   shifts or dates worked (CLAUDE.md Invariant 14). The two Shortcut install links live in app_config
+   (migration 005, public SELECT), so the owner can change a link with one row edit and no deploy. */
+const SIRI_CONFIG_KEYS = ['siri_shortcut_url','siri_plan_url'];   // app_config rows the SIRI card reads
+async function loadAppConfig(keys){
+  if(!supabase) return {};
+  const {data,error} = await supabase.from('app_config').select('key, value').in('key', keys);
+  if(error) throw error;
+  const out={}; (data||[]).forEach(r=>{ if(r && typeof r.key==='string' && typeof r.value==='string') out[r.key]=r.value; });
+  return out;
+}
+/* Only an https link is ever rendered as an install button (the table checks the same; belt and braces). */
+const safeLink = v => (typeof v==='string' && /^https:\/\//.test(v)) ? v : '';
 const SIRI_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I — same alphabet as swap invite codes; 32 symbols, so byte % 32 is uniform
 const MAX_SIRI_CODES = 5;       // active codes per user (one per device is plenty)
 const MAX_SIRI_INBOX = 50;      // rows the app pulls per poll (siri-ingest caps pending at 20 anyway)
@@ -1374,7 +1385,7 @@ async function revokeSiriToken(userId, id){
 async function loadSiriInbox(userId){
   if(!supabase || !userId) return [];
   const {data,error} = await supabase.from('ops_inbox')
-    .select('id, op, payload, summary, created_at')
+    .select('id, op, payload, summary, created_at, transcript')
     .eq('user_id',userId).eq('status','pending')
     .order('created_at',{ascending:true}).limit(MAX_SIRI_INBOX);
   if(error) throw error;
@@ -1407,6 +1418,11 @@ function siriShiftFromOp(payload, differentials){
   }
   const s = { id:Date.now()+Math.random(), shiftType:type, hours:Math.min(24,Math.max(0.1,h)), bonusType:'none', customBonus:0, isOvertime:false };
   if(typeof payload.start==='string' && TIME_RE.test(payload.start)) s.start = payload.start;
+  // A template-resolved op (siri-ingest v4) carries the template's bonus; same enum check as sanitizeData.
+  if(typeof payload.bonusType==='string' && payload.bonusType!=='none' && Object.prototype.hasOwnProperty.call(BONUS_LABEL, payload.bonusType)){
+    s.bonusType = payload.bonusType;
+    if(payload.bonusType==='custom'){ const cb=Number(payload.customBonus); s.customBonus = (isFinite(cb) && cb>=0) ? cb : 0; }
+  }
   return s;
 }
 /* Plain-language line for the "From Siri" sheet — what tapping Add will actually do. */
@@ -1418,7 +1434,9 @@ function siriOpLine(row, differentials){
     const s = siriShiftFromOp(p, differentials);
     if(!s) return `Add a shift on ${when} (details missing)`;
     const name = (differentials && differentials[s.shiftType] && differentials[s.shiftType].name) || s.shiftType;
-    return `Add a ${name} shift, ${s.hours}h${s.start ? ` from ${fmtTime12(s.start)}` : ''}, on ${when}`;
+    const bonus = s.bonusType && s.bonusType!=='none' ? ` + ${BONUS_LABEL[s.bonusType] || s.bonusType}` : '';
+    const tpl = typeof p.templateName==='string' && p.templateName.trim() ? `“${p.templateName.trim().slice(0,40)}” — ` : 'a ';
+    return `Add ${tpl}${name} shift, ${s.hours}h${s.start ? ` from ${fmtTime12(s.start)}` : ''}${bonus}, on ${when}`;
   }
   if(row.op==='add_day_event'){
     const meta = EVENT_KIND_META[p.kind];
@@ -1437,6 +1455,21 @@ function fmtAgo(iso){
   if(s<3600) return `${Math.floor(s/60)}m ago`;
   if(s<86400) return `${Math.floor(s/3600)}h ago`;
   return `${Math.floor(s/86400)}d ago`;
+}
+/* Rows queued together (form_multi from "Plan shifts", or one dictation) share payload.batch; the sheet
+   shows them under one header — "Siri heard: …" when a transcript exists — while every row keeps its
+   own Add / Skip. Rows without a batch are their own group. Order is the poll's (created_at asc). */
+function siriGroups(rows){
+  const groups=[], byBatch={};
+  (rows||[]).forEach(r=>{
+    const b = r && r.payload && typeof r.payload.batch==='string' ? r.payload.batch : null;
+    if(b && byBatch[b]){ byBatch[b].rows.push(r); return; }
+    const transcript = (r && typeof r.transcript==='string') ? r.transcript.trim() : '';
+    const g = { key: b || r.id, batch: b, transcript, rows:[r] };
+    if(b) byBatch[b]=g;
+    groups.push(g);
+  });
+  return groups;
 }
 
 /* Pure re-import merge planner (unit-tested in the harness). Given parsed .ics events and a map of
@@ -2097,7 +2130,9 @@ function App(){
   const [siriSheet,setSiriSheet] = useState(false);  // the "From Siri" confirm sheet
   const siriSeen = useRef(new Set());                // row ids already surfaced this session — a closed sheet stays closed until a NEW row arrives
   const siriResolved = useRef(new Set());            // row ids resolved locally — keeps the poll from resurfacing a row whose status update is still in flight
-  const clearSiriState = ()=>{ setSiriTokens([]); setSiriNewCode(null); setSiriInbox([]); setSiriSheet(false); siriSeen.current = new Set(); siriResolved.current = new Set(); };
+  const siriBatches = useRef(new Set());             // payload.batch ids already counted for siri_plan_queued
+  const [siriLinks,setSiriLinks] = useState({shortcut:'', plan:''});   // the two install links from app_config (public rows; '' = not published yet)
+  const clearSiriState = ()=>{ setSiriTokens([]); setSiriNewCode(null); setSiriInbox([]); setSiriSheet(false); siriSeen.current = new Set(); siriResolved.current = new Set(); siriBatches.current = new Set(); };
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -2472,15 +2507,23 @@ function App(){
      surfaces once Settings closes; a sheet the nurse closed stays closed until another row arrives. */
   useEffect(()=>{
     if(!user || !ready || !setupComplete || overlayOpen) return;
-    if(!siriInbox.some(r=>!siriSeen.current.has(r.id))) return;
+    const fresh = siriInbox.filter(r=>!siriSeen.current.has(r.id));
+    if(!fresh.length) return;
+    // Coarse analytics: a "Plan shifts" batch (form_multi rows share payload.batch, no transcript) → siri_plan_queued {n}. Never dates.
+    siriGroups(fresh).forEach(g=>{
+      if(g.batch && !g.transcript && !siriBatches.current.has(g.batch)){ siriBatches.current.add(g.batch); track('siri_plan_queued', {n:g.rows.length}, user.id); }
+    });
     siriInbox.forEach(r=>siriSeen.current.add(r.id));
     setSiriSheet(true);
   },[siriInbox, user, ready, setupComplete, overlayOpen]);
-  /* Siri codes are listed only inside Settings, so they load when it opens (one select, signed-in only). */
+  /* Siri codes are listed only inside Settings, so they load when it opens (one select, signed-in only),
+     together with the two Shortcut install links from app_config (public rows; a failure just leaves
+     the buttons in their "coming soon" state). */
   useEffect(()=>{
     if(!showSettings || !user || !supabase) return;
     let cancelled=false;
     loadSiriTokens(user.id).then(rows=>{ if(!cancelled) setSiriTokens(rows); }, ()=>{});
+    loadAppConfig(SIRI_CONFIG_KEYS).then(cfg=>{ if(!cancelled) setSiriLinks({shortcut:safeLink(cfg.siri_shortcut_url), plan:safeLink(cfg.siri_plan_url)}); }, ()=>{});
     return ()=>{ cancelled=true; };
   },[showSettings, user]);
 
@@ -3537,7 +3580,7 @@ function App(){
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
-            siriTokens, siriNewCode, siriBusy, siriInboxCount:siriInbox.length,
+            siriTokens, siriNewCode, siriBusy, siriInboxCount:siriInbox.length, siriLinks,
             onConnectSiri, onRevokeSiri, onDismissSiriCode:()=>setSiriNewCode(null),
             onReviewSiriInbox:()=>{ setShowSettings(false); setSiriSheet(true); },
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
@@ -3793,14 +3836,22 @@ function SiriInboxSheet({rows, differentials, onAdd, onSkip, onClose}){
         <p style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,margin:'0 0 14px'}}>
           {rows.length ? 'Siri queued these. Nothing is added until you tap Add.' : 'All caught up — nothing waiting from Siri.'}
         </p>
-        {rows.map(r=>(
-          <div className="drow" key={r.id} data-testid="siri-row" style={{alignItems:'center'}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:600,fontSize:14,lineHeight:1.35}}>{siriOpLine(r, differentials)}</div>
-              <div style={{fontSize:11.5,color:'var(--muted-2)',marginTop:3}}>Siri · {fmtAgo(r.created_at)}</div>
-            </div>
-            <button className="btn btn-ghost btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onSkip(r)} aria-label={'Skip: '+siriOpLine(r, differentials)}>Skip</button>
-            <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onAdd(r)} aria-label={'Add: '+siriOpLine(r, differentials)}>Add</button>
+        {siriGroups(rows).map(g=>(
+          <div key={g.key} data-testid={g.batch ? 'siri-group' : 'siri-single'} style={g.batch ? {marginBottom:6} : null}>
+            {g.transcript
+              ? <div className="hint" data-testid="siri-heard" style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.45,margin:'0 2px 6px',fontStyle:'italic'}}>Siri heard: “{g.transcript.slice(0,240)}{g.transcript.length>240?'…':''}”</div>
+              : (g.batch && g.rows.length>1
+                  ? <div className="hint" data-testid="siri-group-head" style={{fontSize:12,color:'var(--muted-2)',margin:'0 2px 6px'}}>Plan shifts · {g.rows.length} proposed</div>
+                  : null)}
+            {g.rows.map(r=>(
+              <div className="drow" key={r.id} data-testid="siri-row" style={{alignItems:'center'}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:14,lineHeight:1.35}}>{siriOpLine(r, differentials)}</div>
+                  <div style={{fontSize:11.5,color:'var(--muted-2)',marginTop:3}}>Siri · {fmtAgo(r.created_at)}</div>
+                </div>
+                <button className="btn btn-ghost btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onSkip(r)} aria-label={'Skip: '+siriOpLine(r, differentials)}>Skip</button>
+                <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onAdd(r)} aria-label={'Add: '+siriOpLine(r, differentials)}>Add</button>
+              </div>))}
           </div>))}
         <button className="btn btn-soft" style={{marginTop:6}} onClick={onClose}>{rows.length ? 'Decide later' : 'Close'}</button>
       </div>
@@ -4603,7 +4654,7 @@ function Settings(props){
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
-    siriTokens,siriNewCode,siriBusy,siriInboxCount,onConnectSiri,onRevokeSiri,onDismissSiriCode,onReviewSiriInbox}=props;
+    siriTokens,siriNewCode,siriBusy,siriInboxCount,siriLinks,onConnectSiri,onRevokeSiri,onDismissSiriCode,onReviewSiriInbox}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -4726,7 +4777,7 @@ function Settings(props){
           <div style={{marginTop:18}} data-testid="siri-card">
             <div className="sec-lab">SIRI</div>
             <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
-              Log a shift by voice. Connect once, add the BadgeBudget Shortcut on your iPhone, then say “Hey Siri, log a shift.” Anything Siri sends waits in an inbox here — nothing goes on your calendar until you tap Add. Your Siri code works like a password: it's shown once and kept only as a fingerprint.
+              Log a shift by voice, or plan a run of shifts around what's already on your phone's calendar. Connect once, add the BadgeBudget Shortcuts on your iPhone, then say “Hey Siri, log a shift” or “Hey Siri, plan shifts.” Anything Siri sends waits in an inbox here — nothing goes on your calendar until you tap Add. Siri can see your template names, start times and hours — never your pay, never your shifts. Your Siri code works like a password: it's shown once and kept only as a fingerprint.
             </div>
             {siriNewCode &&
               <div className="drow" style={{flexDirection:'column',alignItems:'stretch',gap:8,borderColor:'var(--glass-indigo-line)',background:'var(--indigo-soft)'}}>
@@ -4745,9 +4796,12 @@ function Settings(props){
               </div>))}
             <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
               <button className="btn btn-primary btn-sm" onClick={onConnectSiri} disabled={siriBusy}>{siriBusy?'Working…':((siriTokens||[]).length ? 'Add another code' : 'Connect Siri')}</button>
-              {SIRI_SHORTCUT_URL
-                ? <a className="btn btn-ghost btn-sm" href={SIRI_SHORTCUT_URL} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>Get the Shortcut</a>
-                : <button className="btn btn-ghost btn-sm" disabled title="The Shortcut isn't published yet" style={{opacity:.55,cursor:'default'}}>Get the Shortcut · coming soon</button>}
+              {(siriLinks && siriLinks.shortcut)
+                ? <a className="btn btn-ghost btn-sm" href={siriLinks.shortcut} target="_blank" rel="noopener noreferrer" data-testid="siri-get-shortcut" style={{textDecoration:'none'}}>Get the Shortcut</a>
+                : <button className="btn btn-ghost btn-sm" disabled data-testid="siri-get-shortcut" title="The Shortcut isn't published yet" style={{opacity:.55,cursor:'default'}}>Get the Shortcut · coming soon</button>}
+              {(siriLinks && siriLinks.plan)
+                ? <a className="btn btn-ghost btn-sm" href={siriLinks.plan} target="_blank" rel="noopener noreferrer" data-testid="siri-get-plan" style={{textDecoration:'none'}}>Get Plan shifts</a>
+                : <button className="btn btn-ghost btn-sm" disabled data-testid="siri-get-plan" title="The Plan shifts Shortcut isn't published yet" style={{opacity:.55,cursor:'default'}}>Get Plan shifts · coming soon</button>}
               {siriInboxCount>0 && <button className="btn btn-soft btn-sm" onClick={onReviewSiriInbox}>{siriInboxCount} from Siri waiting</button>}
             </div>
           </div>}
