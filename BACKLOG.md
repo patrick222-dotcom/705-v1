@@ -47,6 +47,16 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway)** — owner-directed 2026-09-05, scoped
+  in `docs/agent-gateway-scope.md` → *Path B*. A shared iCloud Shortcut POSTs a proposed op (or a
+  dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
+  which validates it against the op allowlist and inserts an `ops_inbox` row; the app's existing 15 s
+  poll surfaces a per-item Add/Skip confirm sheet and applies through the normal Add-Shift handler.
+  **The app stays the only writer to `user_data`** — no concurrency surface, no wage math server-side,
+  no OAuth, no build step. Two sessions (A: migration 003 + function form mode + Settings SIRI card +
+  inbox sheet + probes; B: dictation → Claude parse, schema-validated) plus ~1 owner hour to build the
+  Shortcut from the spec and paste the iCloud link. Not nightly work: new tables, a public function, a
+  migration on the live project. Becomes Invariant 14 when it ships.
 - [ ] **Agent gateway — one domain, two surfaces (UI + MCP)** — owner-directed 2026-09-04, scoped in
   `docs/agent-gateway-scope.md`. Five layers, each its own session: (1) extract the pure wage/pattern/
   sanitizer core out of `index.html` into `core/` with a build step that inlines it back (deployed

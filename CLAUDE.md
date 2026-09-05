@@ -299,7 +299,10 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   parity. **Nothing is built.** Five owner decisions gate the first session: build step yes/no,
   rehearsal project, agent swap-board writes, custom auth domain, create `main`. The doc's own advice:
   step 1 (core extraction, zero behavior change) then step 3 (read-only gateway) is the cheapest route
-  to a connector on a real phone; writes wait for step 2 (versioned ops).
+  to a connector on a real phone; writes wait for step 2 (versioned ops). **Path B** (same doc, added
+  2026-09-05): a shared Siri Shortcut that enqueues proposed ops into an inbox the app confirms — the
+  near-term bridge that needs none of those decisions and leaves the app the sole writer to
+  `user_data`. Scoped, not built; `BACKLOG.md` → Needs a dedicated session.
 - **Open PRs.** #46 — ten lines of AuthModal copy naming supabase.co before Google does (still says
   "ScrubPay"; rebase + rename before merging, or close it in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;

@@ -4,6 +4,16 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-05 — Path B: the Siri Shortcut bridge
+
+Same day #61 and #67 merged, the owner asked whether a preconfigured Siri Shortcut could take actions
+in the app directly, so nurses aren't hinged on configuring an LLM client. Decision: yes, as an
+**ops inbox** rather than a direct write — the Shortcut proposes, the app confirms and stays the sole
+writer to `user_data`; Siri codes are write-only, hashed and revocable, so a leaked one can queue
+shifts but never read pay. Reads stay behind OAuth (gateway step 3). The op vocabulary the inbox
+accepts is the step-4 manifest written down early; the iCal Shortcuts-push idea becomes the same pipe
+with a different input. Design and the action-by-action Shortcut spec: `agent-gateway-scope.md` → Path B.
+
 ## 2026-09-04 → 09-05 — pattern lab, goals on the goal, the agent-gateway thesis (#65, #68, #67)
 
 **Pattern lab (#65)** merged on the afternoon of 09-04 from an owner-directed creative session:
