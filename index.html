@@ -1325,6 +1325,120 @@ async function stampIcalSynced(userId){
   try{ await supabase.from('ical_subscriptions').update({last_synced:new Date().toISOString()}).eq('user_id',userId); }catch(_){}
 }
 
+/* ---------- Siri bridge (agent gateway Path B, Session A) ----------
+   A Siri code is a BEARER CREDENTIAL that lives inside an iOS Shortcut. The app shows it exactly once,
+   stores only its SHA-256 in siri_tokens (owner-only RLS), and the siri-ingest Edge Function looks
+   incoming codes up by hash. Whatever Siri sends lands in ops_inbox as a PENDING row; nothing reaches
+   the calendar — or the user_data blob — until the nurse taps Add in the "From Siri" sheet, and that
+   Add goes through saveDayShifts(), the same write point as the Add-Shift sheet. A code can only
+   queue: it has no read path and can never touch user_data (CLAUDE.md Invariant 14). */
+const SIRI_SHORTCUT_URL = '';   // iCloud share link for the BadgeBudget Shortcut — empty until the owner builds and shares it (docs/agent-gateway-scope.md → Path B)
+const SIRI_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // no 0/O/1/I — same alphabet as swap invite codes; 32 symbols, so byte % 32 is uniform
+const MAX_SIRI_CODES = 5;       // active codes per user (one per device is plenty)
+const MAX_SIRI_INBOX = 50;      // rows the app pulls per poll (siri-ingest caps pending at 20 anyway)
+function genSiriCode(){
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const s = Array.from(bytes, b=>SIRI_CODE_CHARS[b % SIRI_CODE_CHARS.length]).join('');
+  return `BB-${s.slice(0,4)}-${s.slice(4,8)}-${s.slice(8,12)}-${s.slice(12,16)}`;
+}
+/* SHA-256 hex of the canonical code string — must match siri-ingest's sha256Hex(canonicalCode(code)). */
+async function sha256Hex(str){
+  if(!(window.crypto && crypto.subtle)) throw new Error('crypto.subtle unavailable');
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf), b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function loadSiriTokens(userId){
+  if(!supabase || !userId) return [];
+  const {data,error} = await supabase.from('siri_tokens')
+    .select('id, label, created_at, last_used_at')
+    .eq('user_id',userId).is('revoked_at',null)
+    .order('created_at',{ascending:false});
+  if(error) throw error;
+  return data || [];
+}
+async function createSiriToken(userId, codeHash, label){
+  if(!supabase || !userId) throw new Error('offline');
+  const {data,error} = await supabase.from('siri_tokens')
+    .insert({user_id:userId, code_hash:codeHash, label:label||null})
+    .select('id, label, created_at, last_used_at').single();
+  if(error) throw error;
+  return data;
+}
+async function revokeSiriToken(userId, id){
+  if(!supabase || !userId) throw new Error('offline');
+  const {error} = await supabase.from('siri_tokens')
+    .update({revoked_at:new Date().toISOString()}).eq('id',id).eq('user_id',userId);
+  if(error) throw error;
+}
+async function loadSiriInbox(userId){
+  if(!supabase || !userId) return [];
+  const {data,error} = await supabase.from('ops_inbox')
+    .select('id, op, payload, summary, created_at')
+    .eq('user_id',userId).eq('status','pending')
+    .order('created_at',{ascending:true}).limit(MAX_SIRI_INBOX);
+  if(error) throw error;
+  return data || [];
+}
+async function resolveSiriOp(userId, id, status){
+  if(!supabase || !userId) throw new Error('offline');
+  const {error} = await supabase.from('ops_inbox')
+    .update({status, resolved_at:new Date().toISOString()}).eq('id',id).eq('user_id',userId);
+  if(error) throw error;
+}
+/* The concrete shift a queued add_shift produces — the same weekend / active-differential inference
+   the pattern lab uses (patternCellShiftType), so "Night" on a Saturday becomes Weekend night when
+   that differential is on, exactly as painting a night cell would. An explicit weekend/holiday/bonus
+   type is kept while that differential is active, else it falls back through the same inference.
+   Returns null when the payload is malformed: the app re-validates and never trusts the row. */
+function siriShiftFromOp(payload, differentials){
+  if(!payload || typeof payload!=='object') return null;
+  const dateKey = typeof payload.date==='string' ? payload.date.slice(0,10) : '';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+  const dt = parseISODate(dateKey);
+  if(keyOfDate(dt)!==dateKey) return null;
+  const h = Number(payload.hours);
+  if(!isFinite(h) || h<=0 || h>24) return null;
+  let type = typeof payload.shiftType==='string' ? payload.shiftType : 'base';
+  const active = k => !!(differentials && differentials[k] && differentials[k].active);
+  const nightish = type==='night' || type==='weekend-eve' || type==='weekday-eve';
+  if(type==='base' || type==='night' || !active(type)){
+    type = patternCellShiftType({kind: nightish ? 'night' : 'day', hours:h}, dt, differentials);
+  }
+  const s = { id:Date.now()+Math.random(), shiftType:type, hours:Math.min(24,Math.max(0.1,h)), bonusType:'none', customBonus:0, isOvertime:false };
+  if(typeof payload.start==='string' && TIME_RE.test(payload.start)) s.start = payload.start;
+  return s;
+}
+/* Plain-language line for the "From Siri" sheet — what tapping Add will actually do. */
+function siriOpLine(row, differentials){
+  const p = (row && row.payload) || {};
+  const dateKey = typeof p.date==='string' ? p.date.slice(0,10) : '';
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? fmtDateShort(dateKey) : 'an unknown date';
+  if(row.op==='add_shift'){
+    const s = siriShiftFromOp(p, differentials);
+    if(!s) return `Add a shift on ${when} (details missing)`;
+    const name = (differentials && differentials[s.shiftType] && differentials[s.shiftType].name) || s.shiftType;
+    return `Add a ${name} shift, ${s.hours}h${s.start ? ` from ${fmtTime12(s.start)}` : ''}, on ${when}`;
+  }
+  if(row.op==='add_day_event'){
+    const meta = EVENT_KIND_META[p.kind];
+    const label = meta ? meta.label : String(p.kind||'event');
+    const h = Number(p.hours);
+    return `Mark ${when} as ${label}${p.kind==='pto' && isFinite(h) ? ` (${h}h)` : ''}`;
+  }
+  if(row.op==='set_note') return `Note on ${when}: “${String(p.text||'').trim().slice(0,80)}”`;
+  return row.summary || 'Unknown request';
+}
+function fmtAgo(iso){
+  const t = new Date(iso).getTime();
+  if(!isFinite(t)) return '';
+  const s = Math.max(0, (Date.now()-t)/1000);
+  if(s<60) return 'just now';
+  if(s<3600) return `${Math.floor(s/60)}m ago`;
+  if(s<86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
 /* Pure re-import merge planner (unit-tested in the harness). Given parsed .ics events and a map of
    existing shifts keyed by their icsUid, split into:
      toUpdate   — same icsUid already logged: MOVE/UPDATE date/hours/start but KEEP the user's chosen
@@ -1975,6 +2089,15 @@ function App(){
   const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
   const icalInFlight = useRef(false);                // hard guard against overlapping syncs
   const icalSyncedForUser = useRef(null);            // user.id already auto-synced this app-open (sync runs once, silently)
+  // ---- Siri bridge (signed-in only; agent gateway Path B) ----
+  const [siriTokens,setSiriTokens] = useState([]);   // active codes [{id,label,created_at,last_used_at}] — never the code itself
+  const [siriNewCode,setSiriNewCode] = useState(null); // {id, code} shown ONCE after Connect; cleared on Done / sign-out
+  const [siriBusy,setSiriBusy] = useState(false);
+  const [siriInbox,setSiriInbox] = useState([]);     // pending ops_inbox rows for this user
+  const [siriSheet,setSiriSheet] = useState(false);  // the "From Siri" confirm sheet
+  const siriSeen = useRef(new Set());                // row ids already surfaced this session — a closed sheet stays closed until a NEW row arrives
+  const siriResolved = useRef(new Set());            // row ids resolved locally — keeps the poll from resurfacing a row whose status update is still in flight
+  const clearSiriState = ()=>{ setSiriTokens([]); setSiriNewCode(null); setSiriInbox([]); setSiriSheet(false); siriSeen.current = new Set(); siriResolved.current = new Set(); };
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -2136,6 +2259,7 @@ function App(){
         lastSeenAt.current = null;
         // Drop the signed-in user's calendar subscription from memory (never leak it to anon state).
         setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
+        clearSiriState();   // codes, a once-shown code, and the inbox belong to that user
         setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
@@ -2167,6 +2291,21 @@ function App(){
         icalSyncedForUser.current = uid;
         runIcalSync({url:sub.icalUrl});   // silent (non-manual): quiet unless there's something to confirm
       }
+    })();
+    return ()=>{ cancelled=true; };
+  },[hydratedUserId]);
+
+  /* Siri inbox: pull pending rows once the user's data has hydrated (so an Add always lands on the
+     real shifts), then keep them fresh from the 15s sync poll below. Signed-out users never query it. */
+  useEffect(()=>{
+    const uid = hydratedUserId;
+    if(!supabase || !uid || !user || user.id!==uid) return;
+    let cancelled=false;
+    (async ()=>{
+      try{
+        const rows = await withTimeout(loadSiriInbox(uid), 6000, 'siri inbox');
+        if(!cancelled) setSiriInbox(rows.filter(r=>!siriResolved.current.has(r.id)));
+      }catch(_){ /* offline / timeout — the poll retries */ }
     })();
     return ()=>{ cancelled=true; };
   },[hydratedUserId]);
@@ -2255,6 +2394,7 @@ function App(){
     setSyncError(false);
     setSession(null); setUser(null);
     resetToDefaults();
+    clearSiriState();
     setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
   };
 
@@ -2284,7 +2424,14 @@ function App(){
           lastSeenAt.current = row.updatedAt;
         }
       }catch(_){ /* offline / timeout — leave state as-is */ }
-      finally{ busy=false; }
+      // The Siri inbox rides the same poll: anything the Shortcut queued since the last tick. Its own
+      // try/catch so an inbox hiccup never interferes with the blob sync above.
+      try{
+        const rows = await withTimeout(loadSiriInbox(user.id), 6000, 'siri inbox');
+        const next = rows.filter(r=>!siriResolved.current.has(r.id));
+        setSiriInbox(prev => (prev.length===next.length && prev.every((r,i)=>r.id===next[i].id)) ? prev : next);
+      }catch(_){}
+      busy=false;
     };
     const onFocus = ()=>refetch();
     const onVis = ()=>{ if(document.visibilityState==='visible') refetch(); };
@@ -2314,11 +2461,28 @@ function App(){
     // eslint-disable-next-line
   },[ready,setupComplete]);
 
+  const overlayOpen = !!(sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||siriSheet);
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns;
-    document.body.style.overflow = open ? 'hidden':'';
+    document.body.style.overflow = overlayOpen ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns]);
+  },[overlayOpen]);
+
+  /* Surface the "From Siri" sheet when NEW pending rows arrive and nothing else is open. Rows are
+     marked seen only when the sheet actually opens, so a row that lands behind Settings still
+     surfaces once Settings closes; a sheet the nurse closed stays closed until another row arrives. */
+  useEffect(()=>{
+    if(!user || !ready || !setupComplete || overlayOpen) return;
+    if(!siriInbox.some(r=>!siriSeen.current.has(r.id))) return;
+    siriInbox.forEach(r=>siriSeen.current.add(r.id));
+    setSiriSheet(true);
+  },[siriInbox, user, ready, setupComplete, overlayOpen]);
+  /* Siri codes are listed only inside Settings, so they load when it opens (one select, signed-in only). */
+  useEffect(()=>{
+    if(!showSettings || !user || !supabase) return;
+    let cancelled=false;
+    loadSiriTokens(user.id).then(rows=>{ if(!cancelled) setSiriTokens(rows); }, ()=>{});
+    return ()=>{ cancelled=true; };
+  },[showSettings, user]);
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -2592,6 +2756,77 @@ function App(){
       if(trimmed && trimmed!==before) track('note_saved', null, user?.id);
       const n={...prev}; if(trimmed) n[dateKey]=trimmed; else delete n[dateKey]; return n;
     });
+  };
+
+  /* ---- Siri bridge: the "From Siri" confirm sheet + code management ----
+     Add goes through saveDayShifts() — the exact write point the Add-Shift sheet's Save uses — so the
+     debounced cloud save, sanitizeData on the next load and the shift_saved analytics all apply
+     unchanged. Nothing applies without a tap; Skip marks the row rejected and never touches the
+     calendar. The row is removed locally first and the status update follows, so a slow network
+     can't leave a row on screen after it was added. */
+  const resolveSiriRow = (row, status)=>{
+    siriResolved.current.add(row.id);
+    setSiriInbox(prev=>prev.filter(r=>r.id!==row.id));
+    if(!user) return;
+    resolveSiriOp(user.id, row.id, status).catch(e=>logClientError('Siri inbox resolve failed: '+((e&&e.message)||'unknown')));
+  };
+  const applySiriOp = (row)=>{
+    if(!user) return;
+    const p = (row && row.payload) || {};
+    const dateKey = typeof p.date==='string' ? p.date.slice(0,10) : '';
+    const dayShifts = shifts[dateKey]||[], dayEvs = dayEvents[dateKey]||[], dayNote = notes[dateKey]||'';
+    const reject = ()=>{ toast("Couldn't read that request, so it was skipped.",'error'); track('siri_op_rejected', {n:1, op:row.op}, user.id); resolveSiriRow(row,'rejected'); };
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || keyOfDate(parseISODate(dateKey))!==dateKey) return reject();
+    if(row.op==='add_shift'){
+      const s = siriShiftFromOp(p, differentials);
+      if(!s) return reject();
+      saveDayShifts(dateKey, [...dayShifts, s], dayEvs, dayNote);
+    }else if(row.op==='add_day_event'){
+      if(EVENT_KINDS.indexOf(p.kind)<0) return reject();
+      const others = dayEvs.filter(e=>e.kind!==p.kind);   // one entry per kind per day, same as the sheet's chips
+      if(others.length>=MAX_DAY_EVENTS){ toast('That day already has as many events as it can hold.','error'); return; }
+      const ev = {id:Date.now()+Math.random(), kind:p.kind};
+      if(p.kind==='pto'){ const h=Number(p.hours); ev.hours = (isFinite(h)&&h>=0&&h<=24) ? h : 12; }
+      saveDayShifts(dateKey, dayShifts, [...others, ev], dayNote);
+    }else if(row.op==='set_note'){
+      const text = String(p.text||'').trim().slice(0,MAX_NOTE_LEN);
+      if(!text) return reject();
+      saveDayShifts(dateKey, dayShifts, dayEvs, text);
+    }else return reject();
+    track('siri_op_confirmed', {n:1, op:row.op}, user.id);
+    toast('Added to your calendar.','success');
+    resolveSiriRow(row,'applied');
+  };
+  const skipSiriOp = (row)=>{
+    if(!user) return;
+    track('siri_op_rejected', {n:1, op:row.op}, user.id);
+    resolveSiriRow(row,'rejected');
+  };
+  const onConnectSiri = async ()=>{
+    if(!user){ toast('Sign in to connect Siri.','info'); return; }
+    if(siriTokens.length>=MAX_SIRI_CODES){ toast(`You can keep up to ${MAX_SIRI_CODES} Siri codes — revoke one first.`,'error'); return; }
+    setSiriBusy(true);
+    try{
+      const code = genSiriCode();
+      const hash = await sha256Hex(code);   // only the hash ever leaves the device
+      const row = await withTimeout(createSiriToken(user.id, hash, 'iPhone'), 8000, 'siri connect');
+      setSiriTokens(t=>[row, ...t]);
+      setSiriNewCode({id:row.id, code});
+      track('siri_connected', null, user.id);
+    }catch(e){ toast("Couldn't create a Siri code. Check your connection and try again.",'error'); }
+    finally{ setSiriBusy(false); }
+  };
+  const onRevokeSiri = async (id)=>{
+    if(!user) return;
+    if(!(await confirmAsync('Siri will stop working with this code. You can connect again anytime.',{title:'Revoke this code?',confirm:'Revoke',danger:true}))) return;
+    setSiriBusy(true);
+    try{
+      await withTimeout(revokeSiriToken(user.id, id), 8000, 'siri revoke');
+      setSiriTokens(t=>t.filter(x=>x.id!==id));
+      setSiriNewCode(c=> (c && c.id===id) ? null : c);
+      toast('Code revoked.','success');
+    }catch(e){ toast("Couldn't revoke that code. Try again.",'error'); }
+    finally{ setSiriBusy(false); }
   };
 
   // Open the add-shift sheet for a day. Quick-fill mode and the sheet are mutually exclusive —
@@ -3302,6 +3537,9 @@ function App(){
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
+            siriTokens, siriNewCode, siriBusy, siriInboxCount:siriInbox.length,
+            onConnectSiri, onRevokeSiri, onDismissSiriCode:()=>setSiriNewCode(null),
+            onReviewSiriInbox:()=>{ setShowSettings(false); setSiriSheet(true); },
             onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
 
       {showSwaps &&
@@ -3327,6 +3565,10 @@ function App(){
         <IcsImportSheet state={icsImport} differentials={differentials}
           onAnswer={icsAnswer} onBack={icsBack} onNext={icsNext}
           onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices} />}
+
+      {siriSheet && user &&
+        <SiriInboxSheet rows={siriInbox} differentials={differentials}
+          onAdd={applySiriOp} onSkip={skipSiriOp} onClose={()=>setSiriSheet(false)} />}
 
       <input ref={fileImport} type="file" accept=".json" onChange={importData} style={{display:'none'}} />
     </div>
@@ -3534,6 +3776,33 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
           {stepIdx>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
           <button className="btn btn-primary" style={{flex:1}} onClick={onNext}>{stepIdx+1===total ? 'Review':'Next'}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- "From Siri" inbox (agent gateway Path B) ----------
+   Every row is something the Shortcut queued through siri-ingest. Per-item Add / Skip; nothing applies
+   without a tap, and Add runs through the Add-Shift sheet's own save path (App.applySiriOp). */
+function SiriInboxSheet({rows, differentials, onAdd, onSkip, onClose}){
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="From Siri" data-testid="siri-sheet">
+        <div className="grab"></div>
+        <div className="sheet-h"><div className="t">From Siri</div><button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button></div>
+        <p style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,margin:'0 0 14px'}}>
+          {rows.length ? 'Siri queued these. Nothing is added until you tap Add.' : 'All caught up — nothing waiting from Siri.'}
+        </p>
+        {rows.map(r=>(
+          <div className="drow" key={r.id} data-testid="siri-row" style={{alignItems:'center'}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:600,fontSize:14,lineHeight:1.35}}>{siriOpLine(r, differentials)}</div>
+              <div style={{fontSize:11.5,color:'var(--muted-2)',marginTop:3}}>Siri · {fmtAgo(r.created_at)}</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onSkip(r)} aria-label={'Skip: '+siriOpLine(r, differentials)}>Skip</button>
+            <button className="btn btn-primary btn-sm" style={{flex:'0 0 auto'}} onClick={()=>onAdd(r)} aria-label={'Add: '+siriOpLine(r, differentials)}>Add</button>
+          </div>))}
+        <button className="btn btn-soft" style={{marginTop:6}} onClick={onClose}>{rows.length ? 'Decide later' : 'Close'}</button>
       </div>
     </div>
   );
@@ -4333,7 +4602,8 @@ function Settings(props){
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
-    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
+    siriTokens,siriNewCode,siriBusy,siriInboxCount,onConnectSiri,onRevokeSiri,onDismissSiriCode,onReviewSiriInbox}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -4450,6 +4720,36 @@ function Settings(props){
             </div>
             {icalSub && icalSub.lastSynced &&
               <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>Last synced {new Date(icalSub.lastSynced).toLocaleString()}</div>}
+          </div>}
+
+        {user &&
+          <div style={{marginTop:18}} data-testid="siri-card">
+            <div className="sec-lab">SIRI</div>
+            <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
+              Log a shift by voice. Connect once, add the BadgeBudget Shortcut on your iPhone, then say “Hey Siri, log a shift.” Anything Siri sends waits in an inbox here — nothing goes on your calendar until you tap Add. Your Siri code works like a password: it's shown once and kept only as a fingerprint.
+            </div>
+            {siriNewCode &&
+              <div className="drow" style={{flexDirection:'column',alignItems:'stretch',gap:8,borderColor:'var(--glass-indigo-line)',background:'var(--indigo-soft)'}}>
+                <div style={{fontSize:12,fontWeight:600,color:'var(--indigo-ink)'}}>Your Siri code — shown only this once. Paste it into the Shortcut when it asks.</div>
+                <div className="num" data-testid="siri-code" style={{fontFamily:'ui-monospace,SFMono-Regular,Menlo,monospace',fontSize:17,fontWeight:700,letterSpacing:'.04em',wordBreak:'break-all',userSelect:'all'}}>{siriNewCode.code}</div>
+                <div style={{display:'flex',gap:8}}>
+                  <button className="btn btn-primary btn-sm" onClick={()=>copyText(siriNewCode.code,'Siri code copied.')}>Copy</button>
+                  <button className="btn btn-ghost btn-sm" onClick={onDismissSiriCode}>Done</button>
+                </div>
+              </div>}
+            {(siriTokens||[]).map(t=>(
+              <div className="drow" key={t.id} data-testid="siri-token">
+                <span style={{fontWeight:600,fontSize:14,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.label||'Siri code'}</span>
+                <span style={{fontSize:11.5,color:'var(--muted-2)',flex:'0 0 auto'}}>{t.last_used_at ? 'used '+fmtAgo(t.last_used_at) : 'never used'}</span>
+                <button className="danger-link" onClick={()=>onRevokeSiri(t.id)} disabled={siriBusy} style={{flex:'0 0 auto'}}>Revoke</button>
+              </div>))}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+              <button className="btn btn-primary btn-sm" onClick={onConnectSiri} disabled={siriBusy}>{siriBusy?'Working…':((siriTokens||[]).length ? 'Add another code' : 'Connect Siri')}</button>
+              {SIRI_SHORTCUT_URL
+                ? <a className="btn btn-ghost btn-sm" href={SIRI_SHORTCUT_URL} target="_blank" rel="noopener noreferrer" style={{textDecoration:'none'}}>Get the Shortcut</a>
+                : <button className="btn btn-ghost btn-sm" disabled title="The Shortcut isn't published yet" style={{opacity:.55,cursor:'default'}}>Get the Shortcut · coming soon</button>}
+              {siriInboxCount>0 && <button className="btn btn-soft btn-sm" onClick={onReviewSiriInbox}>{siriInboxCount} from Siri waiting</button>}
+            </div>
           </div>}
 
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
