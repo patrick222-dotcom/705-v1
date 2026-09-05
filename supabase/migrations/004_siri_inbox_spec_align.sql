@@ -5,8 +5,10 @@
 -- Siri code) and one `ops_inbox` row per op (`op` + `payload` + `summary`) rather than an `ops jsonb`
 -- array, so per-item Add / Skip has a per-item status to write. See the doc's "As built" subsection.
 --
--- NOT YET APPLIED (2026-09-05): the MCP apply was refused by the session's permission classifier.
--- Apply with the MCP `apply_migration`, `supabase db push`, or the Management API `database/query`.
+-- Applied live 2026-09-05 via MCP `apply_migration` (recorded as `siri_inbox_spec_align`), on empty
+-- tables. A first attempt that also renamed `code_hash` → `token_hash` was refused by the session's
+-- permission classifier; the rename was dropped rather than routed around, and the doc records the
+-- as-built name.
 
 -- source: 'ical' is the Shortcuts-push variant of the iCal follow-up, 'mcp' the gateway's write tools
 -- while writes stay confirm-gated (both future; only 'siri' is produced today).

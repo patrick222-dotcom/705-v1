@@ -422,7 +422,7 @@ Shipped against the spec above on the day it was written. The deviations, all de
 - **One row per op.** `ops_inbox` carries `op text`, `payload jsonb`, `summary text` and `token_id`
   instead of an `ops jsonb` array, because per-item Add / Skip needs a per-item `status` to write. A
   dictation that parses into three ops will insert three rows sharing one `transcript` (that column,
-  the wider `source` check and the owner delete policy are migration 004, written but not yet applied).
+  the wider `source` check and the owner delete policy are migration 004, applied the same day).
 - **`siri_tokens.code_hash`** is the spec's `token_hash` — the UI calls it a Siri code, so the column
   does too. Same SHA-256 of the canonical dashed string, agreed byte-for-byte by app and function.
 - **Wire format.** The function accepts `op` as the spec's `{type, date, shiftType, hours, start?}`
@@ -484,6 +484,5 @@ returns one summary line per parsed op; the confirm sheet in the app does the re
 
 - ~~Go / no-go on Path B ahead of step 1~~ — went; Session A shipped 2026-09-05.
 - ~~Apply migration 003 live or wait for the rehearsal project~~ — applied live 2026-09-05 (tables were
-  empty; advisors unchanged). Migration 004 (transcript, wider `source`, owner delete) is written and
-  waits for an owner-approved apply.
+  empty; advisors unchanged). Migration 004 (transcript, wider `source`, owner delete) followed the same day.
 - ~~Whether `add_day_event` and `set_note` ship in v1~~ — all three shipped in v1.

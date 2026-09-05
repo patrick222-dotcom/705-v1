@@ -25,7 +25,7 @@ hosts an anonymous shift-swap board.
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
 | `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `001_swap_board.sql` (swap board), `002_ical_subscription.sql` (the iCal feed table) and `003_siri_inbox.sql` (`siri_tokens` + `ops_inbox`, the Siri bridge); `user_data`/`feedback`/`events` still exist only in the live project |
+| `supabase/migrations/` | `001_swap_board.sql` (swap board), `002_ical_subscription.sql` (the iCal feed table) and `003_siri_inbox.sql` + `004_siri_inbox_spec_align.sql` (`siri_tokens` + `ops_inbox`, the Siri bridge); `user_data`/`feedback`/`events` still exist only in the live project |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `supabase/functions/siri-ingest/index.ts` | The Siri Shortcut's ingest endpoint: hashes the Siri code, validates one `form`-mode op, queues one `ops_inbox` row with the service role (deployed, `verify_jwt` **off** by design — it authenticates by code; see Invariant 14) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite (the only tracked tests) |
@@ -260,10 +260,10 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
 - Project `mnnlgcxnvodjwlhhiphq`, free tier, and **the only project** — it holds real users' pay
   history while RLS audits and migrations run against it (a dev project is a parked item). Tables,
   all RLS-enabled: `user_data`, `feedback`, `events`, `ical_subscriptions` (migration 002, applied
-  2026-09-02; 4 per-command policies, `anon` unlisted), `siri_tokens` + `ops_inbox` (migration 003,
-  applied 2026-09-05 via MCP `apply_migration` — the first migration recorded in
+  2026-09-02; 4 per-command policies, `anon` unlisted), `siri_tokens` + `ops_inbox` (migrations 003 + 004,
+  applied 2026-09-05 via MCP `apply_migration` — the first migrations recorded in
   `supabase_migrations`; owner-only `authenticated` policies, **no** client insert policy on
-  `ops_inbox`, column-level update grants, `anon` has zero grants), `swap_profiles`, `swap_groups`,
+  `ops_inbox`, column-level update grants, owner delete, `anon` has zero grants), `swap_profiles`, `swap_groups`,
   `swap_members`, `swap_posts`, `swap_matches`, `swap_match_legs`. Two Edge Functions: `ical-proxy`
   (ACTIVE, `verify_jwt` on — an unauthenticated POST is 401, so it is not an open proxy) and
   `siri-ingest` (ACTIVE, `verify_jwt` **off** — it authenticates by hashed Siri code, rate-limits 10/min
