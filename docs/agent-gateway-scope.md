@@ -8,7 +8,9 @@ Siri Shortcut writing to an ops inbox the app confirms — and its Session A shi
 shape, the mechanism that keeps the app and the agent surface in lockstep, a sequence that can be
 executed one session at a time, and the places the idea is most likely to be wrong. Facts about
 third-party platforms were checked on 2026-09-04 and are cited; re-verify before building on them,
-this space moves monthly.
+this space moves monthly. The Shortcut build guide, wire contract and drift-proofing (version
+handshake, `app_config`, server-driven menus, the calendar-aware "Plan shifts" flow) live in
+`siri-shortcut.md`.
 
 ## The thesis, restated as a constraint
 
