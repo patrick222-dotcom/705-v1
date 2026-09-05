@@ -3297,7 +3297,7 @@ function App(){
         <Settings onClose={()=>setShowSettings(false)}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-            goals,setGoals,
+            goals,setGoals,keepRatio,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
@@ -4331,7 +4331,7 @@ function AuthModal({mode:initialMode,onClose}){
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
-    goals,setGoals,
+    goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
@@ -4392,14 +4392,23 @@ function Settings(props){
 
         <div className="sec-lab" style={{marginTop:18}}>SAVINGS GOALS</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Name what you're saving for. When you add a shift, you'll see what its take-home is worth toward each goal.</div>
-        {(goals||[]).map(g=>(
-          <div className="drow" key={g.id}>
-            <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
-            <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
-            <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
-            <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+        {(goals||[]).map(g=>{
+          // Goal-view reverse: how many "typical 12h shifts" (base rate × 12 × keep-ratio, the same
+          // per-shift take-home the Add-Shift preview uses for a base shift) reach this target.
+          const per = baseRate*12*keepRatio;
+          const n = (per>0 && g.target>0) ? Math.ceil(g.target/per) : null;
+          return (
+          <div key={g.id}>
+            <div className="drow">
+              <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
+              <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
+              <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
+              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+            </div>
+            {n!=null && <div className="k" style={{margin:'-4px 0 8px 22px',fontSize:11,color:'var(--muted-2)'}}>≈ {n.toLocaleString('en-US')} typical 12h shift{n===1?'':'s'} to reach this</div>}
           </div>
-        ))}
+          );
+        })}
         {(goals||[]).length<MAX_GOALS &&
           <div style={{display:'flex',gap:8,marginTop:4}}>
             <div className="inp" style={{flex:1}}><input value={goalName} placeholder="e.g. House down payment" maxLength={40} onChange={e=>setGoalName(e.target.value)}/></div>

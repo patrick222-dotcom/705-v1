@@ -33,10 +33,15 @@ _(none)_
   — the Add-Shift preview shows the shift's take-home as a % of each goal ("toward your goal: 2.8% of
   House down payment"). **Reverse count SHIPPED 2026-09-04 (see Done log):** the same preview line now
   also shows how many shifts *like the one being previewed* reach each goal — "House down payment 2.8%
-  (≈36 shifts)" — precise per-shift math off `previewNet`, no approximation. **Remaining (follow-up):**
-  the *goal-view* projection — total "shifts to go" across the user's actual history/cadence and an
-  "on track for <date>" estimate (needs an average-shift-take-home + shifts-per-week model, more than
-  the per-previewed-shift count). Drivable next; keep the no-nudge-engine constraint
+  (≈36 shifts)" — precise per-shift math off `previewNet`, no approximation. **Goal-view "shifts to
+  go" SHIPPED 2026-09-05 (see Done log):** the Settings → SAVINGS GOALS section now shows a reverse
+  count *on each goal itself* — "≈ 43 typical 12h shifts to reach this" — using a base-rate × 12 ×
+  keep-ratio "typical shift" model (keepRatio threaded into Settings). It reads on the goal (not only
+  in the Add-Shift preview) so the number is visible when planning, not just when logging a shift.
+  **Remaining (follow-up):** the cadence-based *"on track for &lt;date&gt;"* estimate — needs a
+  shifts-per-week model over the user's actual history (more than the per-goal typical-shift count).
+  Flagged as a possible **design call** (which cadence: trailing average? scheduled future shifts?),
+  so route it to a dedicated session rather than the nightly loop. Keep the no-nudge-engine constraint
   (no streaks/push/"behind on goal").
   **Why it matters beyond the feature:** a take-home calculator is a one-time product — you confirm
   your rate during onboarding and rarely reopen it, because your rate doesn't change. A goal tracker
@@ -340,6 +345,20 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-05 — **Savings goals — goal-view "shifts to go" (reverse count on the goal itself).**
+  Nightly build (P1 savings-goals increment). The forward Add-Shift preview (#66) already showed how
+  many shifts *like the one being previewed* reach a goal; this puts the reverse count where you plan,
+  **on the goal in Settings → SAVINGS GOALS**: each goal now carries "≈ N typical 12h shifts to reach
+  this" (e.g. "≈ 43 typical 12h shifts"), using a base-rate × 12 × keep-ratio "typical shift" model —
+  the same keep-ratio the hero and the Add-Shift base-shift preview use. `keepRatio` is threaded into
+  the Settings component (destructure + render-site spread); the count is `Math.ceil(target / (baseRate
+  × 12 × keepRatio))`, hidden when either factor is non-positive so a $0 goal or a 100%-withheld rate
+  can't show a bogus number. Pure derived math — no schema/RLS/storage-key surface, no new field (goals
+  already persist). Kept the no-nudge constraint: it states a fact on the goal, no streak/deadline/push.
+  iPhone-13 gate **67/67** (boot happy + hang-getsession + block-babel, wage-math equality, SRI=5 and
+  boot hardening untouched, goals sanitizer + forward preview + the new Settings caption live-driven:
+  seeded a $20k goal at $50/hr → "≈ 43 typical 12h shifts", zero non-network page errors). Left open:
+  the cadence-based "on track for &lt;date&gt;" estimate — a design call, routed to a dedicated session.
 - 2026-09-04 — **Pattern lab — design a rotation, see the paycheck it makes and the life it makes**
   (owner-directed creative session, chosen over four alternatives; addresses the Reddit-owner P2
   "pure self-scheduling with no fixed recurring day makes childcare and life planning impossible"
