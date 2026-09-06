@@ -26,15 +26,9 @@ _(none)_
 _(empty — promote from the candidate lists below with judgment)_
 
 ### P2
-- [ ] **Paystub review sheet: say so when 0 differential rows were detected**
-  (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
-  `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
-  rate but no differential rows (the "0 shifts" case), the whole "DETECTED DIFFERENTIAL ROWS" section
-  is omitted with no note. Add an else note: "No differential rows were detected — add
-  night/weekend/holiday rates in the next step." Drivable end-to-end: the nightly's harness has a
-  `makeMinimalPdf(text)` builder (`gate.js`, session-local — rebuild it if the container was
-  reclaimed) that produces a valid PDF pdf.js parses; extend it to emit a "Pay Rate: $X Hourly" line
-  with no HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the note.
+- [x] ~~**Paystub review sheet: say so when 0 differential rows were detected**~~ — SHIPPED
+  2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
+  zero differential rows.
 
 ### P3
 - [ ] **First-run "Join with a code" card lacks the helper line the second one has**
@@ -233,6 +227,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-06 — **Paystub review: say so when 0 differential rows were detected.** Nightly build (P2,
+  source:persona/Per-diem-Priya). `PaystubReview` previously wrapped the "DETECTED DIFFERENTIAL ROWS"
+  section in `{rows.length>0 && …}` with no else branch, so a paystub that parsed a base rate but no
+  differential rows (distinct from the "no pay details at all" empty screen) silently dropped the whole
+  section — the user couldn't tell whether differentials were checked and came up empty, or never looked
+  at. Added an else note: *"No differential rows were detected in this paystub — just your base rate.
+  You can add your night, weekend, and holiday rates in the next step."* Pure UI copy in the review
+  sheet — no wage-core, parser, schema, or storage-key change. Harness gained a real end-to-end paystub
+  drive (section 8): `makeMinimalPdf('Pay Rate: $47.50 Hourly')` (no HOURS AND EARNINGS section) →
+  uploaded through the Settings "Scan paystub" input → asserts the review sheet opens (as a second modal
+  stacked over Settings), shows the note, and omits the rows section; a positive control with an earnings
+  row asserts the rows section shows and the note does not. iPhone-13 gate **74/74** (boot happy +
+  hang-getsession + block-babel, wage-math equality, SRI=5 and boot hardening untouched).
 - 2026-09-05 — **Savings goals — goal-view "shifts to go" (reverse count on the goal itself).**
   Nightly build (P1 savings-goals increment). The forward Add-Shift preview (#66) already showed how
   many shifts *like the one being previewed* reach a goal; this puts the reverse count where you plan,
