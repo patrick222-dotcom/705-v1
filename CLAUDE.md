@@ -322,7 +322,7 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   `user_data`. Scoped, not built; `BACKLOG.md` → Needs a dedicated session.
 - **Scaling, burn and transferability** (`docs/scaling-and-burn.md`, 2026-09-07): ~$30/mo covers 100k MAU, so
   cash is never the constraint — what breaks first is **no CI** (a JSX syntax error ships live), no backups on
-  the free tier, and the 15s whole-blob polls (`index.html:2293` and `:4575`), the second of which grows with
+  the free tier, and the 15s whole-blob polls (`index.html:2363` and `:4703`), the second of which grows with
   the square of unit size. North-star metric is **density** (units with ≥10 members and ≥1 confirmed swap in
   30 days — currently zero), not DAU. Levers L0–L6 are pre-scoped with trigger thresholds; pulling them early
   is waste. Queued in `BACKLOG.md` → Needs a dedicated session + Blocked.

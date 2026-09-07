@@ -55,8 +55,8 @@ is 1 GB site size and a **soft** 100 GB/month bandwidth limit. [Cloudflare Pages
 free is 500 builds/month, 100 custom domains, 20,000 files, 25 MiB max asset, and does not meter
 bandwidth or requests.
 
-Modelling roughly one signed-in user per three total (anonymous users touch nothing but a 334 KB
-static page load; `pdf.worker.min.js` is lazy — `index.html:3043` — so it is not in the base cost):
+Modelling roughly one signed-in user per three total (anonymous users touch nothing but a 340 KB
+static page load; `pdf.worker.min.js` is lazy — `index.html:3127` — so it is not in the base cost):
 
 | Scale | What it needs | Monthly |
 |---|---|---|
@@ -72,11 +72,11 @@ become one. Any effort spent optimising for cost below 10,000 users is misalloca
 
 Four things break before money does.
 
-**Egress, from one design decision.** `index.html:2293` polls `loadCloudRow()` every 15 seconds
+**Egress, from one design decision.** `index.html:2363` polls `loadCloudRow()` every 15 seconds
 while the tab is visible and pulls the *entire row* each time — 240 full-blob fetches per tab-hour,
 ~2.5 KB each with overhead, ~600 KB per tab-hour per signed-in user. Free's 5 GB/month is therefore
 ~8,300 tab-hours, or roughly 800–1,000 signed-in users at 10 hours of app-open per month. At a
-mature 20 KB blob that collapses to about 100 users. `index.html:4575` runs a second 15-second poll
+mature 20 KB blob that collapses to about 100 users. `index.html:4703` runs a second 15-second poll
 returning the whole group board, so a 40-nurse unit is 40 tabs each re-fetching 40 people's posts
 four times a minute — traffic that grows with the square of unit size, on precisely the subsystem
 density strategy depends on.
@@ -341,6 +341,20 @@ question. None of this depends on growth and all of it is harder later.
 (rate limits), and L3 ($25 for backups). Roughly a day, and it converts "we go down on our best day"
 into "we survive our best day."
 
+> **This trigger has already fired.** #75 (merged 2026-09-07, hours after this document was drafted)
+> shipped the grassroots funnel: a reachable sign-in for returning users, a shareable QR in Settings
+> with `navigator.share` and copy fallbacks, `?via=qr` / `?via=link` arrival tagging on `app_open`,
+> and a base-rate-first onboarding path that reaches a real number without a full tax profile. That
+> is a deliberate distribution mechanism, and it is live. The lever block above moved from "someday"
+> to overdue the moment it merged — the app can now be handed to a stranger faster than it can
+> survive a hundred of them arriving at once. **L3 in particular: the funnel exists, the backups do
+> not.**
+>
+> One upside worth naming: arrival tagging means future cohorts can be segmented by acquisition
+> channel, so the retention queries below can finally distinguish a nurse who scanned a colleague's
+> QR from one who wandered in. That is exactly the cohort of strangers this document says is missing,
+> and #75 is what makes it measurable.
+
 **At the first real unit** — L2 before any group reaches 15 members, and start reading the density
 and liquidity queries weekly. Time-to-first-confirmed-swap is the number that says whether the thesis
 is real.
@@ -368,3 +382,9 @@ resolved before any effort is spent on exit readiness that is not also justified
 And the retention baseline may be worse than the contaminated sample suggests rather than better. The
 correct response to that is the same either way: measure it properly, and let the number decide how
 much more to invest.
+
+Finally, a maintenance note: the `index.html` line references in this document were correct at the
+merge commit that introduced it and are cited to make the claims checkable, not because the numbers
+are stable. They moved once already (#75 shifted all three within hours). Re-locate them by content —
+`setInterval(refetch, 15000)`, `setInterval(load, 15000)`, `GlobalWorkerOptions.workerSrc` — rather
+than trusting the numbers.
