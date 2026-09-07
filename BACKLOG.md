@@ -31,10 +31,9 @@ _(empty — promote from the candidate lists below with judgment)_
   zero differential rows.
 
 ### P3
-- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
-  (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`; `index.html` ~4019) — add "Enter the
-  6-character code a colleague shared with you." under its `<h3>`. Corroborated by the 2026-08-11
-  "how do I use a pin" feedback. Verify by the swap-UI standard (`docs/swap-board.md`).
+- [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
+  2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
+  "Enter the 6-character code a colleague shared with you." line the "Join another board" card has.
 - [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`;
   `index.html` ~4129-4130, above "SUGGESTED FOR YOU") — one muted line "Names stay hidden until
   everyone accepts." above the suggestion cards. Verify by the swap-UI standard (`docs/swap-board.md`).
@@ -227,6 +226,18 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Swap board: helper line on the first-run "Join with a code" card.** Nightly build
+  (P3, source:persona/Swap-savvy-Sam, corroborated by the 2026-08-11 "how do I use a pin someone gives
+  me?" feedback). The "Join another board" card (shown once you already have a group) carried
+  *"Enter the 6-character code a colleague shared with you."*; the zero-groups first-run "Join with a
+  code" card — a brand-new user's very first encounter with the board — did not, so the person most
+  likely to be confused about the code got the least help. Added the same line, styled identically
+  (`fontSize:12.5, color:var(--muted)`), directly under the card's `<h3>`. Pure static copy — no
+  swap RLS, security-definer functions, `poster_key` derivation, or reveal gate touched (Invariant 7
+  / swap-board verification standard). `harness:needs-live-auth`: verified by the documented swap-UI
+  standard — bundle presence on both cards, correct placement under the first-run h3, and whole-file
+  compile (seeded boot renders, zero page errors). iPhone-13 gate **76/76** (boot happy +
+  hang-getsession + block-babel, wage-math equality, SRI=5, boot hardening + wage-core untouched).
 - 2026-09-06 — **Paystub review: say so when 0 differential rows were detected.** Nightly build (P2,
   source:persona/Per-diem-Priya). `PaystubReview` previously wrapped the "DETECTED DIFFERENTIAL ROWS"
   section in `{rows.length>0 && …}` with no else branch, so a paystub that parsed a base rate but no
