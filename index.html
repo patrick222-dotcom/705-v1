@@ -5040,6 +5040,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             </div>
             <div className="card">
               <h3>Join with a code</h3>
+              <div style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.5,marginBottom:10}}>Enter the 6-character code a colleague shared with you.</div>
               <div className="inp" style={{marginBottom:10}}>
                 <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
                   placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>
