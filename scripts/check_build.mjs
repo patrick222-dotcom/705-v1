@@ -100,7 +100,7 @@ check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
 /* ---- Invariant 5: storage keys are data, not branding ---------------------------------- */
 check(5, 'Storage keys unrenamed', () => {
   const keys = ['nursingWagePlannerData', 'scrubpay_anon_id', 'scrubpay_feedback_pending',
-    'scrubpay_pending_invite', 'scrubpayErrors'];
+    'scrubpay_pending_invite', 'scrubpayErrors', 'scrubpay_events_pending'];
   const missing = keys.filter(k => !html.includes(k));
   must(!missing.length, `renaming orphans user data / severs analytics joins: ${missing.join(', ')}`);
   return `${keys.length}/${keys.length} intact`;

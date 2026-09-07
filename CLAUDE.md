@@ -67,7 +67,8 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    joins: `nursingWagePlannerData` (anonymous users' data — contains no brand string, so a
    ScrubPay→BadgeBudget find/replace misses it) and `nursingWagePlannerData::<uid>` (per-user
    failed-save backup); `scrubpay_anon_id`; `scrubpay_feedback_pending`; `scrubpay_pending_invite`;
-   `scrubpayErrors` (`ERR_KEY` in the boot script; every read goes through it since #64).
+   `scrubpayErrors` (`ERR_KEY` in the boot script; every read goes through it since #64);
+   `scrubpay_events_pending` (deferred analytics events awaiting the next load).
 6. **`@scrubpay` is the .ics self-recognition sentinel**: export stamps UIDs as
    `scrubpay-<date>-<id>@scrubpay`, import drops any UID containing `@scrubpay`. Change either half and
    every previously exported event re-imports as a duplicate.
@@ -125,7 +126,7 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 40: `app_open` `{via}` (present only when the URL
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 41: `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
   `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
@@ -135,7 +136,8 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
   `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
-  `estimate_dismissed`, `sample_cleared`, `ob_step` `{step}`, `client_error` `{n,errors}`.
+  `estimate_dismissed`, `sample_cleared`, `ob_step` `{step}`, `client_error` `{n,errors}`,
+  `sign_in_attempted` `{method:'google'|'email'|'email_signup'}`.
   (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from
   public.events group by name order by 2 desc;`
   **`ob_step` is the onboarding funnel.** `app_open`→`setup_completed` was a 132-device to 9-device
@@ -146,11 +148,25 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   group by 1 order by 1;`
   **`client_error` is last load's captured errors**, flushed once per app open from the boot
   script's ring buffer — see Testing → Client error telemetry. Never one row per error.
+  **`sign_in_attempted` measures the consent-screen wall.** Only successes were instrumented before
+  2026-09-07, so a sign-in that died on Google's screen was invisible. The Google path uses
+  `trackDeferred()` rather than `track()`: `signInWithOAuth` navigates away and the insert would race
+  the unload, so the event is written synchronously to `scrubpay_events_pending` (cap 10) and flushed
+  on the next load beside the error buffer — read-and-clear, same discipline. Someone who closes the
+  tab outright is still uncounted; someone who completes sign-in, or bails and comes back, is counted.
+  The email path has no navigation and tracks inline. Read the wall:
+  `select props->>'method' m, count(*) attempts from public.events where name='sign_in_attempted'
+  group by 1;` against `signed_in`.
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
   domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
-  `www.` and the github.io URL so in-flight links resolve. Google's consent screen names
-  `mnnlgcxnvodjwlhhiphq.supabase.co` — unfixable without a paid Supabase custom domain; the free
-  improvement is app name + logo on the GCP consent screen (not yet done).
+  `www.` and the github.io URL so in-flight links resolve. Google's consent screen still shows
+  `mnnlgcxnvodjwlhhiphq.supabase.co` — unfixable without a paid Supabase custom domain. **Branding
+  and publishing were done 2026-09-07:** app name `BadgeBudget`, homepage and privacy-policy links to
+  badgebudget.com, `badgebudget.com` as an authorized domain, and the app moved from **Testing** to
+  **In production** on the Audience page. That matters more than the branding: in Testing, Google only
+  admitted accounts on an explicit test-user list, so every prospective user outside it hit "Access
+  blocked" — all 3 accounts predate the domain move and nobody had signed up since. No logo, on
+  purpose: uploading one triggers Google's brand-verification queue.
 - **Swap board.** Invite-code unit groups, anonymous posts, client-computed
   pickup/handoff/trade/3-cycle suggestions, names revealed only after every leg accepts. Anonymity is
   enforced in Postgres (column grants + security-definer RPCs) and was audited adversarially
@@ -401,8 +417,8 @@ name='client_error' order by created_at desc;`
   near-term bridge that needs none of those decisions and leaves the app the sole writer to
   `user_data`. Scoped, not built; `BACKLOG.md` → Needs a dedicated session.
 - **Scaling, burn and transferability** (`docs/scaling-and-burn.md`, 2026-09-07): ~$30/mo covers 100k MAU, so
-  cash is never the constraint — what breaks first is **no CI** (a JSX syntax error ships live), no backups on
-  the free tier, and the 15s whole-blob polls (`index.html:2363` and `:4703`), the second of which grows with
+  cash is never the constraint — what breaks first was **no CI** (closed 2026-09-07: `gate` + `smoke` are
+  required checks), no backups on the free tier, and the 15s whole-blob polls (`index.html:2363` and `:4703`), the second of which grows with
   the square of unit size. North-star metric is **density** (units with ≥10 members and ≥1 confirmed swap in
   30 days — currently zero), not DAU. Levers L0–L6 are pre-scoped with trigger thresholds; pulling them early
   is waste. Queued in `BACKLOG.md` → Needs a dedicated session + Blocked.
@@ -416,9 +432,13 @@ name='client_error' order by created_at desc;`
   `docs/reddit-persona-pipeline`, `crawler-pushtest`, `claude/scrubpay-domain-purchase-j9cqf6`,
   `claude/ical-subscription-sync`, `claude/ical-branch-progress-4x2baj`,
   `claude/rename-scrubpay-badgebudget-5jesy5`.
-- **Google consent screen** still names `mnnlgcxnvodjwlhhiphq.supabase.co`; set the app name + logo on
-  the GCP OAuth consent screen (free). The nightly Routine's prompt still curls the github.io URL for
-  its live check (a 301 with no body) — change it to `https://badgebudget.com/index.html?cb=N`.
+- **Google consent screen — done 2026-09-07.** Branded and published to production (see Auth). The
+  supabase.co string remains, and needs a paid Supabase custom domain to remove. A logo is still
+  optional and deliberately deferred. **Watch for the payoff:** `sign_in_attempted` vs `signed_in`
+  now measures whether the Testing-status wall was really what capped sign-ups at 3.
+- **The nightly Routine's prompt still curls the github.io URL** for its live check (a 301 with no
+  body, so it can never see the change it verifies) — change it to
+  `https://badgebudget.com/index.html?cb=N`. The `ship` skill already encodes the correct check.
 - **Anonymous users and the domain move:** checked 2026-09-02 — no device that saved a shift or
   completed setup without also signing in, so nobody lost data. Every phone did mint a fresh `anon_id`
   on the new origin, so distinct-device counts are inflated across the cutover.
