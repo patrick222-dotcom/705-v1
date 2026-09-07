@@ -97,8 +97,10 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   favicon, a meta description and a theme-color (#64) — head-only, so the 3-file publish set holds.
 - **Data.** Signed-in → Supabase `user_data`: one `jsonb` blob per user, upserted on `user_id`,
   debounced 500ms, capped at `MAX_BLOB_BYTES` = 512KB (free-tier guard). The blob holds pay settings,
-  shifts, differentials, templates, day events, notes, `goals` (≤ `MAX_GOALS` 12) and `patterns`
-  (≤ `MAX_PATTERNS` 8); every array goes through `sanitizeData` on load. Anonymous → localStorage.
+  shifts, differentials, templates, day events, notes, `goals` (≤ `MAX_GOALS` 12), `patterns`
+  (≤ `MAX_PATTERNS` 8) and `estimateMode` (`''`|`'rough'`|`'sample'`, whitelisted in `sanitizeData`
+  so a corrupt blob can only land on `''` — no banner, never a false one); every array goes through
+  `sanitizeData` on load. Anonymous → localStorage.
   Writes are whole-blob, last-writer-wins, no version — fine for one human on two devices, not for an
   agent writing concurrently (the agent-gateway scoping doc, PR #67, starts from this fact).
   Cross-device sync is a 15s poll while the tab is visible, guarded by `updated_at` vs `lastSeenAt`
@@ -114,15 +116,17 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 35: `app_open` `{via}` (present only when the URL
-  carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet), `setup_completed`,
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 38: `app_open` `{via}` (present only when the URL
+  carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
+  `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
   `ics_import_parsed/done`, `ics_sync_done`, `pattern_lab_opened`, `pattern_saved` `{cycle}`,
   `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`, `feedback_submitted`, `swap_group_created/joined`,
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
-  `share_opened`, `share_sent` `{via:'share'|'copy'}`. (`health_check` rows in the
+  `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
+  `estimate_dismissed`, `sample_cleared`. (`health_check` rows in the
   table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
   by 2 desc;`
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
@@ -144,7 +148,17 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   take-home figure with Gross / Taxes / Keep-% chips; an Add-Shift sheet with shift templates,
   quick-fill, day events (PTO paid at base rate) and a live preview — gross, take-home, ≈$/hr
   take-home, OT tag — so a nurse can judge whether picking up an extra shift is worth it *before*
-  working it; savings goals (Settings, capped at `MAX_GOALS`=12, stored in the same blob) shown in
+  working it; **onboarding that ends at the first screen** — welcome's primary CTA is "Get my
+  estimate" (the paystub scan is a secondary "instead", after producing exactly one successful import
+  in two months as the primary), the base-rate step's CTA finishes setup at `estimateMode:'rough'`,
+  differentials + taxes become an opt-in "Add my differentials & taxes now", and a "Show me an
+  example" footlink finishes at `estimateMode:'sample'` seeding six 12h shifts tagged
+  `patternId:SAMPLE_PATTERN_ID` (`'__sample__'`) across the current fortnight so the planner shows a
+  real figure instead of $0. Both shortened paths raise a persistent amber `.est-banner` naming what
+  is assumed; "Clear the sample" removes only the tagged shifts (same contract as
+  `removePatternShifts`), and dismissing sets `estimateMode:''`. Settings → **SHARE** (first row)
+  opens a QR + native-share sheet — the QR is authored inline from `SHARE_URL`, not generated at
+  runtime; savings goals (Settings, capped at `MAX_GOALS`=12, stored in the same blob) shown in
   that preview as "% of goal (≈N shifts)" and on each goal in Settings as "≈ N typical 12h shifts to
   reach this" (#68); a month-first calendar whose month label + weekday row stay pinned while scrolling
   (#63); a breakdown view; paystub PDF import (parsed on-device, never

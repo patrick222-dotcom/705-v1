@@ -117,6 +117,15 @@
   .mob-only{display:none}
   @media (max-width:919px){ .mob-only{display:flex} }
 
+  /* estimate banner — the honesty guard for the two shortened setup paths. Amber, not indigo:
+     it is a caveat about whose numbers these are, not a feature being promoted. */
+  .est-banner{background:#FFF6E6;border:1px solid #F3DCAE;border-radius:17px;padding:14px 16px;margin-bottom:14px}
+  .est-banner .t{font-weight:700;font-size:13.5px;color:#7A5A12}
+  .est-banner .s{font-size:12.5px;line-height:1.5;color:#8A6A22;margin-top:3px}
+  .est-banner .row{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+  .est-banner button{background:#7A5A12;color:#fff;padding:9px 13px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .est-banner button.ghost{background:transparent;color:#8A6A22;border:1px solid #E4C98F}
+
   /* quick-fill banner (shift templates applied across multiple calendar days) */
   .qf-banner{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
   .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
@@ -342,11 +351,13 @@
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
   .ob .spacer{flex:1;min-height:18px}
   .ob.dark{background:var(--ink);color:#fff}
-  /* Returning-user escape hatch on the welcome screen. AuthModal lives past the !setupComplete
-     early return, so without this a signed-out returner (cleared Safari data, new phone, second
-     device) had no way to reach sign-in except by re-running the whole 4-step wizard. */
-  .ob-signin{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
-  .ob-signin b{font-weight:700;color:var(--indigo)}
+  /* Shared style for the quiet last line of an onboarding step — the returning-user sign-in
+     escape hatch on welcome (AuthModal lives past the !setupComplete early return, so without it
+     a signed-out returner had no way back to their own data except re-running the wizard) and the
+     "show me an example" opt-out on the rate step. Subordinate to the step's real CTA, never
+     hidden from it. */
+  .ob-footlink{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
+  .ob-footlink b{font-weight:700;color:var(--indigo)}
   .pill{display:inline-flex;align-self:flex-start;background:var(--indigo-soft);color:var(--indigo);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
 
   /* share sheet — the QR has to survive being read off a screen at arm's length in bad light,
@@ -637,6 +648,27 @@ const DIFF_DEFAULTS = {
   'overtime':     { name:'Overtime (1.5×)',  amount:1.5,  type:'multiplier', active:true,  color:'#11A86B' },
   'bonus-incentive':{ name:'Bonus incentive',amount:15,   type:'dollar',     active:true,  color:'#11A86B' },
 };
+/* ---- sample ("show me what this looks like") mode ------------------------------------
+   A planner with no shifts projects $0, so a sample that shows nothing is worthless. Sample
+   mode seeds one believable fortnight and tags every shift with this id, so "clear the sample"
+   removes exactly what was seeded and nothing the nurse typed herself — the same contract
+   patterns already use via `patternId`. Never write this id from any other path. */
+const SAMPLE_PATTERN_ID = '__sample__';
+/* Six 12h shifts over the fortnight from `startISO`, day-of-week deciding weekend vs night —
+   the same inference the .ics import uses, so the mix reads as a real nurse's schedule
+   whatever weekday the pay period happens to begin on. */
+function buildSampleShifts(startISO){
+  const out = {};
+  [1,2,3,8,9,10].forEach(off=>{
+    const d = parseISODate(startISO); d.setDate(d.getDate()+off);
+    const dow = d.getDay();
+    const shiftType = (dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base');
+    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours:12, bonusType:'none',
+                           customBonus:0, isOvertime:false, patternId:SAMPLE_PATTERN_ID }];
+  });
+  return out;
+}
+
 const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
 const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom (per shift)' };
 
@@ -886,6 +918,10 @@ function sanitizeData(d){
   if(typeof d.ficaWithholdingType==='string') out.ficaWithholdingType = d.ficaWithholdingType;
   if(d.ficaWithholdingPercent!=null) setNum('ficaWithholdingPercent', d.ficaWithholdingPercent);
   if(typeof d.payPeriodStart==='string') out.payPeriodStart = d.payPeriodStart;
+  /* estimateMode: '' (fully set up, or the banner was dismissed) | 'rough' (their own base rate,
+     default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
+     corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
+  if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
   // shifts: object of date-key -> array of shift objects; keep only well-formed entries.
   if(d.shifts && typeof d.shifts==='object' && !Array.isArray(d.shifts)){
     const s = {};
@@ -1984,6 +2020,7 @@ function App(){
   const [showAuth,setShowAuth] = useState(false);  // auth modal
   const [authMode,setAuthMode] = useState('signin'); // 'signin' or 'signup'
   const [showShare,setShowShare] = useState(false);  // QR/link sheet — the app's only distribution surface
+  const [estimateMode,setEstimateMode] = useState('');  // '' | 'rough' | 'sample' — drives the honesty banner
   const [user,setUser] = useState(null);  // current user
   const [session,setSession] = useState(null);  // auth session
   const [syncing,setSyncing] = useState(false);  // cloud sync in progress
@@ -2045,7 +2082,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -2081,6 +2118,7 @@ function App(){
     if(d.icsIgnored) setIcsIgnored(d.icsIgnored);
     if(d.goals) setGoals(d.goals);
     if(d.patterns) setPatterns(d.patterns);
+    setEstimateMode(d.estimateMode || '');
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -2089,7 +2127,7 @@ function App(){
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
-    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false);
+    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -2237,7 +2275,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2734,6 +2772,20 @@ function App(){
     track('pattern_shifts_removed', {n}, user?.id);
   };
 
+  /* Pull back exactly the seeded fortnight — matched on SAMPLE_PATTERN_ID, so anything the nurse
+     logged herself while looking around survives untouched. Mirrors removePatternShifts(). */
+  const clearSample = async ()=>{
+    if(!(await confirmAsync('This removes the example shifts so you can start on your own schedule. Anything you added yourself stays.',{title:'Clear the sample?',confirm:'Clear it'}))) return;
+    setShifts(prev=>{
+      const next = {};
+      Object.entries(prev).forEach(([k,arr])=>{ const keep = arr.filter(x=>x.patternId!==SAMPLE_PATTERN_ID); if(keep.length) next[k]=keep; });
+      return next;
+    });
+    setEstimateMode('');
+    toast('Sample cleared — the planner is yours now.','success');
+    track('sample_cleared', null, user?.id);
+  };
+
   /* analytics: one event per app load */
   useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); },[]);
 
@@ -3134,7 +3186,18 @@ function App(){
       <Onboarding {...{obStep,setObStep,name,setName,baseRate,setBaseRate,num,
       differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
       pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
-      onPaystub,parsing,finish:()=>{setSetupComplete(true); track('setup_completed', null, user?.id);},
+      onPaystub,parsing,
+      /* mode: 'full' (walked all four steps), 'rough' (own rate, default differentials + taxes),
+         'sample' (nothing of theirs — seed a fortnight so the planner shows a real number).
+         Guarded because step 4's button passes finish straight to onClick, so the first arg
+         can be a click event rather than a string. */
+      finish:(mode)=>{
+        const m = (mode==='rough'||mode==='sample') ? mode : 'full';
+        if(m==='sample'){ setBaseRate(65.15); setShifts(buildSampleShifts(currentPeriodStart(todayISO()))); }
+        setEstimateMode(m==='full' ? '' : m);
+        setSetupComplete(true);
+        track('setup_completed', {mode:m}, user?.id);
+      },
       onSignIn:()=>{ setAuthMode('signin'); setShowAuth(true); },
       sampleNet:()=>{ // illustrative typical 2wk schedule from their rates
         const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
@@ -3179,6 +3242,25 @@ function App(){
           <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
           <div className="period" role="group" aria-label="Pay period"><button onClick={()=>movePeriod(-1)} aria-label="Previous pay period">‹</button><span className="num" aria-live="polite">{periodLabel}</span><button onClick={()=>movePeriod(1)} aria-label="Next pay period">›</button></div>
         </div>
+
+        {/* Two shortened setup paths reach the planner without real differentials or tax rates,
+            and one of them reaches it without the nurse's own hourly rate at all. This says so,
+            in the same view as the number it is qualifying — the app's whole promise is that the
+            figure isn't a surprise, so an unqualified estimate would be the one lie it can't tell. */}
+        {estimateMode && (
+          <div className="est-banner">
+            <div className="t">{estimateMode==='sample' ? 'These are example numbers' : 'Rough estimate'}</div>
+            <div className="s">{estimateMode==='sample'
+              ? 'A sample fortnight at $65.15/hr, so you can see how it works. Add your own rate to make it yours.'
+              : `Based on your $${num(baseRate)}/hr with typical differentials and tax rates. It'll get more accurate once you add your own — but for a two-week pay period, here's roughly what it looks like.`}</div>
+            <div className="row">
+              <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>
+              {estimateMode==='sample'
+                ? <button className="ghost" onClick={clearSample}>Clear the sample</button>
+                : <button className="ghost" onClick={()=>{ setEstimateMode(''); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
+            </div>
+          </div>
+        )}
 
         <div className="dash">
           {/* LEFT */}
@@ -5398,11 +5480,14 @@ function Onboarding(props){
         <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
       </div>
       <div className="spacer"></div>
-      <label className="btn btn-primary" style={{marginBottom:6,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
-      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginBottom:12,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
-      <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
-      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
-      <button type="button" className="ob-signin" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
+      {/* One hourly rate is enough for a believable number, so that is the road. The paystub
+          scan is a side door: it had produced exactly ONE successful import in two months as the
+          primary CTA, because getting a PDF out of Workday on a phone is a three-app errand. */}
+      <button className="btn btn-primary" onClick={()=>setObStep(1)}>Get my estimate</button>
+      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:10,marginBottom:14,fontWeight:500}}>One number to start · about 20 seconds</div>
+      <label className="btn btn-ghost" style={{position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub instead'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginTop:8,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
+      <button type="button" className="ob-footlink" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
     </div>
   );
 
@@ -5417,16 +5502,21 @@ function Onboarding(props){
   if(obStep===1) return (
     <div className="ob">
       <Head step={1}/>
-      <div className="eyebrow">STEP 1 OF 4 · YOUR PAY</div>
+      <div className="eyebrow">YOUR PAY</div>
       <div className="q">What's your base hourly rate?</div>
-      <div className="help">The rate before any differentials or bonuses. On your paystub it's usually listed as "Pay Rate." <b>The amount below is just an example — enter your own rate.</b></div>
+      <div className="help">The rate before any differentials or bonuses — on your paystub it's usually listed as "Pay Rate." Close is good enough to start; a paystub sharpens it later. <b>The amount below is just an example — enter your own rate.</b></div>
       <div className="inp pre" style={{marginTop:28}}>
         <span className="pfx" style={{fontSize:22}}>$</span>
         <NumInput value={baseRate} onCommit={setBaseRate} min={0} ariaLabel="Base hourly rate" style={{fontSize:32,fontWeight:700,padding:'18px 14px 18px 34px',fontFamily:"'Bricolage Grotesque'"}}/>
         <span className="sfx">/ hr</span>
       </div>
       <div className="spacer"></div>
-      <button className="btn btn-primary" onClick={()=>setObStep(2)}>Continue</button>
+      {/* Straight to a real number. Differentials and taxes still matter, but asking for them
+          before she has seen anything is what the funnel died on — every one of them has a
+          usable default, and the planner says plainly that this is an estimate. */}
+      <button className="btn btn-primary" onClick={()=>finish('rough')}>See my estimate</button>
+      <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>setObStep(2)}>Add my differentials &amp; taxes now</button>
+      <button type="button" className="ob-footlink" onClick={()=>finish('sample')}>Don't have your rate handy? <b>Show me an example</b></button>
     </div>
   );
 
@@ -5434,7 +5524,7 @@ function Onboarding(props){
   if(obStep===2) return (
     <div className="ob">
       <Head step={2}/>
-      <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
+      <div className="eyebrow">OPTIONAL · DIFFERENTIALS</div>
       <div className="q">How does your pay change by shift?</div>
       <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>

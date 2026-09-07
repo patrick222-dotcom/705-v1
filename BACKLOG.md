@@ -237,6 +237,33 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Onboarding ends at the first screen: base-rate-first + a zero-input sample.**
+  Dedicated session, owner-directed (funnel Q&A: "base rate should be top of mind even if it's not
+  perfect", and yes to a zero-input path). The wizard demanded a completed tax profile before showing
+  anything; four non-family iPhones opened the app more than once and none finished it. Now welcome's
+  primary CTA is **"Get my estimate"** and the paystub scan is a secondary "Scan a paystub instead"
+  (as the primary it had produced exactly ONE successful import in two months — getting a PDF out of
+  Workday on a phone is a three-app errand). The base-rate step's CTA is **"See my estimate"**, which
+  completes setup at `estimateMode:'rough'`; differentials and taxes survive as an opt-in "Add my
+  differentials & taxes now", and the eyebrows read `YOUR PAY` / `OPTIONAL · …` instead of
+  `STEP n OF 4`. A **"Show me an example"** footlink finishes at `estimateMode:'sample'`, seeding six
+  12h shifts across the current fortnight — an empty planner projects $0, so a sample showing nothing
+  would be worthless. Seeded shifts carry `patternId:SAMPLE_PATTERN_ID` (`'__sample__'`) so "Clear the
+  sample" removes exactly those and nothing she logged herself, the same contract patterns already
+  use. Both shortened paths raise a persistent amber `.est-banner` naming whose numbers these are
+  ("Rough estimate … for a two-week pay period, here's roughly what it looks like" / "These are
+  example numbers"); the app's whole promise is that the figure isn't a surprise, so an unqualified
+  estimate is the one lie it can't tell. Dismiss sets `estimateMode:''` and sticks across reloads.
+  New blob key `estimateMode`, **whitelisted** in `sanitizeData` to `'rough'|'sample'` — an object,
+  array or unknown string all land on `''`, i.e. no banner rather than a wrong one (Invariant 3
+  permits a sanitizer branch for a new data shape with a unit test; five are included). Also renamed
+  `.ob-signin` → `.ob-footlink`: the sample opt-out reuses that footer style, and a class named for
+  sign-in doing double duty was a lie waiting to confuse someone. Gate: **51/51** new estimate suite,
+  plus **28/28** onboarding and **23/23** share still green — including that the nurse's own shifts
+  survive a clear on a day holding both hers and a seeded one, that the full 4-step path still works
+  and raises no banner, and four wage-math probes. SRI 5, wage-core and boot hardening untouched.
+  Event roster 35 → 38, and `setup_completed` now carries `{mode:'full'|'rough'|'sample'}` — which
+  path people actually take is finally measurable. `harness:drivable`.
 - 2026-09-07 — **Share sheet: a scannable QR + a shareable link, and arrival tagging.** Dedicated
   session, owner-directed: word of mouth on a unit is the app's only distribution, and nurses there
   are transient enough that they often don't have each other's numbers — so the primary share is a
