@@ -274,6 +274,89 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Three project skills, and an ops dashboard that separates crawlers from nurses.**
+  Dedicated session, owner-directed (follow-on to the instrumentation work earlier the same day).
+
+  **Skills** (`.claude/skills/`): `ship` (deploy ritual — fetch-before-branch, all three suites, and
+  live verification with a marker against badgebudget.com rather than the github.io 301), `wage-core`
+  (Invariant 3 — names the five decisions inside the math, then baseline probes → new assertion →
+  equality assertion against the deployed build; refuses the nightly loop), `harness` (rebuild and
+  drive the rig, add an assertion, negative-test it). These were rituals carried in CLAUDE.md prose;
+  now an agent picks them up from the task description without being told.
+
+  **Snapshot tooling**: `scripts/dashboard_snapshot.sql` returns the operational picture as one JSON
+  blob; `scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html`,
+  because the database can only report which events *have* fired and "never fired" is the interesting
+  half. Verified end-to-end through the Management API.
+
+  **The finding that changes the numbers.** badgebudget.com was registered 2026-09-02 and immediately
+  drew crawler traffic. Of 135 devices, **83 are non-mobile and never fired anything but `app_open`**
+  — 55 Windows, 16 Linux/X11, 10 Mac, nearly all one-and-done, essentially all after the domain move.
+  Counting them as users understates activation by about 2.5x and overstates the bounce rate. The
+  honest mobile numbers: **48 devices, 8 finished setup (17%), 13 opened it twice (27%), 7 returned on
+  a later day.** Earlier framing in this session of "132 devices, 89% one-and-done" was inflated by
+  that traffic and is corrected here. `pattern_lab_opened` is still zero, but across 21 real mobile
+  devices since it shipped, not 64.
+
+  Also confirmed: **19 of 40 instrumented events have never fired once.** The dashboard's coverage
+  table is the durable version of that list.
+
+  Dashboard: cohort filter (mobile / non-crawler / everything) scoping every card, activation steps,
+  weekly retention heatmap, per-day device and engagement charts with crosshair tooltips and series
+  toggles, sortable + searchable instrumentation coverage, platform split, swap density, client-error
+  feed, free-tier meters, masked feedback inbox, snapshot history and CSV export. Palette validated in
+  both modes; every chart has a table twin; verified by a Playwright pass over desktop + iPhone 13 x
+  light + dark (27 checks, 0 failures) which caught a real `minmax(380px,1fr)` grid overflow.
+
+  Gate: `check_build.mjs` 8/8, `test_groom_seed.mjs` 33/33, `tests/smoke.mjs` 27/27.
+
+  **Owner closed the loop the same day:** repo-wide auto-merge enabled, plus a `deploy gate` ruleset
+  targeting `claude/migrate-to-github-deploy-3F5RD` that makes `gate` and `smoke` required and
+  restricts deletion + non-fast-forward pushes, with Repository admin on the bypass list. Confirmed in
+  force via `GET /repos/:o/:r/rules/branches/:branch`. CI is no longer advisory — a red run blocks the
+  merge, and an unchecked direct push to the deploy branch is rejected. Still unproven by a
+  deliberately-red PR; that negative test is the honest remaining gap.
+- 2026-09-07 — **The instruments: a mechanical CI gate, the harness in git, and errors that leave
+  the device.** Dedicated session, owner-directed (architecture review; owner picked "instrument the
+  blind spots" + "fix the loop's input", and "build step yes, but CI-gated first"). Three blind spots
+  closed, all instrumentation — no behavior change, wage core untouched.
+
+  **1. CI (`.github/workflows/ci.yml` + `scripts/check_build.mjs`).** There was no CI at all: a JSX
+  syntax error reached production in ~90s, and the only check was the nightly's self-report from a
+  rig that lived in a scratchpad. `check_build.mjs` Babel-parses the JSX block with the same
+  `@babel/parser@7.24.7` the browser loads, then mechanically asserts Invariants 1 (watchdog,
+  null-guarded client, 4s getSession race, error buffer), 2 (SRI 5/5, no `@latest` pin), 4
+  (`onConflict:'user_id'`), 5 (all five storage keys), 6 (both halves of the `@scrubpay` sentinel),
+  8 (CNAME in a 3-file publish set) and 9 (deploy branch still in the triggers). Invariants 3, 10, 11
+  and 12 are human-held and print as UNCHECKED rather than being silently omitted. **Negative-tested:
+  each of the eight was deliberately broken and the gate confirmed to fail; the clean tree passes.**
+  Runs identically via `node scripts/check_build.mjs` — a gate whose result can't be reproduced
+  outside the harness reporting it is not a gate.
+
+  **2. The harness is in git (`tests/harness.mjs`, `tests/smoke.mjs`, 27 assertions).** All four gate
+  clauses from CLAUDE.md now reproduce from a clean checkout: boot renders on iPhone 13, no
+  non-network page errors, `getSession()` hanging still renders (the WebKit deadlock), blocking Babel
+  shows the boot error screen naming Babel. Plus the wage-math probes — including that OT pays 1.5×
+  the *differential-inclusive* rate (990, not 900), and that `computeNet` levies FICA on gross while
+  income tax uses gross-minus-pretax. SRI is stripped in the scratch copy only; `index.html` is never
+  modified, so running tests can't damage Invariant 2.
+
+  **3. Client errors now leave the device (`client_error`).** Every error since the app existed died
+  in `localStorage['scrubpayErrors']` — visible only to the person holding the phone, which is why
+  the 2026-08-23 sync investigation opened with an empty log after 47 days of failing writes.
+  `window.__takeErrorLog()` (boot script, shares `ERR_KEY`) reads and clears; the app flushes last
+  load's buffer on this load, one `events` row per load. Money-shaped figures redacted — the paystub
+  path `console.error`s a raw parse error that can embed PDF text, a real vector. Postgres codes and
+  line numbers survive; stacks aren't sent.
+
+  **4. The onboarding funnel is legible (`ob_step`).** `app_open`→`setup_completed` was 132 devices
+  to 9 with nothing in between — no way to tell a welcome-screen bounce from a rate-input bounce.
+  Fires once per furthest step reached, so back-navigation doesn't double count.
+
+  Gate: `check_build.mjs` 8/8, `test_groom_seed.mjs` 33/33, `tests/smoke.mjs` 27/27.
+  **Owner action to finish the job:** mark `gate` a required status check in Settings → Branches for
+  `claude/migrate-to-github-deploy-3F5RD`. Until then CI is advisory — it reports red on the PR but
+  does not block the merge, and nothing checks a direct push to the deploy branch.
 - 2026-09-07 — **Onboarding ends at the first screen: base-rate-first + a zero-input sample.**
   Dedicated session, owner-directed (funnel Q&A: "base rate should be top of mind even if it's not
   perfect", and yes to a zero-input path). The wizard demanded a completed tax profile before showing

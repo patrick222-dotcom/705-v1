@@ -27,7 +27,10 @@ hosts an anonymous shift-swap board.
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
 | `supabase/migrations/` | `001_swap_board.sql` (swap board) and `002_ical_subscription.sql` (the iCal feed table); `user_data`/`feedback`/`events` still exist only in the live project |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
-| `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite (the only tracked tests) |
+| `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 27 assertions on an iPhone 13 profile |
+| `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
@@ -36,7 +39,8 @@ hosts an anonymous shift-swap board.
 | `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
 | `docs/scaling-and-burn.md` | capacity + cost ladder to 100k users, the pre-scoped infra levers with trigger thresholds, the density/retention metric definitions (runnable SQL), and the transferability checklist. Strategy only |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
-| `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
+| `.mcp.json`, `.agents/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
+| `.claude/skills/{ship,wage-core,harness}/` | the project's own skills — the deploy ritual, the Invariant 3 protocol, and the test rig. See Skills |
 
 ## Invariants — never weaken, never rename
 
@@ -117,7 +121,7 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 38: `app_open` `{via}` (present only when the URL
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 40: `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
   `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
@@ -127,9 +131,17 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
   `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
-  `estimate_dismissed`, `sample_cleared`. (`health_check` rows in the
-  table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
-  by 2 desc;`
+  `estimate_dismissed`, `sample_cleared`, `ob_step` `{step}`, `client_error` `{n,errors}`.
+  (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from
+  public.events group by name order by 2 desc;`
+  **`ob_step` is the onboarding funnel.** `app_open`→`setup_completed` was a 132-device to 9-device
+  cliff with no event in between, so a bounce off the welcome screen was indistinguishable from one
+  off the rate input. It fires once per *furthest* step reached (0 welcome … 4 done), so
+  back-navigation and "Edit my setup" don't double count. Read it as a funnel:
+  `select props->>'step' as step, count(distinct anon_id) from public.events where name='ob_step'
+  group by 1 order by 1;`
+  **`client_error` is last load's captured errors**, flushed once per app open from the boot
+  script's ring buffer — see Testing → Client error telemetry. Never one row per error.
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
   domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
   `www.` and the github.io URL so in-flight links resolve. Google's consent screen names
@@ -189,11 +201,54 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   redirects, 2MB cap, 8s timeout. Known limits: the confirm step is all-or-nothing, and a local edit to a
   synced shift's hours loses to the feed on the next sync.
 
+## Skills
+
+Three project skills encode the rituals that were previously carried in prose here, so an agent
+picks them up without being told. Invoke by name (`/ship`) or let the description match the task.
+
+- **`ship`** — deploying. Fetch-before-branch (Invariant 10), run all three suites, PR to the deploy
+  branch, then **verify with a marker against badgebudget.com** — the old github.io URL 301s with an
+  empty 162-byte body, so anything grepping it for content can never see the change. Also the
+  deployed-bytes-vs-branch diff, and the Invariant 11 branch rules.
+- **`wage-core`** — anything touching a displayed dollar figure. Names the five decisions inside the
+  math (OT stacks on the differential-inclusive rate; FICA on gross while income tax uses
+  gross-minus-pretax; custom bonus is flat; display-only pre/post caps), then the protocol: baseline
+  probes, a new assertion for the changed behaviour, and the equality assertion against the
+  *deployed* build. Refuses the nightly loop.
+- **`harness`** — driving the app for real. Rebuild, run, add an assertion, and the rule that every
+  new assertion is negative-tested. Covers the dev-build console diagnostic and what is still missing.
+
+## Ops dashboard
+
+`scripts/dashboard_snapshot.sql` returns the whole operational picture as one JSON blob;
+`scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html` (the database
+can only say which events *have* fired — "never fired" is the interesting half and lives in the
+source). Paste the result into the dashboard artifact to refresh it; it stores snapshots so a trend
+accumulates. Nothing is queried live, because `events` is insert-only for `anon` — the property that
+keeps analytics unreadable to everyone else.
+
+**The crawler split is the load-bearing part.** badgebudget.com was registered 2026-09-02 and
+immediately drew crawler traffic: of 135 devices, **83 are non-mobile and never fired anything but
+`app_open`**. Counting them as users understates activation by ~2.5x and overstates the bounce rate.
+The query classifies every device `mobile` / `desktop` / `crawler` and the dashboard defaults to
+mobile-only. It is a heuristic — a nurse on a laptop who bounces is indistinguishable from a crawler —
+so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 finished setup (17%),
+13 opened it twice (27%), 7 came back on a later day.
+
 ## Deployment
 
 - GitHub Pages via `deploy.yml`, on push to the deploy branch (and to `main`/`master`, which don't
   exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `CNAME` — anything else
-  silently 404s. There is no CI: a JSX syntax error ships live, so the harness gate is the only check.
+  silently 404s. **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
+  `gate` job running `scripts/check_build.mjs` (Babel-parses the JSX block and mechanically asserts
+  Invariants 1, 2, 4, 5, 6, 8 and 9) plus `scripts/test_groom_seed.mjs`, and a `smoke` job running
+  `tests/smoke.mjs` on an iPhone 13 profile. **Both are required status checks** as of 2026-09-07
+  via the `deploy gate` ruleset (Settings → Rules), which targets `claude/migrate-to-github-deploy-3F5RD`
+  and also restricts deletion and non-fast-forward pushes. A red run now blocks the merge, and because
+  required checks apply to pushes too, a direct push of an unchecked commit to the deploy branch is
+  rejected — the "a JSX error ships live" hole is closed. Repository admin is on the bypass list, so
+  the owner keeps an emergency override. **Auto-merge is enabled** repo-wide: a PR with auto-merge
+  turned on lands itself the moment both checks go green.
 - **Custom domain** badgebudget.com at Porkbun; `badgebudget.app`, `shiftstogo.com` and
   `shiftstogo.app` redirect to it. DNS is 4 A + 4 AAAA records to GitHub Pages plus a `www` CNAME.
   Registrar details, renewals, kept records: `docs/domains.md`.
@@ -302,10 +357,30 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 `warning`/`error` console messages. A clean run shows only the Babel in-browser transformer notice
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
-**The harness is not in git.** The Playwright rig, the 27-assertion swap-matching suite
-(`te_swap_p2_algo.js`) and the RLS audit (`rls_audit.js`, which mints throwaway confirmed users via
-the admin API) only ever lived in session scratchpads, so the "N/N" figures in the Done log are not
-reproducible from the repo. Committing them under `tests/` is an open item.
+**The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
+builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (27 assertions:
+boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
+drain, the onboarding funnel, and both failure modes). `node tests/smoke.mjs` runs it; it resolves
+the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
+registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
+FAIL when each invariant is deliberately broken, because a gate that has only ever passed proves
+nothing.
+
+**Still not in git:** the 27-assertion swap-matching suite (`te_swap_p2_algo.js`) and the RLS audit
+(`rls_audit.js`, which mints throwaway confirmed users via the admin API). Those figures in the Done
+log remain unreproducible. Porting them to `tests/` is the remaining half of this item.
+
+**Client error telemetry.** Errors are captured by the boot script's ring buffer
+(`localStorage['scrubpayErrors']`, cap 20) and, since 2026-09-07, flushed once per app load into
+`events` as `client_error`. `window.__takeErrorLog()` reads *and clears* — clearing first is
+deliberate, so a failed send drops the batch instead of resending it on every load forever. One row
+per load, never one per error, so an error loop can't hammer the free tier. Money-shaped figures are
+redacted by `redactMoney()` (the paystub path `console.error`s a raw parse error that can embed PDF
+text — a real leak vector, not a ceremonial scrub); Postgres codes and line numbers survive. Stacks
+are not sent — `src` + `line` names the site, and the watchdog screen's "Copy error log" still hands
+a user the full stack. Errors from the current session flush on the *next* load, by design: a crash
+cannot report itself. Owner read: `select created_at, props from public.events where
+name='client_error' order by created_at desc;`
 
 ## Open items (state as of 2026-09-05 — the work queue itself is `BACKLOG.md`)
 
@@ -346,8 +421,13 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   `re_...` key + destination address. Spec in `BACKLOG.md` → Blocked.
 - **Second Supabase project for dev/test** (free plan allows two) so audits and migrations stop
   touching real data. `BACKLOG.md` → Needs a dedicated session.
-- **Commit the harness and add a CI job** (`node scripts/test_groom_seed.mjs` + a Babel parse of the
-  JSX block) so a syntax error can't ship; pin the four actions to SHAs and `.mcp.json` off `@latest`.
+- **CI and the harness (2026-09-07).** `tests/`, `.github/workflows/ci.yml`, the negative-tested
+  invariant gate, and the `deploy gate` ruleset making `gate` + `smoke` required are all in place;
+  auto-merge is on. Remaining: port `te_swap_p2_algo.js` and `rls_audit.js` into `tests/`; pin the six
+  actions to SHAs and `.mcp.json` off `@latest` (`actions/checkout@v4` and `actions/setup-node@v4`
+  also target a deprecated Node 20 runtime — bump while pinning). **Not yet negative-tested end to
+  end:** the ruleset is confirmed in force via the API, but no deliberately-red PR has been pushed to
+  prove it actually blocks a merge. Worth one throwaway PR to close that loop.
 - **Capture `user_data`/`feedback`/`events` DDL + RLS** as `supabase/migrations/000_core.sql`.
 - **Council rerun** (owner's standing request) — last full run 2026-07-30, `docs/history.md`.
 - **Parked engineering** (calendar memoization + virtualization; sync content-equality
