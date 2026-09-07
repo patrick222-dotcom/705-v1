@@ -226,6 +226,25 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Sign-in is reachable before setup (returning-user dead end).** Dedicated session,
+  triggered by an owner question ("is anyone using the app besides me and Courtney?" — answer: no; 3
+  accounts, all owner + wife). Funnel dig found four non-family iPhones that fired `app_open` more
+  than once and never completed setup, and one *structural* cause: `AuthModal` renders at the bottom
+  of `App`, past the `if(!setupComplete)` early return, so a signed-out returner (cleared Safari
+  data, new phone, second device, invite link opened on a work iPad) had **no reachable sign-in at
+  all** — the only way back to their own data was to re-run the whole 4-step wizard and land in an
+  empty planner primed with the $65.15 default, which reads as "the app lost my shifts". Fix: an
+  `.ob-signin` "Already have an account? **Sign in**" button on welcome (obStep 0, under "Takes about
+  2 minutes"), plus `{showAuth && <AuthModal/>}` rendered inside the onboarding branch. Signing in
+  hydrates the cloud blob → `applyData` sets `setupComplete` → the returner lands in their planner; a
+  brand-new signup has no row, so `applyData` never runs and they correctly stay in onboarding.
+  Sign-up is now reachable pre-setup too (AuthModal's own "No account? Sign up"). One affordance
+  only — inner steps stay clean, and every step back-navigates to 0. Gate: 27/27 in the iPhone-13
+  harness (boot happy, AuthModal opens/closes without skipping setup, back-nav, no horizontal
+  overflow, 47px tap target, hang-getsession, block-babel error screen, dev-build console clean, four
+  wage-math probes). SRI 5, wage-core and boot hardening untouched. `harness:drivable`.
+  **Not yet fixed (see Queue):** zero instrumentation between `app_open` and `setup_completed` — five
+  onboarding screens, no events — so which step actually kills the funnel is still unmeasured.
 - 2026-09-07 — **Swap board: helper line on the first-run "Join with a code" card.** Nightly build
   (P3, source:persona/Swap-savvy-Sam, corroborated by the 2026-08-11 "how do I use a pin someone gives
   me?" feedback). The "Join another board" card (shown once you already have a group) carried

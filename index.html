@@ -342,6 +342,11 @@
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
   .ob .spacer{flex:1;min-height:18px}
   .ob.dark{background:var(--ink);color:#fff}
+  /* Returning-user escape hatch on the welcome screen. AuthModal lives past the !setupComplete
+     early return, so without this a signed-out returner (cleared Safari data, new phone, second
+     device) had no way to reach sign-in except by re-running the whole 4-step wizard. */
+  .ob-signin{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
+  .ob-signin b{font-weight:700;color:var(--indigo)}
   .pill{display:inline-flex;align-self:flex-start;background:var(--indigo-soft);color:var(--indigo);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
 
   /* modal / sheet */
@@ -3103,6 +3108,7 @@ function App(){
       differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
       pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
       onPaystub,parsing,finish:()=>{setSetupComplete(true); track('setup_completed', null, user?.id);},
+      onSignIn:()=>{ setAuthMode('signin'); setShowAuth(true); },
       sampleNet:()=>{ // illustrative typical 2wk schedule from their rates
         const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
           {shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'base',hours:12,bonusType:'none'} ];
@@ -3113,6 +3119,10 @@ function App(){
         return {net,gross:g,hours:h}; }
     }} />
       {paystub && <PaystubReview paystub={paystub} differentials={differentials} onApply={applyPaystub} onCancel={()=>setPaystub(null)} />}
+      {/* Signing in here hydrates the cloud blob, which sets setupComplete and drops a returning
+          user straight into their planner. A brand-new signup has no row, so applyData never runs
+          and they stay in onboarding where they belong. */}
+      {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
     </>;
   }
 
@@ -5291,7 +5301,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
 function Onboarding(props){
   const {obStep,setObStep,name,setName,baseRate,setBaseRate,num,differentials,setDiff,
     federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet}=props;
+    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet,onSignIn}=props;
 
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
@@ -5314,6 +5324,7 @@ function Onboarding(props){
       <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginBottom:12,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
       <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
       <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
+      <button type="button" className="ob-signin" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
     </div>
   );
 
