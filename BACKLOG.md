@@ -40,8 +40,10 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
-- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway) — Session A shipped 2026-09-05 (#70,
-  see Done log); remaining: the owner's Shortcut (≈1 h) and Session B.** Owner-directed 2026-09-05, scoped
+- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway) — Session A built 2026-09-05, PR #70
+  SHELVED 2026-09-07 (owner call; draft, mergeable, gate 74/74, backend live and idle). Resume per
+  `docs/history.md` → 2026-09-07: merge the base, rebuild the harness, gate, merge, confirm live; then
+  the owner's Shortcut (≈1 h) and Session B.** Owner-directed 2026-09-05, scoped
   in `docs/agent-gateway-scope.md` → *Path B*. A shared iCloud Shortcut POSTs a proposed op (or a
   dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
   which validates it against the op allowlist and inserts an `ops_inbox` row; the app's existing 15 s
