@@ -525,6 +525,16 @@
       '<button onclick="window.__copyErrorLog(this)" style="display:block;margin:12px auto 0;background:none;color:#9A9DAB;border:none;font-size:12px;text-decoration:underline">Copy error log</button>' +
       '</div>';
   }, 8000);
+  /* Read-and-clear the ring buffer, for the app layer to ship to analytics. Clearing FIRST is
+     deliberate: a failed send must drop the batch rather than resend it on every load forever.
+     Shares ERR_KEY with the writer so the storage key still lives in exactly one place
+     (Invariant 5). Defined here, never called during boot — watchdog semantics unchanged. */
+  window.__takeErrorLog = function(){
+    var buf = [];
+    try { buf = JSON.parse(localStorage.getItem(ERR_KEY) || '[]'); } catch(_){ buf = []; }
+    try { localStorage.removeItem(ERR_KEY); } catch(_){}
+    return Array.isArray(buf) ? buf : [];
+  };
   /* Shared by the watchdog screen and the Settings panel — copy the captured error ring
      buffer to the clipboard so a user can paste it into a bug report. */
   window.__copyErrorLog = function(btn){
@@ -1345,6 +1355,40 @@ function track(name, props, userId){
   }catch(_){}
 }
 
+/* Client errors used to die on the device. The boot script's ring buffer was readable only by
+   the person holding the phone, so a production failure was invisible unless that person also
+   filed feedback — four rows in two months. This ships LAST load's buffer on THIS load (errors
+   from the current session flush on the next one, by design: a crash can't report itself).
+
+   Frugality and safety, in order of how they bite:
+     · one row per app load, never one per error — an error loop cannot hammer the free tier;
+     · read-and-clear before sending, so a failed send drops the batch instead of resending it;
+     · money-shaped figures redacted. The paystub path console.errors a raw parse error that can
+       embed text lifted from the PDF, so this is a real vector, not a ceremonial scrub. Analytics
+       never carry wage figures;
+     · stacks are not sent — src + line already names the site, and the watchdog screen's
+       "Copy error log" still hands a user the full stack for a bug report. */
+const ERR_FLUSH_CAP = 8;
+function redactMoney(v){
+  return String(v==null?'':v)
+    .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
+    .replace(/\b\d[\d,]*\.\d{2}\b/g, '#.##');
+}
+function flushClientErrors(userId){
+  try{
+    if(typeof window.__takeErrorLog !== 'function') return;
+    const buf = window.__takeErrorLog();
+    if(!buf.length) return;
+    const errors = buf.slice(-ERR_FLUSH_CAP).map(e=>({
+      t: (e && e.t) || null,
+      msg: redactMoney(e && e.msg).slice(0,300),
+      src: String((e && e.src) || '').split('/').pop().slice(0,80) || null,
+      line: (e && e.line) || null
+    }));
+    track('client_error', {n: buf.length, errors}, userId);
+  }catch(_){ /* diagnostics must never break the app they diagnose */ }
+}
+
 /* Full row incl. updated_at — used by initial hydration and the focus-refetch sync. */
 async function loadCloudRow(userId){
   if(!supabase) return null;
@@ -1993,6 +2037,15 @@ function App(){
   const [ready,setReady] = useState(false);
   const [setupComplete,setSetupComplete] = useState(false);
   const [obStep,setObStep] = useState(0); // 0 welcome..4 done
+  /* Onboarding funnel. app_open -> setup_completed was a 132-device to 9-device cliff with no
+     event in between, so there was no way to tell a bounce off the welcome screen from one off
+     the rate input. Fires once per furthest step reached: back-navigation and "Edit my setup"
+     don't double count, so the numbers read as a funnel rather than as clicks. */
+  const obMax = useRef(0);
+  const goObStep = (n)=>{
+    if(typeof n === 'number' && n > obMax.current){ obMax.current = n; track('ob_step', {step:n}, null); }
+    setObStep(n);
+  };
 
   const [name,setName] = useState('there');
   const [baseRate,setBaseRate] = useState(65.15);
@@ -2786,8 +2839,8 @@ function App(){
     track('sample_cleared', null, user?.id);
   };
 
-  /* analytics: one event per app load */
-  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); },[]);
+  /* analytics: one event per app load, plus last load's captured errors */
+  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); flushClientErrors(null); },[]);
 
   const exportData = ()=>{
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
@@ -3183,7 +3236,7 @@ function App(){
   /* ============== ONBOARDING ============== */
   if(!setupComplete){
     return <>
-      <Onboarding {...{obStep,setObStep,name,setName,baseRate,setBaseRate,num,
+      <Onboarding {...{obStep,setObStep:goObStep,name,setName,baseRate,setBaseRate,num,
       differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
       pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
       onPaystub,parsing,

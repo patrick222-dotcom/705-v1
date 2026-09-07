@@ -274,6 +274,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **The instruments: a mechanical CI gate, the harness in git, and errors that leave
+  the device.** Dedicated session, owner-directed (architecture review; owner picked "instrument the
+  blind spots" + "fix the loop's input", and "build step yes, but CI-gated first"). Three blind spots
+  closed, all instrumentation — no behavior change, wage core untouched.
+
+  **1. CI (`.github/workflows/ci.yml` + `scripts/check_build.mjs`).** There was no CI at all: a JSX
+  syntax error reached production in ~90s, and the only check was the nightly's self-report from a
+  rig that lived in a scratchpad. `check_build.mjs` Babel-parses the JSX block with the same
+  `@babel/parser@7.24.7` the browser loads, then mechanically asserts Invariants 1 (watchdog,
+  null-guarded client, 4s getSession race, error buffer), 2 (SRI 5/5, no `@latest` pin), 4
+  (`onConflict:'user_id'`), 5 (all five storage keys), 6 (both halves of the `@scrubpay` sentinel),
+  8 (CNAME in a 3-file publish set) and 9 (deploy branch still in the triggers). Invariants 3, 10, 11
+  and 12 are human-held and print as UNCHECKED rather than being silently omitted. **Negative-tested:
+  each of the eight was deliberately broken and the gate confirmed to fail; the clean tree passes.**
+  Runs identically via `node scripts/check_build.mjs` — a gate whose result can't be reproduced
+  outside the harness reporting it is not a gate.
+
+  **2. The harness is in git (`tests/harness.mjs`, `tests/smoke.mjs`, 27 assertions).** All four gate
+  clauses from CLAUDE.md now reproduce from a clean checkout: boot renders on iPhone 13, no
+  non-network page errors, `getSession()` hanging still renders (the WebKit deadlock), blocking Babel
+  shows the boot error screen naming Babel. Plus the wage-math probes — including that OT pays 1.5×
+  the *differential-inclusive* rate (990, not 900), and that `computeNet` levies FICA on gross while
+  income tax uses gross-minus-pretax. SRI is stripped in the scratch copy only; `index.html` is never
+  modified, so running tests can't damage Invariant 2.
+
+  **3. Client errors now leave the device (`client_error`).** Every error since the app existed died
+  in `localStorage['scrubpayErrors']` — visible only to the person holding the phone, which is why
+  the 2026-08-23 sync investigation opened with an empty log after 47 days of failing writes.
+  `window.__takeErrorLog()` (boot script, shares `ERR_KEY`) reads and clears; the app flushes last
+  load's buffer on this load, one `events` row per load. Money-shaped figures redacted — the paystub
+  path `console.error`s a raw parse error that can embed PDF text, a real vector. Postgres codes and
+  line numbers survive; stacks aren't sent.
+
+  **4. The onboarding funnel is legible (`ob_step`).** `app_open`→`setup_completed` was 132 devices
+  to 9 with nothing in between — no way to tell a welcome-screen bounce from a rate-input bounce.
+  Fires once per furthest step reached, so back-navigation doesn't double count.
+
+  Gate: `check_build.mjs` 8/8, `test_groom_seed.mjs` 33/33, `tests/smoke.mjs` 27/27.
+  **Owner action to finish the job:** mark `gate` a required status check in Settings → Branches for
+  `claude/migrate-to-github-deploy-3F5RD`. Until then CI is advisory — it reports red on the PR but
+  does not block the merge, and nothing checks a direct push to the deploy branch.
 - 2026-09-07 — **Onboarding ends at the first screen: base-rate-first + a zero-input sample.**
   Dedicated session, owner-directed (funnel Q&A: "base rate should be top of mind even if it's not
   perfect", and yes to a zero-input path). The wizard demanded a completed tax profile before showing

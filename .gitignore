@@ -9,10 +9,11 @@ vendor/
 *.key
 .claude/settings.local.json
 
-# session scratch (the Playwright harness, audit scripts and throwaway data live here until
-# they move under tests/)
+# session scratch. The Playwright harness now lives in tests/ and is reproducible; this is
+# the copy of index.html it rewrites to local script paths at run time.
 scratchpad/
 _site/
+.harness-scratch/
 
 # test output
 test-results/

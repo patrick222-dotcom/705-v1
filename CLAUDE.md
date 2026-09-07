@@ -117,7 +117,7 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 38: `app_open` `{via}` (present only when the URL
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 40: `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
   `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
@@ -127,9 +127,17 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
   `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
-  `estimate_dismissed`, `sample_cleared`. (`health_check` rows in the
-  table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
-  by 2 desc;`
+  `estimate_dismissed`, `sample_cleared`, `ob_step` `{step}`, `client_error` `{n,errors}`.
+  (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from
+  public.events group by name order by 2 desc;`
+  **`ob_step` is the onboarding funnel.** `app_open`→`setup_completed` was a 132-device to 9-device
+  cliff with no event in between, so a bounce off the welcome screen was indistinguishable from one
+  off the rate input. It fires once per *furthest* step reached (0 welcome … 4 done), so
+  back-navigation and "Edit my setup" don't double count. Read it as a funnel:
+  `select props->>'step' as step, count(distinct anon_id) from public.events where name='ob_step'
+  group by 1 order by 1;`
+  **`client_error` is last load's captured errors**, flushed once per app open from the boot
+  script's ring buffer — see Testing → Client error telemetry. Never one row per error.
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
   domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
   `www.` and the github.io URL so in-flight links resolve. Google's consent screen names
@@ -193,7 +201,13 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 
 - GitHub Pages via `deploy.yml`, on push to the deploy branch (and to `main`/`master`, which don't
   exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `CNAME` — anything else
-  silently 404s. There is no CI: a JSX syntax error ships live, so the harness gate is the only check.
+  silently 404s. **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
+  `gate` job running `scripts/check_build.mjs` (Babel-parses the JSX block and mechanically asserts
+  Invariants 1, 2, 4, 5, 6, 8 and 9) plus `scripts/test_groom_seed.mjs`, and a `smoke` job running
+  `tests/smoke.mjs` on an iPhone 13 profile. It is not yet a *required* status check: until `gate`
+  is marked required in Settings → Branches for the deploy branch, a red run is visible on the PR
+  but does not block the merge. Nothing gates a direct push to the deploy branch, so a JSX error
+  can still ship live if the PR step is skipped.
 - **Custom domain** badgebudget.com at Porkbun; `badgebudget.app`, `shiftstogo.com` and
   `shiftstogo.app` redirect to it. DNS is 4 A + 4 AAAA records to GitHub Pages plus a `www` CNAME.
   Registrar details, renewals, kept records: `docs/domains.md`.
@@ -302,10 +316,30 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 `warning`/`error` console messages. A clean run shows only the Babel in-browser transformer notice
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
-**The harness is not in git.** The Playwright rig, the 27-assertion swap-matching suite
-(`te_swap_p2_algo.js`) and the RLS audit (`rls_audit.js`, which mints throwaway confirmed users via
-the admin API) only ever lived in session scratchpads, so the "N/N" figures in the Done log are not
-reproducible from the repo. Committing them under `tests/` is an open item.
+**The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
+builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (27 assertions:
+boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
+drain, the onboarding funnel, and both failure modes). `node tests/smoke.mjs` runs it; it resolves
+the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
+registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
+FAIL when each invariant is deliberately broken, because a gate that has only ever passed proves
+nothing.
+
+**Still not in git:** the 27-assertion swap-matching suite (`te_swap_p2_algo.js`) and the RLS audit
+(`rls_audit.js`, which mints throwaway confirmed users via the admin API). Those figures in the Done
+log remain unreproducible. Porting them to `tests/` is the remaining half of this item.
+
+**Client error telemetry.** Errors are captured by the boot script's ring buffer
+(`localStorage['scrubpayErrors']`, cap 20) and, since 2026-09-07, flushed once per app load into
+`events` as `client_error`. `window.__takeErrorLog()` reads *and clears* — clearing first is
+deliberate, so a failed send drops the batch instead of resending it on every load forever. One row
+per load, never one per error, so an error loop can't hammer the free tier. Money-shaped figures are
+redacted by `redactMoney()` (the paystub path `console.error`s a raw parse error that can embed PDF
+text — a real leak vector, not a ceremonial scrub); Postgres codes and line numbers survive. Stacks
+are not sent — `src` + `line` names the site, and the watchdog screen's "Copy error log" still hands
+a user the full stack. Errors from the current session flush on the *next* load, by design: a crash
+cannot report itself. Owner read: `select created_at, props from public.events where
+name='client_error' order by created_at desc;`
 
 ## Open items (state as of 2026-09-05 — the work queue itself is `BACKLOG.md`)
 
@@ -346,8 +380,11 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   `re_...` key + destination address. Spec in `BACKLOG.md` → Blocked.
 - **Second Supabase project for dev/test** (free plan allows two) so audits and migrations stop
   touching real data. `BACKLOG.md` → Needs a dedicated session.
-- **Commit the harness and add a CI job** (`node scripts/test_groom_seed.mjs` + a Babel parse of the
-  JSX block) so a syntax error can't ship; pin the four actions to SHAs and `.mcp.json` off `@latest`.
+- **CI and the harness — half done (2026-09-07).** `tests/` and `.github/workflows/ci.yml` exist and
+  the invariant gate is negative-tested. Remaining: **mark `gate` a required status check** in
+  Settings → Branches (until then CI is advisory, and this is a two-click owner action that converts
+  the whole thing from a signal into a gate); port `te_swap_p2_algo.js` and `rls_audit.js` into
+  `tests/`; pin the six actions to SHAs and `.mcp.json` off `@latest`.
 - **Capture `user_data`/`feedback`/`events` DDL + RLS** as `supabase/migrations/000_core.sql`.
 - **Council rerun** (owner's standing request) — last full run 2026-07-30, `docs/history.md`.
 - **Parked engineering** (calendar memoization + virtualization; sync content-equality

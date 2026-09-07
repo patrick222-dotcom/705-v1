@@ -1,0 +1,68 @@
+name: CI
+
+# There is no test stage on the deploy path: deploy.yml copies three files straight to GitHub
+# Pages, so a JSX syntax error reaches production in about ninety seconds. This workflow is the
+# gate. It runs on pull requests — the nightly loop's own path is PR -> squash-merge -> deploy,
+# so putting the gate here puts it in front of every deploy.
+#
+# To make it binding rather than advisory, add "gate" as a required status check in
+# Settings -> Branches for claude/migrate-to-github-deploy-3F5RD. Until that is set, a red run
+# is visible on the PR but does not block the merge.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - claude/migrate-to-github-deploy-3F5RD
+      - claude/clause-md-review-9tqlj8
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The exact build index.html loads from unpkg — the gate parses the JSX with the same
+      # transformer the browser will run, so there is no version drift to reason about.
+      - name: Install the transformer
+        run: npm install --no-save @babel/standalone@7.24.7
+
+      - name: Invariant + parse gate
+        run: node scripts/check_build.mjs
+
+      - name: Reddit groom-seed suite
+        run: node scripts/test_groom_seed.mjs
+
+  # Separate job on purpose: the parse gate above must report in seconds, and should not wait on
+  # a browser download. This one drives the real app on an iPhone 13 profile and asserts the four
+  # gate clauses from CLAUDE.md plus the wage-math probes.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Pinned to exactly what index.html loads, so the harness tests the code that ships.
+      - name: Vendor the pinned CDN packages
+        run: npm install --no-save react@18.2.0 react-dom@18.2.0 @babel/standalone@7.24.7 pdfjs-dist@3.11.174 @supabase/supabase-js@2.45.4 playwright-core@1.47.2
+
+      - name: Install Chromium
+        run: npx --yes playwright@1.47.2 install --with-deps chromium
+
+      - name: Smoke + wage-math probes
+        run: node tests/smoke.mjs
