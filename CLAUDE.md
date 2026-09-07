@@ -27,7 +27,10 @@ hosts an anonymous shift-swap board.
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
 | `supabase/migrations/` | `001_swap_board.sql` (swap board) and `002_ical_subscription.sql` (the iCal feed table); `user_data`/`feedback`/`events` still exist only in the live project |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
-| `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite (the only tracked tests) |
+| `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 27 assertions on an iPhone 13 profile |
+| `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
@@ -36,7 +39,8 @@ hosts an anonymous shift-swap board.
 | `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
 | `docs/scaling-and-burn.md` | capacity + cost ladder to 100k users, the pre-scoped infra levers with trigger thresholds, the density/retention metric definitions (runnable SQL), and the transferability checklist. Strategy only |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
-| `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
+| `.mcp.json`, `.agents/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
+| `.claude/skills/{ship,wage-core,harness}/` | the project's own skills — the deploy ritual, the Invariant 3 protocol, and the test rig. See Skills |
 
 ## Invariants — never weaken, never rename
 
@@ -196,6 +200,40 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   (Google Calendar hosts only so far — the NurseGrid feed host is still a TODO), https only, no
   redirects, 2MB cap, 8s timeout. Known limits: the confirm step is all-or-nothing, and a local edit to a
   synced shift's hours loses to the feed on the next sync.
+
+## Skills
+
+Three project skills encode the rituals that were previously carried in prose here, so an agent
+picks them up without being told. Invoke by name (`/ship`) or let the description match the task.
+
+- **`ship`** — deploying. Fetch-before-branch (Invariant 10), run all three suites, PR to the deploy
+  branch, then **verify with a marker against badgebudget.com** — the old github.io URL 301s with an
+  empty 162-byte body, so anything grepping it for content can never see the change. Also the
+  deployed-bytes-vs-branch diff, and the Invariant 11 branch rules.
+- **`wage-core`** — anything touching a displayed dollar figure. Names the five decisions inside the
+  math (OT stacks on the differential-inclusive rate; FICA on gross while income tax uses
+  gross-minus-pretax; custom bonus is flat; display-only pre/post caps), then the protocol: baseline
+  probes, a new assertion for the changed behaviour, and the equality assertion against the
+  *deployed* build. Refuses the nightly loop.
+- **`harness`** — driving the app for real. Rebuild, run, add an assertion, and the rule that every
+  new assertion is negative-tested. Covers the dev-build console diagnostic and what is still missing.
+
+## Ops dashboard
+
+`scripts/dashboard_snapshot.sql` returns the whole operational picture as one JSON blob;
+`scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html` (the database
+can only say which events *have* fired — "never fired" is the interesting half and lives in the
+source). Paste the result into the dashboard artifact to refresh it; it stores snapshots so a trend
+accumulates. Nothing is queried live, because `events` is insert-only for `anon` — the property that
+keeps analytics unreadable to everyone else.
+
+**The crawler split is the load-bearing part.** badgebudget.com was registered 2026-09-02 and
+immediately drew crawler traffic: of 135 devices, **83 are non-mobile and never fired anything but
+`app_open`**. Counting them as users understates activation by ~2.5x and overstates the bounce rate.
+The query classifies every device `mobile` / `desktop` / `crawler` and the dashboard defaults to
+mobile-only. It is a heuristic — a nurse on a laptop who bounces is indistinguishable from a crawler —
+so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 finished setup (17%),
+13 opened it twice (27%), 7 came back on a later day.
 
 ## Deployment
 

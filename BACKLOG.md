@@ -274,6 +274,41 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Three project skills, and an ops dashboard that separates crawlers from nurses.**
+  Dedicated session, owner-directed (follow-on to the instrumentation work earlier the same day).
+
+  **Skills** (`.claude/skills/`): `ship` (deploy ritual — fetch-before-branch, all three suites, and
+  live verification with a marker against badgebudget.com rather than the github.io 301), `wage-core`
+  (Invariant 3 — names the five decisions inside the math, then baseline probes → new assertion →
+  equality assertion against the deployed build; refuses the nightly loop), `harness` (rebuild and
+  drive the rig, add an assertion, negative-test it). These were rituals carried in CLAUDE.md prose;
+  now an agent picks them up from the task description without being told.
+
+  **Snapshot tooling**: `scripts/dashboard_snapshot.sql` returns the operational picture as one JSON
+  blob; `scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html`,
+  because the database can only report which events *have* fired and "never fired" is the interesting
+  half. Verified end-to-end through the Management API.
+
+  **The finding that changes the numbers.** badgebudget.com was registered 2026-09-02 and immediately
+  drew crawler traffic. Of 135 devices, **83 are non-mobile and never fired anything but `app_open`**
+  — 55 Windows, 16 Linux/X11, 10 Mac, nearly all one-and-done, essentially all after the domain move.
+  Counting them as users understates activation by about 2.5x and overstates the bounce rate. The
+  honest mobile numbers: **48 devices, 8 finished setup (17%), 13 opened it twice (27%), 7 returned on
+  a later day.** Earlier framing in this session of "132 devices, 89% one-and-done" was inflated by
+  that traffic and is corrected here. `pattern_lab_opened` is still zero, but across 21 real mobile
+  devices since it shipped, not 64.
+
+  Also confirmed: **19 of 40 instrumented events have never fired once.** The dashboard's coverage
+  table is the durable version of that list.
+
+  Dashboard: cohort filter (mobile / non-crawler / everything) scoping every card, activation steps,
+  weekly retention heatmap, per-day device and engagement charts with crosshair tooltips and series
+  toggles, sortable + searchable instrumentation coverage, platform split, swap density, client-error
+  feed, free-tier meters, masked feedback inbox, snapshot history and CSV export. Palette validated in
+  both modes; every chart has a table twin; verified by a Playwright pass over desktop + iPhone 13 x
+  light + dark (27 checks, 0 failures) which caught a real `minmax(380px,1fr)` grid overflow.
+
+  Gate: `check_build.mjs` 8/8, `test_groom_seed.mjs` 33/33, `tests/smoke.mjs` 27/27.
 - 2026-09-07 — **The instruments: a mechanical CI gate, the harness in git, and errors that leave
   the device.** Dedicated session, owner-directed (architecture review; owner picked "instrument the
   blind spots" + "fix the loop's input", and "build step yes, but CI-gated first"). Three blind spots
