@@ -4,6 +4,74 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-07 — Siri bridge shelved: users before voice
+
+Two days after Sessions A and B shipped, with the owner's Siri-generated "Log a shift" Shortcut
+decoded and reviewed (it works against `siri-ingest` v6 as-is), the owner asked whether to shelve the
+whole thing and was told yes. The numbers settle it: `user_data` holds 3 accounts. Voice logging
+optimizes one step for one person; the confirm-in-app design — which is the *right* design, it is
+Invariant 14 — means Siri saves no trip to the app; and the generated Shortcut is more taps than the
+calendar (pick a day, dismiss an alert, pick a template, two network calls, then confirm in the app).
+Path B's real payoff was always as the on-ramp to Path A, and Path A is further still from what a
+unit of nurses needs this month. Meanwhile Courtney's coworkers are giving strong feedback, so the
+question that matters is whether someone who opens a shared link sees her real take-home within
+sixty seconds and stays — onboarding and conversion, worked in a parallel session. The better use of
+the same hour on the schedule side is the NurseGrid feed host still marked TODO in the `ical-proxy`
+allowlist: a schedule that appears by itself is the "into the app" hook, not a Shortcut.
+
+What stays regardless: `app_config` as the no-deploy config channel the app never had, and the
+Shortcut-envelope rule ("HTTP 200 always, outcome in a string `status`"), which is the shape any
+dumb-HTTP consumer will need, the iOS Shortcuts push for iCal included. The backend is live and
+inert — nothing can mint a code until the SIRI card ships. Recommendation recorded in `BACKLOG.md`
+→ Blocked: land #72 (it contains #70) rather than let it rot against the nightly's daily
+`index.html` edits, but gate the SIRI card on a published `siri_shortcut_url` first so the merge is
+a zero-visible change; resume the Shortcut builds when a second person asks to log by voice or when
+Path A starts. One framing caution worth keeping: "feels like NurseGrid" must not slide into
+feature parity — the wedge is that the schedule and the paycheck are the same screen.
+
+## 2026-09-05 — Siri bridge, Session B shipped (agent gateway Path B): the server contract, no calendar on the server
+
+Same evening as Session A, against the contract in `docs/siri-shortcut.md` (#71). Three ideas landed
+together. First, **the Shortcut is a shell and everything that can change lives on the server**: a new
+public `app_config` table (migration 005) carries the two install links and shell versions, the
+function reads it per request and tells a stale shell to update, and the Settings card reads the same
+rows — so a link or a menu changes with one row edit and no deploy, which matters because an installed
+Shortcut has no update channel. Second, **HTTP 200 for every expected outcome when the caller is a
+Shortcut**, with the outcome in a string `status`: Shortcuts' Get Contents of URL halts the whole
+Shortcut on any 4xx, so a 401 could never have reached the branch that deletes a stale code file.
+Third, and the one that changed the spec mid-flight: **the server never sees the calendar.** The draft
+had a `plan` mode that took the phone's busy dates and returned day labels; the owner dropped it the
+same evening because a leaked code must not tell anyone when a nurse is away from home, and because the
+phone can build the day list itself. Invariant 14 was reworded to the resulting boundary — a code can
+queue ops and read template names, start times and hours, never pay, never shifts, never dates worked
+— and the one read `siri-ingest` performs selects `data->templates` by JSON path so nothing else in
+the blob even enters the function. Dictation shipped with a small Claude model behind a forced strict
+tool schema and a day-by-day calendar in the prompt (dates are looked up, never computed), every parsed
+op re-validated through the form path; it stays `dictation_unavailable` until the owner sets the
+`ANTHROPIC_API_KEY` secret, so the model call itself is the one thing this session could not prove
+live. Worth keeping: the 60 s config cache made the handshake proof a background script with 65 s
+sleeps — fine once, but a `siri_config_v` bump-to-invalidate would be cheap if the table grows; and
+the Shortcut-envelope rule ("200 always, outcome in `status`") is the general shape any consumer with
+a dumb HTTP action will need, the iOS Shortcuts push for iCal included.
+
+## 2026-09-05 — Siri bridge, Session A shipped (agent gateway Path B, #70)
+
+Owner-directed session building the cheapest write path from a phone: a Siri Shortcut POSTs a
+structured op with a per-user code to a new `siri-ingest` Edge Function, which hashes the code,
+validates the op with the app's own coercions and queues one *pending* row in `ops_inbox`; the app's
+15 s poll surfaces it in a "From Siri" sheet and the nurse taps Add or Skip per item, Add running
+through the Add-Shift sheet's own save path. Migration 003 (`siri_tokens`, `ops_inbox`) was applied
+live through the MCP — the first migration recorded in `supabase_migrations` — with owner-only RLS,
+no client insert policy on the inbox and zero `anon` grants; advisors unchanged. Invariant 14 records
+the model: codes are write-only, hashed at rest, revocable, and the app stays the sole writer to
+`user_data`. Built against the Path B spec written earlier the same day (#69, below); the deliberate
+deviations — one inbox row per op, `code_hash`, a 240-char note cap, both wire formats — are recorded
+in the doc's "As built" subsection. The Shortcut itself is the owner's to build from the spec;
+dictation (Claude parsing) is Session B. Two things worth
+keeping from the session: the hero-equality check against the deployed build caught nothing because
+nothing in the wage core moved, which is the point; and the in-page Supabase stub made the whole
+signed-in path (poll, sheet, save effect, analytics) drivable in the sandbox without a live account.
+
 ## 2026-09-05 — Path B: the Siri Shortcut bridge
 
 Same day #61 and #67 merged, the owner asked whether a preconfigured Siri Shortcut could take actions

@@ -3,8 +3,10 @@
 Companion to `agent-gateway-scope.md` → Path B. That section says *why* an inbox; this file is what the
 owner holds while building the Shortcuts on a phone, plus the contract the `siri-ingest` function
 honours so the Shortcuts never have to change. Written 2026-09-05 after Session A shipped (#70) and
-revised the same evening for hour-level calendar conflicts. Everything under **Server contract** is
-**Session B scope**.
+revised the same evening for hour-level calendar conflicts. The **Server contract** shipped the same
+evening as `siri-ingest` v4 + migration 005 (Session B); its *As built* subsection records the
+deviations. What remains is the owner's: build the two Shortcuts below, run the test checklist, paste
+the two iCloud links into `app_config`.
 
 ## The one rule
 
@@ -29,9 +31,10 @@ Gmail, iCloud, Outlook and any shared or subscribed calendars (a spouse's, the f
 Titles, times and even dates stay on the phone; the server only ever receives the shift dates you
 chose to queue. That is Invariant 14's scope; widen it only by a deliberate owner decision.
 
-## Server contract (Session B — `siri-ingest` v4)
+## Server contract (`siri-ingest` v4 — shipped 2026-09-05, Session B)
 
-Additive to the v3 function shipped in #70.
+Additive to the v3 function shipped in #70. Deployed and proven with curl; see *As built* at the end of
+this section for the exact error codes and the places the build differs from the text.
 
 **Client envelope.** The Shortcut always sends `"client":"shortcut"` and `"v":<shell version>`.
 When `client` is `shortcut`, the function answers **HTTP 200 for every expected outcome** and puts the
@@ -81,6 +84,76 @@ Shortcut as a new item rather than replacing it.
 **Shell versions.** `v` is bumped only when the *shell* changes (a new action, a renamed key). Server
 changes never bump it.
 
+### As built — Session B (2026-09-05)
+
+Shipped as `siri-ingest` v4 + migration `005_app_config.sql` against the contract above. Deviations and
+additions, all deliberate:
+
+- **No server-side calendar or planning mode**, as the contract says: `mode:"plan"` answers `bad_mode`.
+  The Plan shell's only write is `form_multi`, which reads the leading `YYYY-MM-DD` of each label and
+  ignores the rest.
+- **Every response carries both `ok` (boolean) and `status` (string)** whichever client sent it, so a
+  curl test and a Shortcut see one shape; only the HTTP code differs (Shortcut → always 200; others →
+  401 invalid_code · 400 bad_json / bad_mode / bad_op / bad_date / bad_dates / bad_hours /
+  bad_shift_type / bad_start / bad_kind / bad_text / bad_template / too_many_dates / bad_transcript ·
+  404 no_templates · 405 · 413 · 422 nothing_understood · 426 update_required · 429 rate_limited /
+  too_many_pending · 502 queue_failed / dictation_failed · 503 dictation_unavailable · 500 internal).
+  `no_templates` exists so the shell's *Choose from List* never receives an empty array — the shell's
+  error branch shows the message ("Save a shift template in BadgeBudget first…") and stops.
+- **Handshake details.** A shell is *behind* when `v` < `siri_<shell>_v`; the response then carries
+  `latest_v` always and `update_url` when that row is non-empty, and the `message` gains the sentence
+  "A newer Shortcut is available — install it, then delete this copy." *Too old to be safe* is `v` <
+  the optional `siri_<shell>_min_v` row (default 1; insert the row to force an update, delete it to
+  relax) → `status:"update"`, nothing processed. A non-Shortcut caller that sends no `v` gets no
+  handshake at all. Which shell: `form_multi` is always the Plan shell; every other mode is the
+  Log-a-shift shell unless the body says `"shell":"plan"` — **so add `shell`: `plan` to the Plan
+  Shortcut's dictionaries (steps 6 and 20 below)**, or its `meta` call is compared against
+  `siri_shortcut_v`.
+- **`meta` reads `data->templates` only** — a PostgREST JSON-path select — so pay settings, logged
+  shifts and goals never enter the function. A template without a start time is reported with a
+  default for the phone's conflict window (19:00 night / weekend night, 15:00 weekday evening, 07:00
+  otherwise); that default is never written into a queued op. `key` is the template's `id` as a string,
+  `label` its name; `template:` in `form` / `form_multi` matches key first, then name
+  (case-insensitive) — and, since 2026-09-07 (function version 6), it also accepts **the whole picked
+  meta item** in any shape a Shortcut hands over: a JSON object, that object coerced to JSON text by a
+  Text-typed field, or Shortcuts' `label: …` line form. The shell stays frozen; the server absorbs the
+  shape.
+- **Template-resolved ops carry the template's pay shape:** `payload` gets `templateId`, `templateName`
+  and, when set, `bonusType` / `customBonus`; the app's `siriShiftFromOp` honours them and the sheet
+  line names the template ("Add “ICU night 12h” — Night shift, 12h from 7:00 PM, on Tue, Sep 8").
+- **Batches without a new column.** `form_multi` and `dictation` rows share `payload.batch` (a UUID);
+  the sheet groups on it. Multi-row responses add `lines[]` (one summary per row) beside the one-line
+  `summary`.
+- **Limits with multi-row calls.** The 10-rows-per-minute check runs before the insert, so one batch of
+  up to 14 passes on a quiet minute and the next minute is throttled; the pending cap is enforced as
+  pending + n ≤ 20 (`too_many_pending`). Both run before the model call in dictation, so a leaked code
+  can't spend API calls past the limits.
+- **Dictation.** `claude-haiku-4-5` through `npm:@anthropic-ai/sdk`, one forced call of a strict tool
+  `queue_ops` — `{ops:[{type, date, shiftType, hours, start, template, kind, text}]}`, every field
+  required, empty string / 0 meaning "not said" — with a Sun–Sat calendar from `today`−7 to `today`+60
+  and the template names in the system prompt, so dates are looked up, never computed. `today` defaults
+  to the current date in `tz`; `tz` defaults to `America/New_York` when missing or invalid (the Shortcut
+  can send it with *Format Date* → custom `VV`). Parsed ops go through the same `buildOp` as form, one
+  op per day per kind, invalid ones dropped; zero survivors → `nothing_understood`. The model id can be
+  overridden without a deploy via the optional `app_config` row `siri_dictation_model`. **The
+  `ANTHROPIC_API_KEY` function secret is not set yet**, so the live function answers
+  `dictation_unavailable`: the pipeline around the model call is proven, the call itself is not. The
+  transcript goes to the Anthropic API and is stored on the rows for "Siri heard: …"; it is never
+  logged and never enters `events`.
+- **`app_config` extras:** a `*_url` row must be '' or start with `https://` (a table check, and the
+  card checks again before rendering a link); `updated_at` is kept by a trigger; the optional rows
+  `siri_shortcut_min_v`, `siri_plan_min_v` and `siri_dictation_model` are read when present.
+- **Verification.** Migration 005 applied live through the MCP (`20260905184845 app_config`): RLS on,
+  one SELECT policy for `anon` + `authenticated`, table and column grants SELECT only, 4 seed rows,
+  advisors unchanged. Function proven with curl on a throwaway user carrying two codes (one revoked) and
+  a templates-only blob: non-Shortcut 401 / 405 / 400 / 503 / 200; Shortcut envelope 200 + `status` for
+  invalid code, bad op, bad template, bad date, 15 dates, pending overflow and the 10-a-minute burst;
+  `meta` returned names + start + hours and nothing else; `form_multi` made 3 rows from 4 labels;
+  bumping `siri_shortcut_v` → fields + message on ok and error responses with the Plan shell unaffected,
+  `min_v` → `status:"update"` (200) and 426 for a plain caller, reset → clean. The user was deleted and
+  `app_config` is back at its seed. App gate 62/62 (prod React) and 63/63 (dev React) with the hero,
+  stats and breakdown byte-identical to the deployed build.
+
 ## Shortcut 1 — "Log a shift" (shell v1.1)
 
 Template first (so the phone knows the shift's hours), then the day, then **only the calendar events
@@ -117,6 +190,33 @@ Siri phrase = the Shortcut name, **"Log a shift"**. Show in Share Sheet off. Act
 With the owner's example: dentist 9:00–10:00 AM on Thu 9/8 → picking **Night 12h** finds no overlap
 and queues silently; picking **Day 12h** stops on the alert naming the appointment.
 
+### Review of the Siri-generated build (2026-09-07)
+
+The owner generated "Log a shift" with the Shortcuts app's own AI and shared the signed file; it was
+decoded (AEA profile 0 → Apple Archive → `Shortcut.wflow`, 57 actions, client 5037) and checked action
+by action against the table above. **Matches the contract:** the code-file block (Get File without
+erroring, Ask → Save with overwrite → the file's text as `code`, both calls wired to that same output),
+the meta call (`client`, `v` as a Number, `mode`), the `status` branches (error → message + delete the
+code file on `invalid_code`; update → message + open `update_url`; otherwise → the flow — built with
+the app's newer *Otherwise If*, fine on the OS that generated it), the `yyyy-MM-dd` date, the form
+call's `op` `{type: add_shift, date, template}`, per-call `invalid_code` handling and the trailing
+`update_url` handling. Nothing but the code, the shell version and the op leaves the phone. Three
+things to know:
+
+1. **`template` is the whole picked item.** *Choose from List* returns the template dictionary, and a
+   Text-typed JSON field coerces it to JSON text, so the server received `{"label":…,"key":…,…}` where
+   the contract said key-or-label — every real run would have ended in `bad_template`. Fixed on the
+   server (see *As built*, `meta`), proven with the exact bytes the Shortcut sends, no change to the
+   Shortcut needed.
+2. **The conflict check is day-level and runs before the template pick:** *Find Calendar Events where
+   Start Date is [the chosen day]*, then an alert listing titles. That is the simpler check the "Plan
+   shifts" section argues for, not the hour-level window of steps 11–17 above, so a 9 AM dentist
+   prompts even for a night shift. Verify on the phone that "Start Date **is** [date]" matches events
+   on that day at all — if the alert never appears with an event present, change it to *is after*
+   [day − 1 s] **and** *is before* [next day], or adopt steps 11–17.
+3. **Confirm "Show Document Picker" is off on the first Get File.** The generated file sets the path
+   but not the toggle; if the first run opens a file picker, flip it off and re-share.
+
 ## Shortcut 2 — "Plan shifts" (shell v1, Session B)
 
 The owner's ask: *"check my calendar for dates xx/xx to xx/xx so I know of any blockers before
@@ -127,7 +227,7 @@ list and the queue.
 
 | # | Action | Configuration |
 |---|---|---|
-| 1–11 | *(code-file block, meta call, status handling, template pick — exactly as Shortcut 1, steps 1–11)* | |
+| 1–11 | *(code-file block, meta call, status handling, template pick — exactly as Shortcut 1, steps 1–11, **plus `shell`: `plan` in the step-6 Dictionary** so the version check runs against `siri_plan_v`)* | |
 | 12 | Ask for Input | Date · "From which day?" → `From` |
 | 13 | Ask for Input | Date · "Through which day?" · Default `From` → `To` |
 | 14 | Find Calendar Events | **Start Date is after** `From` (Adjust Date −1 day) **and Start Date is before** `To` (Adjust Date +2 days) · Calendar: All or her choice · Sort Start Date → `Events` |
@@ -136,7 +236,7 @@ list and the queue.
 | 17 | Get Time Between Dates | `From` → `To` · in **Days** → `Span` |
 | 18 | Repeat | `Span` + 1 times: **Adjust Date** `From` + (Repeat Index − 1) days → `D`; Format Date `D` → `yyyy-MM-dd` → `Key`; Format Date `D` → `EEE MMM d` → `Nice`; Format Date `D` → `EEE` → `Dow`; **Text** `[Key] | [Nice]`; If `BusyKeys` (as text) **contains** `Key` → append ` · has plans`; If `Dow` is `Sat` or `Sun` → append ` · weekend` → **Add to Variable** `DayList` · End Repeat |
 | 19 | Choose from List | `DayList` · Prompt "Pick the days to work" · **Select Multiple on** → `Picked` |
-| 20 | Dictionary | `code` · `client`: `shortcut` · `v`: 1 · `mode`: `form_multi` · `dates`: Picked (Array — the server reads the leading ISO date of each label) · `template`: Pick |
+| 20 | Dictionary | `code` · `client`: `shortcut` · `v`: 1 · `shell`: `plan` · `mode`: `form_multi` · `dates`: Picked (Array — the server reads the leading ISO date of each label) · `template`: Pick |
 | 21 | Get Contents of URL | POST → `Result` |
 | 22 | *(status / message / update handling as Shortcut 1, steps 20–23)* | |
 

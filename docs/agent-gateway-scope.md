@@ -1,12 +1,14 @@
 # Agent gateway — scope (2026-09-04)
 
 Owner-directed scoping session, written the day the pattern lab shipped. This is a design document,
-not a build log: nothing below is implemented. It records the thesis, what the current codebase
-actually permits, the target shape, the mechanism that keeps the app and the agent surface in
-lockstep, a sequence that can be executed one session at a time, and the places the idea is most
-likely to be wrong. Facts about third-party platforms were checked on 2026-09-04 and are cited;
-re-verify before building on them, this space moves monthly. **Path B** at the end of this document
-(added 2026-09-05) is the near-term bridge: a Siri Shortcut writing to an ops inbox the app confirms.
+not a build log: Path A (the MCP gateway, everything up to "First session, concretely") is
+unimplemented. **Path B** at the end of this document (added 2026-09-05) is the near-term bridge — a
+Siri Shortcut writing to an ops inbox the app confirms — and its Session A shipped the same day (see
+*As built* there). It records the thesis, what the current codebase actually permits, the target
+shape, the mechanism that keeps the app and the agent surface in lockstep, a sequence that can be
+executed one session at a time, and the places the idea is most likely to be wrong. Facts about
+third-party platforms were checked on 2026-09-04 and are cited; re-verify before building on them,
+this space moves monthly.
 The Shortcut build guide, wire contract and drift-proofing (version handshake, `app_config`,
 server-driven menus, the calendar-aware "Plan shifts" flow) live in `siri-shortcut.md`.
 
@@ -404,7 +406,7 @@ endpoint, three sources. Nothing here requires the build step, so it can run bef
 
 ### Sequence
 
-- **Session A (one dedicated session):** migration 003 (rehearse on the dev project if it exists by
+- **Session A — shipped 2026-09-05 (#70), see *As built* below.** Migration 003 (rehearse on the dev project if it exists by
   then, otherwise apply live via the Management API as 002 was), `siri-ingest` in `form` mode, the
   Settings SIRI card, the inbox confirm sheet, analytics, harness probes (token hash round-trip,
   401/429/400 paths, a seeded pending row renders the sheet, Add applies through the real handler,
@@ -412,8 +414,44 @@ endpoint, three sources. Nothing here requires the build step, so it can run bef
 - **Owner (≈1 hour):** build the Shortcut from the spec below in the Shortcuts app, test against the
   live function with your own code, share → Copy iCloud Link, paste into `SIRI_SHORTCUT_URL` (one-line
   PR), send the link to Courtney.
-- **Session B:** `dictation` mode (Claude parse, schema-validated), the dictation variant of the
-  Shortcut, and the `siri_*` events review after a week of use.
+- **Session B — shipped 2026-09-05, see `siri-shortcut.md` → "As built — Session B".** `siri-ingest`
+  v4 (Shortcut envelope, `app_config` version handshake, `meta`, template-resolved `form`, `form_multi`,
+  `dictation` behind a forced strict tool schema), migration 005, the card reading its install links
+  from `app_config`, the grouped sheet. Still owner-side: the two Shortcuts, the `ANTHROPIC_API_KEY`
+  secret, and the `siri_*` events review after a week of use.
+
+### As built — Session A (2026-09-05, #70)
+
+Shipped against the spec above on the day it was written. The deviations, all deliberate:
+
+- **One row per op.** `ops_inbox` carries `op text`, `payload jsonb`, `summary text` and `token_id`
+  instead of an `ops jsonb` array, because per-item Add / Skip needs a per-item `status` to write. A
+  dictation that parses into three ops will insert three rows sharing one `transcript` (that column,
+  the wider `source` check and the owner delete policy are migration 004, applied the same day).
+- **`siri_tokens.code_hash`** is the spec's `token_hash` — the UI calls it a Siri code, so the column
+  does too. Same SHA-256 of the canonical dashed string, agreed byte-for-byte by app and function.
+- **Wire format.** The function accepts `op` as the spec's `{type, date, shiftType, hours, start?}`
+  object (what the Shortcut's Dictionary builds) and, equally, a flat `{op:"add_shift", date, …}` or
+  `{op, args:{…}}`, so a hand-built Shortcut cannot get it wrong. Friendly shift-type aliases ("Day",
+  "Weekend night"), `hours` omitted → 12, `start` as `19:00` or `7:00 PM`, an ISO datetime truncated to
+  its date. Success `{ok:true, queued:1, summary}`; errors `{ok:false, error, message}` with `error` ∈
+  `invalid_code` (401) · `bad_op | bad_date | bad_hours | bad_shift_type | bad_start | bad_kind |
+  bad_text | bad_json | bad_mode` (400) · `rate_limited | too_many_pending` (429) ·
+  `mode_not_available` (501, dictation until Session B) · `method_not_allowed` (405) · `too_large`
+  (413). `message` is safe for Siri to speak and never contains the code.
+- **Note cap 240, not 500** — the app's `MAX_NOTE_LEN`; `saveDayShifts` slices to it, so 500 would
+  accept text the Add step then silently truncates.
+- **Analytics carry the op name:** `siri_op_confirmed {n, op}`, `siri_op_rejected {n, op}` — still
+  never the payload, the note text or the summary.
+- **Add resolves the pay type** with the pattern lab's `patternCellShiftType`, so "Night" on a Saturday
+  lands as Weekend night when that differential is on; explicit weekend/holiday types are kept while
+  active.
+- **Verification.** Migration 003 applied live through the MCP (the first entry in
+  `supabase_migrations`; 5 policies, column-level update grants, zero `anon` grants, advisors
+  unchanged). Function proven with curl on a throwaway user (401 / 400 per field / 501 / 200 for all
+  three ops and the nested wire format / 429 on a burst), then deleted. iPhone-13 gate 74/74 with the
+  hero byte-identical to the previous deploy; the signed-in path was driven against an in-page
+  Supabase stub, not a live account.
 
 ### The Shortcut, action by action (v1 — form)
 
@@ -449,6 +487,7 @@ returns one summary line per parsed op; the confirm sheet in the app does the re
 
 ### Owner decisions for this path
 
-- Go / no-go on Path B ahead of step 1 (it needs none of the five gateway decisions).
-- Apply migration 003 live or wait for the rehearsal project.
-- Whether `add_day_event` and `set_note` ship in v1 or `add_shift` alone.
+- ~~Go / no-go on Path B ahead of step 1~~ — went; Session A shipped 2026-09-05.
+- ~~Apply migration 003 live or wait for the rehearsal project~~ — applied live 2026-09-05 (tables were
+  empty; advisors unchanged). Migration 004 (transcript, wider `source`, owner delete) followed the same day.
+- ~~Whether `add_day_event` and `set_note` ship in v1~~ — all three shipped in v1.
