@@ -30,6 +30,17 @@ _(empty — promote from the candidate lists below with judgment)_
   2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
   zero differential rows.
 
+### P2
+- [ ] **Top bar overflows the viewport by 42px on a 320px phone** (`harness:drivable`; found
+  2026-09-07 while measuring a share-button placement, confirmed PRE-EXISTING — base branch and the
+  share PR both measure `scrollWidth` 362 on Playwright's iPhone SE profile, so nothing regressed).
+  `.top-actions` and `.avatar` run to x=361 and the page scrolls sideways. iPhone 13 (390px) is
+  exactly clean at 390 with zero slack, which is why no fifth top-bar control fits. On mobile
+  `.topnav` is `display:none`, so the gear is the only Settings entry and can't be dropped; the
+  likely fix is hiding `.avatar` under 380px, or tightening `.topbar` gap/padding at that
+  breakpoint. Verify with a base-parity measurement on both device profiles, not an absolute
+  assertion.
+
 ### P3
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
   2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
@@ -226,6 +237,27 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Share sheet: a scannable QR + a shareable link, and arrival tagging.** Dedicated
+  session, owner-directed: word of mouth on a unit is the app's only distribution, and nurses there
+  are transient enough that they often don't have each other's numbers — so the primary share is a
+  QR the other person scans straight off the sharer's screen. No typing, no numbers exchanged, no
+  install. Settings → **SHARE** (first row, above YOUR PAY) opens a sheet with the code on a solid
+  white plate, `badgebudget.com` printed under it, "Send a link instead" (`navigator.share` → the
+  real iOS sheet into Messages, AbortError treated as a deliberate cancel) and "Copy link", both
+  mirroring `shareInvite()` exactly. The QR is **authored, not generated**: `SHARE_URL` is a
+  constant, so 1.3KB of inline `<path>` beats vendoring an encoder — and a 6th CDN script would mean
+  a 6th SRI hash (Invariant 2). Regenerate with `npx qrcode@1.5.4 -t svg -e M -m 0 '<url>'` if
+  `SHARE_URL` ever changes; the constant and the path must never drift. Arrival tagging: module-scope
+  `ARRIVED_VIA` reads `?via=` once (before any `replaceState`), whitelisted `^[a-z]{1,12}$`, and
+  rides on `app_open` — so "did grassroots work" is finally measurable. QR encodes `?via=qr`, the
+  link hands out `?via=link`. **Placement note:** first built as a top-bar icon and reverted — it
+  pushed the iPhone-13 bar 21px past the viewport (the base bar measures exactly 390/390, zero
+  slack). Settings is where it landed; a labelled row beats a fifth mystery glyph anyway. Gate:
+  23/23 share suite + the 27/27 onboarding suite still green. The QR was verified by **decoding the
+  rendered pixels** with jsQR — it resolves to `https://badgebudget.com/?via=qr`, not merely "an SVG
+  appeared". Layout asserted as base-parity on iPhone 13 *and* iPhone SE (the SE's 42px overflow is
+  pre-existing — new P2 above). SRI 5, wage-core and boot hardening untouched. Event roster 33 → 35
+  (`share_opened`, `share_sent`). `harness:drivable`.
 - 2026-09-07 — **Sign-in is reachable before setup (returning-user dead end).** Dedicated session,
   triggered by an owner question ("is anyone using the app besides me and Courtney?" — answer: no; 3
   accounts, all owner + wife). Funnel dig found four non-family iPhones that fired `app_open` more

@@ -114,13 +114,15 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 33: `app_open`, `setup_completed`,
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 35: `app_open` `{via}` (present only when the URL
+  carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet), `setup_completed`,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
   `ics_import_parsed/done`, `ics_sync_done`, `pattern_lab_opened`, `pattern_saved` `{cycle}`,
   `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`, `feedback_submitted`, `swap_group_created/joined`,
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
-  `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`. (`health_check` rows in the
+  `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
+  `share_opened`, `share_sent` `{via:'share'|'copy'}`. (`health_check` rows in the
   table are owner probes.) Owner read: `select name, count(*) from public.events group by name order
   by 2 desc;`
 - **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
