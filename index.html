@@ -4638,6 +4638,11 @@ function Settings(props){
 
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>
         <button className="danger-link" style={{display:'block',margin:'14px auto 0'}} onClick={clearAll}>Clear all data</button>
+        {/* Served from the site root alongside index.html — see the publish set in deploy.yml.
+            A privacy notice nobody can reach from the app is a notice in name only. */}
+        <a href="privacy.html" target="_blank" rel="noopener"
+           style={{display:'block',textAlign:'center',margin:'16px auto 0',fontSize:12,
+                   color:'var(--muted-2)',textDecoration:'underline'}}>Privacy</a>
 
         <button className="btn btn-primary" style={{marginTop:18}} onClick={onClose}>Done</button>
       </div>

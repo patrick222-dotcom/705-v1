@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — BadgeBudget</title>
+<meta name="description" content="What BadgeBudget stores, what never leaves your phone, and how to delete it.">
+<meta name="theme-color" content="#16181F">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316181F'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2334D399'/%3E%3C/svg%3E">
+<!-- Deliberately self-contained: no fonts, scripts, or styles from anywhere else. A privacy
+     page that phones out to third parties while explaining your privacy is not a good look,
+     and it means this page cannot break when a CDN does. -->
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#F7F7F5; --card:#FFFFFF; --ink:#16181F; --ink-2:#21242F;
+    --muted:#4A4A52; --muted-2:#726D62; --mint:#34D399; --line:#E5E4E0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      color-scheme: dark;
+      --bg:#121316; --card:#1A1C21; --ink:#F5F5F3; --ink-2:#FFFFFF;
+      --muted:#C0BFB8; --muted-2:#8E8D84; --line:#2C2E34;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:32px 20px 72px}
+  .brand{display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.02em; font-size:17px; margin-bottom:28px}
+  .dot{width:11px; height:11px; border-radius:50%; background:var(--mint); flex:0 0 auto}
+  h1{font-size:29px; line-height:1.2; letter-spacing:-.025em; margin:0 0 8px; font-weight:700}
+  .updated{color:var(--muted-2); font-size:13.5px; margin:0 0 26px}
+  .lede{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px; margin-bottom:32px;
+  }
+  .lede p{margin:0 0 10px}
+  .lede p:last-child{margin:0}
+  .lede strong{color:var(--ink-2)}
+  h2{font-size:18px; letter-spacing:-.015em; margin:34px 0 10px; font-weight:650}
+  h3{font-size:15px; margin:22px 0 6px; font-weight:650; color:var(--ink-2)}
+  p{margin:0 0 13px; color:var(--muted)}
+  li{margin:0 0 8px; color:var(--muted)}
+  ul{padding-left:20px; margin:0 0 14px}
+  strong{color:var(--ink)}
+  code{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:13px; background:var(--card); border:1px solid var(--line);
+    padding:1px 5px; border-radius:4px; color:var(--ink-2);
+  }
+  a{color:#1F7A55; text-decoration:underline; text-underline-offset:2px}
+  @media (prefers-color-scheme: dark){ a{color:var(--mint)} }
+  hr{border:0; border-top:1px solid var(--line); margin:34px 0}
+  .foot{color:var(--muted-2); font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand"><span class="dot"></span>badgebudget</div>
+
+  <h1>Privacy</h1>
+  <p class="updated">Last updated 7 September 2026</p>
+
+  <div class="lede">
+    <p>BadgeBudget is a take-home pay planner for nurses. It was built for one nurse and her unit,
+      and it is run by one person, not a company.</p>
+    <p><strong>Your pay figures are never sent to analytics, never sold, and never shared with
+      anyone.</strong> Paystub PDFs are read on your phone and never uploaded. If you don't sign in,
+      nothing you enter leaves your device at all.</p>
+  </div>
+
+  <h2>What is stored, and where</h2>
+
+  <h3>If you are not signed in</h3>
+  <p>Everything — your rate, differentials, shifts, notes, goals and patterns — is saved in your
+    browser's local storage on that device only. It is never sent to a server. Clearing your browser
+    data deletes it, and there is no copy anywhere else.</p>
+
+  <h3>If you sign in</h3>
+  <p>The same information is saved to a database so it can sync between your phone and other
+    devices. It is stored as a single record attached to your account and is readable only by you —
+    the database enforces this per-row, not just in the app.</p>
+
+  <h3>Your account</h3>
+  <p>Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores
+    no password. Nothing is posted to your Google account and no other Google data is requested.</p>
+
+  <h2>What is never collected</h2>
+  <ul>
+    <li><strong>Pay figures.</strong> Usage analytics record that a shift was saved, never what it
+      was worth. Wage and savings-goal amounts are excluded by design.</li>
+    <li><strong>Paystub contents.</strong> A paystub PDF is parsed entirely on your device to read
+      your rate and differentials. The file is never uploaded and nothing from it is transmitted.</li>
+    <li><strong>Shift titles from your calendar.</strong> Calendar import reads dates, times, hours
+      and event identifiers only — never the text of an event.</li>
+  </ul>
+
+  <h2>Usage analytics</h2>
+  <p>To know which parts of the app get used, BadgeBudget records coarse events — for example
+    <code>shift_saved</code>, <code>setup_completed</code>, <code>swap_posted</code>. Each carries
+    the page path, your browser's user-agent string, and a random device identifier generated in
+    your browser. That identifier is not linked to your name and is not shared with anyone.</p>
+  <p>There are no advertising trackers, no analytics SDKs, no cookies for tracking, and no data
+    brokers. Nothing is sold or licensed.</p>
+
+  <h2>Error reports</h2>
+  <p>When something goes wrong, the app keeps the error message, the file it came from, and the line
+    number, and sends that batch the next time you open the app — so that failures on real phones are
+    visible enough to fix. Amounts that look like money are stripped out before sending, and error
+    traces are not transmitted.</p>
+
+  <h2>Feedback</h2>
+  <p>If you use the feedback button, your message is stored along with the page you were on and your
+    browser's user-agent string. An email address is optional — supply one only if you want a reply.</p>
+
+  <h2>Calendar sync</h2>
+  <p>If you connect a calendar, its secret address is stored in a separate table readable only by
+    you. It is deliberately kept out of the data record that gets exported, mirrored to your device
+    and synced between devices, and it is never written to logs.</p>
+
+  <h2>The shift-swap board</h2>
+  <p>Swap posts are anonymous to the rest of your unit. Names are revealed only after everyone
+    involved in a swap has accepted it. Anonymity is enforced by the database rather than by the app.</p>
+  <p>One honest limitation, also stated inside the app: each poster has a stable anonymous handle
+    within a group. If a colleague learns who you are through one completed swap, they can recognise
+    your later posts in that same group.</p>
+
+  <h2>Who else can see any of this</h2>
+  <ul>
+    <li><strong>Supabase</strong> hosts the database and handles sign-in.</li>
+    <li><strong>GitHub Pages</strong> serves the site, and as with any website its servers see your
+      IP address when the page loads.</li>
+    <li><strong>Google</strong> is involved only if you use Google sign-in.</li>
+    <li>The app loads its fonts and code libraries from Google Fonts, unpkg, cdnjs and jsDelivr.
+      Like any site that loads external files, those services see your IP address. They receive
+      nothing about you or your pay.</li>
+  </ul>
+  <p>No one else. There are no third-party integrations beyond these.</p>
+
+  <h2>Your data, your call</h2>
+  <ul>
+    <li><strong>Export it.</strong> Settings → Export gives you everything as a JSON file.</li>
+    <li><strong>Delete it.</strong> Settings → Clear all data erases the copy on your device and, if
+      you are signed in, deletes your record from the database and signs you out. This cannot be
+      undone.</li>
+  </ul>
+  <p>Clearing your data does not automatically remove past analytics events, submitted feedback, or
+    the sign-in account itself. Email the address below and those will be deleted too.</p>
+
+  <h2>Children</h2>
+  <p>BadgeBudget is intended for working nurses and is not directed at children.</p>
+
+  <h2>Changes</h2>
+  <p>If what is collected changes, the date at the top of this page changes with it.</p>
+
+  <h2>Contact</h2>
+  <p>Questions, corrections, or a deletion request:
+    <a href="mailto:patrickguthrie222@gmail.com">patrickguthrie222@gmail.com</a>.</p>
+
+  <hr>
+  <p class="foot"><a href="/">← Back to BadgeBudget</a></p>
+
+</div>
+</body>
+</html>

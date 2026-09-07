@@ -37,6 +37,9 @@ jobs:
           mkdir -p _site
           cp index.html _site/
           cp pdf.worker.min.js _site/
+          # Privacy policy — a real URL is required to publish the Google OAuth consent screen,
+          # and the app collects wage data, so it needs one regardless.
+          cp privacy.html _site/
           # Custom domain — Pages reads this from the artifact. Removing it
           # reverts the site to the github.io URL and breaks badgebudget.com.
           cp CNAME _site/

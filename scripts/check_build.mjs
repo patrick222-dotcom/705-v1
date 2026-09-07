@@ -114,10 +114,17 @@ check(6, '@scrubpay .ics sentinel, both halves', () => {
 });
 
 /* ---- Invariant 8/9: the deploy path itself --------------------------------------------- */
-check(8, 'CNAME stays in the publish set', () => {
+check(8, 'Publish set is exactly the intended files', () => {
   must(/cp CNAME _site\//.test(deploy), 'CNAME dropped from the publish set — the site falls off badgebudget.com');
-  const copies = (deploy.match(/^\s*cp \S+ _site\/$/gm) || []).map(l => l.trim());
-  must(copies.length === 3, `publish set should be exactly 3 files, found ${copies.length}: ${copies.join(' | ')}`);
+  must(/cp privacy\.html _site\//.test(deploy),
+    'privacy.html dropped from the publish set — badgebudget.com/privacy.html would 404, breaking the ' +
+    'Google OAuth consent screen and leaving the app with no privacy notice');
+  // Anything NOT copied silently 404s on Pages; anything added by accident ships publicly. Both
+  // directions matter, so the set is asserted exactly rather than as a minimum.
+  const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'CNAME'];
+  const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
+  must(copies.length === expected.length && expected.every((f) => copies.includes(f)),
+    `publish set should be exactly [${expected.join(', ')}], found [${copies.join(', ')}]`);
   return copies.join(', ');
 });
 

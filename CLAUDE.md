@@ -23,6 +23,7 @@ hosts an anonymous shift-swap board.
 | `index.html` | the whole app: CSS, a plain-JS boot script, one Babel-transformed JSX block |
 | `pdf.worker.min.js` | pdf.js worker, served same-origin next to `index.html` |
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
+| `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
 | `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
 | `supabase/migrations/` | `001_swap_board.sql` (swap board) and `002_ical_subscription.sql` (the iCal feed table); `user_data`/`feedback`/`events` still exist only in the live project |
@@ -72,8 +73,11 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    every previously exported event re-imports as a duplicate.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
    function. It is the swap board's anonymity model, not a string.
-8. **`CNAME` stays in the publish set** (`cp CNAME _site/` in `deploy.yml`). Pages reads the custom
-   domain from the deployed artifact; a deploy without it knocks the site off badgebudget.com.
+8. **The publish set is load-bearing** (`cp … _site/` in `deploy.yml`): `index.html`,
+   `pdf.worker.min.js`, `privacy.html`, `CNAME`. Pages reads the custom domain from `CNAME` in the
+   deployed artifact, so a deploy without it knocks the site off badgebudget.com. `privacy.html`
+   backs the URL on the Google OAuth consent screen — drop it and `/privacy.html` 404s, which breaks
+   consent-screen publishing and leaves the app with no reachable privacy notice.
 9. **No `main` branch.** `claude/migrate-to-github-deploy-3F5RD` is the de facto default and deploy
    branch, deliberately in the workflow's push triggers. Add `main` to the triggers *before* removing
    it, never in the same commit — removing it first stopped all deploys once.
@@ -238,8 +242,9 @@ so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 
 ## Deployment
 
 - GitHub Pages via `deploy.yml`, on push to the deploy branch (and to `main`/`master`, which don't
-  exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `CNAME` — anything else
-  silently 404s. **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
+  exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `privacy.html`, `CNAME`
+  — anything else silently 404s, and `check_build.mjs` asserts the set exactly (in both directions:
+  a missing file 404s, an accidental one ships publicly). **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
   `gate` job running `scripts/check_build.mjs` (Babel-parses the JSX block and mechanically asserts
   Invariants 1, 2, 4, 5, 6, 8 and 9) plus `scripts/test_groom_seed.mjs`, and a `smoke` job running
   `tests/smoke.mjs` on an iPhone 13 profile. **Both are required status checks** as of 2026-09-07
