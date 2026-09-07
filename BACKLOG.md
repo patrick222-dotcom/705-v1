@@ -232,6 +232,18 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Siri bridge: the owner's Siri-generated "Log a shift" Shortcut reviewed; `siri-ingest`
+  accepts the picked template item.** The signed `.shortcut` was decoded (AEA profile 0 → Apple Archive
+  → `Shortcut.wflow`, 57 actions) and checked action by action against `docs/siri-shortcut.md`: the
+  code-file block, meta call, status branches (error / update / otherwise), `invalid_code` file deletion,
+  date format, form `op` and trailing `update_url` handling all match. One blocking defect: *Choose from
+  List* hands the whole template dictionary to the Text-typed `template` field, which coerces it to
+  JSON text, so every real run would have ended in `bad_template`. Fixed server-side so the shell stays
+  frozen — `template` now resolves a bare key/label, a JSON object, JSON text or Shortcuts' `label: …`
+  lines (function version 6, proven with curl on the Shortcut's exact bytes: JSON-text item, object,
+  line form and plain label all queue; an unknown item is still refused, echoing its label not its JSON).
+  Two things for the owner to verify on the phone (doc → "Review of the Siri-generated build"): the
+  day-level *Start Date is [date]* calendar filter actually matches, and "Show Document Picker" is off.
 - 2026-09-07 — **Swap board: helper line on the first-run "Join with a code" card.** Nightly build
   (P3, source:persona/Swap-savvy-Sam, corroborated by the 2026-08-11 "how do I use a pin someone gives
   me?" feedback). The "Join another board" card (shown once you already have a group) carried

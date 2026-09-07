@@ -114,7 +114,10 @@ additions, all deliberate:
   default for the phone's conflict window (19:00 night / weekend night, 15:00 weekday evening, 07:00
   otherwise); that default is never written into a queued op. `key` is the template's `id` as a string,
   `label` its name; `template:` in `form` / `form_multi` matches key first, then name
-  (case-insensitive).
+  (case-insensitive) — and, since 2026-09-07 (function version 6), it also accepts **the whole picked
+  meta item** in any shape a Shortcut hands over: a JSON object, that object coerced to JSON text by a
+  Text-typed field, or Shortcuts' `label: …` line form. The shell stays frozen; the server absorbs the
+  shape.
 - **Template-resolved ops carry the template's pay shape:** `payload` gets `templateId`, `templateName`
   and, when set, `bonusType` / `customBonus`; the app's `siriShiftFromOp` honours them and the sheet
   line names the template ("Add “ICU night 12h” — Night shift, 12h from 7:00 PM, on Tue, Sep 8").
@@ -186,6 +189,33 @@ Courtney installs is the one that never has to change.
 Siri phrase = the Shortcut name, **"Log a shift"**. Show in Share Sheet off. Action Button optional.
 With the owner's example: dentist 9:00–10:00 AM on Thu 9/8 → picking **Night 12h** finds no overlap
 and queues silently; picking **Day 12h** stops on the alert naming the appointment.
+
+### Review of the Siri-generated build (2026-09-07)
+
+The owner generated "Log a shift" with the Shortcuts app's own AI and shared the signed file; it was
+decoded (AEA profile 0 → Apple Archive → `Shortcut.wflow`, 57 actions, client 5037) and checked action
+by action against the table above. **Matches the contract:** the code-file block (Get File without
+erroring, Ask → Save with overwrite → the file's text as `code`, both calls wired to that same output),
+the meta call (`client`, `v` as a Number, `mode`), the `status` branches (error → message + delete the
+code file on `invalid_code`; update → message + open `update_url`; otherwise → the flow — built with
+the app's newer *Otherwise If*, fine on the OS that generated it), the `yyyy-MM-dd` date, the form
+call's `op` `{type: add_shift, date, template}`, per-call `invalid_code` handling and the trailing
+`update_url` handling. Nothing but the code, the shell version and the op leaves the phone. Three
+things to know:
+
+1. **`template` is the whole picked item.** *Choose from List* returns the template dictionary, and a
+   Text-typed JSON field coerces it to JSON text, so the server received `{"label":…,"key":…,…}` where
+   the contract said key-or-label — every real run would have ended in `bad_template`. Fixed on the
+   server (see *As built*, `meta`), proven with the exact bytes the Shortcut sends, no change to the
+   Shortcut needed.
+2. **The conflict check is day-level and runs before the template pick:** *Find Calendar Events where
+   Start Date is [the chosen day]*, then an alert listing titles. That is the simpler check the "Plan
+   shifts" section argues for, not the hour-level window of steps 11–17 above, so a 9 AM dentist
+   prompts even for a night shift. Verify on the phone that "Start Date **is** [date]" matches events
+   on that day at all — if the alert never appears with an event present, change it to *is after*
+   [day − 1 s] **and** *is before* [next day], or adopt steps 11–17.
+3. **Confirm "Show Document Picker" is off on the first Get File.** The generated file sets the path
+   but not the toggle; if the first run opens a file picker, flip it off and re-share.
 
 ## Shortcut 2 — "Plan shifts" (shell v1, Session B)
 

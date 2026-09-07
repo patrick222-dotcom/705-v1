@@ -265,11 +265,42 @@ async function loadTemplates(uid: string): Promise<Tpl[]> {
   }
   return out;
 }
+// `template` may be a key, a label, the whole picked meta item ({label,key,start,hours} — what a
+// Shortcut's Choose from List hands over), or that item coerced to text by a Text-typed JSON field
+// (JSON, or "label: …" lines). The shell is frozen; the server absorbs the shape.
+function templateRefs(ref: unknown): string[] {
+  if (typeof ref === "number") return [String(ref)];
+  if (ref && typeof ref === "object" && !Array.isArray(ref)) {
+    const o = ref as Record<string, unknown>;
+    return [o.key, o.label, o.name].filter((v) => typeof v === "string" || typeof v === "number").map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof ref !== "string") return [];
+  const s = ref.trim();
+  if (!s) return [];
+  if (s.startsWith("{")) {
+    try { return templateRefs(JSON.parse(s)); } catch { /* fall through to line form */ }
+  }
+  if (/^(key|label|start|hours)\s*[:=]/im.test(s)) {
+    const out: string[] = [];
+    for (const k of ["key", "label"]) {
+      const m = s.match(new RegExp(`^\\s*${k}\\s*[:=]\\s*(.+?)\\s*$`, "im"));
+      if (m) out.push(m[1].replace(/^["']|["'],?$/g, "").trim());
+    }
+    if (out.length) return out;
+  }
+  return [s];
+}
+// What to echo in bad_template: the label-ish ref (never the raw JSON of a picked item), capped.
+function templateShown(ref: unknown): string {
+  const refs = templateRefs(ref);
+  return (refs.find((r) => !/^\d+(\.\d+)?$/.test(r)) ?? refs[0] ?? "").slice(0, MAX_TEMPLATE_NAME);
+}
 function findTemplate(tpls: Tpl[], ref: unknown): Tpl | null {
-  if (typeof ref !== "string" && typeof ref !== "number") return null;
-  const s = String(ref).trim();
-  if (!s) return null;
-  return tpls.find((t) => t.key === s) ?? tpls.find((t) => t.label.toLowerCase() === s.toLowerCase()) ?? null;
+  for (const s of templateRefs(ref)) {
+    const hit = tpls.find((t) => t.key === s) ?? tpls.find((t) => t.label.toLowerCase() === s.toLowerCase());
+    if (hit) return hit;
+  }
+  return null;
 }
 // For the phone's conflict window when a template has no start time: 12 h hospital shifts start at
 // 07:00 / 19:00, evenings at 15:00. Never written into a queued op — meta only.
@@ -505,7 +536,7 @@ Deno.serve(async (req: Request) => {
       const tplRef = fields.template ?? fields.template_key ?? fields.templateKey;
       if (op === "add_shift" && tplRef != null && tplRef !== "") {
         tpl = findTemplate(await loadTemplates(uid), tplRef);
-        if (!tpl) return fail(c, 400, "bad_template", `I couldn't find a template called “${String(tplRef).slice(0, MAX_TEMPLATE_NAME)}”. Check Settings → templates in BadgeBudget.`);
+        if (!tpl) return fail(c, 400, "bad_template", `I couldn't find a template called “${templateShown(tplRef)}”. Check Settings → templates in BadgeBudget.`);
       }
       const built = buildOp(op, fields, tpl);
       if (!built.ok) return fail(c, 400, built.error, built.message);
@@ -527,7 +558,7 @@ Deno.serve(async (req: Request) => {
       let tpl: Tpl | null = null;
       if (body.template != null && body.template !== "") {
         tpl = findTemplate(await loadTemplates(uid), body.template);
-        if (!tpl) return fail(c, 400, "bad_template", `I couldn't find a template called “${String(body.template).slice(0, MAX_TEMPLATE_NAME)}”. Check Settings → templates in BadgeBudget.`);
+        if (!tpl) return fail(c, 400, "bad_template", `I couldn't find a template called “${templateShown(body.template)}”. Check Settings → templates in BadgeBudget.`);
       } else if (!(body.shiftType ?? body.shift_type)) {
         return fail(c, 400, "bad_shift_type", "Pick a template, or say the shift type and hours.");
       }
