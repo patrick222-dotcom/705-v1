@@ -3631,6 +3631,9 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
             <div className="inp suf" style={{width:104}}><input type="number" inputMode="decimal" step="0.01" min="0" value={st} onChange={e=>setSt(e.target.value)} style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
         </div>
 
+        {rows.length===0 &&
+          <div className="help" style={{marginTop:16,fontSize:12.5}}>No differential rows were detected in this paystub — just your base rate. You can add your night, weekend, and holiday rates in the next step.</div>}
+
         {rows.length>0 && <>
           <div className="sec-lab" style={{marginTop:18}}>DETECTED DIFFERENTIAL ROWS</div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -5337,6 +5340,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             </div>
             <div className="card">
               <h3>Join with a code</h3>
+              <div style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.5,marginBottom:10}}>Enter the 6-character code a colleague shared with you.</div>
               <div className="inp" style={{marginBottom:10}}>
                 <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
                   placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>

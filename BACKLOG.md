@@ -26,21 +26,14 @@ _(none)_
 _(empty — promote from the candidate lists below with judgment)_
 
 ### P2
-- [ ] **Paystub review sheet: say so when 0 differential rows were detected**
-  (source:persona/Per-diem-Priya; `harness:drivable`; `index.html` ~2762/2784 — the
-  `{rows.length>0 && …}` block in `PaystubReview` has no else branch) — when a paystub parses a base
-  rate but no differential rows (the "0 shifts" case), the whole "DETECTED DIFFERENTIAL ROWS" section
-  is omitted with no note. Add an else note: "No differential rows were detected — add
-  night/weekend/holiday rates in the next step." Drivable end-to-end: the nightly's harness has a
-  `makeMinimalPdf(text)` builder (`gate.js`, session-local — rebuild it if the container was
-  reclaimed) that produces a valid PDF pdf.js parses; extend it to emit a "Pay Rate: $X Hourly" line
-  with no HOURS AND EARNINGS section to reach the base-rate-but-0-rows case, then assert the note.
+- [x] ~~**Paystub review sheet: say so when 0 differential rows were detected**~~ — SHIPPED
+  2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
+  zero differential rows.
 
 ### P3
-- [ ] **First-run "Join with a code" card lacks the helper line the second one has**
-  (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`; `index.html` ~4019) — add "Enter the
-  6-character code a colleague shared with you." under its `<h3>`. Corroborated by the 2026-08-11
-  "how do I use a pin" feedback. Verify by the swap-UI standard (`docs/swap-board.md`).
+- [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
+  2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
+  "Enter the 6-character code a colleague shared with you." line the "Join another board" card has.
 - [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`;
   `index.html` ~4129-4130, above "SUGGESTED FOR YOU") — one muted line "Names stay hidden until
   everyone accepts." above the suggestion cards. Verify by the swap-UI standard (`docs/swap-board.md`).
@@ -236,6 +229,31 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Swap board: helper line on the first-run "Join with a code" card.** Nightly build
+  (P3, source:persona/Swap-savvy-Sam, corroborated by the 2026-08-11 "how do I use a pin someone gives
+  me?" feedback). The "Join another board" card (shown once you already have a group) carried
+  *"Enter the 6-character code a colleague shared with you."*; the zero-groups first-run "Join with a
+  code" card — a brand-new user's very first encounter with the board — did not, so the person most
+  likely to be confused about the code got the least help. Added the same line, styled identically
+  (`fontSize:12.5, color:var(--muted)`), directly under the card's `<h3>`. Pure static copy — no
+  swap RLS, security-definer functions, `poster_key` derivation, or reveal gate touched (Invariant 7
+  / swap-board verification standard). `harness:needs-live-auth`: verified by the documented swap-UI
+  standard — bundle presence on both cards, correct placement under the first-run h3, and whole-file
+  compile (seeded boot renders, zero page errors). iPhone-13 gate **76/76** (boot happy +
+  hang-getsession + block-babel, wage-math equality, SRI=5, boot hardening + wage-core untouched).
+- 2026-09-06 — **Paystub review: say so when 0 differential rows were detected.** Nightly build (P2,
+  source:persona/Per-diem-Priya). `PaystubReview` previously wrapped the "DETECTED DIFFERENTIAL ROWS"
+  section in `{rows.length>0 && …}` with no else branch, so a paystub that parsed a base rate but no
+  differential rows (distinct from the "no pay details at all" empty screen) silently dropped the whole
+  section — the user couldn't tell whether differentials were checked and came up empty, or never looked
+  at. Added an else note: *"No differential rows were detected in this paystub — just your base rate.
+  You can add your night, weekend, and holiday rates in the next step."* Pure UI copy in the review
+  sheet — no wage-core, parser, schema, or storage-key change. Harness gained a real end-to-end paystub
+  drive (section 8): `makeMinimalPdf('Pay Rate: $47.50 Hourly')` (no HOURS AND EARNINGS section) →
+  uploaded through the Settings "Scan paystub" input → asserts the review sheet opens (as a second modal
+  stacked over Settings), shows the note, and omits the rows section; a positive control with an earnings
+  row asserts the rows section shows and the note does not. iPhone-13 gate **74/74** (boot happy +
+  hang-getsession + block-babel, wage-math equality, SRI=5 and boot hardening untouched).
 - 2026-09-05 — **Siri bridge, Session A (agent gateway Path B): Siri Shortcut → ops inbox → "From Siri"
   confirm sheet.** Owner-directed session. Backend: migration `003_siri_inbox.sql` — `siri_tokens` (a
   code is stored only as its SHA-256; `revoked_at` retires it) and `ops_inbox` (one pending row per op,
