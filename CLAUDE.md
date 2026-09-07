@@ -34,6 +34,7 @@ hosts an anonymous shift-swap board.
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
 | `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
+| `docs/scaling-and-burn.md` | capacity + cost ladder to 100k users, the pre-scoped infra levers with trigger thresholds, the density/retention metric definitions (runnable SQL), and the transferability checklist. Strategy only |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `.claude/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 
@@ -319,6 +320,12 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   2026-09-05): a shared Siri Shortcut that enqueues proposed ops into an inbox the app confirms — the
   near-term bridge that needs none of those decisions and leaves the app the sole writer to
   `user_data`. Scoped, not built; `BACKLOG.md` → Needs a dedicated session.
+- **Scaling, burn and transferability** (`docs/scaling-and-burn.md`, 2026-09-07): ~$30/mo covers 100k MAU, so
+  cash is never the constraint — what breaks first is **no CI** (a JSX syntax error ships live), no backups on
+  the free tier, and the 15s whole-blob polls (`index.html:2363` and `:4703`), the second of which grows with
+  the square of unit size. North-star metric is **density** (units with ≥10 members and ≥1 confirmed swap in
+  30 days — currently zero), not DAU. Levers L0–L6 are pre-scoped with trigger thresholds; pulling them early
+  is waste. Queued in `BACKLOG.md` → Needs a dedicated session + Blocked.
 - **Open PRs.** #46 — ten lines of AuthModal copy naming supabase.co before Google does (still says
   "ScrubPay"; rebase + rename before merging, or close it in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;

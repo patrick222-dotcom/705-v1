@@ -182,6 +182,36 @@ here so the loop's queue contains only work it can actually finish; pick these u
   negotiation to a locked package before it reaches the approver. Full multi-way negotiation was
   rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
 
+- [ ] **Transferability groundwork — policy, deletion path, reproducibility** — owner-directed
+  2026-09-07, rationale in `docs/scaling-and-burn.md` → *The handoff test*. Four things that cost
+  nothing now and are hard to retrofit: (a) a short privacy policy + terms (what is collected, what is
+  never collected — wage and goal figures never enter `events` — where it lives, how to delete it, that
+  it may transfer with the project), covering the `page`/`user_agent` columns CLAUDE.md records as
+  undisclosed until 2026-09-02; (b) a working in-app account-and-data deletion path ("email the owner"
+  does not scale); (c) commit the Playwright harness under `tests/` + a CI job (`node
+  scripts/test_groom_seed.mjs` + a Babel parse of the JSX block) so a syntax error cannot ship live;
+  (d) capture `user_data`/`feedback`/`events` DDL + RLS as `supabase/migrations/000_core.sql`. Not
+  nightly work: (a) is a product/legal call, (c) changes the deploy surface. **(c) is the single
+  largest operational risk in the system and is uncorrelated with scale.**
+
+- [ ] **Pre-distribution infra levers (L0/L1/L3/L6)** — owner-directed 2026-09-07, specified with
+  trigger thresholds in `docs/scaling-and-burn.md` → *Levers*. Pull as one block before any deliberate
+  distribution attempt, not before: **L0** move the deploy off GitHub Pages to Cloudflare Pages
+  (unmetered bandwidth, real response headers — fixes the `frame-ancestors`/clickjacking gap CLAUDE.md
+  calls unavailable on this host; keep Invariant 8's CNAME behaviour equivalent); **L1** change the 15 s
+  sync poll (`index.html:2293`) to fetch `updated_at` only and pull the blob on change — ~100× egress
+  cut, moves the free-tier ceiling from ~1,000 signed-in users to a non-issue; **L3** buy Supabase Pro
+  ($25/mo) for point-in-time recovery, bought for backups rather than capacity — free tier holds real
+  pay history with none; **L6** Cloudflare in front + Supabase rate limits, because on Free a quota
+  overage *restricts* the project rather than billing it, so the app goes down on its best day. Roughly
+  one day total. Not nightly work: touches the deploy pipeline and the sync path.
+
+- [ ] **L2 — swap board poll cost before any unit reaches 15 members** — `docs/scaling-and-burn.md` →
+  *Levers*. `index.html:4575` re-fetches the whole group board every 15 s per open sheet, so traffic
+  grows with the square of unit size on exactly the subsystem the density thesis depends on. Either
+  Supabase Realtime (needs `wss://*.supabase.co` in the CSP + the table in the `supabase_realtime`
+  publication) or exponential backoff on an idle board. `harness:needs-live-auth`.
+
 ## Blocked
 - [ ] **iCal proxy allowlist: the real NurseGrid feed host** + a smoke test with a real secret iCal
   address — owner-side (the allowlist in `supabase/functions/ical-proxy/index.ts` covers Google
@@ -193,6 +223,13 @@ here so the loop's queue contains only work it can actually finish; pick these u
   (source:persona/Veteran-Val; `harness:drivable`) — relabel to "Export .ics" (symmetric with
   "Import .ics") or "Add to my calendar." One-word copy change; **blocked on the owner's preferred
   wording** (naming call).
+- [ ] **Ownership / invention-assignment question** — owner-side, raised 2026-09-07 in
+  `docs/scaling-and-burn.md` → *The handoff test*. This is a personal repository built by an employee
+  of a large bank; invention-assignment and outside-activity language in financial-services employment
+  agreements is typically broad. Nothing in the repo can resolve this and nothing here is legal advice
+  — it needs the owner to read the actual agreement, and a lawyer's read before any transaction.
+  **BLOCKED** on the owner. Worth resolving before density work makes the project visible rather than
+  after; an unresolved ownership question found late ends a handoff rather than repricing it.
 
 ## Environment notes (for the nightly loop — updated 2026-09-02)
 - **Where it runs:** the Routine fires into a persistent, authorized session (CLAUDE.md → Autonomous
