@@ -4,6 +4,42 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-07 — Siri bridge shelved; PR #70 parked mergeable
+
+Owner call: shelve Path B to focus on the conversion funnel (separate session). State at the shelf:
+PR #70 (`claude/siri-inbox`, head 480a706) is a draft, **mergeable and gate-green (74/74)** against
+the deploy tip of 2026-09-07 (#74); it carries #69's spec, #71's build-guide pointer, and the two
+nightly builds since (#73, #74). The backend is already live and harmless while parked: migrations
+003 + 004 applied, `siri-ingest` v3 deployed with `verify_jwt` off, both tables empty, no code minted
+(the SIRI card only exists in the unmerged app). All check-ins were cancelled and the PR subscription
+removed, so nothing polls. **To resume:** fetch the deploy branch, merge it into `claude/siri-inbox`
+(the nightly edits `index.html` daily, so expect a small `BACKLOG.md` Done-log conflict and possibly
+`index.html`), rebuild the harness per CLAUDE.md → Testing (the 74-probe rig — `gate.mjs`, the
+in-page Supabase stub, `build_site.mjs`, the curl probe scripts — lived only in this session's
+scratchpad and is gone with the container), rerun the gate with a fresh deployed baseline, push, then
+merge and confirm live at `badgebudget.com/index.html?cb=N` with the `SIRI_SHORTCUT_URL` marker.
+Between now and then the deployed app cannot reach `ops_inbox`, so a Shortcut built early would
+queue rows nobody sees; build it after the merge. Session record: the "As built" subsection of
+`docs/agent-gateway-scope.md` → Path B and the PR description.
+
+## 2026-09-05 — Siri bridge, Session A shipped (agent gateway Path B, #70)
+
+Owner-directed session building the cheapest write path from a phone: a Siri Shortcut POSTs a
+structured op with a per-user code to a new `siri-ingest` Edge Function, which hashes the code,
+validates the op with the app's own coercions and queues one *pending* row in `ops_inbox`; the app's
+15 s poll surfaces it in a "From Siri" sheet and the nurse taps Add or Skip per item, Add running
+through the Add-Shift sheet's own save path. Migration 003 (`siri_tokens`, `ops_inbox`) was applied
+live through the MCP — the first migration recorded in `supabase_migrations` — with owner-only RLS,
+no client insert policy on the inbox and zero `anon` grants; advisors unchanged. Invariant 14 records
+the model: codes are write-only, hashed at rest, revocable, and the app stays the sole writer to
+`user_data`. Built against the Path B spec written earlier the same day (#69, below); the deliberate
+deviations — one inbox row per op, `code_hash`, a 240-char note cap, both wire formats — are recorded
+in the doc's "As built" subsection. The Shortcut itself is the owner's to build from the spec;
+dictation (Claude parsing) is Session B. Two things worth
+keeping from the session: the hero-equality check against the deployed build caught nothing because
+nothing in the wage core moved, which is the point; and the in-page Supabase stub made the whole
+signed-in path (poll, sheet, save effect, analytics) drivable in the sandbox without a live account.
+
 ## 2026-09-05 — Path B: the Siri Shortcut bridge
 
 Same day #61 and #67 merged, the owner asked whether a preconfigured Siri Shortcut could take actions
