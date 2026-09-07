@@ -309,6 +309,13 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   light + dark (27 checks, 0 failures) which caught a real `minmax(380px,1fr)` grid overflow.
 
   Gate: `check_build.mjs` 8/8, `test_groom_seed.mjs` 33/33, `tests/smoke.mjs` 27/27.
+
+  **Owner closed the loop the same day:** repo-wide auto-merge enabled, plus a `deploy gate` ruleset
+  targeting `claude/migrate-to-github-deploy-3F5RD` that makes `gate` and `smoke` required and
+  restricts deletion + non-fast-forward pushes, with Repository admin on the bypass list. Confirmed in
+  force via `GET /repos/:o/:r/rules/branches/:branch`. CI is no longer advisory — a red run blocks the
+  merge, and an unchecked direct push to the deploy branch is rejected. Still unproven by a
+  deliberately-red PR; that negative test is the honest remaining gap.
 - 2026-09-07 — **The instruments: a mechanical CI gate, the harness in git, and errors that leave
   the device.** Dedicated session, owner-directed (architecture review; owner picked "instrument the
   blind spots" + "fix the loop's input", and "build step yes, but CI-gated first"). Three blind spots

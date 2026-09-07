@@ -242,10 +242,13 @@ so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 
   silently 404s. **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
   `gate` job running `scripts/check_build.mjs` (Babel-parses the JSX block and mechanically asserts
   Invariants 1, 2, 4, 5, 6, 8 and 9) plus `scripts/test_groom_seed.mjs`, and a `smoke` job running
-  `tests/smoke.mjs` on an iPhone 13 profile. It is not yet a *required* status check: until `gate`
-  is marked required in Settings → Branches for the deploy branch, a red run is visible on the PR
-  but does not block the merge. Nothing gates a direct push to the deploy branch, so a JSX error
-  can still ship live if the PR step is skipped.
+  `tests/smoke.mjs` on an iPhone 13 profile. **Both are required status checks** as of 2026-09-07
+  via the `deploy gate` ruleset (Settings → Rules), which targets `claude/migrate-to-github-deploy-3F5RD`
+  and also restricts deletion and non-fast-forward pushes. A red run now blocks the merge, and because
+  required checks apply to pushes too, a direct push of an unchecked commit to the deploy branch is
+  rejected — the "a JSX error ships live" hole is closed. Repository admin is on the bypass list, so
+  the owner keeps an emergency override. **Auto-merge is enabled** repo-wide: a PR with auto-merge
+  turned on lands itself the moment both checks go green.
 - **Custom domain** badgebudget.com at Porkbun; `badgebudget.app`, `shiftstogo.com` and
   `shiftstogo.app` redirect to it. DNS is 4 A + 4 AAAA records to GitHub Pages plus a `www` CNAME.
   Registrar details, renewals, kept records: `docs/domains.md`.
@@ -418,11 +421,13 @@ name='client_error' order by created_at desc;`
   `re_...` key + destination address. Spec in `BACKLOG.md` → Blocked.
 - **Second Supabase project for dev/test** (free plan allows two) so audits and migrations stop
   touching real data. `BACKLOG.md` → Needs a dedicated session.
-- **CI and the harness — half done (2026-09-07).** `tests/` and `.github/workflows/ci.yml` exist and
-  the invariant gate is negative-tested. Remaining: **mark `gate` a required status check** in
-  Settings → Branches (until then CI is advisory, and this is a two-click owner action that converts
-  the whole thing from a signal into a gate); port `te_swap_p2_algo.js` and `rls_audit.js` into
-  `tests/`; pin the six actions to SHAs and `.mcp.json` off `@latest`.
+- **CI and the harness (2026-09-07).** `tests/`, `.github/workflows/ci.yml`, the negative-tested
+  invariant gate, and the `deploy gate` ruleset making `gate` + `smoke` required are all in place;
+  auto-merge is on. Remaining: port `te_swap_p2_algo.js` and `rls_audit.js` into `tests/`; pin the six
+  actions to SHAs and `.mcp.json` off `@latest` (`actions/checkout@v4` and `actions/setup-node@v4`
+  also target a deprecated Node 20 runtime — bump while pinning). **Not yet negative-tested end to
+  end:** the ruleset is confirmed in force via the API, but no deliberately-red PR has been pushed to
+  prove it actually blocks a merge. Worth one throwaway PR to close that loop.
 - **Capture `user_data`/`feedback`/`events` DDL + RLS** as `supabase/migrations/000_core.sql`.
 - **Council rerun** (owner's standing request) — last full run 2026-07-30, `docs/history.md`.
 - **Parked engineering** (calendar memoization + virtualization; sync content-equality
