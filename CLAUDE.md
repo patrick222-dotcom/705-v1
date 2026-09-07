@@ -165,8 +165,19 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   badgebudget.com, `badgebudget.com` as an authorized domain, and the app moved from **Testing** to
   **In production** on the Audience page. That matters more than the branding: in Testing, Google only
   admitted accounts on an explicit test-user list, so every prospective user outside it hit "Access
-  blocked" — all 3 accounts predate the domain move and nobody had signed up since. No logo, on
-  purpose: uploading one triggers Google's brand-verification queue.
+  blocked" — all 3 accounts predate the domain move and nobody had signed up since. **Confirmed In
+  production 2026-09-07**, so the test-user list is now moot. No logo, on purpose: uploading one
+  triggers Google's brand-verification queue.
+  **Brand verification is a separate track from publishing status** and is currently failing with two
+  issues; neither gates sign-in for basic scopes, so it is optional polish. (1) `badgebudget.com` is
+  not verified as owned — needs a Search Console DNS TXT record at Porkbun under the same Google
+  account. (2) "Your home page is behind a login page" — mechanically true: **`curl` of
+  badgebudget.com yields exactly one word of body text, `badgebudget`, and the page carries no
+  `<noscript>`.** The whole app is JS-rendered, so any reviewer or crawler without JS sees an empty
+  shell. That also explains why crawler traffic never fires a second event. A `<noscript>` block, or a
+  static `about.html` to point the home-page field at, would fix it. Neither is built.
+  **Testing the wall needs an account that has never signed in.** Signing in with an existing account
+  proves nothing — it was already on the test-user list and would have worked before publishing.
 - **Swap board.** Invite-code unit groups, anonymous posts, client-computed
   pickup/handoff/trade/3-cycle suggestions, names revealed only after every leg accepts. Anonymity is
   enforced in Postgres (column grants + security-definer RPCs) and was audited adversarially
@@ -432,10 +443,13 @@ name='client_error' order by created_at desc;`
   `docs/reddit-persona-pipeline`, `crawler-pushtest`, `claude/scrubpay-domain-purchase-j9cqf6`,
   `claude/ical-subscription-sync`, `claude/ical-branch-progress-4x2baj`,
   `claude/rename-scrubpay-badgebudget-5jesy5`.
-- **Google consent screen — done 2026-09-07.** Branded and published to production (see Auth). The
-  supabase.co string remains, and needs a paid Supabase custom domain to remove. A logo is still
-  optional and deliberately deferred. **Watch for the payoff:** `sign_in_attempted` vs `signed_in`
-  now measures whether the Testing-status wall was really what capped sign-ups at 3.
+- **Google consent screen — done 2026-09-07, wall confirmed down.** Branded and **In production**, so
+  any Google account can now sign in (see Auth). The supabase.co string remains and needs a paid
+  Supabase custom domain to remove. Brand verification is failing on two issues but does not gate
+  basic-scope sign-in; the `<noscript>` half of that is worth fixing on its own merits. **Watch for the
+  payoff:** `sign_in_attempted` vs `signed_in` vs new rows in `auth.users`. First
+  `sign_in_attempted` landed 2026-09-07 21:16 — the deferred queue survives the OAuth redirect in
+  production, not just in the harness. Baseline to beat: **3 users, zero signups since 2026-09-02.**
 - **The nightly Routine's prompt still curls the github.io URL** for its live check (a 301 with no
   body, so it can never see the change it verifies) — change it to
   `https://badgebudget.com/index.html?cb=N`. The `ship` skill already encodes the correct check.
