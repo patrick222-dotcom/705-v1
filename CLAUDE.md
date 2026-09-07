@@ -350,10 +350,11 @@ reproducible from the repo. Committing them under `tests/` is an open item.
   cheapest route to a connector on a real phone; writes wait for step 2 (versioned ops). **Path B (Siri
   Shortcut → ops inbox): Sessions A (#70) and B shipped 2026-09-05** — migrations 003–005,
   `siri-ingest` v4 (form / form_multi / meta / dictation, Shortcut envelope, version handshake), the
-  SIRI card reading its two install links from `app_config`, the grouped "From Siri" sheet. Still open,
-  owner-side: build both Shortcuts from `docs/siri-shortcut.md`, run its test checklist with your own
-  code, paste the two iCloud links into `app_config` (`siri_shortcut_url`, `siri_plan_url` — one SQL
-  update each, no deploy), and set the `ANTHROPIC_API_KEY` function secret if dictation is wanted.
+  SIRI card reading its two install links from `app_config`, the grouped "From Siri" sheet.
+  **Shelved 2026-09-07 — users before voice** (`docs/history.md`): the backend is live and inert, the
+  app side is PR #72 (contains #70). Land #72 with the SIRI card gated on a published
+  `siri_shortcut_url` so nothing shows until a Shortcut exists; the Shortcut builds, the iCloud links
+  and the `ANTHROPIC_API_KEY` secret are parked in `BACKLOG.md` → Blocked with their resume trigger.
 - **Open PRs.** #46 — ten lines of AuthModal copy naming supabase.co before Google does (still says
   "ScrubPay"; rebase + rename before merging, or close it in favour of the GCP consent-screen branding).
 - **iCal sync, owner-side.** The proxy allowlist still lacks the real NurseGrid feed host (marked TODO;

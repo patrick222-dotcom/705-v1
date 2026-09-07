@@ -40,20 +40,6 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
-- [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway) — Sessions A (#70) and B shipped
-  2026-09-05 (see Done log); remaining, owner-side only: build the two Shortcuts from
-  `docs/siri-shortcut.md` (≈1–2 h), run its test checklist with your own code, paste the two iCloud
-  links into `app_config` (`siri_shortcut_url`, `siri_plan_url`), set the `ANTHROPIC_API_KEY` function
-  secret if dictation is wanted.** Owner-directed 2026-09-05, scoped
-  in `docs/agent-gateway-scope.md` → *Path B*, contract in `docs/siri-shortcut.md`. A shared iCloud Shortcut POSTs a proposed op (or a
-  dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
-  which validates it against the op allowlist and inserts an `ops_inbox` row; the app's existing 15 s
-  poll surfaces a per-item Add/Skip confirm sheet and applies through the normal Add-Shift handler.
-  **The app stays the only writer to `user_data`** — no concurrency surface, no wage math server-side,
-  no OAuth, no build step. Two sessions (A: migration 003 + function form mode + Settings SIRI card +
-  inbox sheet + probes; B: dictation → Claude parse, schema-validated) plus ~1 owner hour to build the
-  Shortcut from the spec and paste the iCloud link. Not nightly work: new tables, a public function, a
-  migration on the live project. Becomes Invariant 14 when it ships.
 - [ ] **Agent gateway — one domain, two surfaces (UI + MCP)** — owner-directed 2026-09-04, scoped in
   `docs/agent-gateway-scope.md`. Five layers, each its own session: (1) extract the pure wage/pattern/
   sanitizer core out of `index.html` into `core/` with a build step that inlines it back (deployed
@@ -178,6 +164,18 @@ here so the loop's queue contains only work it can actually finish; pick these u
   rejected by all five as a "combinatorial swamp." Full panel writeup in the session transcript.
 
 ## Blocked
+- [ ] **Siri Shortcuts — shelved 2026-09-07 (users before voice).** Path B's backend (migrations
+  003–005, `siri-ingest` v6) is live and inert — nothing can mint a code until the SIRI card ships — and
+  the app side sits in PR #72 (contains #70). Owner call, reasoning in `docs/history.md` 2026-09-07:
+  with 3 accounts in `user_data`, voice logging optimizes one step for one person, the confirm-in-app
+  design means Siri saves no trip to the app, and the generated Shortcut is more taps than the calendar.
+  **Land #72 anyway** — the nightly loop edits `index.html` daily, so an open PR accrues conflict tax —
+  but first gate the whole SIRI card on a non-empty `siri_shortcut_url` in `app_config` (the card
+  already reads that row; a few lines) so the merge is a zero-visible change; close #70 as contained.
+  **Resume when** a second person asks to log by voice, or when Path A (the MCP gateway) starts —
+  then: build the two Shortcuts from `docs/siri-shortcut.md` (the owner's Siri-generated "Log a shift"
+  is reviewed there and works against v6 as-is, two on-phone checks pending), run the checklist, paste
+  the iCloud links into `app_config`, set `ANTHROPIC_API_KEY` if dictation is wanted. Not nightly work.
 - [ ] **iCal proxy allowlist: the real NurseGrid feed host** + a smoke test with a real secret iCal
   address — owner-side (the allowlist in `supabase/functions/ical-proxy/index.ts` covers Google
   Calendar's hosts; the NurseGrid entry is a marked TODO). Redeploy the function after editing.

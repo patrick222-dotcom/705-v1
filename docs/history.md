@@ -4,6 +4,31 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-07 — Siri bridge shelved: users before voice
+
+Two days after Sessions A and B shipped, with the owner's Siri-generated "Log a shift" Shortcut
+decoded and reviewed (it works against `siri-ingest` v6 as-is), the owner asked whether to shelve the
+whole thing and was told yes. The numbers settle it: `user_data` holds 3 accounts. Voice logging
+optimizes one step for one person; the confirm-in-app design — which is the *right* design, it is
+Invariant 14 — means Siri saves no trip to the app; and the generated Shortcut is more taps than the
+calendar (pick a day, dismiss an alert, pick a template, two network calls, then confirm in the app).
+Path B's real payoff was always as the on-ramp to Path A, and Path A is further still from what a
+unit of nurses needs this month. Meanwhile Courtney's coworkers are giving strong feedback, so the
+question that matters is whether someone who opens a shared link sees her real take-home within
+sixty seconds and stays — onboarding and conversion, worked in a parallel session. The better use of
+the same hour on the schedule side is the NurseGrid feed host still marked TODO in the `ical-proxy`
+allowlist: a schedule that appears by itself is the "into the app" hook, not a Shortcut.
+
+What stays regardless: `app_config` as the no-deploy config channel the app never had, and the
+Shortcut-envelope rule ("HTTP 200 always, outcome in a string `status`"), which is the shape any
+dumb-HTTP consumer will need, the iOS Shortcuts push for iCal included. The backend is live and
+inert — nothing can mint a code until the SIRI card ships. Recommendation recorded in `BACKLOG.md`
+→ Blocked: land #72 (it contains #70) rather than let it rot against the nightly's daily
+`index.html` edits, but gate the SIRI card on a published `siri_shortcut_url` first so the merge is
+a zero-visible change; resume the Shortcut builds when a second person asks to log by voice or when
+Path A starts. One framing caution worth keeping: "feels like NurseGrid" must not slide into
+feature parity — the wedge is that the schedule and the paycheck are the same screen.
+
 ## 2026-09-05 — Siri bridge, Session B shipped (agent gateway Path B): the server contract, no calendar on the server
 
 Same evening as Session A, against the contract in `docs/siri-shortcut.md` (#71). Three ideas landed
