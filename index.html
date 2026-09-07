@@ -117,6 +117,15 @@
   .mob-only{display:none}
   @media (max-width:919px){ .mob-only{display:flex} }
 
+  /* estimate banner — the honesty guard for the two shortened setup paths. Amber, not indigo:
+     it is a caveat about whose numbers these are, not a feature being promoted. */
+  .est-banner{background:#FFF6E6;border:1px solid #F3DCAE;border-radius:17px;padding:14px 16px;margin-bottom:14px}
+  .est-banner .t{font-weight:700;font-size:13.5px;color:#7A5A12}
+  .est-banner .s{font-size:12.5px;line-height:1.5;color:#8A6A22;margin-top:3px}
+  .est-banner .row{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+  .est-banner button{background:#7A5A12;color:#fff;padding:9px 13px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .est-banner button.ghost{background:transparent;color:#8A6A22;border:1px solid #E4C98F}
+
   /* quick-fill banner (shift templates applied across multiple calendar days) */
   .qf-banner{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
   .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
@@ -342,7 +351,20 @@
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
   .ob .spacer{flex:1;min-height:18px}
   .ob.dark{background:var(--ink);color:#fff}
+  /* Shared style for the quiet last line of an onboarding step — the returning-user sign-in
+     escape hatch on welcome (AuthModal lives past the !setupComplete early return, so without it
+     a signed-out returner had no way back to their own data except re-running the wizard) and the
+     "show me an example" opt-out on the rate step. Subordinate to the step's real CTA, never
+     hidden from it. */
+  .ob-footlink{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
+  .ob-footlink b{font-weight:700;color:var(--indigo)}
   .pill{display:inline-flex;align-self:flex-start;background:var(--indigo-soft);color:var(--indigo);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
+
+  /* share sheet — the QR has to survive being read off a screen at arm's length in bad light,
+     so it gets a solid white plate regardless of theme, never the frosted glass. */
+  .qr-card{display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px solid var(--line-2);border-radius:20px;padding:20px;margin:16px 0}
+  .qr{width:min(248px,60vw);height:auto;display:block}
+  .qr-url{font-family:'Bricolage Grotesque';font-weight:700;font-size:15px;color:var(--ink)}
 
   /* modal / sheet */
   .scrim{position:fixed;inset:0;background:rgba(18,18,26,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:80;display:flex;animation:fade .2s}
@@ -529,6 +551,7 @@ const { useState, useMemo, useEffect, useLayoutEffect, useRef } = React;
 
 /* ---------- icons ---------- */
 const Ic = {
+  share: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V3"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>,
   gear:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   check: <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0B2E22" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>,
   scan:  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>,
@@ -564,6 +587,25 @@ const STORE_KEY = 'nursingWagePlannerData';
 const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier safety; real data is a few KB)
 const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
 const MAX_GOALS = 12;      // cap on savings goals (bounds per-row blob growth; keeps the list scannable)
+
+/* ---- grassroots sharing ----------------------------------------------------------------
+   The app spreads by one nurse showing another her phone, and nurses on a unit are transient
+   enough that they often don't have each other's numbers. So the primary share is a QR the
+   other person scans off Courtney's screen — no typing, no numbers exchanged, no install.
+   The QR is AUTHORED, not generated at runtime: SHARE_URL is a constant, so 1.3KB of inline
+   <path> beats vendoring a QR encoder, and a 6th CDN script would mean a 6th SRI hash
+   (Invariant 2). If SHARE_URL ever changes the path must be regenerated with
+   `npx qrcode@1.5.4 -t svg -e M -m 0 '<new url>'` — the two must never drift. */
+const SHARE_URL      = 'https://badgebudget.com/';
+const SHARE_QR_URL   = SHARE_URL + '?via=qr';     // what the QR below actually encodes
+const SHARE_LINK_URL = SHARE_URL + '?via=link';   // what the share sheet / copy button hands out
+const SHARE_QR_PATH  = 'M0 0.5h7m1 0h2m2 0h1m2 0h6m1 0h7M0 1.5h1m5 0h1m1 0h1m2 0h2m1 0h2m1 0h2m3 0h1m5 0h1M0 2.5h1m1 0h3m1 0h1m3 0h1m1 0h4m2 0h1m1 0h1m1 0h1m1 0h3m1 0h1M0 3.5h1m1 0h3m1 0h1m1 0h1m1 0h3m3 0h4m2 0h1m1 0h3m1 0h1M0 4.5h1m1 0h3m1 0h1m3 0h4m5 0h1m2 0h1m1 0h3m1 0h1M0 5.5h1m5 0h1m3 0h1m3 0h1m2 0h4m1 0h1m5 0h1M0 6.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M8 7.5h4m1 0h2m2 0h4M0 8.5h1m1 0h2m1 0h3m2 0h1m1 0h3m1 0h2m1 0h1m2 0h1m2 0h1m1 0h2M1 9.5h2m1 0h2m1 0h2m1 0h1m4 0h3m1 0h6m3 0h1M1 10.5h2m2 0h3m6 0h2m2 0h1m1 0h2m2 0h1m1 0h2M1 11.5h2m1 0h2m4 0h1m2 0h3m2 0h1m1 0h4m4 0h1M0 12.5h3m3 0h2m1 0h3m4 0h2m1 0h1m5 0h2M2 13.5h1m2 0h1m4 0h1m2 0h1m3 0h4m1 0h1m3 0h3M3 14.5h1m2 0h2m2 0h2m2 0h1m2 0h3m2 0h1m3 0h3M3 15.5h2m4 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h5m2 0h1M0 16.5h1m2 0h2m1 0h4m8 0h1m2 0h1m1 0h3m1 0h1M1 17.5h1m2 0h2m2 0h2m1 0h3m3 0h1m2 0h2m1 0h1m1 0h3M0 18.5h1m2 0h6m2 0h2m5 0h1m1 0h1m2 0h2m1 0h1M2 19.5h2m4 0h2m2 0h1m2 0h4m2 0h1m1 0h1m2 0h1M1 20.5h2m1 0h4m1 0h3m1 0h1m1 0h12M8 21.5h3m1 0h4m2 0h1m1 0h1m3 0h5M0 22.5h7m1 0h1m4 0h1m3 0h1m1 0h2m1 0h1m1 0h2m1 0h1M0 23.5h1m5 0h1m1 0h5m2 0h2m1 0h1m1 0h1m3 0h2m1 0h1M0 24.5h1m1 0h3m1 0h1m2 0h1m1 0h2m1 0h5m1 0h5m1 0h1m1 0h1M0 25.5h1m1 0h3m1 0h1m1 0h3m1 0h5m1 0h2m1 0h1m1 0h3m1 0h1M0 26.5h1m1 0h3m1 0h1m1 0h5m5 0h1m4 0h1m2 0h1m1 0h1M0 27.5h1m5 0h1m2 0h2m3 0h2m4 0h1m4 0h1m1 0h1M0 28.5h7m1 0h1m1 0h3m1 0h1m1 0h1m1 0h3m2 0h1m3 0h1';
+/* How this device arrived, read once at module scope — before takeSwapInviteFromUrl() or any
+   other replaceState can rewrite the query string. Tightly bounded: it rides on app_open. */
+const ARRIVED_VIA = (()=>{
+  try{ const v = new URLSearchParams(location.search).get('via') || ''; return /^[a-z]{1,12}$/.test(v) ? v : ''; }
+  catch(_){ return ''; }
+})();
 const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 /* ---- module-level date/period helpers (shared by App + the month-grid components) ---- */
@@ -606,6 +648,27 @@ const DIFF_DEFAULTS = {
   'overtime':     { name:'Overtime (1.5×)',  amount:1.5,  type:'multiplier', active:true,  color:'#11A86B' },
   'bonus-incentive':{ name:'Bonus incentive',amount:15,   type:'dollar',     active:true,  color:'#11A86B' },
 };
+/* ---- sample ("show me what this looks like") mode ------------------------------------
+   A planner with no shifts projects $0, so a sample that shows nothing is worthless. Sample
+   mode seeds one believable fortnight and tags every shift with this id, so "clear the sample"
+   removes exactly what was seeded and nothing the nurse typed herself — the same contract
+   patterns already use via `patternId`. Never write this id from any other path. */
+const SAMPLE_PATTERN_ID = '__sample__';
+/* Six 12h shifts over the fortnight from `startISO`, day-of-week deciding weekend vs night —
+   the same inference the .ics import uses, so the mix reads as a real nurse's schedule
+   whatever weekday the pay period happens to begin on. */
+function buildSampleShifts(startISO){
+  const out = {};
+  [1,2,3,8,9,10].forEach(off=>{
+    const d = parseISODate(startISO); d.setDate(d.getDate()+off);
+    const dow = d.getDay();
+    const shiftType = (dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base');
+    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours:12, bonusType:'none',
+                           customBonus:0, isOvertime:false, patternId:SAMPLE_PATTERN_ID }];
+  });
+  return out;
+}
+
 const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
 const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom (per shift)' };
 
@@ -855,6 +918,10 @@ function sanitizeData(d){
   if(typeof d.ficaWithholdingType==='string') out.ficaWithholdingType = d.ficaWithholdingType;
   if(d.ficaWithholdingPercent!=null) setNum('ficaWithholdingPercent', d.ficaWithholdingPercent);
   if(typeof d.payPeriodStart==='string') out.payPeriodStart = d.payPeriodStart;
+  /* estimateMode: '' (fully set up, or the banner was dismissed) | 'rough' (their own base rate,
+     default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
+     corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
+  if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
   // shifts: object of date-key -> array of shift objects; keep only well-formed entries.
   if(d.shifts && typeof d.shifts==='object' && !Array.isArray(d.shifts)){
     const s = {};
@@ -1952,6 +2019,8 @@ function App(){
   const [showBreakdown,setShowBreakdown] = useState(false);
   const [showAuth,setShowAuth] = useState(false);  // auth modal
   const [authMode,setAuthMode] = useState('signin'); // 'signin' or 'signup'
+  const [showShare,setShowShare] = useState(false);  // QR/link sheet — the app's only distribution surface
+  const [estimateMode,setEstimateMode] = useState('');  // '' | 'rough' | 'sample' — drives the honesty banner
   const [user,setUser] = useState(null);  // current user
   const [session,setSession] = useState(null);  // auth session
   const [syncing,setSyncing] = useState(false);  // cloud sync in progress
@@ -2013,7 +2082,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -2049,6 +2118,7 @@ function App(){
     if(d.icsIgnored) setIcsIgnored(d.icsIgnored);
     if(d.goals) setGoals(d.goals);
     if(d.patterns) setPatterns(d.patterns);
+    setEstimateMode(d.estimateMode || '');
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -2057,7 +2127,7 @@ function App(){
     setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
-    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false);
+    setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -2205,7 +2275,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2702,8 +2772,22 @@ function App(){
     track('pattern_shifts_removed', {n}, user?.id);
   };
 
+  /* Pull back exactly the seeded fortnight — matched on SAMPLE_PATTERN_ID, so anything the nurse
+     logged herself while looking around survives untouched. Mirrors removePatternShifts(). */
+  const clearSample = async ()=>{
+    if(!(await confirmAsync('This removes the example shifts so you can start on your own schedule. Anything you added yourself stays.',{title:'Clear the sample?',confirm:'Clear it'}))) return;
+    setShifts(prev=>{
+      const next = {};
+      Object.entries(prev).forEach(([k,arr])=>{ const keep = arr.filter(x=>x.patternId!==SAMPLE_PATTERN_ID); if(keep.length) next[k]=keep; });
+      return next;
+    });
+    setEstimateMode('');
+    toast('Sample cleared — the planner is yours now.','success');
+    track('sample_cleared', null, user?.id);
+  };
+
   /* analytics: one event per app load */
-  useEffect(()=>{ track('app_open', null, null); },[]);
+  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); },[]);
 
   const exportData = ()=>{
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
@@ -3102,7 +3186,19 @@ function App(){
       <Onboarding {...{obStep,setObStep,name,setName,baseRate,setBaseRate,num,
       differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
       pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
-      onPaystub,parsing,finish:()=>{setSetupComplete(true); track('setup_completed', null, user?.id);},
+      onPaystub,parsing,
+      /* mode: 'full' (walked all four steps), 'rough' (own rate, default differentials + taxes),
+         'sample' (nothing of theirs — seed a fortnight so the planner shows a real number).
+         Guarded because step 4's button passes finish straight to onClick, so the first arg
+         can be a click event rather than a string. */
+      finish:(mode)=>{
+        const m = (mode==='rough'||mode==='sample') ? mode : 'full';
+        if(m==='sample'){ setBaseRate(65.15); setShifts(buildSampleShifts(currentPeriodStart(todayISO()))); }
+        setEstimateMode(m==='full' ? '' : m);
+        setSetupComplete(true);
+        track('setup_completed', {mode:m}, user?.id);
+      },
+      onSignIn:()=>{ setAuthMode('signin'); setShowAuth(true); },
       sampleNet:()=>{ // illustrative typical 2wk schedule from their rates
         const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
           {shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'base',hours:12,bonusType:'none'} ];
@@ -3113,6 +3209,10 @@ function App(){
         return {net,gross:g,hours:h}; }
     }} />
       {paystub && <PaystubReview paystub={paystub} differentials={differentials} onApply={applyPaystub} onCancel={()=>setPaystub(null)} />}
+      {/* Signing in here hydrates the cloud blob, which sets setupComplete and drops a returning
+          user straight into their planner. A brand-new signup has no row, so applyData never runs
+          and they stay in onboarding where they belong. */}
+      {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
     </>;
   }
 
@@ -3142,6 +3242,25 @@ function App(){
           <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
           <div className="period" role="group" aria-label="Pay period"><button onClick={()=>movePeriod(-1)} aria-label="Previous pay period">‹</button><span className="num" aria-live="polite">{periodLabel}</span><button onClick={()=>movePeriod(1)} aria-label="Next pay period">›</button></div>
         </div>
+
+        {/* Two shortened setup paths reach the planner without real differentials or tax rates,
+            and one of them reaches it without the nurse's own hourly rate at all. This says so,
+            in the same view as the number it is qualifying — the app's whole promise is that the
+            figure isn't a surprise, so an unqualified estimate would be the one lie it can't tell. */}
+        {estimateMode && (
+          <div className="est-banner">
+            <div className="t">{estimateMode==='sample' ? 'These are example numbers' : 'Rough estimate'}</div>
+            <div className="s">{estimateMode==='sample'
+              ? 'A sample fortnight at $65.15/hr, so you can see how it works. Add your own rate to make it yours.'
+              : `Based on your $${num(baseRate)}/hr with typical differentials and tax rates. It'll get more accurate once you add your own — but for a two-week pay period, here's roughly what it looks like.`}</div>
+            <div className="row">
+              <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>
+              {estimateMode==='sample'
+                ? <button className="ghost" onClick={clearSample}>Clear the sample</button>
+                : <button className="ghost" onClick={()=>{ setEstimateMode(''); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
+            </div>
+          </div>
+        )}
 
         <div className="dash">
           {/* LEFT */}
@@ -3302,7 +3421,8 @@ function App(){
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
-            onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); }}} />}
+            onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); },
+            onShare:()=>{ setShowSettings(false); setShowShare(true); track('share_opened', null, user?.id); }}} />}
 
       {showSwaps &&
         <SwapsSheet user={user} shifts={shifts} dayEvents={dayEvents} notes={notes} saveDayShifts={saveDayShifts} differentials={differentials}
@@ -3318,6 +3438,8 @@ function App(){
           onClose={()=>setShowPatterns(false)} />}
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
+
+      {showShare && <ShareSheet userId={user?.id} onClose={()=>setShowShare(false)} />}
 
       {showFeedback && <FeedbackSheet user={user} onClose={()=>setShowFeedback(false)} />}
 
@@ -4335,7 +4457,7 @@ function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
-    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onImportICS,
+    exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
@@ -4356,7 +4478,13 @@ function Settings(props){
       <div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose}>{Ic.x}</button></div>
 
-        <div className="sec-lab">YOUR PAY</div>
+        {/* First row on purpose: word of mouth on a unit is the only distribution this app has,
+            and the mobile top bar has no room left for a fifth icon (it measures exactly to the
+            viewport already). Labelled beats a glyph here anyway. */}
+        <div className="sec-lab">SHARE</div>
+        <button className="btn btn-soft" style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:9}} onClick={onShare}>{Ic.share}<span>Show a QR code or send a link</span></button>
+
+        <div className="sec-lab" style={{marginTop:18}}>YOUR PAY</div>
         <label className="field"><span className="lab">Your name</span><div className="inp"><input value={name==='there'?'':name} placeholder="Name" onChange={e=>setName(e.target.value||'there')}/></div></label>
         <label className="field"><span className="lab">Base hourly rate</span><div className="inp pre"><span className="pfx">$</span><NumInput value={baseRate} onCommit={setBaseRate} min={0} ariaLabel="Base hourly rate"/></div></label>
 
@@ -5288,10 +5416,52 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
 }
 
 /* ============== ONBOARDING ============== */
+/* Show-and-scan sharing. The QR is the point: it works between two people who don't have each
+   other's numbers, which on a unit of travellers and float staff is most of them. The link path
+   mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
+   into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
+function ShareSheet({onClose, userId}){
+  const blurb = 'BadgeBudget — see what a shift is really worth before you pick it up.';
+  const sendLink = async ()=>{
+    if(navigator.share){
+      try{
+        await navigator.share({title:'BadgeBudget', text:blurb, url:SHARE_LINK_URL});
+        track('share_sent', {via:'share'}, userId);
+        return;
+      }catch(e){
+        if(e && e.name==='AbortError') return;   // backed out of the share sheet — not a failure
+      }
+    }
+    copyText(blurb + '\n' + SHARE_LINK_URL, 'Link copied!');
+    track('share_sent', {via:'copy'}, userId);
+  };
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="grab"></div>
+        <div className="sheet-h">
+          <div className="t">Share BadgeBudget</div>
+          <button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button>
+        </div>
+        <div style={{fontSize:14,lineHeight:1.55,color:'var(--muted)'}}>Hold this up and let them scan it with their camera. Nothing to install, no numbers to swap.</div>
+        <div className="qr-card">
+          <svg className="qr" viewBox="0 0 29 29" shapeRendering="crispEdges" role="img" aria-label={'QR code linking to ' + SHARE_QR_URL}>
+            <path fill="#fff" d="M0 0h29v29H0z"/>
+            <path fill="none" stroke="#16181F" strokeWidth="1" d={SHARE_QR_PATH}/>
+          </svg>
+          <div className="qr-url">badgebudget.com</div>
+        </div>
+        <button className="btn btn-primary" onClick={sendLink}>Send a link instead</button>
+        <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>copyText(SHARE_LINK_URL,'Link copied!')}>Copy link</button>
+      </div>
+    </div>
+  );
+}
+
 function Onboarding(props){
   const {obStep,setObStep,name,setName,baseRate,setBaseRate,num,differentials,setDiff,
     federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet}=props;
+    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet,onSignIn}=props;
 
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
@@ -5310,10 +5480,14 @@ function Onboarding(props){
         <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
       </div>
       <div className="spacer"></div>
-      <label className="btn btn-primary" style={{marginBottom:6,position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
-      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginBottom:12,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
-      <button className="btn btn-ghost" onClick={()=>setObStep(1)}>Set it up myself</button>
-      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:14,fontWeight:500}}>Takes about 2 minutes</div>
+      {/* One hourly rate is enough for a believable number, so that is the road. The paystub
+          scan is a side door: it had produced exactly ONE successful import in two months as the
+          primary CTA, because getting a PDF out of Workday on a phone is a three-app errand. */}
+      <button className="btn btn-primary" onClick={()=>setObStep(1)}>Get my estimate</button>
+      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:10,marginBottom:14,fontWeight:500}}>One number to start · about 20 seconds</div>
+      <label className="btn btn-ghost" style={{position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub instead'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginTop:8,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
+      <button type="button" className="ob-footlink" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
     </div>
   );
 
@@ -5328,16 +5502,21 @@ function Onboarding(props){
   if(obStep===1) return (
     <div className="ob">
       <Head step={1}/>
-      <div className="eyebrow">STEP 1 OF 4 · YOUR PAY</div>
+      <div className="eyebrow">YOUR PAY</div>
       <div className="q">What's your base hourly rate?</div>
-      <div className="help">The rate before any differentials or bonuses. On your paystub it's usually listed as "Pay Rate." <b>The amount below is just an example — enter your own rate.</b></div>
+      <div className="help">The rate before any differentials or bonuses — on your paystub it's usually listed as "Pay Rate." Close is good enough to start; a paystub sharpens it later. <b>The amount below is just an example — enter your own rate.</b></div>
       <div className="inp pre" style={{marginTop:28}}>
         <span className="pfx" style={{fontSize:22}}>$</span>
         <NumInput value={baseRate} onCommit={setBaseRate} min={0} ariaLabel="Base hourly rate" style={{fontSize:32,fontWeight:700,padding:'18px 14px 18px 34px',fontFamily:"'Bricolage Grotesque'"}}/>
         <span className="sfx">/ hr</span>
       </div>
       <div className="spacer"></div>
-      <button className="btn btn-primary" onClick={()=>setObStep(2)}>Continue</button>
+      {/* Straight to a real number. Differentials and taxes still matter, but asking for them
+          before she has seen anything is what the funnel died on — every one of them has a
+          usable default, and the planner says plainly that this is an estimate. */}
+      <button className="btn btn-primary" onClick={()=>finish('rough')}>See my estimate</button>
+      <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>setObStep(2)}>Add my differentials &amp; taxes now</button>
+      <button type="button" className="ob-footlink" onClick={()=>finish('sample')}>Don't have your rate handy? <b>Show me an example</b></button>
     </div>
   );
 
@@ -5345,7 +5524,7 @@ function Onboarding(props){
   if(obStep===2) return (
     <div className="ob">
       <Head step={2}/>
-      <div className="eyebrow">STEP 2 OF 4 · DIFFERENTIALS</div>
+      <div className="eyebrow">OPTIONAL · DIFFERENTIALS</div>
       <div className="q">How does your pay change by shift?</div>
       <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>

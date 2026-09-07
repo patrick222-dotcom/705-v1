@@ -30,6 +30,17 @@ _(empty — promote from the candidate lists below with judgment)_
   2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
   zero differential rows.
 
+### P2
+- [ ] **Top bar overflows the viewport by 42px on a 320px phone** (`harness:drivable`; found
+  2026-09-07 while measuring a share-button placement, confirmed PRE-EXISTING — base branch and the
+  share PR both measure `scrollWidth` 362 on Playwright's iPhone SE profile, so nothing regressed).
+  `.top-actions` and `.avatar` run to x=361 and the page scrolls sideways. iPhone 13 (390px) is
+  exactly clean at 390 with zero slack, which is why no fifth top-bar control fits. On mobile
+  `.topnav` is `display:none`, so the gear is the only Settings entry and can't be dropped; the
+  likely fix is hiding `.avatar` under 380px, or tightening `.topbar` gap/padding at that
+  breakpoint. Verify with a base-parity measurement on both device profiles, not an absolute
+  assertion.
+
 ### P3
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
   2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
@@ -263,6 +274,73 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-07 — **Onboarding ends at the first screen: base-rate-first + a zero-input sample.**
+  Dedicated session, owner-directed (funnel Q&A: "base rate should be top of mind even if it's not
+  perfect", and yes to a zero-input path). The wizard demanded a completed tax profile before showing
+  anything; four non-family iPhones opened the app more than once and none finished it. Now welcome's
+  primary CTA is **"Get my estimate"** and the paystub scan is a secondary "Scan a paystub instead"
+  (as the primary it had produced exactly ONE successful import in two months — getting a PDF out of
+  Workday on a phone is a three-app errand). The base-rate step's CTA is **"See my estimate"**, which
+  completes setup at `estimateMode:'rough'`; differentials and taxes survive as an opt-in "Add my
+  differentials & taxes now", and the eyebrows read `YOUR PAY` / `OPTIONAL · …` instead of
+  `STEP n OF 4`. A **"Show me an example"** footlink finishes at `estimateMode:'sample'`, seeding six
+  12h shifts across the current fortnight — an empty planner projects $0, so a sample showing nothing
+  would be worthless. Seeded shifts carry `patternId:SAMPLE_PATTERN_ID` (`'__sample__'`) so "Clear the
+  sample" removes exactly those and nothing she logged herself, the same contract patterns already
+  use. Both shortened paths raise a persistent amber `.est-banner` naming whose numbers these are
+  ("Rough estimate … for a two-week pay period, here's roughly what it looks like" / "These are
+  example numbers"); the app's whole promise is that the figure isn't a surprise, so an unqualified
+  estimate is the one lie it can't tell. Dismiss sets `estimateMode:''` and sticks across reloads.
+  New blob key `estimateMode`, **whitelisted** in `sanitizeData` to `'rough'|'sample'` — an object,
+  array or unknown string all land on `''`, i.e. no banner rather than a wrong one (Invariant 3
+  permits a sanitizer branch for a new data shape with a unit test; five are included). Also renamed
+  `.ob-signin` → `.ob-footlink`: the sample opt-out reuses that footer style, and a class named for
+  sign-in doing double duty was a lie waiting to confuse someone. Gate: **51/51** new estimate suite,
+  plus **28/28** onboarding and **23/23** share still green — including that the nurse's own shifts
+  survive a clear on a day holding both hers and a seeded one, that the full 4-step path still works
+  and raises no banner, and four wage-math probes. SRI 5, wage-core and boot hardening untouched.
+  Event roster 35 → 38, and `setup_completed` now carries `{mode:'full'|'rough'|'sample'}` — which
+  path people actually take is finally measurable. `harness:drivable`.
+- 2026-09-07 — **Share sheet: a scannable QR + a shareable link, and arrival tagging.** Dedicated
+  session, owner-directed: word of mouth on a unit is the app's only distribution, and nurses there
+  are transient enough that they often don't have each other's numbers — so the primary share is a
+  QR the other person scans straight off the sharer's screen. No typing, no numbers exchanged, no
+  install. Settings → **SHARE** (first row, above YOUR PAY) opens a sheet with the code on a solid
+  white plate, `badgebudget.com` printed under it, "Send a link instead" (`navigator.share` → the
+  real iOS sheet into Messages, AbortError treated as a deliberate cancel) and "Copy link", both
+  mirroring `shareInvite()` exactly. The QR is **authored, not generated**: `SHARE_URL` is a
+  constant, so 1.3KB of inline `<path>` beats vendoring an encoder — and a 6th CDN script would mean
+  a 6th SRI hash (Invariant 2). Regenerate with `npx qrcode@1.5.4 -t svg -e M -m 0 '<url>'` if
+  `SHARE_URL` ever changes; the constant and the path must never drift. Arrival tagging: module-scope
+  `ARRIVED_VIA` reads `?via=` once (before any `replaceState`), whitelisted `^[a-z]{1,12}$`, and
+  rides on `app_open` — so "did grassroots work" is finally measurable. QR encodes `?via=qr`, the
+  link hands out `?via=link`. **Placement note:** first built as a top-bar icon and reverted — it
+  pushed the iPhone-13 bar 21px past the viewport (the base bar measures exactly 390/390, zero
+  slack). Settings is where it landed; a labelled row beats a fifth mystery glyph anyway. Gate:
+  23/23 share suite + the 27/27 onboarding suite still green. The QR was verified by **decoding the
+  rendered pixels** with jsQR — it resolves to `https://badgebudget.com/?via=qr`, not merely "an SVG
+  appeared". Layout asserted as base-parity on iPhone 13 *and* iPhone SE (the SE's 42px overflow is
+  pre-existing — new P2 above). SRI 5, wage-core and boot hardening untouched. Event roster 33 → 35
+  (`share_opened`, `share_sent`). `harness:drivable`.
+- 2026-09-07 — **Sign-in is reachable before setup (returning-user dead end).** Dedicated session,
+  triggered by an owner question ("is anyone using the app besides me and Courtney?" — answer: no; 3
+  accounts, all owner + wife). Funnel dig found four non-family iPhones that fired `app_open` more
+  than once and never completed setup, and one *structural* cause: `AuthModal` renders at the bottom
+  of `App`, past the `if(!setupComplete)` early return, so a signed-out returner (cleared Safari
+  data, new phone, second device, invite link opened on a work iPad) had **no reachable sign-in at
+  all** — the only way back to their own data was to re-run the whole 4-step wizard and land in an
+  empty planner primed with the $65.15 default, which reads as "the app lost my shifts". Fix: an
+  `.ob-signin` "Already have an account? **Sign in**" button on welcome (obStep 0, under "Takes about
+  2 minutes"), plus `{showAuth && <AuthModal/>}` rendered inside the onboarding branch. Signing in
+  hydrates the cloud blob → `applyData` sets `setupComplete` → the returner lands in their planner; a
+  brand-new signup has no row, so `applyData` never runs and they correctly stay in onboarding.
+  Sign-up is now reachable pre-setup too (AuthModal's own "No account? Sign up"). One affordance
+  only — inner steps stay clean, and every step back-navigates to 0. Gate: 27/27 in the iPhone-13
+  harness (boot happy, AuthModal opens/closes without skipping setup, back-nav, no horizontal
+  overflow, 47px tap target, hang-getsession, block-babel error screen, dev-build console clean, four
+  wage-math probes). SRI 5, wage-core and boot hardening untouched. `harness:drivable`.
+  **Not yet fixed (see Queue):** zero instrumentation between `app_open` and `setup_completed` — five
+  onboarding screens, no events — so which step actually kills the funnel is still unmeasured.
 - 2026-09-07 — **Swap board: helper line on the first-run "Join with a code" card.** Nightly build
   (P3, source:persona/Swap-savvy-Sam, corroborated by the 2026-08-11 "how do I use a pin someone gives
   me?" feedback). The "Join another board" card (shown once you already have a group) carried
