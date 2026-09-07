@@ -1368,6 +1368,31 @@ function track(name, props, userId){
        never carry wage figures;
      · stacks are not sent — src + line already names the site, and the watchdog screen's
        "Copy error log" still hands a user the full stack for a bug report. */
+/* An event fired immediately before a full-page navigation can't rely on its insert leaving
+   the browser — the fetch races the unload, so `sign_in_attempted` sent inline before the Google
+   OAuth redirect would undercount by an unknown amount, which is worse than not measuring at all.
+   Stash it synchronously in localStorage instead and flush on the next load, the same shape the
+   offline feedback queue already uses. Someone who closes the tab outright is still lost; someone
+   who completes sign-in, or bails at the consent screen and comes back, is counted. */
+const EVENT_PENDING_KEY = 'scrubpay_events_pending', EVENT_PENDING_CAP = 10;
+function trackDeferred(name, props){
+  try{
+    let pend = JSON.parse(localStorage.getItem(EVENT_PENDING_KEY) || '[]');
+    if(!Array.isArray(pend)) pend = [];
+    pend.push({ name: String(name).slice(0,64), props: props || null, t: Date.now() });
+    localStorage.setItem(EVENT_PENDING_KEY, JSON.stringify(pend.slice(-EVENT_PENDING_CAP)));
+  }catch(_){ /* quota / disabled storage — a missing metric must never break sign-in */ }
+}
+function flushDeferredEvents(userId){
+  let pend;
+  try{
+    pend = JSON.parse(localStorage.getItem(EVENT_PENDING_KEY) || '[]');
+    localStorage.removeItem(EVENT_PENDING_KEY);   // clear first: a failed send drops the batch
+  }catch(_){ return; }
+  if(!Array.isArray(pend)) return;
+  pend.forEach(e=>{ if(e && e.name) track(e.name, e.props, userId); });
+}
+
 const ERR_FLUSH_CAP = 8;
 function redactMoney(v){
   return String(v==null?'':v)
@@ -2840,7 +2865,7 @@ function App(){
   };
 
   /* analytics: one event per app load, plus last load's captured errors */
-  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); flushClientErrors(null); },[]);
+  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); flushClientErrors(null); flushDeferredEvents(null); },[]);
 
   const exportData = ()=>{
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});
@@ -4434,6 +4459,7 @@ function AuthModal({mode:initialMode,onClose}){
     try{
       // Call the method ON the client — detaching it (const action = supabase.auth.signUp)
       // loses `this` and throws TypeError in the strict-mode UMD bundle, hanging the button forever.
+      track('sign_in_attempted', {method: mode==='signup' ? 'email_signup' : 'email'}, null);
       const {error:err} = mode==='signup'
         ? await supabase.auth.signUp({email,password})
         : await supabase.auth.signInWithPassword({email,password});
@@ -4453,6 +4479,8 @@ function AuthModal({mode:initialMode,onClose}){
     if(!supabase){ setError('Cloud sync is unavailable right now — your data is still saved on this device.'); return; }
     setLoading(true);
     setError('');
+    // Deferred, not inline: signInWithOAuth navigates away and would race a plain track().
+    trackDeferred('sign_in_attempted', {method:'google'});
     const {error:err} = await supabase.auth.signInWithOAuth({
       provider:'google',
       // origin alone drops the /705-v1/ path on GitHub Pages — keep the full page URL

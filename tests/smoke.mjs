@@ -116,6 +116,26 @@ const run = async () => {
     ok('errors: __takeErrorLog reads the buffer', drained.took === 1);
     ok('errors: and clears it, so a failed send never resends', drained.leftBehind === null && drained.second === 0);
 
+    /* Deferred events exist because the Google redirect races a plain track(). The queue must
+       survive being written, and drain exactly once. */
+    const deferred = await page.evaluate(() => {
+      localStorage.removeItem('scrubpay_events_pending');
+      trackDeferred('sign_in_attempted', { method: 'google' });
+      const stored = JSON.parse(localStorage.getItem('scrubpay_events_pending') || '[]');
+      const sent = [];
+      const orig = window.track;
+      window.track = (n, p) => { sent.push([n, p]); };
+      flushDeferredEvents(null);
+      window.track = orig;
+      return { stored, sent, leftBehind: localStorage.getItem('scrubpay_events_pending') };
+    });
+    ok('deferred: sign_in_attempted is stored synchronously',
+      deferred.stored.length === 1 && deferred.stored[0].name === 'sign_in_attempted'
+      && deferred.stored[0].props.method === 'google', JSON.stringify(deferred.stored));
+    ok('deferred: queue drains on the next load and clears',
+      deferred.sent.length === 1 && deferred.sent[0][0] === 'sign_in_attempted'
+      && deferred.leftBehind === null, JSON.stringify(deferred.sent));
+
     const flushed = await page.evaluate(() => {
       localStorage.setItem('scrubpayErrors', JSON.stringify([{ t: 1, msg: 'x', src: 'y', line: 1 }]));
       flushClientErrors(null);
