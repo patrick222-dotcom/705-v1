@@ -51,6 +51,10 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **"Pick up a weekend shift" CTA vs the pattern lab** (design question from owner feedback
+  2026-09-07: "Should the pick up a weekend shift CTA be rolled into the pattern thing") —
+  `harness:unscoped`. A product/design call about whether the pickup prompt and the pattern lab are
+  one surface or two, and where each belongs. Needs the owner's own decision, not a nightly build.
 - [ ] **Siri Shortcut → ops inbox (Path B of the agent gateway)** — owner-directed 2026-09-05, scoped
   in `docs/agent-gateway-scope.md` → *Path B*. A shared iCloud Shortcut POSTs a proposed op (or a
   dictation) with a **write-only, hashed, revocable Siri code** to a public `siri-ingest` Edge Function,
@@ -274,6 +278,22 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-08 — **Swap board: you can now create more than one board.** Nightly build (bug from direct
+  owner feedback 2026-09-07: "I can't create more than one swap board"). Root cause: the "Create your
+  unit's board" card only rendered at `groups.length===0`, so once you belonged to any board there was
+  no way to make another — only join one by code. The backend has **no** per-user group cap (the
+  `swap_groups` INSERT policy is just `with check (auth.uid() = created_by)`; `createSwapGroup` appends
+  to the groups array for any count), so this was purely a missing UI affordance. Added a
+  "+ Create another board" link + inline create card in the same footer as the existing
+  "+ Join another board" link, reusing the already-vetted `doCreateGroup` primitive (opening one link
+  closes the other). No swap RLS, security-definer functions, `poster_key`, or reveal gate touched
+  (Invariant 7). `harness:needs-live-auth` → verified by the swap-UI standard: bundle presence, the
+  new card calls `doCreateGroup` (not a duplicated path), `createMoreOpen` wired, and whole-file
+  compile (seeded boot renders, zero page errors). iPhone-13 gate **79/79** (boot happy +
+  hang-getsession + block-babel, wage-math equality, SRI=5, boot hardening + wage-core untouched).
+  Also refreshed the harness's onboarding-drive selector to the redesigned step-0 CTA ("Get my
+  estimate", was "Set it up myself" — the 2026-09-07 onboarding funnel rework), a stale-test fix, not
+  a product change.
 - 2026-09-07 — **Three project skills, and an ops dashboard that separates crawlers from nurses.**
   Dedicated session, owner-directed (follow-on to the instrumentation work earlier the same day).
 
