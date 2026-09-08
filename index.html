@@ -4695,6 +4695,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   const [joinCode,setJoinCode] = useState('');
   const [joining,setJoining] = useState(false);
   const [joinMoreOpen,setJoinMoreOpen] = useState(false);   // reveal the "join another board" input once you already have a board
+  const [createMoreOpen,setCreateMoreOpen] = useState(false); // reveal the "create another board" input once you already have a board
   /* Code delivered by a ?join= invite link, held until the recipient confirms. Mirrored into
      local state (not read straight off the prop) so "Not now" can dismiss the screen without
      the parent having to re-render the sheet. */
@@ -5422,12 +5423,30 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
               ))}
             </React.Fragment>}
 
-            {/* Join ANOTHER board once you already have one — the create/join cards above only show
-                at zero groups, so without this a colleague's invite code has nowhere to be entered
-                (direct user feedback 2026-08-11: "how do I use a pin someone gives me?"). */}
-            <div style={{marginTop:22,paddingTop:16,borderTop:'1px solid var(--line)'}}>
+            {/* Create OR join ANOTHER board once you already have one — the create/join cards above
+                only show at zero groups, so without these a second board can't be made and a
+                colleague's invite code has nowhere to be entered (direct user feedback: 2026-08-11
+                "how do I use a pin someone gives me?"; 2026-09-07 "I can't create more than one swap
+                board"). The backend has no per-user group cap — this is purely the missing affordance. */}
+            <div style={{marginTop:22,paddingTop:16,borderTop:'1px solid var(--line)',display:'flex',flexDirection:'column',gap:2}}>
+              {!createMoreOpen &&
+                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setCreateMoreOpen(true); setJoinMoreOpen(false); }}>
+                  + Create another board
+                </button>}
+              {createMoreOpen &&
+                <div className="card">
+                  <h3>Create another board</h3>
+                  <div className="inp" style={{marginBottom:10}}>
+                    <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Days" aria-label="Board name"
+                      onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}/>
+                  </div>
+                  <div style={{display:'flex',gap:10}}>
+                    <button className="btn btn-primary btn-sm" style={{minHeight:44}} disabled={creating} onClick={doCreateGroup}>{creating?'Creating…':'Create board'}</button>
+                    <button className="btn btn-ghost btn-sm" style={{minHeight:44}} disabled={creating} onClick={()=>{ setCreateMoreOpen(false); setCreateName(''); }}>Cancel</button>
+                  </div>
+                </div>}
               {!joinMoreOpen &&
-                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>setJoinMoreOpen(true)}>
+                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setJoinMoreOpen(true); setCreateMoreOpen(false); }}>
                   + Join another board with a code
                 </button>}
               {joinMoreOpen &&
