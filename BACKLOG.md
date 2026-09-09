@@ -31,15 +31,9 @@ _(empty — promote from the candidate lists below with judgment)_
   zero differential rows.
 
 ### P2
-- [ ] **Top bar overflows the viewport by 42px on a 320px phone** (`harness:drivable`; found
-  2026-09-07 while measuring a share-button placement, confirmed PRE-EXISTING — base branch and the
-  share PR both measure `scrollWidth` 362 on Playwright's iPhone SE profile, so nothing regressed).
-  `.top-actions` and `.avatar` run to x=361 and the page scrolls sideways. iPhone 13 (390px) is
-  exactly clean at 390 with zero slack, which is why no fifth top-bar control fits. On mobile
-  `.topnav` is `display:none`, so the gear is the only Settings entry and can't be dropped; the
-  likely fix is hiding `.avatar` under 380px, or tightening `.topbar` gap/padding at that
-  breakpoint. Verify with a base-parity measurement on both device profiles, not an absolute
-  assertion.
+- [x] ~~**Top bar overflows the viewport by 42px on a 320px phone**~~ — SHIPPED 2026-09-09 (see Done
+  log). At ≤360px the decorative `.avatar` is hidden and `.topbar` padding tightened; iPhone SE no
+  longer scrolls sideways (layout back to 320px), iPhone 13 unchanged.
 
 ### P3
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
@@ -278,6 +272,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-09 — **Top bar no longer scrolls small phones sideways.** Nightly build (P2, `harness:drivable`,
+  found 2026-09-07). The top bar is a fixed-width row (brand + icon buttons ≈ 362px); on a 320px phone
+  (iPhone SE) it overflowed and *stretched the layout viewport* to 362px, so the whole page scrolled
+  sideways. Fix: at `≤360px` hide the decorative `.avatar` (the sign-out/gear buttons already convey
+  identity + Settings on mobile, where `.topnav` is `display:none`) and tighten `.topbar` horizontal
+  padding 18→12px. CSS-only — no wage-core, JS, or markup change. Verified with a **base-parity
+  measurement** on both device profiles (not an absolute px assertion): iPhone SE `window.innerWidth`
+  drops from the stretched 362 back to the true 320 with the bar fitting and no sideways scroll;
+  iPhone 13 (390px) is untouched — avatar still shown, no new overflow. iPhone-13 gate **85/85** plus
+  the two new iPhone-SE/13 measurements; `check_build.mjs` all 8 mechanical checks green (JSX parses,
+  SRI=5, publish set exact); boot hardening + wage-core untouched.
 - 2026-09-08 — **Swap board: you can now create more than one board.** Nightly build (bug from direct
   owner feedback 2026-09-07: "I can't create more than one swap board"). Root cause: the "Create your
   unit's board" card only rendered at `groups.length===0`, so once you belonged to any board there was

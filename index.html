@@ -414,6 +414,14 @@
     .hero .num{font-size:60px}
   }
   @media (max-width:919px){ .desk-only{display:none!important} }
+  /* Very small phones (≤360px, e.g. iPhone SE): the fixed-width top bar (~362px of brand +
+     icon buttons) overflows the viewport and scrolls the page sideways. The avatar is decorative
+     on mobile — the sign-out/gear buttons already convey identity + Settings — so drop it here and
+     tighten the bar padding. 375px+ (iPhone mini/12/13 and up) already fits, so it is untouched. */
+  @media (max-width:360px){
+    .topbar{padding-left:12px;padding-right:12px}
+    .top-actions .avatar{display:none}
+  }
 
   /* Solid-fill fallback for browsers without backdrop-filter support — every glass
      surface above gets an opaque-enough background so nothing washes out. */
