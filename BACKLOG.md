@@ -75,6 +75,14 @@ _(empty — promote from the candidate lists below with judgment)_
   tool list and gates parity; (5) dogfood. **Owner decisions pending** (see the doc): build step yes/no,
   rehearsal project, agent swap-board writes, custom auth domain, create `main`. First session = step 1
   only; not a nightly item — it changes the build.
+- [ ] **Docker home server (owner's personal infra track — NOT app work)** — concept logged
+  2026-09-09 in `docs/home-server.md`. Filed here only because it is the eventual host for
+  owner-only tooling and a candidate rehearsal environment for the agent gateway's step 1. **Gated
+  on Anthropic closing the mobile custom-MCP gap** — a self-hosted MCP endpoint is unreachable from
+  the phone until then, so there is nothing to build yet. Interim context layer stays the Google
+  Drive brain folder. Also records why Rust is wrong for `index.html` and for the gateway Edge
+  Function, and right for the home box. Nothing here is BadgeBudget work; the nightly must never
+  pull it.
 
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
