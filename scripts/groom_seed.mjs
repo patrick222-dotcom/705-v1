@@ -107,10 +107,7 @@ export function analyze(seed, knownText) {
 // 'seed' predates the source-prefixed names, so it still renders as reddit-seed; anything already
 // carrying a reddit- prefix is used as-is (previously 'reddit-live' rendered as 'reddit-reddit-live').
 export function sourceTag(source) {
-  // CI RULESET PROBE — DO NOT MERGE. Deliberate regression: the already-prefixed guard is
-  // removed, so 'reddit-owner' becomes 'reddit-reddit-owner'. test_groom_seed.mjs catches this
-  // in 3 assertions, which turns the required `gate` check red on purpose. See the PR body.
-  return 'reddit-' + source;
+  return String(source).startsWith('reddit-') ? String(source) : 'reddit-' + source;
 }
 
 function backlogLine(r) {
