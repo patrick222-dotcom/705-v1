@@ -39,9 +39,9 @@ _(empty — promote from the candidate lists below with judgment)_
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
   2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
   "Enter the 6-character code a colleague shared with you." line the "Join another board" card has.
-- [ ] **Pre-reveal anonymity reassurance** (source:persona/Swap-savvy-Sam; `harness:needs-live-auth`;
-  `index.html` ~4129-4130, above "SUGGESTED FOR YOU") — one muted line "Names stay hidden until
-  everyone accepts." above the suggestion cards. Verify by the swap-UI standard (`docs/swap-board.md`).
+- [x] ~~**Pre-reveal anonymity reassurance**~~ — SHIPPED 2026-09-10 (see Done log). A muted
+  "Names stay hidden until everyone accepts." line now sits under the SUGGESTED FOR YOU header,
+  above the swap suggestion cards.
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
@@ -272,6 +272,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-10 — **Swap board: pre-reveal anonymity reassurance.** Nightly build (P3,
+  source:persona/Swap-savvy-Sam). Before you propose a swap you might hesitate, not knowing whether
+  acting on a suggestion exposes who you are. Added a muted line — *"Names stay hidden until everyone
+  accepts."* — directly under the SUGGESTED FOR YOU header, above the suggestion cards, restating the
+  anonymity guarantee at the moment of the decision. Pure static copy, mirroring the existing
+  post-reveal disclosure wording; no swap RLS, security-definer functions, `poster_key`, or reveal
+  gate touched (Invariant 7). `harness:needs-live-auth` → verified by the swap-UI standard: bundle
+  presence + placement (line sits between the SUGGESTED FOR YOU header and the suggestions map) +
+  whole-file compile. Ran the in-git gates: `tests/smoke.mjs` **29/29** (boot renders, zero non-network
+  page errors, wage-math probes, both failure modes) and `scripts/check_build.mjs` all 8 mechanical
+  checks (JSX parses, SRI=5, publish set exact). Boot hardening + wage-core untouched.
 - 2026-09-09 — **Top bar no longer scrolls small phones sideways.** Nightly build (P2, `harness:drivable`,
   found 2026-09-07). The top bar is a fixed-width row (brand + icon buttons ≈ 362px); on a 320px phone
   (iPhone SE) it overflowed and *stretched the layout viewport* to 362px, so the whole page scrolled
