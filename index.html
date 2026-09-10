@@ -5375,6 +5375,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
 
               {suggestions.length>0 && <div style={{marginBottom:18}}>
                 <div className="sec-lab">SUGGESTED FOR YOU</div>
+                <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginTop:-4,marginBottom:10}}>Names stay hidden until everyone accepts.</div>
                 {suggestions.map(s=>{
                   const describeLeg = post => `${fmtDateShort(post.shift_date)} · ${giveMetaLine(post.shift_meta, differentials)}`;
                   const busy = proposingKey===s.key;
