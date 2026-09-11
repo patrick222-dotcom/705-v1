@@ -45,6 +45,28 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Ops dashboard — nightly auto-refresh** (owner approved in principle 2026-09-10: "Oh that's a
+  good idea!"). Each nightly run would regenerate the snapshot (`dashboard_snapshot.sql` →
+  `dashboard_snapshot.mjs`) and republish the **BadgeBudget Ops** artifact so it stays current without
+  being asked. **Artifact URL (recorded here because it lived nowhere in the repo):**
+  `https://claude.ai/code/artifact/1dc2d599-258e-4cd9-bf0c-8cc1f0ae3f0e` (owned by this session's
+  account; declares `db`+`downloads` capabilities — carry them forward on every republish). Mechanics
+  proven manually 2026-09-10 (V2) and 2026-09-11 (V3): swap the `<script id="snapdata">` JSON in the
+  artifact's authored HTML (everything from `<title>` on — line 1 is the publish-injected skeleton,
+  drop it) and republish to the same URL. **Not a standard nightly build** (it changes the loop, not
+  the app, and touches no `index.html`), and the owner flagged one step to greenlight — so hold until
+  they say "wire it in."
+- [ ] **Ops dashboard — user segmentation (insiders / Courtney / friends / public)** — owner asked
+  2026-09-11 to separate their + Courtney's own activity from real end users (and from Courtney's
+  friends). **BLOCKED on owner input:** which signed-in account is the owner vs Courtney, and how to
+  define "friends" (members of Courtney's swap group? arrivals via her `?join=`/`?via=` invite link?
+  an explicit email list?). Plan once answered: add a `segment` classification to
+  `dashboard_snapshot.sql` (a small `user_id` allowlist for insiders; swap-group-membership or
+  invite-arrival as the friend proxy; everyone else `public`) and a cohort toggle + "Exclude us"
+  button in the dashboard, layered on the existing mobile/crawler split. Honest limit: a purely
+  anonymous visitor who never signs in and didn't arrive via a known invite can't be bucketed — no
+  privacy-clean identifier separates a friend from a stranger (IP is not collected, by design, and is
+  unreliable anyway). Not IP-based; recognition stays `anon_id` (per-device) + `user_id` (identified).
 - [ ] **"Pick up a weekend shift" CTA vs the pattern lab** (design question from owner feedback
   2026-09-07: "Should the pick up a weekend shift CTA be rolled into the pattern thing") —
   `harness:unscoped`. A product/design call about whether the pickup prompt and the pattern lab are
@@ -272,6 +294,24 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-11 — **No app ship — queue genuinely drained, app verified clean; dashboard refreshed +
+  follow-ups recorded.** GROOM: no new feedback (still 6); events healthy (app_open 289, shift_saved
+  59, swap_invite_opened 12). The `## Queue` was fully cleared (paystub, top-bar, join-helper,
+  pre-reveal all shipped 09-06…09-10). The loudest remaining Reddit-seed drivable candidate —
+  "Confusion about when OT kicks in and how it interacts with differentials" — is **already covered**:
+  the OT×differential explainer shipped 2026-08-13 (Add-Shift shows "1.5× is applied to your
+  differential rate…" when OT is toggled), and the only uncovered slice ("when OT kicks in", daily vs
+  weekly thresholds) is employer-specific and wage-core/design-gated, not a nightly item. That's the
+  known groom dedupe defect resurfacing it. The other drivable candidates are either too vague to
+  scope in a single run (they map to shift-logging, which already exists) or need wage-core/design
+  work — not a gate-safe nightly copy change. Rather than force a duplicative or unsafe change, ran the `harness` dev-build console
+  diagnostic against DEVELOPMENT React across onboarding, add-shift (OT + custom bonus), period nav,
+  breakdown, pattern lab, settings and swaps: **clean — 0 unexpected console messages** (only the
+  expected Babel + sandbox-network notices). So no safe app item to ship tonight. Instead: refreshed
+  the **BadgeBudget Ops** artifact to V3 with tonight's snapshot (186 devices, 78 mobile, 501 events,
+  swap matches still 0 / dense units 0), and recorded two owner-facing dashboard follow-ups above
+  (nightly auto-refresh — approved in principle, awaiting go-ahead; user segmentation — blocked on
+  owner input). No `index.html` change, no deploy.
 - 2026-09-10 — **Swap board: pre-reveal anonymity reassurance.** Nightly build (P3,
   source:persona/Swap-savvy-Sam). Before you propose a swap you might hesitate, not knowing whether
   acting on a suggestion exposes who you are. Added a muted line — *"Names stay hidden until everyone
