@@ -57,28 +57,17 @@ _(empty — promote from the candidate lists below with judgment)_
   affordance would give a direct path even when the correlation engine finds nothing. Feature-sized
   and `harness:needs-live-auth` (touches the `propose_swap` flow + the anonymity/reveal gate — verify
   by the swap-UI standard, never weaken RLS/`poster_key`), so a dedicated session, not a nightly.
-- [ ] **Ops dashboard — nightly auto-refresh** (owner approved in principle 2026-09-10: "Oh that's a
-  good idea!"). Each nightly run would regenerate the snapshot (`dashboard_snapshot.sql` →
-  `dashboard_snapshot.mjs`) and republish the **BadgeBudget Ops** artifact so it stays current without
-  being asked. **Artifact URL (recorded here because it lived nowhere in the repo):**
-  `https://claude.ai/code/artifact/1dc2d599-258e-4cd9-bf0c-8cc1f0ae3f0e` (owned by this session's
-  account; declares `db`+`downloads` capabilities — carry them forward on every republish). Mechanics
-  proven manually 2026-09-10 (V2) and 2026-09-11 (V3): swap the `<script id="snapdata">` JSON in the
-  artifact's authored HTML (everything from `<title>` on — line 1 is the publish-injected skeleton,
-  drop it) and republish to the same URL. **Not a standard nightly build** (it changes the loop, not
-  the app, and touches no `index.html`), and the owner flagged one step to greenlight — so hold until
-  they say "wire it in."
-- [ ] **Ops dashboard — user segmentation (insiders / Courtney / friends / public)** — owner asked
-  2026-09-11 to separate their + Courtney's own activity from real end users (and from Courtney's
-  friends). **BLOCKED on owner input:** which signed-in account is the owner vs Courtney, and how to
-  define "friends" (members of Courtney's swap group? arrivals via her `?join=`/`?via=` invite link?
-  an explicit email list?). Plan once answered: add a `segment` classification to
-  `dashboard_snapshot.sql` (a small `user_id` allowlist for insiders; swap-group-membership or
-  invite-arrival as the friend proxy; everyone else `public`) and a cohort toggle + "Exclude us"
-  button in the dashboard, layered on the existing mobile/crawler split. Honest limit: a purely
-  anonymous visitor who never signs in and didn't arrive via a known invite can't be bucketed — no
-  privacy-clean identifier separates a friend from a stranger (IP is not collected, by design, and is
-  unreliable anyway). Not IP-based; recognition stays `anon_id` (per-device) + `user_id` (identified).
+- [x] ~~**Ops dashboard — nightly auto-refresh**~~ — WIRED 2026-09-12 (owner green-lit "Yes, wire it
+  in"). CLAUDE.md → Ops dashboard now instructs each nightly to regenerate + republish the artifact
+  after GROOM, with the URL and the snapdata-swap mechanics recorded there. Dashboard upkeep, separate
+  from the one app build item.
+- [x] ~~**Ops dashboard — user segmentation (insiders / public)**~~ — SHIPPED 2026-09-12 (see Done
+  log). `dashboard_snapshot.sql` now tags each device `insider` (owner `patrickguthrie222@` +
+  `pghawkins222@`, Courtney `bagwellc0387@`, matched by anon_id) or `public`, and adds an
+  **`anon_funnel`** block — activation over public, mobile devices only, builders excluded — which is
+  exactly the "where do anonymous visitors abandon as Courtney shares links" view the owner wanted.
+  Rendered as a new dashboard card. (Owner deferred a separate "friends" tier for now — the ask was
+  really insiders-out + a clean anonymous funnel, which this delivers.)
 - [ ] **"Pick up a weekend shift" CTA vs the pattern lab** (design question from owner feedback
   2026-09-07: "Should the pick up a weekend shift CTA be rolled into the pattern thing") —
   `harness:unscoped`. A product/design call about whether the pickup prompt and the pattern lab are
@@ -306,6 +295,24 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-12 (owner-directed, interactive) — **Ops dashboard: insider segmentation + anonymous funnel,
+  and nightly auto-refresh wired.** Owner asked to separate their + Courtney's own testing from real
+  visitors and, specifically, to see where anonymous visitors who arrive but don't register abandon —
+  as Courtney starts sharing invite links. Resolved the three builder accounts to user_ids
+  (`patrickguthrie222@`=d3d3…, `pghawkins222@`=4b2c… owner; `bagwellc0387@`=e96e… Courtney) and added
+  to `dashboard_snapshot.sql`: an `insider`/`public` **`segment`** per device (an anon_id ever seen
+  signed in as a builder is insider — catches their anonymous sessions too), `totals.insiders`, a
+  per-day `public_mobile_devices`, and an **`anon_funnel`** block — the activation funnel over public,
+  mobile devices only (builders excluded): Opened → Left welcome → Finished setup → Saved a shift →
+  Registered. First read is stark: **78 anonymous mobile arrivals, only 3 past the welcome screen**
+  (~96% bounce at first paint; the welcome stage reads `ob_step`, live since 2026-09-07, so it
+  undercounts earlier visitors). Rendered as a new "Anonymous visitors" dashboard card (bars + table
+  twin, insiders-excluded note), JS syntax-checked, republished (artifact V4). Auto-refresh: owner
+  green-lit, so CLAUDE.md → Ops dashboard now instructs each nightly to regenerate + republish after
+  GROOM, with the URL + snapdata-swap mechanics recorded. A "friends" sub-tier was considered but the
+  owner's real need was insiders-out + a clean anonymous funnel, which this covers. **Next build the
+  owner chose: break-deduction tracker — a wage-core feature, so it goes through the wage-core protocol
+  in a dedicated pass, with a model decision put to the owner first.** No `index.html` change.
 - 2026-09-12 — **No app ship — safe queue genuinely exhausted; scoped the swap zero-proposal funnel
   instead.** GROOM: one new feedback, and it's *positive* — owner delighted the iCal re-sync prompted
   to confirm removing two shifts they'd deleted from Google Calendar ("I had no idea that would

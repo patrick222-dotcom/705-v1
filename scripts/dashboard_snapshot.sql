@@ -17,8 +17,31 @@
 --   'desktop' — non-mobile but actually interacted. Small, real, worth watching.
 -- The dashboard's cohort filter reads this field. It is a heuristic, not a truth:
 -- a nurse on a laptop who bounces looks identical to a crawler. Named, not hidden.
+--
+-- WHY THE INSIDER SPLIT MATTERS (added 2026-09-12, owner request). The builders test the
+-- live app constantly, so their own opens/setups/shifts inflate the numbers — exactly the
+-- traffic you want to exclude to see how real visitors behave as Courtney shares invite
+-- links. `segment` tags each device 'insider' or 'public':
+--   'insider' — the device's anon_id has ever been seen signed in as one of the builder
+--               accounts below (owner: patrickguthrie222@ = d3d3…, pghawkins222@ = 4b2c…;
+--               Courtney: bagwellc0387@ = e96e…). Catches their anonymous sessions too,
+--               since the anon_id persists across sign-in on the same browser.
+--   'public' — everyone else. The real audience.
+-- `anon_funnel` (below) is the payoff: the activation funnel over PUBLIC, MOBILE devices
+-- only — where genuine anonymous visitors abandon, with the builders taken out. NOTE: the
+-- 'Left the welcome screen' stage reads ob_step, which only began firing 2026-09-07, so it
+-- undercounts anonymous visitors who advanced before then; trust it going forward.
 
-with ua as (
+with insiders(uid) as (values
+  ('d3d33371-dbf9-45e2-93f6-a212d859497f'::uuid),   -- patrickguthrie222@gmail.com (owner)
+  ('4b2cd4d1-8c81-4b25-aaad-fad2260acb76'::uuid),   -- pghawkins222@gmail.com (owner)
+  ('e96ea234-dffa-42f8-af99-ce4b04675fa5'::uuid)    -- bagwellc0387@gmail.com (Courtney)
+),
+insider_anon as (
+  select distinct anon_id from public.events
+  where user_id in (select uid from insiders) and anon_id is not null
+),
+ua as (
   select anon_id,
          bool_or(user_agent ilike '%iphone%' or user_agent ilike '%ipad%' or user_agent ilike '%android%') as is_mobile,
          bool_or(name <> 'app_open') as engaged
@@ -26,10 +49,11 @@ with ua as (
 ),
 dev as (
   select anon_id,
-         case when is_mobile then 'mobile' when engaged then 'desktop' else 'crawler' end as cohort
+         case when is_mobile then 'mobile' when engaged then 'desktop' else 'crawler' end as cohort,
+         case when anon_id in (select anon_id from insider_anon) then 'insider' else 'public' end as segment
   from ua
 ),
-ev as (select e.*, d.cohort from public.events e left join dev d using (anon_id)),
+ev as (select e.*, d.cohort, d.segment from public.events e left join dev d using (anon_id)),
 opens as (
   select anon_id, cohort, count(*) n, min(created_at) t0, max(created_at) t1
   from ev where name='app_open' group by anon_id, cohort
@@ -50,6 +74,7 @@ select json_build_object(
       'mobile',         (select count(*) from dev where cohort='mobile'),
       'desktop',        (select count(*) from dev where cohort='desktop'),
       'crawler',        (select count(*) from dev where cohort='crawler'),
+      'insiders',       (select count(*) from dev where segment='insider'),
       'events',         (select count(*) from public.events),
       'events_7d',      (select count(*) from public.events where created_at > now()-interval '7 days'),
       'feedback',       (select count(*) from public.feedback),
@@ -66,6 +91,16 @@ select json_build_object(
                    and (name=s.ev_name or (s.ord=2 and name='setup_completed'))))
       order by ord) from stages s),
 
+  -- ANONYMOUS FUNNEL: activation over PUBLIC (builders excluded), MOBILE devices only —
+  -- where genuine anonymous visitors abandon as invite links go out. The last stage,
+  -- 'Signed in', is the eventual registration rate of that anonymous cohort.
+  'anon_funnel', (select json_agg(json_build_object(
+      'ord', ord, 'stage', stage,
+      'devices', (select count(distinct anon_id) from ev
+                    where cohort='mobile' and segment='public'
+                      and (name=s.ev_name or (s.ord=2 and name='setup_completed'))))
+      order by ord) from stages s),
+
   'returned', (select json_build_object(
       'all_multi',      (select count(*) from opens where n>1),
       'mobile_multi',   (select count(*) from opens where n>1 and cohort='mobile'),
@@ -78,6 +113,7 @@ select json_build_object(
              count(distinct anon_id) filter (where name='app_open') devices,
              count(distinct anon_id) filter (where name='app_open' and cohort='mobile') mobile_devices,
              count(distinct anon_id) filter (where name='app_open' and cohort='crawler') crawler_devices,
+             count(distinct anon_id) filter (where name='app_open' and segment='public' and cohort='mobile') public_mobile_devices,
              count(*) filter (where name='shift_saved') shifts,
              count(*) filter (where name='setup_completed') setups,
              count(*) filter (where name like 'swap%') swaps,
