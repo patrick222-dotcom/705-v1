@@ -45,6 +45,24 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Break-deduction tracker (wage-core)** — owner's chosen next build (2026-09-12), but the
+  **pay model is not settled and must be confirmed with a working nurse (Courtney) before any code**,
+  because a wrong assumption here silently mis-states take-home (Invariant 3). The real-world shape,
+  per the owner: a shift carries a *required ~30-min unpaid meal period*, and a missed meal is
+  *supposed to be paid* — so "a 12-hour shift could technically be 12.5 hours." Today the app treats
+  entered hours as fully paid, so it likely **over-states** take-home for the normal (meal-taken)
+  case. **Confirm with Courtney first (these decide the model):** (1) Is a "12-hour shift" clocked
+  12.0h (7a–7p, paid 11.5 after a 30-min meal) or 12.5h (7a–7:30p, paid 12.0)? (2) Is the unpaid meal
+  always 30 min, or 30/60 depending on length? (3) When the meal is missed, is the recovered time paid
+  at base or at the shift's differential/OT rate? (4) Is the reduction applied automatically
+  regardless of clock-out, i.e. do they routinely file a reclaim form to recover it? **Candidate
+  models (owner leaned toward per-shift):** (A) per-shift "unpaid meal" field (0/30/60, defaults 0 so
+  existing shifts are unchanged; paid = hours − meal; a "missed → pay it" toggle zeroes it and is the
+  reclaim record); (B) a global default reduction + per-shift got-it/missed-it override (accurate but
+  re-prices all history — the differential-delete reprice risk); (C) wage-neutral "missed meal" record
+  + a running "reclaim ~$X" tally, no pay-math change (safest, but leaves the normal-case
+  over-estimate). Build via the full wage-core protocol (baseline probes → new assertion → byte-
+  identical deployed-equality across OT/PTO/deductions) — `.claude/skills/wage-core`.
 - [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
