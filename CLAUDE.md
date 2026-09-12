@@ -254,9 +254,26 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
 `scripts/dashboard_snapshot.sql` returns the whole operational picture as one JSON blob;
 `scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html` (the database
 can only say which events *have* fired — "never fired" is the interesting half and lives in the
-source). Paste the result into the dashboard artifact to refresh it; it stores snapshots so a trend
-accumulates. Nothing is queried live, because `events` is insert-only for `anon` — the property that
+source). Nothing is queried live, because `events` is insert-only for `anon` — the property that
 keeps analytics unreadable to everyone else.
+
+**The dashboard artifact:** `https://claude.ai/code/artifact/1dc2d599-258e-4cd9-bf0c-8cc1f0ae3f0e`
+(owned by the nightly session's account; declares `db`+`downloads` capabilities — carry them forward
+on every republish). It embeds the snapshot inline in a `<script id="snapdata">` block; to refresh
+it, regenerate the snapshot, swap that block in the artifact's authored HTML (everything from
+`<title>` on — the publish wrapper re-adds the `<!doctype>…<body>` skeleton, so don't include it) and
+republish to the same URL. The in-page "paste JSON → Load snapshot" box is a per-viewer preview only;
+it does not change what others see.
+
+**Nightly auto-refresh (owner-approved 2026-09-12).** Each nightly run, after GROOM, regenerate the
+snapshot (`dashboard_snapshot.sql` → `dashboard_snapshot.mjs`) and republish the artifact above so it
+stays current without being asked. This is dashboard upkeep, separate from the one app build item.
+
+**Insider vs public.** `segment` tags each device `insider` (builders — owner `patrickguthrie222@` +
+`pghawkins222@`, Courtney `bagwellc0387@`; matched by any anon_id ever seen signed in as one of them)
+or `public`. The **`anon_funnel`** block is the payoff: activation over public, mobile devices only —
+where genuine anonymous visitors abandon as invite links go out, builders excluded (its welcome-screen
+stage reads `ob_step`, live only since 2026-09-07, so it undercounts earlier visitors).
 
 **The crawler split is the load-bearing part.** badgebudget.com was registered 2026-09-02 and
 immediately drew crawler traffic: of 135 devices, **83 are non-mobile and never fired anything but
