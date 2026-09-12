@@ -45,6 +45,18 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
+  2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
+  event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
+  is 2 members, so the client-side suggestion engine (which correlates posts by `poster_key` into
+  pickup/handoff/trade/3-cycle) has no correlating pairs to suggest; this is a growth problem, not a
+  code bug, and no code change manufactures matches in a 2-person group. **(2) A real code gap:** an
+  open post that isn't yours (`index.html` ~5414, the `openPosts.map`) renders with **no action
+  button** — you can `Withdraw` your own, but a colleague's "wants a shift / giving up" post is inert,
+  so the *only* path to a swap is the auto-suggester firing. A "Respond / propose against this post"
+  affordance would give a direct path even when the correlation engine finds nothing. Feature-sized
+  and `harness:needs-live-auth` (touches the `propose_swap` flow + the anonymity/reveal gate — verify
+  by the swap-UI standard, never weaken RLS/`poster_key`), so a dedicated session, not a nightly.
 - [ ] **Ops dashboard — nightly auto-refresh** (owner approved in principle 2026-09-10: "Oh that's a
   good idea!"). Each nightly run would regenerate the snapshot (`dashboard_snapshot.sql` →
   `dashboard_snapshot.mjs`) and republish the **BadgeBudget Ops** artifact so it stays current without
@@ -294,6 +306,21 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-12 — **No app ship — safe queue genuinely exhausted; scoped the swap zero-proposal funnel
+  instead.** GROOM: one new feedback, and it's *positive* — owner delighted the iCal re-sync prompted
+  to confirm removing two shifts they'd deleted from Google Calendar ("I had no idea that would
+  work!"), validating the #57 auto-sync removal path. Events healthy (app_open 296). The `## Queue`
+  stays fully cleared and the persona-driven copy seam is exhausted: every persona complaint is
+  already served (OT×differential explainer, take-home hero + Keep-% chip, new-grad jargon +
+  FICA/differential glosses, Settings-TAXES estimates cue, swap join-code helper, pre-reveal
+  anonymity line) — the same conclusion the 2026-08-31 groom reached. The remaining Reddit-seed
+  drivables are covered (OT), vague (schedule-change → shift-logging exists), or wage-core/design
+  (break-deductions, self-scheduling). Rather than force a redundant gloss, looked at the loudest
+  *data* signal: 5 swap posts but 0 proposals, `dense_units=0`. Determined it's (1) a critical-mass
+  problem (2-person groups → the suggestion engine has nothing to correlate) and (2) a real code gap
+  (a non-mine open post has no "respond" action) — both scoped above as a dedicated-session item, not
+  a gate-safe nightly. No `index.html` change, no deploy. Next real gains need owner input (dashboard
+  segmentation; weekend-CTA design) or a dedicated session (swap responder, break-deductions).
 - 2026-09-11 — **No app ship — queue genuinely drained, app verified clean; dashboard refreshed +
   follow-ups recorded.** GROOM: no new feedback (still 6); events healthy (app_open 289, shift_saved
   59, swap_invite_opened 12). The `## Queue` was fully cleared (paystub, top-bar, join-helper,
