@@ -45,24 +45,23 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
-- [ ] **Break-deduction tracker (wage-core)** — owner's chosen next build (2026-09-12), but the
-  **pay model is not settled and must be confirmed with a working nurse (Courtney) before any code**,
-  because a wrong assumption here silently mis-states take-home (Invariant 3). The real-world shape,
-  per the owner: a shift carries a *required ~30-min unpaid meal period*, and a missed meal is
-  *supposed to be paid* — so "a 12-hour shift could technically be 12.5 hours." Today the app treats
-  entered hours as fully paid, so it likely **over-states** take-home for the normal (meal-taken)
-  case. **Confirm with Courtney first (these decide the model):** (1) Is a "12-hour shift" clocked
-  12.0h (7a–7p, paid 11.5 after a 30-min meal) or 12.5h (7a–7:30p, paid 12.0)? (2) Is the unpaid meal
-  always 30 min, or 30/60 depending on length? (3) When the meal is missed, is the recovered time paid
-  at base or at the shift's differential/OT rate? (4) Is the reduction applied automatically
-  regardless of clock-out, i.e. do they routinely file a reclaim form to recover it? **Candidate
-  models (owner leaned toward per-shift):** (A) per-shift "unpaid meal" field (0/30/60, defaults 0 so
-  existing shifts are unchanged; paid = hours − meal; a "missed → pay it" toggle zeroes it and is the
-  reclaim record); (B) a global default reduction + per-shift got-it/missed-it override (accurate but
-  re-prices all history — the differential-delete reprice risk); (C) wage-neutral "missed meal" record
-  + a running "reclaim ~$X" tally, no pay-math change (safest, but leaves the normal-case
-  over-estimate). Build via the full wage-core protocol (baseline probes → new assertion → byte-
-  identical deployed-equality across OT/PTO/deductions) — `.claude/skills/wage-core`.
+- [ ] **Missed-meal pay tracker (wage-core)** — owner's chosen next build (2026-09-12); pay model now
+  **confirmed by Courtney (nurse) 2026-09-12** (raw answers in the Gmail thread). Build in a dedicated
+  wage-core session. **Settled model — and it REFRAMES the feature as ADDITIVE, not a deduction:** a
+  "12-hour shift" is clocked 12.5h (7a–7:30p) with a 30-min unpaid meal auto-removed, so the nurse is
+  **paid 12.0h in the normal case** — which means the app's current "enter 12 → paid 12" is *already
+  correct* and does NOT over-state the normal shift (the earlier over-estimate worry was wrong). The
+  gap is the *upside*: when the meal is **missed** and reported (a missed-meal form), the 30 min is
+  paid back **at base rate, without differential/OT** — so that shift pays 12.5h, the extra 0.5h at
+  base. The unpaid meal is **always 30 min** regardless of shift length. **Feature:** a per-shift
+  **"Missed my meal (+30 min)" toggle** — defaults off; additive; adds exactly `baseRate × 0.5` on top
+  of the shift's normal pay, at BASE rate even on a night/weekend/OT shift (NOT the differential-
+  inclusive rate); existing shifts unchanged. Plus a reminder it needs the missed-meal form, and
+  optionally a per-period "missed meals: N · ~$X to reclaim" tally. **Wage-core** (changes a displayed
+  dollar figure): protocol = baseline probes → a NEW assertion that a missed-meal shift adds exactly
+  `baseRate/2` at base *even when the shift carries a night/OT rate* → byte-identical deployed-equality
+  across OT/PTO/deductions — `.claude/skills/wage-core`. Sanitizer gets a `missedMeal` boolean branch
+  (strict-boolean coerce, old shifts → false), which is a new-data-shape addition.
 - [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
