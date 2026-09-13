@@ -48,6 +48,24 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Swap board de-emphasis — Courtney's call vs. the just-shipped invite prominence (OWNER DECISION)** —
+  feedback 2026-09-12 16:48 from Courtney (bagwellc0387, the target nurse): *"Take the shift swap option
+  off or at least out of the cue for now. Until we have more users that's just taking up space."* This
+  **tensions with 2026-09-13's shipped change** (swap "Invite your unit" made more prominent). Both can't
+  hold at once: her read is that an empty swap board is clutter; the prominence bet is that a loud invite
+  is how you escape the empty state. **Needs the owner to reconcile — do NOT auto-build (it would reverse
+  an owner-directed change).** Options: (a) keep the invite prominent but hide the swap suggestions/board
+  until a group has ≥2 members with posts (de-clutter the empty state, keep the growth loop); (b) demote
+  the whole swap surface (top-nav + dashboard card) until density exists; (c) leave as shipped.
+  `harness:needs-live-auth` for most variants.
+- [ ] **"Shifts to afford X by DATE" calculator (wage-core-adjacent)** — feature request 2026-09-12 16:04
+  from Courtney: *"I want to go on vacation and I need ___ for the flight. How many shifts do I need to
+  pick up to cover that between now and the time of my vacation."* A reverse goal: given a target $ and a
+  deadline, show how many typical shifts (or which pattern) hit it in time. Overlaps existing savings
+  goals ("% of goal · ≈N shifts") and the pattern-lab reverse view — likely extend a goal with an optional
+  **target date** + "≈N shifts by then · ≈X/week" readout rather than a new surface. **Touches a displayed
+  dollar/shift figure → wage-core sensitivity** (per-shift take-home via `computeNet`/`shiftGross`); build
+  in a dedicated wage-core session under the Invariant 3 protocol, not the nightly. `harness:drivable` once scoped.
 - [ ] **Missed-meal pay tracker (wage-core)** — owner's chosen next build (2026-09-12); pay model now
   **confirmed by Courtney (nurse) 2026-09-12** (raw answers in the Gmail thread). Build in a dedicated
   wage-core session. **Settled model — and it REFRAMES the feature as ADDITIVE, not a deduction:** a
@@ -371,6 +389,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (nightly, groom-only) — **GROOM run: triaged 2 new feedback items; no gate-safe build item
+  (queue dry), nothing shipped to the app.** Read `feedback`/`events` live: 2 new feedback rows in 24h,
+  both from Courtney (target nurse) — (1) de-emphasize the swap board until there are users [**tensions
+  with today's shipped swap-invite prominence → OWNER DECISION**], (2) a "shifts to afford X by DATE"
+  calculator [wage-core-adjacent → dedicated session]. Both filed under Needs-a-dedicated-session; neither
+  is nightly-safe (one reverses an owner-directed change, one touches displayed dollar figures). Queue held
+  no unblocked gate-safe drivable item, so per the loop rules nothing was built — durable-memory groom
+  only. Signal: 4 auth users (1 real signup — Sara, Sep 12), ~60 devices/24h, 2 setups/24h, 9 feedback
+  total. Gate 8/8, groom 33/33.
 - 2026-09-13 (owner-directed, interactive) — **Account menu under the avatar + feedback tiles.** Two
   asks from the owner using the app on a phone, settled as options `A2` and `B2+B4`.
   **(A2) The avatar is the account menu at every width.** It absorbed the top bar's separate gear and
