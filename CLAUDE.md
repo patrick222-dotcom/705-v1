@@ -279,7 +279,9 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
   probes, a new assertion for the changed behaviour, and the equality assertion against the
   *deployed* build. Refuses the nightly loop.
 - **`harness`** — driving the app for real. Rebuild, run, add an assertion, and the rule that every
-  new assertion is negative-tested. Covers the dev-build console diagnostic and what is still missing.
+  new assertion is negative-tested — plus the three ways that check lies (an aborted run is not a
+  failed assertion; a short timeout caps `page.goto` and fakes a clean sweep; patch a copy, never
+  the working tree) and `SMOKE_ONLY` for re-running just the affected sections. Covers the dev-build console diagnostic and what is still missing.
 
 ## Ops dashboard
 

@@ -51,6 +51,26 @@ onboarding — most flows are unreachable otherwise. `newPage()` does this for y
 the assertion fails. An assertion that has only ever passed proves nothing — that was the
 original defect this rig was built to fix.
 
+Three ways that check lies, all hit for real on 2026-09-13 (`docs/history.md`):
+
+- **An aborted run is not a failed assertion.** Breaking something by *deleting* the element the
+  test clicks kills the run on a timeout, which proves only that the test needs the element to
+  exist. Break behaviour, not presence: leave the button and give it a no-op `onClick`. Same for
+  CSS — scope the break to the media query the assertion exercises, or it perturbs earlier steps
+  and aborts before the assertion is reached.
+- **Run the rig once against an unbroken build first.** A short `SMOKE_TIMEOUT` looks like it just
+  makes failures fast, but `page.setDefaultTimeout()` caps `page.goto` too, so every break reports
+  "aborted" — which reads like every break was caught and is really none. If a clean build doesn't
+  pass under the same settings, the run proves nothing.
+- **Patch a copy, never the working tree.** `git archive HEAD | tar -x -C <tmp>` and run there.
+  Patching `index.html` in place leaves the repo dirty for the whole run, so a commit in that
+  window captures a deliberately broken build — and the restore-on-exit you are relying on does
+  not survive a force-kill.
+
+Use `SMOKE_ONLY=3,4` to re-run only the sections a break can affect; it is the difference between
+a break costing seconds and costing ~10 minutes, and therefore between proving every assertion and
+proving the first few.
+
 ## Test failure modes, not just the happy path
 
 The spinner bug was found by capturing `requestfailed`, not by looking at the screen. Every

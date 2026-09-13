@@ -4,6 +4,51 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-13 — account menu, feedback tiles, and three ways a test result can lie
+
+Shipped in #96 (details in `BACKLOG.md` → Done): the avatar became the account menu at every width,
+the feedback sheet grew four scaffolding tiles, and `feedback.kind` landed as migration 003. What
+belongs *here* rather than in the Done log is the methodology, because the meta-goal is a reusable
+review process and this session found three failure modes that produce results which look like proof
+and are not. All three were caught only because the numbers were re-read rather than trusted.
+
+**1. A run that aborts is not an assertion that failed.** The first instinct when negative-testing
+"an outside tap closes the menu" is to delete the backdrop. That makes the test's own click target
+vanish, so the run dies on a timeout. The rig scored it as caught; it proved only that the test
+needs the element to exist, not that the assertion would notice a backdrop that is present and
+inert. Every deletion-shaped break was redone as *present but broken* — backdrop with a no-op
+`onClick`, Settings row wired to `pick(()=>{})`. Same trap in CSS: forcing `.topbar{min-width:600px}`
+globally perturbed earlier steps at 390px and aborted, so the 360px overflow break had to live
+*inside* the `≤360px` media query the assertion actually exercises.
+
+**2. A timeout knob can invalidate every result at once.** `page.setDefaultTimeout()` caps
+`page.goto`, not just element steps. A 4s step budget — chosen to make broken builds fail fast —
+aborted the run on a *clean* build, and 16 breaks all reported "aborted". That reads like 16 catches
+and is really zero. The tell was running the same timeout against an unbroken build; it failed too.
+Navigation now carries its own 30s budget. **Rule: before believing a negative-test run, run the rig
+once against a build with nothing broken and confirm it passes.**
+
+**3. The rig must not patch the working tree.** The first version edited `index.html` in place, so
+the repo was dirty for the whole run and any commit landing in that window would have captured a
+deliberately broken build. It also could not be interrupted cleanly: a `SIGINT` was swallowed inside
+`subprocess.run`, a force-kill skipped the `finally` that restores the file, and recovery was a
+`git checkout` plus re-verifying content markers by hand. The `harness` skill *already said* "break
+the thing on purpose in a scratch copy" — the guidance existed and was not followed. It now patches
+an isolated `git archive HEAD` export, and the skill says why.
+
+The enabling fix was making `tests/smoke.mjs` section-filterable (`SMOKE_ONLY=3,4`). One break went
+from ~10 minutes to seconds, which is the whole difference between 31 assertions individually proven
+and 3 proven with the rest waved through — the first draft of the Done log claimed "all 28
+negative-tested" when the real number was 3, and that line was corrected before the commit, not
+after. **For the council: a lens that reports a score without saying what it ran is reporting a
+badge, not a result.**
+
+Also of note: the deploy branch moved three commits mid-review and #98 put a share icon in the exact
+`.top-actions` block #96 rewrites. They composed (both are new behaviour; the icons the menu replaced
+live inside it), but resolving the conflict meant hand-editing the line #98's behaviour depends on —
+so a new assertion proves the share icon still opens its sheet. A green suite for your own feature
+does not protect the feature you merged past.
+
 ## 2026-09-13 — hStream ruled out for good; positioning is "build it better"
 
 The owner closed the hStream question, which had sat as a conditional "revisit if this becomes a real
