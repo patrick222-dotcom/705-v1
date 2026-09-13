@@ -372,16 +372,28 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   **Gate:** 8/8 mechanical checks (JSX parses; boot hardening, SRI 5/5, wage-core and the storage
   keys all untouched), groom_seed 33/33, smoke **57/57** on an iPhone 13 profile — 29 existing plus
   28 new covering the menu, the SE width, and every tile guard.
-  **Negative testing — partial at commit time, and worth being precise about.** The `feedback_kind`
-  CHECK is fully proven: the live table rejects `'bogus_kind'` with 23514 and inserts nothing. On the
-  UI side a 16-break rig (`scratchpad/negtest.py`) patches one thing at a time and re-runs the suite;
-  **3 of 28 assertions are confirmed so far** — restoring the gear flips both top-bar assertions, and
-  reverting the avatar to a `<div>` flips the menu-trigger assertion. The remaining 13 breaks were
-  still running at ~10 min each (a broken build burns Playwright's 30s timeouts), so the run was
-  stopped rather than block the commit; it restores `index.html` on exit and 13 content markers were
-  re-verified before committing. Finishing it needs the suite to be section-filterable so a break
-  re-runs only the affected section — that is the follow-up, not a nice-to-have: a gate that has only
-  ever passed proves nothing, which is the rule this rig exists to enforce.
+  **Negative testing: 28 breaks, all 28 assertions caught theirs.** The `feedback_kind` CHECK is
+  proven at the database — the live table rejects `'bogus_kind'` with 23514 and inserts nothing — and
+  every one of the 28 new UI assertions was individually confirmed to FAIL against a build broken on
+  purpose for it. Getting there took three methodology fixes worth keeping, because each one produced
+  a result that *looked* like proof and wasn't:
+  (a) **A run that aborts is not an assertion that failed.** Breaking something by deleting the
+  element the test clicks (the outside-tap backdrop, the Settings row) kills the run on a timeout,
+  which only proves the test depends on that element existing. Both were redone as *present but
+  inert* — the backdrop with a no-op `onClick`, the Settings row wired to `pick(()=>{})` — so the
+  assertion itself has to evaluate false. Same trap with the 360px overflow check: forcing
+  `.topbar{min-width:600px}` globally disturbed earlier steps at 390px, so it had to be widened
+  *inside* the `≤360px` media query the assertion actually exercises.
+  (b) **`setDefaultTimeout` caps `page.goto`, not just element steps.** A 4s step budget aborted the
+  run on a *clean* build — 16 breaks all reported "aborted", which reads like 16 catches and is
+  really zero. Navigation now keeps its own 30s budget (see the `tests/smoke.mjs` commit).
+  (c) **The rig must never patch the real working tree.** It used to edit `index.html` in place, so
+  the repo was dirty for the whole run and a commit landing in that window would have captured a
+  deliberately broken build. It now patches an isolated `git archive HEAD` export in the scratchpad;
+  the repo stays clean throughout. (It also survived a force-kill that skipped its `finally`, which
+  is exactly the failure mode that made in-place patching unsafe.)
+  The enabling change — `SMOKE_ONLY` section filtering — is its own commit: it took a break from
+  ~10 minutes to seconds, which is the difference between this being done and being deferred.
   No wage math touched, so Invariant 3 did not apply.
   **Deliberately not done:** A5 (deleting the `≤360px` block outright — only its avatar-hiding half
   was a correctness problem), A3 (dropping 💬 from the bar), B3 (the inline "does this look right?"
