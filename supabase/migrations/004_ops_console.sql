@@ -225,7 +225,10 @@ create index if not exists idx_events_name_created
 create index if not exists idx_feedback_user
   on public.feedback (user_id);
 
--- Verify the gate actually gates, as a non-admin (expect 42501 both times):
---   select public.is_ops_admin();              -- false
---   select * from public.ops_feedback_inbox(); -- ERROR: not authorized
---   select * from public.ops_admins;           -- 0 rows (RLS, no policy)
+-- VERIFY THE GATE BEFORE TRUSTING IT: run `scripts/ops_gate_probe.sql`, one block at a time.
+-- Do NOT just call these functions from the SQL editor and conclude anything: that session is
+-- `postgres`, a superuser, so RLS does not apply and auth.uid() is null — ops_admins returns all
+-- three rows (looks like a leak, isn't) and the RPCs raise 42501 (looks like the gate working,
+-- but it refused a NULL uid, not a user). The probe file assumes a real identity first, covers
+-- the anon role and revocation, and includes the positive control that tells a working gate
+-- apart from one that refuses everybody.

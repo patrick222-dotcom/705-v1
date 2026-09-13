@@ -176,9 +176,14 @@ require re-reading this section and saying why.
 1. **Apply `004_ops_console.sql`** to project `mnnlgcxnvodjwlhhiphq`. Additive — a new table, two
    new functions, one helper, four indexes. It changes no existing policy and touches no existing
    column. Reverting is dropping the functions and the table.
-2. **Verify the gate actually gates**, as a non-admin. The three probes are at the bottom of the
-   migration. A security-definer function whose guard has only ever been tested by someone it lets
-   through has not been tested.
+2. **Verify the gate actually gates** — run `scripts/ops_gate_probe.sql`, one block at a time.
+   A security-definer guard that has only ever been tested by someone it lets through has not been
+   tested; one tested from the SQL editor's default session has not been tested either, because
+   that session is a superuser with a null `auth.uid()` and both of the obvious probes return
+   misleading answers. The file assumes a real identity first (`request.jwt.claims` +
+   `set local role authenticated`, exactly how PostgREST presents a signed-in user), and covers the
+   non-admin, the anon role, revocation, and the positive control — a gate that refuses everybody
+   is broken too, and the negative probes alone cannot tell the two apart.
 3. **Deploy**, then confirm `https://badgebudget.com/ops.html?cb=N` shows the sign-in gate in a
    private window and the inbox when signed in.
 
