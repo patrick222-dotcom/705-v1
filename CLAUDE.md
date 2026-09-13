@@ -32,7 +32,7 @@ hosts an anonymous shift-swap board.
 | `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
 | `.github/workflows/deploy.yml` | the deploy workflow: 5-file publish to GitHub Pages. (`ci.yml` is the PR gate — see Deployment) |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
+| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
@@ -429,10 +429,15 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   https://api.supabase.com/v1/projects/<ref>/…` — `database/query` (POST, SQL), `config/auth`
   (GET/PATCH), `advisors/{security,performance}`, `usage`. Node fetch needs
   `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`.
-- **Advisor state (2026-09-04, unchanged by migration 002).** No ERRORs. 16 WARNs that the 8 swap security-definer functions are
-  executable by `anon`/`authenticated` — expected: those RPCs *are* the anonymity boundary and gate on
-  membership/party checks inside (audited 2026-07-30). Plus "leaked password protection disabled" —
-  HIBP is Pro-only; the API silently ignores it on free.
+- **Advisor state (re-read 2026-09-13, after migration 004).** No ERRORs. 19 security-definer WARNs:
+  8 that the swap RPCs are `anon`-executable, and 11 that they plus the 3 new `ops_*` functions are
+  `authenticated`-executable. Expected in both cases — those RPCs *are* the boundary and gate
+  internally (swap board audited 2026-07-30; the ops functions probed 10/10 on 2026-09-13, see
+  `docs/ops-console-scope.md`). **The ops functions are deliberately absent from the `anon` list**;
+  if one ever appears there, that is a real regression. Plus "leaked password protection disabled" —
+  HIBP is Pro-only; the API silently ignores it on free. One INFO: `ops_admins` has RLS with no
+  policy — **that is the design** (invisible through the API, readable only by `is_ops_admin()` as
+  owner). Don't "fix" it by adding a policy.
 - **Headroom (re-read 2026-09-13).** 4 `user_data` rows, 9 feedback, 689 events, 278 distinct
   `anon_id` devices, 4 `auth.users`; DB far under 500MB. The prior figures in this line (3/4/~270)
   had drifted badly — re-read them, don't trust them. Watch MAU (50k cap)

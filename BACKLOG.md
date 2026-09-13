@@ -420,6 +420,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (dedicated session) — **Migration 004 applied to the live project; the ops gate probed
+  10/10.** Non-admin refused at `is_ops_admin()` (false), at the table (permission denied) and at both
+  RPCs (42501); `anon` refused one step earlier at EXECUTE permission; both owner and Courtney get
+  true and see all 9 rows; revocation flips true→false with no cache and no deploy. **The useful
+  surprise:** probe 3 first failed with *permission denied for table feedback* — as the owner, on the
+  allow-list. That is the design working. Being on the list opens the door, not the table; the
+  function is the only way in. `feedback` and `events` each still carry zero SELECT policies.
+  Advisors: no ERRORs, 19 security-definer WARNs (8 anon = the swap RPCs only, 11 authenticated =
+  those plus the 3 new ops functions), 1 new INFO for `ops_admins` RLS-with-no-policy, which is
+  intentional. Results table in `docs/ops-console-scope.md`.
 - 2026-09-13 (dedicated session, read-only) — **Live figures re-read; CLAUDE.md's were badly stale,
   and one of them was hiding good news.** Actual: 4 `user_data`, **9 feedback** (doc said 4), **689
   events** (doc said ~270), 278 devices (doc said 135), 4 `auth.users`. The important one: **a 4th

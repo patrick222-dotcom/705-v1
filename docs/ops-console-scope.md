@@ -1,7 +1,8 @@
 # The ops console — a live support and monitoring surface
 
-**Status:** phase 1 (the feedback inbox) is built and awaiting a migration apply + deploy. Phases
-2–4 are scoped, not built. **Date:** 2026-09-13.
+**Status:** phase 1 (the feedback inbox) is **built, applied and verified** — migration 004 is live
+on `mnnlgcxnvodjwlhhiphq` and all ten gate probes pass (results below). Phases 2–4 are scoped, not
+built. **Date:** 2026-09-13.
 
 This is the design record for `/ops.html`, a page Patrick and Courtney can open on a phone to see
 what the app's users are actually experiencing — and, later, to answer "what's wrong with *this*
@@ -154,6 +155,40 @@ which `ob_step` it stalled at, its `client_error` rows, first and last seen.
 **Phase 4: triage state.** An inbox becomes a tool when rows can be marked handled. That needs a
 write path and a column, and a write path into `feedback` is a bigger decision than a read one —
 so it is deliberately last.
+
+## The gate, as actually verified (2026-09-13)
+
+Migration 004 applied clean. `scripts/ops_gate_probe.sql` run in full against the live project —
+every block rolled back, nothing written:
+
+| # | Probe | Expected | Result |
+|---|---|---|---|
+| 1a | `is_ops_admin()` as a signed-in non-admin | false | **false** |
+| 1b | `select from ops_admins` as a non-admin | denied or 0 rows | **ERROR: permission denied for table ops_admins** |
+| 1c | `ops_feedback_inbox()` as a non-admin | 42501 | **ERROR 42501: not authorized** |
+| 1d | `ops_feedback_summary()` as a non-admin | 42501 | **ERROR 42501: not authorized** |
+| 2a | `ops_feedback_inbox()` as `anon` | denied at EXECUTE | **ERROR: permission denied for function** |
+| 2b | `ops_feedback_summary()` as `anon` | denied at EXECUTE | **ERROR: permission denied for function** |
+| 3a | `is_ops_admin()` as the owner | true | **true**, 9 of 9 rows visible |
+| 3b | `is_ops_admin()` as Courtney | true | **true**, 9 of 9 rows visible |
+| 3c | declared return columns | the 8 promised, no more | **id, created_at, kind, message, contact, signed_in, segment, device** |
+| 4 | revocation takes effect immediately | true → false | **true → false**, no cache, no deploy |
+
+**The best result was an error I did not plan for.** Probe 3 initially failed with *permission denied
+for table feedback* — as the owner, on the allow-list. That is the design working: an ops admin
+cannot read `feedback` directly at all. The function is the only door, and being on the allow-list
+does not open the table, only the door. Confirmed after the fact: `feedback` and `events` each still
+carry **zero** SELECT policies, and `feedback` still has exactly one policy, the original
+`INSERT: anyone can submit feedback`.
+
+All three functions are `SECURITY DEFINER` with `search_path=""` and are executable by
+`authenticated` and `service_role` only — **not `anon`, and not `public`**.
+
+**Advisor delta.** No ERRORs. The three new functions appear under the *signed-in* security-definer
+WARN (11 now: the 8 swap RPCs plus these three) and — unlike the swap RPCs — under **none** of the 8
+`anon`-executable WARNs. One new INFO: `ops_admins` has RLS enabled with no policy. That is the
+design, not a defect: the table is meant to be invisible through the API and readable only by
+`is_ops_admin()` running as owner. Expect it to stay, and don't "fix" it by adding a policy.
 
 ## Where the line is
 
