@@ -1,0 +1,206 @@
+{
+ "wage-math": {
+  "findings": [
+   {
+    "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so it disagrees with the Breakdown and with Gross − Take-home whenever flat deductions exceed gross",
+    "severity": "medium",
+    "where": "/home/user/705-v1/index.html:3487 (chip reads calc.ded); computeNet 1231-1255 (ded uncapped, pre/post capped for display, flat-dollar custom withholdings never capped); Breakdown 3980-3990 (also not guarded by calc.hours>0 the way the Keep chip is)",
+    "detail": "computeNet returns `ded = pretax+fica+fed+st+posttax+cw` (raw) alongside display-capped `pre`/`post` (and clamps `net` at 0). The hero chip prints `ded`; the Breakdown prints the capped rows. The skill's own invariant says the caps exist 'so Breakdown still sums' — but the hero never received the same treatment, and the flat-dollar half of `cw` is outside the cap too (line 1243 folds dollar and percent withholdings into one number, line 1247 caps only pretax/posttax). Any nurse whose pretax/posttax fields are non-zero — which a paystub scan sets automatically (applyPaystub 3376-3378) — sees this on every pay period that is empty or light.",
+    "failure": "pretax $600 + posttax $25 (typical after a paystub scan), scroll to next pay period with no shifts logged yet: hero reads 'Gross $0 · Taxes & deductions –$625 · $0'. Log one 8h base shift at the default $65.15: hero reads 'Gross $521 · Taxes & deductions –$665 · $0' while 'See the full breakdown' for the same period lists Pre-tax –$481 and FICA –$40, total –$521. Same shape with a flat-dollar custom withholding: $150 'Parking' on an empty period shows 'Other withholdings –$150' under 'Gross $0'. Separately: Pre-tax $300 / Post-tax $50 with no shifts yet shows 'Projected take-home $0 · Gross $0 · Taxes & deductions –$350' while the Breakdown itself shows nothing to subtract.",
+    "fix": "Have computeNet return a display total that is bounded by gross (e.g. `dedDisp = Math.min(ded, gross)` or literally `gross - net`) and print that in the hero chip (or gate the chip with the same `calc.hours>0` guard the Keep chip already has); extend the flat cap to the dollar-typed custom withholdings (track `cwFlat` separately from `cwPct` and apply the same `flatCapTotal` logic) so the Breakdown's 'Other withholdings' row is bounded too. Add a smoke probe: computeNet(0,{pretax:600}).dedDisp === 0 and Breakdown rows sum === gross − net when pretax > gross.",
+    "wageCore": true,
+    "slices": [
+     "wage-core",
+     "money-surfaces"
+    ],
+    "id": "wage-math-00"
+   },
+   {
+    "title": "A blanked or garbage multiplier differential is coerced to 0×, silently pricing every shift of that type at $0",
+    "severity": "medium",
+    "where": "/home/user/705-v1/index.html:1046-1047 (sanitizeData: `amount: isFinite(amt) ? amt : 0` regardless of type); 4715 (Settings multiplier NumInput with min={0}); 4016-4023 (NumInput commits `min` on an empty field); 1121 (hourlyRate: `base * diff.amount`)",
+    "detail": "For a dollar-type differential, 0 is the neutral value. For a multiplier-type differential (Holiday 1.5×, Overtime 1.5×), 0 zeroes the entire hourly rate — `hourlyRate` returns base*0 and shiftGross returns only the per-hour/flat bonus. Two paths produce it: NumInput's blank→min contract commits 0 when the user clears the '×' field and blurs, and sanitizeData maps any non-finite blob value to 0 rather than to 1. Once written, 0 is a finite number so sanitizeData keeps it on every subsequent load; nothing ever repairs it.",
+    "failure": "In Settings, tap the Holiday '1.5 ×' field, select-all/delete to retype, then tap elsewhere before typing (common on a phone). Holiday becomes 0×. Her Christmas 12h shift now shows '~$0' on the calendar and the hero's projected take-home drops by roughly $913 (65.15×1.5×12×0.78) with no warning; the Settings row still reads '0 ×' and looks like a value she chose.",
+    "fix": "In sanitizeData's differential branch, when `type==='multiplier'` coerce non-finite or ≤0 amounts to 1 (not 0). In the Settings row, give multiplier NumInputs `min={0.1}` (or make NumInput's empty-commit revert to the last good value when a `revertOnBlank` prop is set). Add a probe: sanitizeData({differentials:{holiday:{type:'multiplier',amount:''}}}).differentials.holiday.amount === 1 and hourlyRate(50,{type:'multiplier',amount:0}) is never reached from a sanitized blob.",
+    "wageCore": true,
+    "slices": [
+     "wage-core"
+    ],
+    "id": "wage-math-01"
+   },
+   {
+    "title": "Independently rounded chips: Gross − Taxes ≠ Take-home by $1 in ~11% of pay periods; Breakdown rows drift the same way",
+    "severity": "low",
+    "where": "/home/user/705-v1/index.html:3484-3487 (hero: fmt(calc.net), fmt(calc.gross), fmt(calc.ded) each rounded separately); 3982-3987 and 4006 (Breakdown: six rows and the take-home each rounded separately); fmt at 1116",
+    "detail": "`fmt` rounds each figure to whole dollars on its own, so the three hero chips are three independent roundings of gross, ded and gross−ded. Replaying the real shiftGross/computeNet formulas over 220 mixes of base/night 12h shifts at five base rates with default taxes, 24 (11%) print chips whose subtraction is off by one. With six Breakdown rows the residual can reach $3. This is the 'rounding that compounds' the lens asks about — small, but it is the arithmetic a nurse is most likely to check by hand, and the app's credibility rests on the numbers closing.",
+    "failure": "Two 12h base shifts at the default $65.15/hr, default taxes: hero prints 'Gross $1,564 · Taxes & deductions –$346' over a take-home of '$1,217'. 1,564 − 346 = 1,218.",
+    "fix": "Display-only: derive the chip as `Math.round(calc.gross) - Math.round(calc.net)` (and likewise give Breakdown the rounding residual on its largest row, or print cents), so the visible figures always close. No change to net/gross/ded themselves — but it changes displayed dollar text, so run the wage-core equality assertion and name this as the one intended difference.",
+    "wageCore": false,
+    "slices": [
+     "wage-core"
+    ],
+    "id": "wage-math-02"
+   },
+   {
+    "title": "Pattern lab and calendar price a toggled-off differential differently",
+    "severity": "low",
+    "where": "/home/user/705-v1/index.html:1206-1213 (patternCellShiftType resolves a 'night'/weekend cell to 'base' unless differentials[k].active); 2646 (statOf) and 2795 (calc) call shiftGross(baseRate, differentials[s.shiftType], s) with no active check; hourlyRate 1119-1124",
+    "detail": "The Settings toggle dims the row and removes the chip from the Add-Shift sheet (4099), and the lab treats it as 'she doesn't get this differential' — but calc/statOf/yearMonths keep applying the amount to any shift already carrying that shiftType (logged before the toggle, imported from .ics via the questionnaire at 3184, or added by a template/quick-fill). Only the delete path (4691) warns about repricing, which implies toggling off was meant to be display-only; the lab contradicts that. Either semantics is defensible; the two surfaces holding different ones is the defect.",
+    "failure": "Log Mon–Wed 12h nights this period (or .ics-import them), then toggle Night off in Settings. Hero still prices them at $75.15/hr (night amount included, +$360 gross for the period). Open Patterns → 'Mon–Wed nights' preset anchored on the same week: it prices the identical three nights at $65.15/hr and shows a take-home per paycheck ~$280 lower than the hero for the same schedule.",
+    "fix": "Pick one: (a) make hourlyRate/shiftGross treat `diff.active===false` as no differential so the calendar reprices to match the lab and the dimmed row (then the delete warning applies to toggling too, and the Settings hint should say so); or (b) drop the `active()` gate in patternCellShiftType so the lab prices what the calendar prices. (a) touches wage core; (b) does not, but leaves the toggle as pure decluttering. Either way add a probe covering an inactive differential on both paths.",
+    "wageCore": true,
+    "slices": [
+     "wage-core"
+    ],
+    "id": "wage-math-03"
+   },
+   {
+    "title": "Every '~take-home' preview ignores percent custom withholdings that computeNet deducts (and sampleNet re-implements the tax model without them)",
+    "severity": "low",
+    "where": "/home/user/705-v1/index.html:2818-2820 (keepRatio = 1 − (federal+state+FICA)/100 only); computeNet 1243 (percent customWithholdings taken from every marginal dollar); consumers: 4105/4245-4248 (Add-Shift preview, ≈$/hr, goal %), 3919/3933 (calendar cells), 3434/3512 (weekend-night nudge), 4747 (Settings goal reverse); sampleNet 3416-3424",
+    "detail": "A percent-typed custom withholding is a marginal deduction exactly like state tax, so a preview built from keepRatio overstates the marginal take-home of a shift by that percentage relative to the hero it is meant to foreshadow. sampleNet (onboarding step 4) is a second hand-rolled copy of computeNet that also omits customWithholdings. Exposure is limited: there is no Settings editor for customWithholdings today (only the Breakdown row reads them, and the only writers are applyData via Import JSON and the sanitizer), so they only arrive via Import JSON or a legacy blob — which is why this is low, not medium. The #65 harness deliberately covered percent+dollar withholdings, so the owner treats them as live data. Every consumer of keepRatio is affected identically: the Add-Shift sheet preview and its ≈$/hr line, calendar day amounts, the goal '(≈N shifts)' text and Settings' 'typical 12h shifts' count all overstate take-home by the same percentage relative to the hero/Breakdown.",
+    "failure": "Blob carries customWithholdings:[{name:'401k',amount:6,type:'percent'}]. The Add-Shift preview for a 12h night at $65.15 says 'about +$702 take-home' and '≈$58.50/hr'; saving it moves the hero by $648 (≈$54/hr). Every calendar cell, the goal shift-count, and the 'Pick up a weekend night? about +$X' card overstate by the same 6%.",
+    "fix": "Add the sum of percent-typed customWithholdings amounts to the keepRatio subtraction (one line at 2820: `const cwPct = (customWithholdings||[]).reduce((a,w)=> a + (w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0); const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+cwPct)/100);`) and make sampleNet call computeNet(gross, taxInputs) instead of its own copy. Both change displayed dollars on multiple surfaces, so run the equality assertion with a percent withholding seeded (and with none, expecting byte-identical output) and name the intended difference.",
+    "wageCore": false,
+    "slices": [
+     "wage-core",
+     "money-surfaces",
+     "add-shift"
+    ],
+    "id": "wage-math-04"
+   },
+   {
+    "title": "Year view prints gross as a bare '$' figure while the month cells it opens into print estimated take-home",
+    "severity": "low",
+    "where": "/home/user/705-v1/index.html:3970-3971 (YearList: fmt(mm.g), no qualifier); 2769-2780 (yearMonths sums shiftGross + PTO gross); 3933 and 3580 (month cells print '~'+fmt(t.g*keepRatio) under the disclaimer 'Day amounts are estimated take-home')",
+    "detail": "The month view carries a disclaimer that day amounts are take-home; the Year list has no equivalent and shows gross with the same `$` formatting. Tapping a year row drops the user into that month, so the two figures are seen back to back for the same days.",
+    "failure": "Year view shows 'September · 72 hrs · $5,327 · 6 shifts'. Tap it: the six day cells inside read ~$702, ~$702, ~$702, ~$716, ~$716, ~$609 — about $4,147 total, 22% less than the row she just tapped, with nothing on either screen explaining that one is gross and the other is take-home. (With six 12h nights at $75.15/hr the same gap shows as $5,411 vs ~$4,212.)",
+    "fix": "Display-only: either label the year row ('$5,327 gross') or print `'~'+fmt(mm.g*keepRatio)` to match the cells and reuse the same disclaimer. No math change.",
+    "wageCore": false,
+    "slices": [
+     "wage-core",
+     "money-surfaces"
+    ],
+    "id": "wage-math-05"
+   },
+   {
+    "title": "Paystub import turns a premium-only earnings row into a negative differential",
+    "severity": "medium",
+    "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
+    "detail": "applyPaystub derives each differential as `da = round((s.rate - p.baseRate)*100)/100` and stores it as the dollar amount with no floor and no cross-check against `s.earnings`. The parser's row regex (index.html:3360-3363) captures the HOURS AND EARNINGS 'Rate' column as `s.rate`. On PeopleSoft-style stubs (the very format this parser targets: 'Fed MED/EE', 'Fed OASDI/EE', 'TOTAL GROSS'), a shift-differential earnings code is frequently listed at the premium rate alone (e.g. 'PD Night Diff  4.00  36.00  144.00'), not the base-plus-premium rate. The review sheet renders the same `da` via `+$${da.toFixed(2)}/hr` with no guard, so the user is shown '→ Night  ·  +$-61.15/hr' and the Apply button writes it.",
+    "failure": "Base rate $65.15 read from 'Pay Rate: $65.15 Hourly'; a row 'PD Night 4.00 36.00 144.00' classifies as 'night' and yields da = 4.00 - 65.15 = -61.15. Review sheet shows '+$-61.15/hr'; after Apply, every night shift prices at (65.15 - 61.15) = $4.00/hr, so a 12h night reads '+$48 gross' in the Add-Shift preview and the hero collapses accordingly.",
+    "fix": "In applyPaystub (and the matching line in PaystubReview), treat a row whose rate is below the base rate as a premium-only line: `const da = s.rate < p.baseRate ? s.rate : s.rate - p.baseRate` (optionally confirmed by `Math.abs(s.rate*s.hours - s.earnings) < 1`), and never write a negative amount. Add a harness case with a premium-only row asserting the night amount lands at +4.00.",
+    "wageCore": false,
+    "slices": [
+     "money-surfaces"
+    ],
+    "id": "wage-math-06"
+   },
+   {
+    "title": "'Pick up a weekend night?' card prices a differential the nurse has switched off or deleted",
+    "severity": "low",
+    "where": "index.html:3434 (sampleWeekendNet) and index.html:3512-3516 (whatif card guard)",
+    "detail": "`sampleWeekendNet = round(shiftGross(baseRate, differentials['weekend-eve'], {...}) * keepRatio)` reads the weekend-eve entry regardless of its `active` flag, and the card's only guard is `shiftCount>0 && baseRate>0`. Settings lets the nurse toggle weekend-eve off (`tog(k)`) or delete it entirely (`del(k)`, index.html:4716). The Add-Shift sheet the card's 'Try it' button opens filters to `d.active` types (index.html:4098), so the sheet cannot reproduce the number the card promised.",
+    "failure": "Base $65.15, keepRatio 0.7785, weekend-eve toggled off because her hospital pays no weekend-night premium: card still says 'That's about +$939 take-home'. She taps Try it; the sheet's best available option (Night, +$10) previews '+$702 take-home'. If she deleted weekend-eve instead, the card prices a 'weekend night' at base rate (+$609) while still calling it a weekend night.",
+    "fix": "Gate the card on `differentials['weekend-eve']?.active` (hide it otherwise, or fall back to the highest active night-type differential), and use that same resolved type when opening the sheet.",
+    "wageCore": false,
+    "slices": [
+     "money-surfaces"
+    ],
+    "id": "wage-math-07"
+   },
+   {
+    "title": "Hero hours chip renders the raw float sum, so tenth-hour shifts show '36.900000000000006 hrs'",
+    "severity": "low",
+    "where": "index.html:3489 (`{calc.hours} hrs · {periodShiftCount} shifts`) vs index.html:3496 and index.html:3970 which use toFixed",
+    "detail": "calc.hours is a plain accumulator over `s.hours` (index.html:2795-2802). The hours NumInput (index.html:4226) commits any parseFloat value — `step=\"0.5\"` is only a spinner hint — and Kronos-style timekeeping rounds to tenths, so 12.3h / 8.1h entries are realistic. The stats tile and Year view both format hours with `toFixed(h%1?1:0)`; the hero chip is the one surface that prints the float directly. Verified in Node: 12.3+12.3+12.3 = 36.900000000000006; 8.1+8.2 = 16.299999999999997.",
+    "failure": "Three 12.3h shifts in the period: hero chip reads '36.900000000000006 hrs · 3 shifts' while the stats tile directly beneath reads '36.9'.",
+    "fix": "Use the same formatter as the stats tile: `{calc.hours.toFixed(calc.hours%1?1:0)} hrs`.",
+    "wageCore": false,
+    "slices": [
+     "money-surfaces"
+    ],
+    "id": "wage-math-08"
+   },
+   {
+    "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
+    "severity": "medium",
+    "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
+    "detail": "patternMetrics prices the rotation over lcm(n,14) days and divides by span/14, so for any cycle length that is not 7 or 14 the figure is a mean across several different paychecks. The card and the comparison table both present it as *the* paycheck, with no 'average' or 'ranges from' qualifier, while the calendar hero (calc, index.html:2787-2810) shows each real 14-day period. Ran the real functions: '4 on, 4 off nights' preset, $50 base, default differentials, 12%/5%/FICA standard/$200 pretax: lab shows $3,749 (gross $5,196); after 'Put it on the calendar' the hero shows $4,233, $4,233, $3,265, $3,265 for the next four paychecks. A hand-built 28-day cycle (8 nights in fortnight 1, 4 in fortnight 2 -- a normal self-scheduled month) shows $3,089 in the lab; the hero shows $4,174 then $2,004. For the 28-day case the code comment's rationale ('a cycle that doesn't divide a fortnight') doesn't even apply -- it divides into exactly two paychecks that are simply different.",
+    "failure": "Nurse picks '4 on, 4 off nights' because the lab says $3,749/paycheck (vs $3,089 for Mon-Wed nights), applies it, and the very first paycheck on the calendar reads $4,233; the third reads $3,265. Neither matches the number she chose on, and the app never told her it was an average. Same in the side-by-side table: an 8-day or 28-day rotation is compared against 7/14-day ones as if the figures were the same kind of number.",
+    "fix": "Minimal, label-only (no wage-core touch): when lcm(n,14) > 14, caption the .pl-money card and the side-by-side cell, e.g. 'averaged over N paychecks -- checks will vary' (N = lcm(n,14)/14, computable in PatternLab from m.n). Better: have patternMetrics also return periodNetMin/periodNetMax (net of each 14-day window in the span) and show 'between $X and $Y' -- that variant touches patternMetrics and needs the Invariant 3 protocol.",
+    "wageCore": false,
+    "slices": [
+     "pattern-lab"
+    ],
+    "id": "wage-math-09"
+   },
+   {
+    "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
+    "severity": "medium",
+    "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
+    "detail": "Generic Day/Night brushes resolve to weekend-day / weekend-eve on Sat/Sun (index.html:1205-1211). A cell painted with a template brush ('tpl:<id>', built at index.html:4350-4358 as kind:'fixed') keeps the template's shiftType verbatim, so a 'My nights' template (shiftType 'night') on Saturday is priced at the plain night differential. The hint under the grid reads, for every brush, 'Weekend days pick up your weekend differentials automatically.' Once painted the two cells are identical: cellLabel gives 'Night 12h from 7:00 PM' for both (differentials.night.name === 'Night'), cellColor gives differentials.night.color for both, same glyph. Ran it: Fri/Sat/Sun nights, 7-day cycle, $50 base, defaults -- generic brush: gross $4,632, net $3,324, calendar types weekend-eve/night/weekend-eve; template brush: gross $4,320, net $3,089, calendar types night/night/night. $312 per paycheck, ~$8.1k/yr, from a brush choice the UI says makes no difference. The exact-type semantics match calendar quick-fill (index.html:2922), so the arithmetic is deliberate; the hint and the indistinguishable cells are the defect.",
+    "failure": "Nurse saves her usual 'Night 12h' template, paints Fri-Sun with it because it's the brush with her name on it, reads the hint that weekends pick up her weekend differentials, and the lab under-quotes her rotation by ~$312 per paycheck; after apply, every Sat/Sun shift on the calendar is typed 'night' rather than 'weekend-eve' and the hero agrees with the low number.",
+    "fix": "Either (a) make the hint brush-aware and mark fixed cells (e.g. the ⚡ glyph or the template name in cellLabel) so a template-painted weekend visibly keeps its exact type, or (b) in patternCellShiftType let a fixed cell whose shiftType is 'base' or 'night' go through the same weekend inference as the generic kinds (an explicitly weekend-typed template still keeps its type). (b) changes displayed dollars via patternCellShiftType/planPatternApply, not the listed wage-core functions, but should still get a harness assertion (generic vs template brush on a Saturday).",
+    "wageCore": false,
+    "slices": [
+     "pattern-lab"
+    ],
+    "id": "wage-math-10"
+   },
+   {
+    "title": "Goal line prints \"about 1 years\" when a goal takes 26-27 paychecks",
+    "severity": "low",
+    "where": "index.html:4339 (fmtMonths inside PatternLab)",
+    "detail": "`mo<12 ? ... : \\`about ${Math.round(mo/12*10)/10} years\\`` -- for n=26 paychecks mo is exactly 12, so the branch yields 'about 1 years'; n=27 also rounds to 1. Ran fmtMonths over 1..52: 25 -> 'about 12 months', 26 -> 'about 1 years', 27 -> 'about 1 years', 52 -> 'about 2 years'. Twenty-six paychecks is exactly one year on this app's own 26-per-year model (yearNet = periodNet*26), so a goal sized to a year's take-home hits this case precisely.",
+    "failure": "A nurse with a goal equal to roughly a year of take-home sees 'Emergency fund: 26 paychecks (about 1 years)' under the money card.",
+    "fix": "Special-case the singular: `const y=Math.round(mo/12*10)/10; return \\`about ${y} year${y===1?'':'s'}\\``.",
+    "wageCore": false,
+    "slices": [
+     "pattern-lab"
+    ],
+    "id": "wage-math-11"
+   },
+   {
+    "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
+    "severity": "medium",
+    "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
+    "detail": "AddShiftSheet initialises `shiftType` to the literal 'night' (line 4077) and never reconciles it with the chip list, which is filtered to `d.active` (line 4099). There is no useEffect in the component (checked 4075-4300). `hourlyRate` (1119-1124) does not consult `active`, so `differentials['night']` with `active:false` still adds its amount. The pattern lab does honour the flag — `patternCellShiftType` (1206-1212) prices a night cell as 'base' when Night is inactive — so the two surfaces disagree on the same setup. Settings (4712) and onboarding (5779) both expose the Night switch, so this is one tap away from the default.",
+    "failure": "Base $50, Night switched off in Settings or onboarding. Tap '+ Log a shift': no shift-type chip is highlighted, yet the preview reads '+$720 gross · about +$561 take-home' (60×12 × 0.7785). Tapping 'Add shift' without touching a chip saves a 'night' shift; the ON THIS DAY row reads 'Night ×12h', the hero rises by $720 and the calendar cell shows ~$561. A day shift at her rate is $600 gross / ~$467 take-home, so every quick log is $120 high on a differential she turned off.",
+    "fix": "Initialise from the first active, non-overtime key: `useState(()=>{ const a=Object.entries(differentials).find(([k,d])=>d.active&&k!=='overtime'); return a?a[0]:'base'; })` — or, equivalently, derive `active` first and seed from `active[0]`. Add a harness assertion: toggle Night off, open the sheet, assert a chip is `aria-pressed` and the preview equals base×12×keepRatio. (Whether an inactive differential should keep paying on already-logged shifts in calc/statOf is a separate product call; this fix does not touch that.)",
+    "wageCore": false,
+    "slices": [
+     "add-shift"
+    ],
+    "id": "wage-math-12"
+   },
+   {
+    "title": "≈$/hr take-home is computed from the dollar-rounded net, so identical rates show different cents for different lengths",
+    "severity": "low",
+    "where": "index.html:4105 (previewNet = Math.round(...)) and :4246 (fmt2(previewNet/hours))",
+    "detail": "`previewNet` is rounded to whole dollars at 4105 for the '+$' headline, then reused as the numerator at 4246 and formatted with `fmt2` to two decimals. The rounding error (up to $0.50) is divided by `hours`, giving up to ±$0.04/hr at 12h, ±$0.06 at 8h and ±$0.125 at 4h — presented as exact cents on a line whose stated purpose is 'compare pickups at a glance'.",
+    "failure": "Base $47.30, Night +$10, default taxes (keepRatio 0.7785). 12h: 687.60 gross → 535.30 → rounds to 535 → '$44.58/hr'. 8h: 458.40 → 356.86 → rounds to 357 → '$44.63/hr'. Same hourly rate, two different figures; the true value is $44.61 for both. A nurse choosing between an 8 and a 12 sees a 5-cent/hr edge that does not exist.",
+    "fix": "Keep the rounded value for the headline but divide the unrounded product: `const previewNetExact = previewGross*keepRatio; … fmt2(previewNetExact/hours)`. Same for the goal percentages at 4248 if desired. Sheet-only, no wage-core function touched.",
+    "wageCore": false,
+    "slices": [
+     "add-shift"
+    ],
+    "id": "wage-math-13"
+   },
+   {
+    "title": "Goal with target 0 renders 'Infinity% (≈0 shifts)' in the sheet preview, then vanishes on reload",
+    "severity": "low",
+    "where": "index.html:4248 (previewNet/g.target) and :4686 (updGoalTarget → parseFloat(v)||0)",
+    "detail": "`addGoal` (4683-4684) requires `t>0`, but `updGoalTarget` (4686) accepts whatever NumInput commits, and NumInput (4016-4027) commits `min` (=0, per the goal row at 4757) on an emptied field. The sheet's goal line (4248) is guarded only by `previewNet>0`, not `g.target>0`, so `previewNet/0` → Infinity and `Math.ceil(0/previewNet)` → 0. On the next load `sanitizeData` (goals branch, 1071-1082) drops any goal with target ≤ 0, so the goal silently disappears.",
+    "failure": "Settings → Savings goals → clear the amount field of 'Car' (blur commits 0). Open any day: the preview reads 'toward your goal: Car Infinity% (≈0 shifts)'. Reopen the app later: the 'Car' goal is gone with no message.",
+    "fix": "In the sheet, `goals.filter(g=>g.target>0).slice(0,3)` before mapping (and hide the line if none remain). In Settings, have `updGoalTarget` keep the previous target when `parseFloat(v)` is not > 0, or give that NumInput `min={1}`, so a goal can never be saved into the state that the loader deletes.",
+    "wageCore": false,
+    "slices": [
+     "add-shift"
+    ],
+    "id": "wage-math-14"
+   }
+  ],
+  "merged": 4
+ }
+}

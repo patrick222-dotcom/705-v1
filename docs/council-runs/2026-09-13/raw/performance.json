@@ -1,0 +1,75 @@
+[
+ {
+  "slice": "boot",
+  "findings": [
+   {
+    "title": "Render-blocking boot scripts prevent any paint (even the splash) until 5 cross-origin CDN fetches resolve",
+    "severity": "medium",
+    "where": "index.html:17-21 (script tags), index.html:487 (#splash), index.html:490-592 (boot watchdog)",
+    "detail": "The 5 CDN scripts (React, ReactDOM, Babel standalone, pdf.js, supabase-js) are classic <script src> tags in <head> with no async/defer, spanning 3 third-party origins (unpkg.com x2, cdnjs.cloudflare.com, cdn.jsdelivr.net). Per HTML parsing rules the browser must fetch+execute all 5 sequentially before continuing to parse the rest of <head> (the ~460-line <style> block) and reach <body> — so neither the #splash placeholder nor the boot watchdog script (which starts the 8s timer) can run until all 5 have loaded or errored.",
+    "failure": "On a slow or filtered connection (e.g. locked-down hospital Wi-Fi) where one of these 3rd-party origins stalls, the user sees a fully blank white tab with zero feedback — no spinner, no watchdog message — for as long as that network fetch hangs, because the watchdog's own 8s clock cannot start counting until the parser reaches the boot <script> tag, which requires all 5 earlier blocking scripts to have already resolved.",
+    "fix": "Add a minimal inline watchdog/fallback at the very top of <head>, before the 5 CDN script tags, so a loading/stalled-connection fallback can appear independent of whether those specific network fetches ever complete; alternatively investigate defer + Babel-standalone's DOMContentLoaded auto-transform to unblock initial parsing.",
+    "wageCore": false
+   },
+   {
+    "title": "Settings 'Your name' field lifts every keystroke to top-level App state, forcing full calendar re-render while modal-hidden",
+    "severity": "low",
+    "where": "index.html:4706 (bug) vs index.html:4707 and index.html:4016-4036 (NumInput, the existing fix pattern); mounting evidence index.html:3560-3563, index.html:3630-3631, index.html:3883-3939 (Calendar, not React.memo'd)",
+    "detail": "Settings receives setName as a prop straight from App's own useState (index.html:2203) and the plain <input> at line 4706 calls it inline on every onChange. Because {showSettings && <Settings/>} (index.html:3630-3631) is additive alongside App's main return, the calendar section (a fixed 16-month monthWindow, index.html:2662-2670, each rendering ~30 unmemoized day-cell buttons via Calendar, index.html:3883-3939) stays mounted underneath the modal at all times and fully re-renders on every App re-render. The very next field, 'Base hourly rate' (line 4707), uses NumInput (index.html:4016-4036) which buffers keystrokes in local state and only calls the lifted setter on blur/Enter -- exactly avoiding this problem -- but the 'Your name' field one line above skips that pattern.",
+    "failure": "Typing a name in Settings on an older/lower-end phone causes visible per-character input lag, because React fully reconciles ~450-500 off-screen calendar day cells (each calling statOf, which iterates that day's shift array, index.html:2644-2650) on every keystroke even though the calendar is hidden behind the Settings scrim at that moment. Gets worse as logged shift history grows.",
+    "fix": "Buffer the 'Your name' field locally the same way NumInput already does one line below it (local state, commit onBlur/Enter) instead of calling setName on every keystroke; more broadly, wrap Calendar/MonthSection in React.memo with useCallback-stabilized statOf/onPick/onBoundaryPick so an unrelated App state change doesn't force full calendar reconciliation.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "calendar",
+  "findings": [
+   {
+    "title": "Calendar has zero memoization anywhere, so it fully reconciles on every unrelated Settings keystroke while still mounted behind the overlay",
+    "severity": "medium",
+    "where": "index.html:3883 (Calendar), :3942 (MonthSection), :4706 & :4714 (Settings inputs), :3560-3571 & :3630 (mount structure)",
+    "detail": "Confirmed via `grep -n \"React.memo\\|memo(\"` returning zero hits anywhere in the file — MonthSection/Calendar have no memo boundary at all, matching the CLAUDE.md note but with a concretely bad consequence. `monthWindow` (index.html:2663-2670, MONTH_BEFORE=3/MONTH_AFTER=12) keeps 16 <MonthSection> instances mounted simultaneously (up to ~500-670 `.cell` buttons via the Calendar loop at :3894-3936). The Settings sheet is rendered as a sibling overlay (`{showSettings && <Settings .../>}` at :3630), not a replacement — the calendar JSX above it (:3560-3571) stays mounted and visible underneath the `.scrim`, confirmed by the shared `document.body.style.overflow` effect (:2596-2600) which only toggles a CSS property, never unmounts anything. Two Settings fields write directly to App-level state on every keystroke (not buffered like NumInput, which only commits on blur/Enter): the \"Your name\" field (`onChange={e=>setName(e.target.value||'there')}`, :4706) and the differential rename field (`onChange={e=>upd(k,'name',e.target.value)}` -> `setDiff(...)`, :4714, :4689). Both `name` and `differentials` are declared with `useState` inside `function App(){` (:2189, :2203, :2214), i.e. top of the god component. Because `keyOf`/`statOf`/`onPick` etc. are also freshly created arrow functions on every App render (:2623, :2644) and no child is memoized, every keystroke while renaming a shift differential or editing your display name forces React to re-run the Calendar cell-generation loop for all 16 preloaded months and reconcile every button element's className/aria-label/glyph markup — work that has nothing to do with what's on screen (Settings, not the calendar) and nothing to do with what changed (a differential's label, not any day's shift data).",
+    "failure": "On an older/lower-powered iPhone, typing a full name (say 8-10 keystrokes) or renaming \"Night\" to \"Nights\" in Settings visibly stutters/lags because each character reconciles ~500+ off-screen calendar cells across 16 months; the CLAUDE.md's own aside ('is that still defensible?') is answered no in this concrete path, since the calendar isn't even visible while this happens.",
+    "fix": "Wrap MonthSection (and/or Calendar) in React.memo with useCallback-stabilized keyOf/statOf/onPick, or at minimum unmount/hide the calendar tree while an overlay sheet is open (e.g. gate the `.dash` block on `!showSettings && !sheetDate && ...` the same way the body-scroll-lock effect already tracks those flags) so unrelated modal edits can't touch it.",
+    "wageCore": false
+   },
+   {
+    "title": "monthSecRefs never evicts refs for months that scroll out of the window, leaking detached DOM and corrupting the scroll-follow's nearest-section search",
+    "severity": "low",
+    "where": "index.html:2672 (monthSecRefs), :3568 (secRef callback), :2715-2734 (focusRowDates), :2720 (filter(Boolean))",
+    "detail": "`monthSecRefs.current` (a plain object, :2672) is written only on mount: `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }}` (:3568). React calls a callback ref with `null` on unmount, but the `if(el)` guard means that branch is silently skipped — so when `monthWindow` (:2663) recenters around a new `calFocus` (Year-view month taps at :3559, repeated Today jumps at :2848-2853 from a different month, or scrollFocusToDate's setCalFocus at :2762-2764 when walking many pay periods forward via movePeriod), the months that fall out of the ±3/+12 window unmount their DOM but their entries are never deleted from `monthSecRefs.current`. `focusRowDates()` (:2715-2734), which runs on every scroll-settle in Month view (:2735-2748), reads `Object.values(monthSecRefs.current).filter(Boolean)` (:2720) — `filter(Boolean)` does not remove these, since a detached DOM node reference is still truthy. So the list this function iterates over grows for the lifetime of the session with every distinct month ever visited, not just the 16 currently mounted, and it never shrinks.",
+    "failure": "A nurse who browses several months via Year view over a session accumulates stale detached-DOM references that are retained for the life of the tab (can't be GC'd) and are re-scanned via getBoundingClientRect() on every scroll-settle; in the edge case where the focus line briefly falls outside every live section's rect (scrolling to the very top/bottom of the loaded range), the fallback distance calc (:2724-2726) can pick one of these zero-rect detached sections as \"closest\" (its collapsed (0,0) rect can read as nearer to the focus line than a real, merely-off-screen section), pulling `.cell[data-date]` values from a long-abandoned month and silently snapping the active/highlighted pay period (via setPPS at :2746) to a date the user isn't looking at.",
+    "fix": "Have the ref callback also clear on unmount (`el===null`), e.g. `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; else delete monthSecRefs.current[mo.key]; }}`, or rebuild `monthSecRefs.current` from `monthWindow`'s current key set whenever it changes.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "pattern-lab",
+  "findings": []
+ },
+ {
+  "slice": "data-sync",
+  "findings": [
+   {
+    "title": "Scrolling the calendar past a pay-period boundary fires a real Supabase write",
+    "severity": "medium",
+    "where": "index.html:2735-2748 (onMonthScroll -> setPPS), 2291-2295 (serializeState includes payPeriodStart), 2453-2487 (debounced save effect, payPeriodStart is a dependency at line 2487, and the body at 2459-2479 saves unconditionally once hydrated with no check that anything besides the view state changed)",
+    "detail": "payPeriodStart is part of the persisted blob (serializeState) and is a dependency of the 500ms-debounced cloud-save effect. onMonthScroll (a scroll-settle handler on the month view) calls setPPS(ps) whenever the scroll-follow logic decides the visible row belongs to a different pay period (line 2746: `if(ps && ps!==payPeriodStart) setPPS(ps)`). That state change alone re-triggers the save effect, and the effect has no content-equality guard against what was last written (unlike the 15s poll's own normalize() check at 2550/2560) - it only checks blob size and hydration status before calling saveToSupabase. So a signed-in user who just scrolls the month calendar to look at a future/past period, with no edits at all, produces a real network upsert to user_data roughly once per period boundary crossed (throttled only by the 500ms debounce and the 180ms scroll-settle timer).",
+    "failure": "A nurse casually scrolling through several months on her phone (checking a coworker's request, planning ahead) causes a burst of Supabase writes and a flashing 'Syncing...' indicator (line 3442) purely from browsing, once per pay-period boundary she scrolls past - wasted battery/data and free-tier write volume for a pure read/navigation action, and it also bumps updated_at, which can make a second signed-in device's 15s poll believe a real edit just landed when only the view moved.",
+    "fix": "Either drop payPeriodStart from the debounced-save trigger (persist the viewed period separately, e.g. only on pagehide/sign-out, or fold it into an existing save rather than scheduling a new one), or apply the same normalize()-style content-equality check the poll already uses (comparing serialized data with payPeriodStart zeroed out) before calling saveToSupabase, so a save that would be byte-identical is skipped.",
+    "wageCore": false
+   },
+   {
+    "title": "The cloud-sync 'syncing' flag forces two full unmemoized re-renders of the entire mounted calendar (~490 day cells) on every save",
+    "severity": "medium",
+    "where": "index.html:2234 (syncing state), 2470/2473 (setSyncing toggled by every debounced save), 2510/2513 (retrySync does the same), 2662-2670 (monthWindow mounts MONTH_BEFORE+MONTH_AFTER+1 = 16 months simultaneously, no windowing), 2644-2650 (statOf/ptoStatOf recomputed per cell), 3883-3939 (Calendar renders one cell per day calling statOf), 3941-3960 (MonthSection, not memoized) - confirmed zero React.memo/memo( usages anywhere in the file via grep",
+    "detail": "App is one component with no memo boundary anywhere on the calendar path. Every setState in App - including setSyncing(true) then setSyncing(false), which fires on every single debounced cloud save (itself triggerable by pure scrolling per the first finding) - re-renders the whole App return tree. Because the continuous month view mounts all 16 MonthSections at once (no virtualization, by design per the doc), each of the two syncing toggles forces a fresh statOf()/shiftGross() pass and a fresh React diff over roughly 16 months x ~30 days = ~490 <button class=\"cell\"> elements, even though nothing about shifts/dayEvents/differentials actually changed - only an unrelated boolean driving a 12px 'Syncing...' label (line 3442).",
+    "failure": "Right after any shift edit is saved (or after merely scrolling across a pay-period boundary, per the first finding), the app does 2-3 full recomputations of ~490 day cells' stats plus a DOM diff of that many nodes in quick succession. On an older/slower iPhone this is a plausible, avoidable stutter immediately after saving or while scrolling, perceived as the calendar 'catching up' for no visible reason.",
+    "fix": "Move syncing/syncError into a small isolated component (or context) that renders only the status label, so toggling it doesn't re-render Calendar/MonthSection at all - or wrap Calendar and MonthSection in React.memo with stabilized props (useCallback for statOf/keyOf/onPick, memoized differentials/shifts references) so a sync-status-only render bails out before reaching the calendar cells. Note: statOf/ptoStatOf are named Invariant-3 wage-core functions, so changing how/where they're invoked (even just wrapping the reference in useCallback) should go through the wage-core protocol even though the tax/pay arithmetic itself would not change.",
+    "wageCore": true
+   }
+  ]
+ }
+]

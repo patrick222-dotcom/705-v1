@@ -1,0 +1,13 @@
+{
+ "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
+ "severity": "medium",
+ "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
+ "detail": "patternMetrics prices the rotation over lcm(n,14) days and divides by span/14, so for any cycle length that is not 7 or 14 the figure is a mean across several different paychecks. The card and the comparison table both present it as *the* paycheck, with no 'average' or 'ranges from' qualifier, while the calendar hero (calc, index.html:2787-2810) shows each real 14-day period. Ran the real functions: '4 on, 4 off nights' preset, $50 base, default differentials, 12%/5%/FICA standard/$200 pretax: lab shows $3,749 (gross $5,196); after 'Put it on the calendar' the hero shows $4,233, $4,233, $3,265, $3,265 for the next four paychecks. A hand-built 28-day cycle (8 nights in fortnight 1, 4 in fortnight 2 -- a normal self-scheduled month) shows $3,089 in the lab; the hero shows $4,174 then $2,004. For the 28-day case the code comment's rationale ('a cycle that doesn't divide a fortnight') doesn't even apply -- it divides into exactly two paychecks that are simply different.",
+ "failure": "Nurse picks '4 on, 4 off nights' because the lab says $3,749/paycheck (vs $3,089 for Mon-Wed nights), applies it, and the very first paycheck on the calendar reads $4,233; the third reads $3,265. Neither matches the number she chose on, and the app never told her it was an average. Same in the side-by-side table: an 8-day or 28-day rotation is compared against 7/14-day ones as if the figures were the same kind of number.",
+ "fix": "Minimal, label-only (no wage-core touch): when lcm(n,14) > 14, caption the .pl-money card and the side-by-side cell, e.g. 'averaged over N paychecks -- checks will vary' (N = lcm(n,14)/14, computable in PatternLab from m.n). Better: have patternMetrics also return periodNetMin/periodNetMax (net of each 14-day window in the span) and show 'between $X and $Y' -- that variant touches patternMetrics and needs the Invariant 3 protocol.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "wage-math-09"
+}

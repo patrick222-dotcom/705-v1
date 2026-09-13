@@ -1,0 +1,13 @@
+{
+ "title": "'Pick up a weekend night?' card prices a differential the nurse has switched off or deleted",
+ "severity": "low",
+ "where": "index.html:3434 (sampleWeekendNet) and index.html:3512-3516 (whatif card guard)",
+ "detail": "`sampleWeekendNet = round(shiftGross(baseRate, differentials['weekend-eve'], {...}) * keepRatio)` reads the weekend-eve entry regardless of its `active` flag, and the card's only guard is `shiftCount>0 && baseRate>0`. Settings lets the nurse toggle weekend-eve off (`tog(k)`) or delete it entirely (`del(k)`, index.html:4716). The Add-Shift sheet the card's 'Try it' button opens filters to `d.active` types (index.html:4098), so the sheet cannot reproduce the number the card promised.",
+ "failure": "Base $65.15, keepRatio 0.7785, weekend-eve toggled off because her hospital pays no weekend-night premium: card still says 'That's about +$939 take-home'. She taps Try it; the sheet's best available option (Night, +$10) previews '+$702 take-home'. If she deleted weekend-eve instead, the card prices a 'weekend night' at base rate (+$609) while still calling it a weekend night.",
+ "fix": "Gate the card on `differentials['weekend-eve']?.active` (hide it otherwise, or fall back to the highest active night-type differential), and use that same resolved type when opening the sheet.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "wage-math-07"
+}

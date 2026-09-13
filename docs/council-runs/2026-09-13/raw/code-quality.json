@@ -1,0 +1,373 @@
+[
+ {
+  "slice": "boot",
+  "findings": [
+   {
+    "title": "handleSignOut doesn't clear the iCal feed URL/subscription state its own comment says it mirrors",
+    "severity": "high",
+    "where": "index.html:2528-2538 (handleSignOut) vs index.html:2409-2419 (onAuthStateChange SIGNED_OUT branch)",
+    "detail": "The SIGNED_OUT branch of onAuthStateChange (2409-2419) resets `hydratedForUser.current`, `setSyncError(false)`, `resetToDefaults()`, `lastSeenAt.current`, and ALSO `setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;`. handleSignOut (2528-2538) resets `hydratedForUser.current`, `lastSeenAt.current`, `prevUserId.current`, `setSyncError(false)`, `setSession(null)`, `setUser(null)`, `resetToDefaults()` — but never touches `icalSub`/`icalUrl`/`hydratedUserId`/`icalSyncedForUser`. `resetToDefaults()` itself (2335-2340) also doesn't touch them; that state lives only in the two places above. The comment at 2531-2532 explicitly claims handleSignOut 'Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires)' — but the two lists have already drifted; handleSignOut is missing a quarter of what it claims to mirror.",
+    "failure": "signOutClient (2523-2527) exists specifically because supabase-js's own signOut() can deadlock on iOS WebKit — the same bug the getSession 4s-race guards, per the comment at 2518-2521, which also says 'Force signed-out state locally — never rely on onAuthStateChange, which won't fire if signOut stalled.' So on an iPhone where the underlying signOut() call actually stalls (the exact scenario this code was written for), onAuthStateChange's SIGNED_OUT branch — the only place icalSub/icalUrl/hydratedUserId get cleared — never runs. The user taps 'Sign out', confirms the dialog, and the UI shows them signed out (session/user cleared, dashboard resets), but the Settings sheet's calendar-sync input is still bound to `icalUrl` (index.html:4790, `value={icalUrl}`) and keeps rendering the PREVIOUS account's secret iCal feed URL — Invariant 13's bearer credential — in a plain-text field, along with `icalSub.lastSynced` (4800-4801), until a fresh sign-in overwrites that state. On a shared or handed-down device this exposes another nurse's private calendar address to whoever opens Settings next.",
+    "fix": "Add the same four lines (`setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;`) to handleSignOut, or factor the shared cleanup (used identically at 2409-2417 and needed at 2533-2536) into one function called from both sites so they can't drift apart again.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "wage-core",
+  "findings": [
+   {
+    "title": "ficaWithholdingType is passed through sanitizeData with no allowlist, so an unrecognized value silently zeroes FICA in computeNet",
+    "severity": "high",
+    "where": "index.html:963 (sanitizeData) and index.html:1237-1239 (computeNet)",
+    "detail": "sanitizeData's job, per its own header comment (index.html:948-952), is to keep a malformed blob from 'silently corrupt[ing] every calculation with string/NaN fields.' Every other enum-like wage field it handles is allowlisted with a safe fallback: estimateMode only ever lands on '' (line 969, with an explicit comment about being 'whitelisted, so a corrupt or hostile blob can only ever land on nothing'), differentials[k].type falls back to 'dollar' if it isn't one of the three valid values (line 1047), customWithholdings[].type is required to be 'percent'|'dollar' or the whole entry is dropped (line 1035). ficaWithholdingType gets none of that: line 963 is `if(typeof d.ficaWithholdingType==='string') out.ficaWithholdingType = d.ficaWithholdingType;` — any string at all passes through untouched. computeNet then only recognizes exactly 'standard' or 'percent' (lines 1238-1239); `let fica = 0` at 1237 is never reassigned for any other value, including a typo'd case, a stale/renamed option from a future revert, a hand-edited export, or corrupted localStorage/cloud data.",
+    "failure": "A user_data blob (or localStorage/imported-JSON blob) with ficaWithholdingType set to anything other than the exact strings 'standard' or 'percent' — e.g. 'Standard', an old/removed option name, or simple corruption — passes sanitizeData unchanged (line 963) and is applied via applyData's `if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType)` (line 2311) with no validation there either. Every subsequent computeNet() call (the hero figure, the Breakdown 'FICA' row, patternMetrics) then silently computes fica=0. For a nurse grossing $2,400 in a pay period that's roughly $184 (7.65%) of overstated take-home shown with no error, no banner, and no indication anything is wrong — exactly the class of bug sanitizeData's own header comment says it exists to prevent.",
+    "fix": "Allowlist ficaWithholdingType in sanitizeData the same way estimateMode and the differential/withholding `type` fields are handled: `out.ficaWithholdingType = (d.ficaWithholdingType==='standard'||d.ficaWithholdingType==='percent') ? d.ficaWithholdingType : 'standard';` (or omit the key entirely on an invalid value so applyData's own current value is kept). This is an Invariant 3 change — needs the wage-core protocol (baseline probes, a new assertion, and the hero/breakdown equality check against the deployed build).",
+    "wageCore": true
+   },
+   {
+    "title": "PTO gross/hours formula is copy-pasted in three places instead of two of them calling the existing ptoStatOf helper",
+    "severity": "medium",
+    "where": "index.html:2636-2641 (ptoStatOf), index.html:2801-2806 (calc), index.html:2777 (yearMonths)",
+    "detail": "ptoStatOf (2636-2641) already encapsulates 'for each PTO day-event with hours>0, add hours*baseRate to gross and hours to total' and is the function statOf (2644-2650) correctly delegates to. calc() (2801-2806) and yearMonths (2777) reimplement the identical `if(e.kind==='pto' && e.hours>0){ gross/g += e.hours*baseRate; hours/h += e.hours; }` inline instead of calling ptoStatOf(k) per date key, even though both already iterate dayEvents by key exactly the way ptoStatOf expects.",
+    "failure": "PTO pricing currently has no cap and pays base rate for any hours>0 entered, but that's an easy invariant to want to change (e.g. capping paid PTO at 8h/day, or taxing PTO at a different rate than worked time — both plausible nightly-loop-sized feature requests given the BACKLOG's granularity). A dev following the wage-core protocol would naturally edit ptoStatOf (the function whose name says 'PTO stat') and verify the day-cell/calendar figures it feeds, but calc() (the pay-period hero/Breakdown total) and yearMonths (the Year view total) would keep the old formula unless the dev also remembers those two separate inline copies — so the hero's 'PTO adds to gross' figure or the Year view total would silently disagree with what the calendar cells show for the same PTO day.",
+    "fix": "Have calc() and yearMonths call ptoStatOf(k) (or a shared pure helper it wraps) instead of re-deriving the same two-line PTO formula, so there is exactly one place that defines 'what a PTO day is worth.'",
+    "wageCore": true
+   },
+   {
+    "title": "sampleNet() (onboarding's projected take-home) hand-rolls the same tax formula as computeNet() instead of calling it, and isn't part of the Invariant 3 function list",
+    "severity": "medium",
+    "where": "index.html:3416-3423 (sampleNet, inside applyPaystub's App scope) vs index.html:1231-1251 (computeNet)",
+    "detail": "sampleNet builds a 6-shift sample, sums shiftGross correctly, but then reimplements FICA-base/income-tax-base/fed/state/net entirely by hand (3419-3422) instead of calling `computeNet(g, taxInputs)` the way calc() (line 2809) and patternMetrics() (line 1298) do. It also never includes customWithholdings (`cw` in computeNet, lines 1242-1243) at all — every other real net calculation in the app sums customWithholdings into deductions; this one doesn't. sampleNet is not named anywhere in Invariant 3's protected function list (shiftGross/hourlyRate/computeNet/calc/statOf/ptoStatOf/patternMetrics), so the wage-core skill's required baseline probes and 'equality assertion against the deployed build' never exercise it.",
+    "failure": "This is the literal dollar figure shown on the 'You're all set' onboarding screen (line 5822, 'Projected take-home'), a nurse's very first number from the app. If a future wage-core change alters computeNet's formula (e.g. how FICA or a deduction cap works) and is verified correctly per the wage-core protocol, sampleNet's independent copy is not in scope for that verification and can silently diverge — the onboarding preview would show a different take-home than the hero/Breakdown will show moments later for an equivalent shift mix. Concretely today: any state where customWithholdings is non-empty (reachable via the supported Export JSON → hand-edit → Import JSON round trip, since sanitizeData validates and computeNet already sums that array) makes sampleNet's net figure too high by exactly the omitted withholding amount, while calc()/Breakdown correctly subtract it.",
+    "fix": "Replace sampleNet's inline tax math with `computeNet(g, {pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings})` (or reuse the existing `taxInputs` memo shape) so onboarding's preview and the real hero can never drift, and add it to the wage-core protocol's coverage.",
+    "wageCore": true
+   }
+  ]
+ },
+ {
+  "slice": "money-surfaces",
+  "findings": [
+   {
+    "title": "Per-day/period money rollup (shifts + PTO) hand-duplicated in 3 places instead of calling statOf/ptoStatOf",
+    "severity": "medium",
+    "where": "index.html:2636-2650 (ptoStatOf/statOf) vs 2775-2777 (yearMonths) vs 2793-2805 (calc)",
+    "detail": "ptoStatOf+statOf is the one place that is supposed to define 'a day's money': shiftGross summed over shifts[k], plus PTO at `e.hours*baseRate` for dayEvents[k]. yearMonths (year-view totals) and calc (the hero figure, via taxInputs/computeNet) don't call statOf/ptoStatOf — each re-implements the identical two loops (`shifts[k].forEach(s=>{g+=shiftGross(...);h+=s.hours})` and `if(e.kind==='pto'&&e.hours>0){g+=e.hours*baseRate;h+=e.hours}`) inline. The comment at 2776 ('PTO adds to gross/hours like every other rollup (statOf/calc)') itself acknowledges the parallel implementations exist rather than being shared.",
+    "failure": "A future change to how PTO is priced (e.g. paying PTO at a shift's differential rate instead of flat baseRate, or capping PTO hours) is a plausible ask and touches statOf/ptoStatOf, whose output feeds the calendar day cells. If the dev updates statOf/ptoStatOf only (they're the named, documented rollup) and the harness's calendar assertions pass, the hero figure (calc, 2793-2805) and the Year view totals (yearMonths, 2768-2780) keep computing PTO the old way — a nurse would see the calendar day cell disagree with the hero total for the same pay period, with nothing in the diff or the existing tests catching it because there is no single function all three call.",
+    "fix": "Have calc() and yearMonths() call statOf(k)/ptoStatOf(k) (or a shared pure helper both can use outside the per-day closure) instead of re-summing shifts/dayEvents inline, so PTO/shift pricing has exactly one implementation.",
+    "wageCore": true
+   },
+   {
+    "title": "Onboarding's 'Projected take-home' preview reimplements computeNet's tax formula instead of calling it",
+    "severity": "low",
+    "where": "index.html:3416-3421 (sampleNet) vs 1231-1251 (computeNet)",
+    "detail": "sampleNet() — which drives the money figure on onboarding step 4 ('Based on a typical two-week schedule, here's what you'd take home', styled like the hero) — hand-computes FICA/federal/state/net from baseRate/differentials/ficaType/ficaPct/federalTaxRate/stateTaxRate/pretaxDeductions/posttaxDeductions instead of calling computeNet(gross, taxInputs) the way calc() (2807) and patternMetrics() (1298) do. It currently matches computeNet's arithmetic for the standard/percent FICA cases (customWithholdings don't exist in onboarding state, so that term is moot), but it's a second hand-written copy of the tax model with no shared code path.",
+    "failure": "Invariant 3's protocol for changing computeNet requires wage-math probes plus a hero/breakdown equality assertion against the deployed build — none of that touches sampleNet, since it isn't computeNet. A future correction to the tax model (e.g. a FICA/deduction-base bugfix) done correctly under that protocol would leave this onboarding screen silently showing the old, now-wrong number, with no test noticing because sampleNet is a textually separate formula.",
+    "fix": "Replace the inline arithmetic in sampleNet with `computeNet(g, {ficaType, ficaPct, federalTaxRate, stateTaxRate, pretaxDeductions, posttaxDeductions})` and read `.net` from the result.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "calendar",
+  "findings": [
+   {
+    "title": "Day-key stringification is independently reimplemented three times over the same shifts/dayEvents object",
+    "severity": "medium",
+    "where": "index.html:658 (keyOfDate), index.html:837 (keyOfYMD), index.html:2623 (App's local keyOf)",
+    "detail": "There are three separately-declared, currently byte-identical implementations of \"format a Date/y-m-d as the calendar's 'YYYY-MM-DD' key\": module-level `keyOfDate` (line 658, used by pattern-lab's planPatternApply at 1313/1318 and the sample-shift seed at 711, whose output is written straight into `shifts[k]`/`dayEvents[k]` via applyPattern's `next[k]=...` at 2960-2967), the ics-import parser's local `keyOfYMD` (line 837, used to build every imported shift/event's `dateKey`, which is written into the same `shifts`/`dayEvents` state via `next[u.dateKey]=...` at line 3175/3187), and App's own local `keyOf` (line 2623), which every calendar-facing read (Calendar/MonthSection cell lookup `shifts[keyOf(dt)]` at 3891/3907, `calc`'s period scoping at 2791, `yearMonths`' month-prefix scan at 2769-2780, `saveDayShifts`, `movePeriod`, `openSheetForLog`) goes through. None of these three functions references any of the others — they are copy-pasted text, not a shared symbol.",
+    "failure": "Any future change to the day-key format (e.g. guarding against a bad ics DTSTART, or fixing a locale/padding edge case) that is applied to only one of the three copies — which is easy, since grepping for `keyOfDate(` or `keyOf(` will not surface the other two definitions — makes that code path emit keys in a different string shape than the other two producers/consumers use. Concretely: if `keyOfYMD` (ics import) were ever patched without also patching `keyOf` (the calendar's own lookup function), an imported shift would be written under e.g. `shifts['2026-9-5']` while the calendar grid, `calc`, and `yearMonths` all look it up as `shifts['2026-09-05']||[]` — the shift would silently vanish from the calendar and the take-home totals (no error, just an empty array from the mismatched key), even though the ics import itself reported success.",
+    "fix": "Delete App's local `keyOf` and the ics parser's local `keyOfYMD`; have both call the single module-level `keyOfDate` (wrapping the y/mo/d ics case as `keyOfDate(new Date(y, mo-1, d))`). One function, one place to fix a date-key bug, and every consumer picks up the fix automatically.",
+    "wageCore": false
+   },
+   {
+    "title": "Month-section ref map never clears entries on unmount, so the pay-period stepper can silently stop scrolling the calendar",
+    "severity": "medium",
+    "where": "index.html:3568 (secRef callback), consequence at index.html:2762-2765 (scrollFocusToDate) and index.html:2720 (focusRowDates), comment at index.html:2707-2713",
+    "detail": "`secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }}` (line 3568) only ever sets an entry; it ignores the `null` React passes to a callback ref when the element unmounts, so it never deletes the entry. `monthWindow` (2663-2670) is a sliding 16-month window (`MONTH_BEFORE=3`/`MONTH_AFTER=12`, line 2662) around `calFocus`, so as the user browses to distant months (Year view, or repeated `movePeriod`/stepper taps) and back, months that scroll out of the window unmount their `MonthSection`, but `monthSecRefs.current[thatKey]` keeps pointing at the now-detached DOM node forever. `scrollFocusToDate` (2751-2766), used by the greet-row pay-period stepper `movePeriod` (2826-2831), decides whether to remount the target month purely from `if(!monthSecRefs.current[dateISO.slice(0,7)])` truthiness — a stale-but-truthy entry makes it take the `else align()` branch and skip `setCalFocus` entirely.",
+    "failure": "Browse far enough from the current month that it drops out of the live 16-month window (e.g. open Year view and jump to a year switched away from, or step `movePeriod` past it), so that month's MonthSection unmounts while its stale ref lingers; then step the pay-period `‹`/`›` control (or otherwise call `movePeriod`) back to a period whose start falls in that previously-visited month. `setPPS(newStart)` still runs, so the hero/breakdown figures switch to the new period, but `scrollFocusToDate` sees the stale truthy ref, never calls `setCalFocus`, `container.querySelector('.cell[data-date=...]')` finds nothing (the real DOM was actually removed), and `align()` no-ops — the visible scrolling calendar stays parked on unrelated months while the rest of the UI has already moved to the new pay period.",
+    "fix": "Give the callback ref an else-branch that deletes the stale entry: `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; else delete monthSecRefs.current[mo.key]; }}`, matching the standard React callback-ref contract and keeping `monthSecRefs.current` bounded to the currently-mounted window — which is also what the `focusRowDates` comment already assumes (\">=16 cheap rect reads\", line 2710) but the code no longer guarantees.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "add-shift",
+  "findings": [
+   {
+    "title": "Removing the only shift on a day silently re-adds a different, unconfirmed phantom shift",
+    "severity": "high",
+    "where": "index.html:4127-4130 (hasOtherContent/save), interacting with :4288 (primary button label) and :2857-2867 (saveDayShifts)",
+    "detail": "`save()` is: `onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), events, note.trim())`. The `hasOtherContent`-based fallback to `[draftShift()]` is meant (per the comment at 4128-4129) to handle a *freshly opened, never-touched* sheet where hitting the only visible button should commit the currently-configured draft rather than save nothing. But the same branch fires whenever `list` is empty and there are no events/note, with no distinction between 'never added anything' and 'had a shift, then explicitly removed it.' `remove()` (line 4111) sets `list=[]` and `dirty=true` but that `dirty` flag is never consulted by `save()`.",
+    "failure": "A day has exactly one logged shift (e.g. Day x8h) and no PTO/event/note. The nurse opens the sheet to cancel that shift, taps 'Remove' (list becomes empty, dirty=true). The button relabels to 'Add shift' (same condition, line 4288) and is still the only primary action to finish. Tapping it calls `save()`, which — because `list.length` is 0 and `hasOtherContent` is false — discards the empty list and instead calls `onSave([draftShift()], ...)`, committing a brand-new shift built from whatever the SHIFT TYPE/HOURS controls currently show (component defaults 'night'/12h if untouched, i.e. not even the shift that was just removed). `saveDayShifts` writes this straight into `shifts` and fires `track('shift_saved', ...)` — the day silently ends up with a different phantom shift instead of being cleared, and the hero/take-home figures change based on it. (Dismissing via the X or scrim instead correctly saves the empty list, since `dismiss()` at 4132 checks `dirty` and passes the real `list` — so the two 'finish editing' affordances disagree, and the primary button is the wrong one.)",
+    "fix": "Gate the phantom-draft fallback on whether the sheet has actually been interacted with (e.g. `!dirty`) rather than on `hasOtherContent` alone, so an explicit removal down to zero shifts with dirty=true saves an empty day instead of re-adding a default shift. Update the button label condition (line 4288) the same way.",
+    "wageCore": false
+   },
+   {
+    "title": "\"Save as template\" can silently capture the wrong shift type/hours when the last entry came from a template quick-tap",
+    "severity": "medium",
+    "where": "index.html:4135-4139 (applyTemplateTap), :4140-4160 (doSaveTemplate), :4094 (configDirtySinceAdd ref)",
+    "detail": "`configDirtySinceAdd` is documented (4088-4093) as tracking whether the SHIFT TYPE/HOURS/BONUS/STARTS controls still reflect the last-added list entry, so `doSaveTemplate()` can decide whether to source bonus/start from `last` (the just-added entry) or from the live controls. Only `add()` (line 4110) ever sets it to `false`; `applyTemplateTap()` (4135-4139) pushes an entry onto `list` via a completely separate template-tap path that never touches the shiftType/hours/bonus/start controls at all, and never updates `configDirtySinceAdd`. Worse, even when the ref *is* false, `doSaveTemplate` only sources `bonusType`/`customBonus`/`start` from `last` (line 4152-4153) — `shiftType` and `hours` in the built `tpl` (line 4154) are unconditionally read from the raw form state, never from `last`.",
+    "failure": "Open the sheet on an empty day, tap an existing template e.g. 'Day ×8h' from QUICK ADD FROM TEMPLATE to add it (applyTemplateTap — the SHIFT TYPE chip still shows the default 'Night' and HOURS still shows 12, untouched). Then tap 'Save as template' to save a variant under a new name, without touching any control. The saved template silently becomes `{shiftType:'night', hours:12, ...}` — not the Day/8h shift that was actually just added — because `shiftType`/`hours` never come from `last`. There is no error and no visual cue; the nurse discovers the mislabeled template only when it's later quick-filled onto other days with the wrong pay type/hours.",
+    "fix": "Have `applyTemplateTap` also set `configDirtySinceAdd.current=false` (it never syncs the controls, so the invariant needs to route through `last` the same way `add()` does), and extend the `src` object in `doSaveTemplate` to supply `shiftType`/`hours` from `last` too, not just bonus/customBonus/start.",
+    "wageCore": false
+   },
+   {
+    "title": "Legal hours bound (0.1-24) is a literal duplicated in three places with nothing tying them together",
+    "severity": "low",
+    "where": "index.html:4109 (draftShift), :4143 (doSaveTemplate's clampedHours), :4226 (NumInput min/max on the HOURS field)",
+    "detail": "The same `min 0.1 / max 24` shift-length bound is hand-copied as `Math.min(24,Math.max(0.1, hours||0.1))` at both 4109 and 4143, and again as `min={0.1} max={24}` on the NumInput at 4226. Nothing names these as one constant.",
+    "failure": "If the legal hours range is ever changed for a product reason (e.g. capping shifts at 16h), a future edit that updates the NumInput bound but misses one (or both) of the clamp call sites -- or vice versa -- would let the input widget accept/display one range while `draftShift()`/`doSaveTemplate()` silently clamp saved shifts or templates to a stale, different range, so what a nurse typed doesn't match what gets saved.",
+    "fix": "Pull the bound into a single named constant (e.g. `MIN_SHIFT_HOURS`/`MAX_SHIFT_HOURS`) and reference it from all three sites.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "pattern-lab",
+  "findings": [
+   {
+    "title": "Editing the cycle anchor silently discards a customized apply-start date",
+    "severity": "medium",
+    "where": "index.html:4384-4387 (setAnchor) interacting with 4552 and 4557 (applyStart)",
+    "detail": "setAnchor unconditionally does `setDraft(...); setApplyStart(v); setDirty(true);` on every valid anchor edit. The 'DAY 1 FALLS ON' anchor input (4507-4510) is rendered unconditionally in edit mode, above the `{!applyOpen ? ... : <apply panel>}` block (4551-4577) — it stays visible and editable even while the apply panel is open with its own 'Starting' field (4557), which the nurse may have already set to a different date than the anchor.",
+    "failure": "Nurse opens a saved rotation, taps 'Put it on the calendar' (applyStart defaults to the anchor, 4552), changes 'Starting' to a later date so the rotation begins after her upcoming PTO, then scrolls back up and fixes an off-by-one in 'Day 1 falls on'. That anchor edit fires setAnchor, which silently resets applyStart back to the (new) anchor date, overwriting her chosen start date with no message. If she doesn't re-check the apply panel, tapping 'Add N shifts' (confirmApply -> onApply -> applyPattern, 2956-2974) places the whole rotation starting on the wrong date — potentially during her PTO — without any error or confirmation.",
+    "fix": "Stop unconditionally coupling the two fields: only default applyStart from the anchor while the apply panel hasn't been opened/customized yet, e.g. guard the call with `if(!applyOpen) setApplyStart(v)`, or track whether the user has touched 'Starting' independently (the same touched-flag pattern qfTouched.current already uses elsewhere in App) so a later anchor correction only re-syncs applyStart when the nurse hasn't already chosen her own.",
+    "wageCore": false
+   },
+   {
+    "title": "The ISO date-validity check is copy-pasted three times with no shared helper",
+    "severity": "low",
+    "where": "index.html:1088 (validISO in sanitizeData), 4385 (setAnchor), 4557 (Starting date onChange)",
+    "detail": "The exact idiom `/^\\d{4}-\\d{2}-\\d{2}$/.test(v) && keyOfDate(parseISODate(v))===v` is duplicated verbatim in three places: sanitizeData's persistence-layer gate that decides whether a saved pattern's `anchor` survives being loaded, and two ad hoc inline copies in PatternLab's live UI (the cycle-anchor input and the apply panel's 'Starting' input). This section otherwise factors out small shared pure helpers for exactly this kind of repeated logic (patternCellEq, patternCellClass, patternCellShiftType), so the lack of one here is an inconsistency in an otherwise well-factored file.",
+    "failure": "Because sanitizeData's copy is the one that decides whether a pattern is kept at all on the next load (patterns failing validISO(p.anchor) are dropped from the array outright, 1089-1092, with no error shown), a future change to tighten or extend just one of the three copies (e.g. adding a plausible date-range bound to harden sanitizeData against corrupt blobs) would let the live UI keep accepting an anchor/start date that the persistence layer then silently rejects on the next load — the whole saved pattern disappears with no error message, and nothing in the code would catch the mismatch because there is no single source of truth to update.",
+    "fix": "Extract one isValidISODate(s) helper next to keyOfDate/parseISODate and call it from sanitizeData's validISO, setAnchor, and the Starting-date onChange handler instead of repeating the regex+round-trip check.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "onboarding",
+  "findings": [
+   {
+    "title": "Sign-out resets onboarding data but not onboarding step, so a stale obStep can reopen the wizard mid-flow with defaulted data and silently commit it",
+    "severity": "high",
+    "where": "resetToDefaults() index.html:2335-2340 (called from the auth-state-change SIGNED_OUT branch at 2414 and from handleSignOut at 2536); obStep state at 2192-2201; finish() at 3408-3414; Onboarding done screen at 5812-5834",
+    "detail": "obStep is deliberately never persisted (it's not in serializeState, 2291-2295) or restored (applyData never touches it, 2302-2332) — by design it should always start at 0 on a fresh load. But it also survives sign-out within a live session, because resetToDefaults() resets name/baseRate/taxes/shifts/estimateMode/setupComplete etc. back to first-run defaults but never calls setObStep(0). The app supports (and the comment at 3426-3428 documents) completing onboarding while already signed in: a brand-new signup via the AuthModal's 'No account? Sign up' toggle (4666) opened from onboarding leaves user set with no cloud row, so applyData never fires and setupComplete stays false — the nurse then walks the wizard authenticated. obStep ends the session at 1 (the 'rough'/'sample' shortcuts) or 4 (the full flow's done screen), and nothing resets it afterward. If she then signs out in the same tab, resetToDefaults() flips setupComplete back to false but leaves obStep at 1 or 4. Because the anon STORE_KEY mirror was never written while she was signed in (the save effect's anon branch at 2480-2484 only runs when user is null), the sign-out restore step (2537, and the mirrored SIGNED_OUT branch at 2418) has nothing to fall back on that would re-set setupComplete true. Onboarding re-renders at the stale obStep instead of the welcome screen: at obStep=4 that is literally the 'You're all set' done screen, now showing a fabricated example built from the just-reset defaults with no indication anything was reset.",
+    "failure": "A nurse creates her account partway through onboarding, finishes setup (obStep left at 1 or 4), uses the app, then taps Sign out. Instead of landing on the welcome screen she's dropped onto the onboarding 'You're all set' (or mid-wizard) screen pre-filled with default numbers that aren't hers. Tapping 'Go to my planner' — the obvious next tap, since the screen looks like a normal completion step — calls finish() with the click event as its first arg (already guarded to fall back to mode='full'), so setupComplete flips true again and estimateMode stays '' (no est-banner), silently landing her in the main app with $65.15/hr and default differentials/taxes instead of her real numbers, with nothing telling her these are placeholders.",
+    "fix": "Add setObStep(0) inside resetToDefaults() (index.html:2335-2340) so both sign-out call sites (2414, 2536) always return the nurse to the welcome screen, never a stale mid-wizard or done screen.",
+    "wageCore": false
+   },
+   {
+    "title": "Differential edit/toggle logic is duplicated verbatim between Settings and Onboarding and can drift",
+    "severity": "low",
+    "where": "index.html:4689-4690 (Settings) and index.html:5709-5710 (Onboarding, step 2 differentials)",
+    "detail": "Both components independently define byte-identical `upd`/`tog` closures: `const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}}); const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});`. Neither copy carries a comment pointing at the other, so there's nothing to prompt an editor working on one to check the other.",
+    "failure": "A future fix to the differentials editor — e.g. clamping negative amounts, handling a new differential `type`, or changing how a percentage/multiplier is parsed — applied only in Settings (the more visible, more frequently touched surface) leaves the onboarding step-2 differentials screen (5766-5786) with the old, unfixed behavior, so a bug fixed for existing users quietly persists for anyone going through onboarding, and the two surfaces slowly disagree on how the same fields behave.",
+    "fix": "Hoist upd/tog into one shared helper (e.g. a small makeDiffEditor(differentials, setDiff) factory) used by both Settings and Onboarding, or at minimum add a comment on each copy cross-referencing the other so a change to one is caught.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "settings-etc",
+  "findings": [
+   {
+    "title": "Goal preview divides by a goal target that can be zero, printing \"Infinity%\"",
+    "severity": "medium",
+    "where": "index.html:4247-4248 (AddShiftSheet preview) combined with index.html:4686 (Settings updGoalTarget) and index.html:4020-4028 (NumInput.commit)",
+    "detail": "Settings' updGoalTarget (`const updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:parseFloat(v)||0} : g));`, line 4686) writes straight into live React state with no `target>0` floor — only `min=0` is passed to the NumInput (line 4754: `<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} .../>`). NumInput.commit (line 4020-4028) treats a blank/emptied field as `min` (`if(t===''){ onCommit(min!=null?min:0); return; }`), so clearing the target field and blurring commits exactly 0. That 0-target goal now lives in the `goals` array for the rest of the session (sanitizeData's `Number(g.target)>0` filter, line 1075, only runs on the next load from storage, not on this live edit). Meanwhile AddShiftSheet's goal-progress line (line 4247-4248) only guards `previewNet>0`, never `g.target>0`: `const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet);`. Settings' own per-goal display (line 4747-4748) *does* guard `g.target>0` before showing anything, which shows the AddShiftSheet code path was simply never given the same guard.",
+    "failure": "Open Settings, tap into any savings goal's amount field, clear the digits and tap away (or press Enter) — the field commits to $0 with no error. Open the Add-Shift sheet for any day and configure any shift with hours>0: the goal line renders `<goal name> Infinity% (≈0 shifts)` (previewNet/0 → Infinity, rounded and divided → still Infinity) right next to the other, correctly-computed goals in the same joined string.",
+    "fix": "Either give updGoalTarget the same `t>0` floor addGoal already enforces (index.html:4685), or add the same `g.target>0` guard AddShiftSheet's sibling code in Settings already uses before computing pct/n at line 4248.",
+    "wageCore": false
+   },
+   {
+    "title": "Body-scroll lock effect omits showShare, so the Share sheet lets the page scroll behind it",
+    "severity": "medium",
+    "where": "index.html:2596-2600 (body-overflow effect) vs index.html:2228 (showShare state) and index.html:5666-5702 (ShareSheet)",
+    "detail": "Every other `.scrim`-rendered sheet's open/closed state is listed in the effect that locks `document.body.style.overflow` while a modal is up: `const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns;` (line 2597), with the matching dependency array on line 2600. `showShare` (declared right alongside the others at line 2228: `const [showShare,setShowShare] = useState(false);`) is the one state left out of both the condition and the dependency array, even though `ShareSheet` renders the identical fixed, full-viewport `.scrim` overlay pattern (line 5682) that this effect exists to serve.",
+    "failure": "Tap Settings → \"Show a QR code or send a link\" (or any other `openShare()` call site, line 2230) on a phone. Because `showShare` isn't in `open`, `document.body.style.overflow` stays at whatever it was (unlocked, since Settings' own close already reset it to '' at line 3639 before the Share sheet opens) instead of being set to 'hidden' — so the calendar/page behind the QR sheet remains touch-scrollable while the sheet is displayed, unlike Settings, Feedback, Breakdown, Swaps, Patterns, Auth, Add-Shift, or the ics-import sheet.",
+    "fix": "Add `showShare` to both the `open` expression and the effect's dependency array at index.html:2597 and 2600.",
+    "wageCore": false
+   },
+   {
+    "title": "Settings destructures an unused `num` prop",
+    "severity": "low",
+    "where": "index.html:4676 (destructure) and index.html:3633 (passed in)",
+    "detail": "`App` defines `const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };` (line 2823) and threads it into `Settings` via `{...{...,customWithholdings,setCW,num,...}}` (line 3633). `Settings(props)` destructures it (`...customWithholdings,setCW,num,...` line 4676) but nothing in the ~140-line function body ever calls `num(...)` — all numeric coercion in Settings goes through `NumInput`/`parseFloat` inline instead.",
+    "failure": "No user-visible failure — this is inert. It's a maintenance hazard: a future edit to Settings could reasonably assume `num` does something (e.g. copy a pattern from another component that does use it) and rely on stale wiring, or someone \"cleaning up\" props could drop it from the call site without ever noticing it was already dead.",
+    "fix": "Drop `num` from both the prop spread at line 3633 and the destructure at line 4676.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "swap-board",
+  "findings": [
+   {
+    "title": "First-run create/join-board inputs don't submit on Enter; their later duplicates do",
+    "severity": "low",
+    "where": "index.html:5388-5400 (Create your unit's board / Join with a code, groups.length===0 branch) vs index.html:5574-5601 (Create another board / Join another board, the groups.length>0 duplicate)",
+    "detail": "The zero-groups 'Create your unit's board' input (line 5389) and 'Join with a code' input (line 5397) have no onKeyDown handler. The near-identical cards shown once a user already has a board — 'Create another board' (line 5579) and 'Join another board' (line 5597) — are the same markup copy-pasted, and each got `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup()/doJoinGroup(); }}` added. Every other single-line-input flow in this same sheet/app (display-name save, line 5357; pattern-lab template name, line 4281) supports Enter-to-submit, so the omission on the *first-run* cards reads as a regression the second copy fixed without the fix being ported back.",
+    "failure": "A brand-new signed-in user opens Shift swaps for the first time (zero groups yet), types her unit's name into 'Create your unit's board' or a colleague's 6-character code into 'Join with a code', and presses Enter/Go on her phone keyboard as she can everywhere else in the app — nothing happens. She has to notice and tap the button below the keyboard instead. The exact same action on a *second* board (once she already has one) works fine via Enter, because that card is a separate, later copy that got the handler and the first-run copy never did.",
+    "fix": "Add the same onKeyDown Enter handlers to the two first-run inputs, or better, factor the create/join card into one component used by both the zero-groups and 'another board' call sites so the two copies can't diverge again.",
+    "wageCore": false
+   },
+   {
+    "title": "SwapsSheet's six screen-states are gated by six hand-copied boolean prefixes instead of one switch",
+    "severity": "medium",
+    "where": "index.html:5351, 5365, 5375, 5384, 5404, 5607 (each an independent `{!loading && !loadError && !tablesMissing && ... && <jsx/>}` block)",
+    "detail": "The sheet's body is six top-level `{longExpr && <jsx>}` blocks, each repeating the same growing prefix (`!loading && !loadError && !tablesMissing && profile && !inviteCode && !justCreated && ...`). The prefix has already grown twice in the file's history as new states were bolted on (`inviteCode` for invite-link confirm, `justCreated` for the post-create share screen) — each addition meant hand-editing every later block in the chain. Because JSX evaluates each `{cond && ...}` independently, nothing enforces that exactly one of the six is ever true; it only holds today because all six negations were kept in sync by hand.",
+    "failure": "The next time a contributor adds a seventh gated state (e.g. a required-terms or re-auth screen) and threads the new `!x` into five of the six blocks but misses the sixth — say the composer branch at line 5607 — a user in that new state sees two screens rendered at once inside the same sheet (the new gate's UI plus the leftover composer/board content still showing underneath), or can act through the missed branch (e.g. still post to the board) while the intended gate is displayed elsewhere. Nothing in the component would catch this at build or gate time; check_build.mjs parses invariants 1/2/4/5/6/8/9, none of which cover this render logic.",
+    "fix": "Compute one `screen` value (a small if/else chain or lookup returning exactly one of 'name'|'invite'|'created'|'setup'|'board'|'composer') and render a single `switch`/lookup on it, so adding a new state means editing one place and the six branches can no longer render simultaneously by construction.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "data-sync",
+  "findings": [
+   {
+    "title": "pagehide/visibility flush silently drops a failed cloud save (no backup, no error surfaced)",
+    "severity": "high",
+    "where": "index.html:2489-2505 (the `flush` effect), contrast with the debounced-save effect at 2470-2479",
+    "detail": "The main debounced save path (2470-2479) treats `saveToSupabase`'s return value as significant on both branches: on success it updates `lastSeenAt` and clears the backup key, on failure (`ts` falsy) it calls `writeBackup(user.id, dataToSave)` and `setSyncError(true)`. The `flush()` handler, which exists specifically to catch the last edit before the tab is backgrounded or closed ('the 500ms debounce would otherwise drop it', comment at 2489), only wires up the success case: `saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; ...removeItem... } })` (line 2496). There is no `else` and no `.catch()` — if `ts` is null (RLS error, dropped network request, Supabase 5xx), nothing happens: `writeBackup` is never called and `syncError` is never set.",
+    "failure": "A nurse edits a shift, then immediately backgrounds the app (switches apps / locks the phone) — exactly the moment this handler is designed for. If that cloud write happens to fail (a very plausible time for a mobile network hiccup), the edit is not persisted to Supabase, not written to the per-user failed-save backup (`nursingWagePlannerData::<uid>`), and no sync-error indicator is shown. If the tab is actually killed (not just backgrounded) rather than resumed, that edit is gone with no trace and no recovery path, even though Invariant 4's whole 'per-user failed-save backup... wins when newer than the cloud row' mechanism exists precisely to prevent this class of loss.",
+    "fix": "Give the flush handler the same failure branch as the debounced-save effect: on `ts` falsy, call `writeBackup(snap.user.id, snap.data)` (and ideally `setSyncError(true)`, though a state update racing tab teardown is less critical than the local backup write).",
+    "wageCore": false
+   },
+   {
+    "title": "MAX_BLOB_BYTES guard is only enforced on one of three save call sites",
+    "severity": "medium",
+    "where": "index.html:2464-2469 (the only size check) vs. flush() at 2489-2505 and retrySync() at 2508-2516",
+    "detail": "The free-tier size guard ('a single pathological blob shouldn't balloon the DB') is implemented as an inline `if(JSON.stringify(dataToSave).length > MAX_BLOB_BYTES)` check that lives only inside the 500ms debounced-save effect. `flush()` calls `saveToSupabase(snap.user.id, snap.data)` directly with no size check, and `retrySync()` calls `saveToSupabase(user.id, serializeState())` directly with no size check either.",
+    "failure": "If a user's blob is already over 512KB (the comment says this only happens on corruption/abuse, but the app doesn't prevent it from happening, e.g. via a giant pasted string — see the uncapped `name` field in sanitizeData at 957), the debounced path correctly refuses to upload it and shows 'cloud sync paused'. But if the user backgrounds the tab (triggering `flush`) or taps the 'Couldn't sync — retry' button (triggering `retrySync`), the oversized blob is uploaded to Supabase anyway, defeating the guard the comment at 2462 describes.",
+    "fix": "Factor the size check into a shared helper (e.g. `isOversize(data)`) and call it from all three save sites, or route `flush`/`retrySync` through the same guarded function the debounced effect uses instead of calling `saveToSupabase` directly.",
+    "wageCore": false
+   },
+   {
+    "title": "Cross-device poll's content-equality check doesn't canonicalize key order, so it rarely matches even identical data",
+    "severity": "medium",
+    "where": "index.html:2550 (`normalize`) and 2560 (the comparison), under the comment block at 2540-2546",
+    "detail": "The comment claims the 15s poll is 'guarded by updated_at AND content-equality so we never... re-save identical data (which would ping-pong between devices)'. `normalize = o => JSON.stringify({...o, payPeriodStart:0})` only neutralizes one field; it does not sort object keys at any level. Postgres jsonb does not preserve object key order on write (documented Postgres behavior — keys come back in jsonb's own internal order, not JS insertion order), while `serializeState()` builds its object as a fixed JS literal (`name,baseRate,federalTaxRate,...`). So `JSON.stringify(row.data)` and `JSON.stringify(serializeState())` will differ in key order for essentially any real row, independent of whether the content actually changed.",
+    "failure": "With two devices signed into the same account (the intended use case for this poll) both open and focused, once either device writes, the other applies `applyData(row.data,{keepPeriod:true})` on its next poll even when the underlying data is identical, because `normalize()` reports them as different. Applying data unconditionally re-runs every `setShifts/setDiff/setTemplates/...` call, which (calendar path has no memoization, per CLAUDE.md) can cause visible recomputation/flicker every ~15s while both devices are open, and can trigger this device's own debounced save effect to fire again and write back — the exact ping-pong the surrounding comment says is prevented.",
+    "fix": "Canonicalize both sides before comparing (stable-stringify with sorted keys, recursively) rather than relying on JSON.stringify's key-order sensitivity — this is already tracked in CLAUDE.md's Parked engineering list ('canonicalize key order before comparing'); this finding pins the exact two lines and the concrete symptom.",
+    "wageCore": false
+   },
+   {
+    "title": "Post-save success bookkeeping (lastSeenAt + backup-clear) is duplicated verbatim in three places",
+    "severity": "low",
+    "where": "index.html:2475 (debounced save), 2496 (flush), 2515 (retrySync)",
+    "detail": "The same three-statement idiom — `if(ts){ lastSeenAt.current = ts; try{ localStorage.removeItem(BACKUP_KEY(...)); }catch(_){} }` — is inlined independently at all three call sites instead of being a shared helper (e.g. `onSaveSettled(uid, ts)`).",
+    "failure": "A future change to what a successful save should do (e.g. also clear `oversizeWarned.current`, or emit a 'synced' analytics event) is likely to be applied to only one or two of the three copies, since there's no single place that represents 'a save just succeeded'. This is exactly the kind of drift the flush-handler gap above (finding 1) already demonstrates in the failure case — the three sites are not actually kept in lockstep today.",
+    "fix": "Extract a small `markSaveSettled(uid, ts)` helper used by all three call sites, mirroring both the success and failure branches so the debounced effect's failure handling isn't the only one wired up.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "calendar-sync",
+  "findings": [
+   {
+    "title": "runIcalSync's outer catch swallows every background-sync failure with no console.error or telemetry",
+    "severity": "medium",
+    "where": "index.html:3285-3288 (runIcalSync), index.html:2442 (loadIcalSub call in the app-open effect)",
+    "detail": "Every other cloud-touching path in this file (hydrateFromCloud's 'Load error', feedback save/'Feedback threw', sign-out, cloud-clear, auth-session errors — lines 1341,1368,1370,1469,2367,2386,2429,2525,3326) calls console.error(...) on failure, which the boot script's global console.error mirror (line 517-528) captures into the scrubpayErrors ring buffer and later flushes as a `client_error` event — the only way the owner's analytics (and a user's 'Copy error log') ever see a failure. runIcalSync's catch at 3285-3288 does neither: on a non-manual (silent, once-per-app-open) sync it does nothing at all — no console.error, no toast, no track() call. The sibling loadIcalSub call at line 2442 (`catch(_){ return; }`) is the same. calling supabase.functions.invoke can fail for many ordinary reasons (function cold-start error, timeout via withTimeout's 12s cap, transient network blip, or the proxy's own 403/413/502 bad-gateway responses) and every one of them is now permanently invisible.",
+    "failure": "A nurse's iCal subscription starts failing for any reason (expired feed, proxy rejects the host, timeout) after the initial successful save. Every subsequent app-open's silent background sync (line 2447 `runIcalSync({url:sub.icalUrl})`, manual=false) throws, hits the catch, and does nothing observable: no toast (correct, by design, for silent mode), but also no console.error, so scrubpayErrors/client_error never records it. 'Last synced' in Settings simply stops advancing with zero diagnostic trail — not in the user's error log, not in the events table the owner reads to groom the backlog. A future engineer investigating a 'my calendar stopped syncing' report has nothing to go on.",
+    "fix": "Add console.error(e) inside the catch (for both the manual and silent branches) before/regardless of the toast, matching the convention used everywhere else in the file, so failures land in the existing error-ring-buffer/client_error pipeline without needing a new observability mechanism.",
+    "wageCore": false
+   },
+   {
+    "title": "Client-side calendar-host allowlist (providerOf) and the ical-proxy Edge Function's ALLOWLIST are independently maintained and already disagree",
+    "severity": "medium",
+    "where": "index.html:3245-3251 (providerOf) vs supabase/functions/ical-proxy/index.ts:20-26 (ALLOWLIST)",
+    "detail": "providerOf uses `/(^|\\.)google\\.com$/` and `/(^|\\.)nursegrid\\.com$/`, which accept ANY subdomain of google.com or nursegrid.com (verified: `mail.google.com`, `docs.google.com`, bare `google.com`, and multi-level subdomains like `a.b.nursegrid.com` all return a non-null provider). The Edge Function's ALLOWLIST is stricter: `/^calendar\\.google\\.com$/i`, `/^www\\.google\\.com$/i`, and `/^([a-z0-9-]+\\.)?nursegrid\\.com$/i` (at most ONE subdomain label for nursegrid, and only two exact Google hosts — bare `google.com` and other Google subdomains are rejected). These two regex sets have no shared source of truth (one is client JS, the other server-side Deno TS) and already diverge for real inputs, e.g. `google.com` and `a.b.nursegrid.com` pass the client check but 403 (`host_not_allowed`) at the proxy.",
+    "failure": "onSaveIcalUrl (index.html:3291-3307) only gates on `providerOf(url)===null`, so a URL like `https://google.com/calendar/ical/.../basic.ics` or a NurseGrid feed on a two-level subdomain is accepted, saved to ical_subscriptions, and shown as 'Calendar link saved.' — but the very next call (the immediate `runIcalSync({manual:true,url})` right after save, and every future auto-sync) hits ical-proxy's ALLOWLIST, gets `host_not_allowed`, and only ever shows the generic 'Couldn't reach your calendar. Check the link and try again.' The subscription is permanently unusable but stays saved with Update/Sync now/Remove buttons implying it's a working, connected feed.",
+    "fix": "Derive both checks from one definition — e.g. have the client call a shared host list (or just attempt the sync and treat a 403 host_not_allowed specifically, surfacing 'that link isn't from a supported calendar' instead of the generic fetch-failed message) — so tightening or widening the real allowlist (the doc's own open TODO to confirm the real NurseGrid host) only has to happen in one place.",
+    "wageCore": false
+   },
+   {
+    "title": "Manual .ics file re-import mislabels unchanged icsUid matches as \"updated\", contradicting the code's own documented purpose of the `changed` flag",
+    "severity": "medium",
+    "where": "index.html:1507-1509 (comment defining `changed`), index.html:3125-3137 (onImportICS passes unfiltered plan.toUpdate), index.html:3269-3283 (runIcalSync filters to `changed` only), index.html:3811 (confirm-screen text: 'update N that changed')",
+    "detail": "icsPlanFromExisting's own comment says: '`changed` flags whether anything actually differs (so a silent app-open sync doesn't pop the questionnaire when nothing moved).' runIcalSync honors this — it filters `plan.toUpdate.filter(u=>u.changed)` before ever showing the stepper or counting `pending`. onImportICS (the manual 'Import .ics' file picker) does not: it passes `toUpdate:plan.toUpdate` straight through, unfiltered. The IcsImportSheet confirm screen then renders `update ${toUpdate.length} that changed` (line 3811) and icsConfirmImport's success toast says `updated ${updated}` — both literally claiming every one of those shifts differs, when for the manual path some or all may have `changed:false`.",
+    "failure": "A nurse re-imports a full calendar export (e.g. downloads the .ics from her calendar app again just to check, or the export naturally contains her whole schedule, not just new events) where none of the previously-imported shifts actually moved. Every icsUid match from that file is counted in toUpdate regardless of `.changed`, so the confirm screen says e.g. 'Update 8 that changed' and the post-import toast says 'Updated 8.' even though zero shifts' date/hours/start actually differ — visibly wrong copy on a common, everyday re-import, and it also pollutes the `ics_import_done` {updated:8} analytics the nightly loop's groom step reads.",
+    "fix": "Filter to `plan.toUpdate.filter(u=>u.changed)` in onImportICS the same way runIcalSync already does, so the two entry points into the shared icsPlanFromExisting planner report consistent, accurate counts.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "telemetry-auth",
+  "findings": [
+   {
+    "title": "Manual sign-out doesn't mirror the SIGNED_OUT cleanup it claims to, leaking the previous user's iCal credential into the next sign-in",
+    "severity": "high",
+    "where": "index.html:2528-2538 (handleSignOut) vs index.html:2409-2419 (onAuthStateChange SIGNED_OUT branch)",
+    "detail": "onAuthStateChange's else-branch (2409-2419) resets several things on sign-out including, per its own comment 'Drop the signed-in user's calendar subscription from memory (never leak it to anon state)': setHydratedUserId(null), setIcalSub(null), setIcalUrl(''), icalSyncedForUser.current=null. handleSignOut (the only call site is the account-menu Sign out button, wired at line 3450) is commented 'Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires)' and exists specifically because signOut() can deadlock on iOS WebKit so onAuthStateChange may never fire (same bug the getSession 4s-race guards, per the comment at 2518-2521). But its own reset block (2533-2536) only touches hydratedForUser.current/lastSeenAt.current/prevUserId.current/setSyncError/setSession/setUser/resetToDefaults() — it omits all four iCal statements. In the exact WebKit-deadlock case this function was written for, onAuthStateChange never runs, so nothing clears hydratedUserId/icalSub/icalUrl/icalSyncedForUser.current.",
+    "failure": "Two nurses share one phone (the app's own documented sharing model — a QR handed over 'off Courtney's screen'). Nurse A signs out on iOS Safari during a WebKit signOut() deadlock (handleSignOut times out via withTimeout, purges the auth token, but onAuthStateChange's cleanup never fires). React state still holds A's icalUrl/icalSub/hydratedUserId. Nurse B then signs in on the same phone. onAuthStateChange sets user=B immediately, so Settings' `{user && <CALENDAR SYNC>}` block (index.html:4781-4802) renders right away — showing A's still-resident icalUrl (a bearer credential per Invariant 13, 'treat the link like a password') in B's Settings until the async loadIcalSub(B.id) resolves and overwrites it a network round-trip later.",
+    "fix": "Add the same four lines handleSignOut is missing — setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; — to handleSignOut's reset block, or factor both cleanup blocks into one shared function so they can't diverge again.",
+    "wageCore": false
+   },
+   {
+    "title": "Google sign-in has no try/catch around signInWithOAuth, unlike the sibling email path a few lines above",
+    "severity": "medium",
+    "where": "index.html:4615-4628 (handleGoogleAuth)",
+    "detail": "handleEmailAuth (4591-4613) wraps its supabase.auth call in try/catch and always runs `finally{ setLoading(false); }`. handleGoogleAuth does not: `trackDeferred(...); const {error:err} = await supabase.auth.signInWithOAuth({...}); if(err) setError(err.message); setLoading(false);` with no try/catch around the await. supabase-js's signInWithOAuth builds the PKCE code verifier via getCodeChallengeAndMethod, which calls storage.setItem (localStorage.setItem) with no internal try/catch (verified in node_modules/@supabase/auth-js/src/lib/helpers.ts:320 and GoTrueClient.ts's _getUrlForProvider/_handleProviderSignIn, neither of which catches). localStorage.setItem throws synchronously in Safari private browsing (0-byte quota) and on a full quota — both realistic on the iPhones this app targets, and both quirks this same codebase already guards against everywhere else (anonId(), ERR_KEY, EVENT_PENDING_KEY, FEEDBACK_PENDING_KEY are all try/catch-wrapped).",
+    "failure": "A nurse in Safari private-browsing mode (or with a full/blocked storage quota) taps 'Continue with Google'. setLoading(true) runs, then the awaited call throws before returning. The throw is never caught locally — it becomes an unhandled promise rejection (only visible via the boot script's global listener and the ring buffer), setLoading(false) on the next line never executes, and React's ErrorBoundary doesn't help either (it only catches render-phase errors, not async event-handler rejections). The 'Continue with Google' button is left permanently disabled with no error text shown inside that mounted AuthModal instance — silent, unexplained failure with zero feedback, unlike every other error path in this same modal.",
+    "fix": "Wrap the signInWithOAuth call in try/catch (mirroring handleEmailAuth) and put setLoading(false) in a finally block.",
+    "wageCore": false
+   },
+   {
+    "title": "saveToSupabase's returned-error branch bypasses the console.error mirror the same commit introduced for exactly this case",
+    "severity": "low",
+    "where": "index.html:1337 (saveToSupabase) vs the console.error override at index.html:517-532",
+    "detail": "The 2026-08-23 fix (Invariant 4 companion rule 'console.error is mirrored into the error ring buffer') added a global override so any console.error(...) call also lands in the ring buffer, specifically because 'PostgREST reports failures by RETURNING an error object, so the save path's console.error never reached the ring buffer' (comment at 512-516). Every other error site in the file (loadCloudRow, submitFeedback x2, hydrateFromCloud's catch, the auth-session catch, signOut's catch, the paystub catch, ErrorBoundary) calls console.error(...) and gets both the devtools line and the ring-buffer entry for free. saveToSupabase's own returned-error branch — the one the fix narrative is literally about — instead calls logClientError('Supabase save failed: '+...) directly, bypassing console.error entirely.",
+    "failure": "When a cloud save fails with a returned (not thrown) Postgres/PostgREST error — RLS, a constraint violation, a transient 5xx — nothing prints in the browser devtools console. A developer watching the console live, including the project's own 'dev-build console diagnostic' in tests/harness.mjs (which drives real flows and captures console warning/error messages specifically to catch failures that never surface as a pageerror), would see no signal for this exact failure class, even though the whole point of the console.error mirror was to make console.error safe to rely on everywhere.",
+    "fix": "Change line 1337 to console.error('Supabase save failed:', error.message||error.code||'unknown') so it goes through the same mirrored path as every other error site.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "infra",
+  "findings": [
+   {
+    "title": "Migration 002 breaks the migration set's advertised re-run safety",
+    "severity": "high",
+    "where": "supabase/migrations/002_ical_subscription.sql:24-31",
+    "detail": "000_core.sql's header (lines 11-13) states the migration set is 'written idempotently (`if not exists`, `drop policy if exists`) so it is safe to run against the live project too', and 000/001/003 all follow that pattern: every `create policy` is preceded by a matching `drop policy if exists` (see 000_core.sql:36-39, 66, 89 and the ~14 instances in 001_swap_board.sql). 002_ical_subscription.sql creates its table with `if not exists` but then issues four bare `create policy ical_sub_select/insert/update/delete ...` statements (lines 24-31) with no `drop policy if exists` guard anywhere in the file.",
+    "failure": "CLAUDE.md's Supabase section records `ical_subscriptions` as 'migration 002, applied 2026-09-02' against the live project — i.e. these exact policies already exist in production. Running `supabase db push` (the documented apply method, per the file's own trailing comment) a second time against that project, or against any project where 002 already succeeded once, aborts with `ERROR: 42710: policy \"ical_sub_select\" for table \"ical_subscriptions\" already exists` and leaves the migration runner mid-file. This is exactly the operation the open 'second Supabase project for dev/test' item and the 000-header's 'safe to run against the live project too' promise both call for.",
+    "fix": "Add `drop policy if exists ical_sub_select on public.ical_subscriptions;` (and the matching drops for _insert/_update/_delete) immediately before each `create policy`, matching the pattern already used in 000 and 001.",
+    "wageCore": false
+   },
+   {
+    "title": "The build gate's own 'never silently omitted' promise is broken for Invariants 7 and 13",
+    "severity": "medium",
+    "where": "scripts/check_build.mjs:12-14 and :143",
+    "detail": "The header comment says: 'Invariants 3 (wage-core), 10 ..., 11 ... and 12 ... are human disciplines and are listed as UNCHECKED in the output rather than silently omitted.' The actual report line 143 prints only `UNCHECKED (human-held): 3 wage-core, 10 fetch-before-branch, 11 protected branches, 12 URL forwarding off`. Invariant 7 ('scrubpay-swaps' is a live md5 salt, in supabase/migrations/001_swap_board.sql:158) and Invariant 13 (the iCal feed URL must never enter serializeState/events/logs) are mechanically checkable candidates (a grep on the migration file, a grep on index.html) but appear in neither the checked set nor the UNCHECKED list — confirmed by grepping scripts/, tests/ for 'scrubpay-swaps', 'ical_subscriptions', 'serializeState': no hits anywhere.",
+    "failure": "A developer or the nightly agent, reading only the gate's console output to decide what still needs manual vigilance before deploying, sees four named human-held invariants and reasonably assumes that's the complete list (per the script's own stated design goal of never silently omitting one). If a future change alters the swap-board salt string or lets the iCal URL leak into serializeState, the gate stays fully green and the omission is never surfaced anywhere.",
+    "fix": "Either add mechanical checks for 7 and 13 (e.g. grep 001_swap_board.sql for the exact salt string; grep index.html's serializeState body for ical_url/ical_subscriptions), or at minimum add them to the UNCHECKED line so the script's own 'rather than silently omitted' claim is true.",
+    "wageCore": false
+   },
+   {
+    "title": "harness.mjs's vendor()/PKGS are dead code duplicating ci.yml's package list",
+    "severity": "medium",
+    "where": "tests/harness.mjs:16-23 (PKGS) and :41-44 (vendor)",
+    "detail": "`vendor(root)` and the `PKGS` array it installs from are exported but have zero callers anywhere in the repo: tests/smoke.mjs imports only `{ buildScratch, serve, isExpectedNetwork, SEEDED_STATE, STORAGE_KEY }` (smoke.mjs:15) and never imports or calls `vendor`; ci.yml instead vendors packages via its own hardcoded `npm install` line (ci.yml:62) that repeats the same six `pkg@version` strings by hand. Verified via repo-wide grep: harness.mjs itself is the only file mentioning `vendor(`.",
+    "failure": "The six pinned versions now live in two unsynchronized places (tests/harness.mjs:16-23 and .github/workflows/ci.yml:62) with nothing that checks they agree — unlike the CDN-URL check in buildScratch (harness.mjs:51) which throws 'CDN pin moved, harness is stale' if index.html's script tag drifts from MAP. A future version bump applied to one list and not the other would leave CI vendoring a different playwright-core/react/pdfjs version than a local run would use, silently, since nothing calls vendor() or PKGS to catch the mismatch.",
+    "fix": "Either delete the unused `vendor`/`PKGS` export, or actually wire ci.yml's smoke job to derive its install line from `PKGS` (e.g. `node -e \"import('./tests/harness.mjs').then(m=>console.log(m.PKGS.join(' ')))\"`) so there is one source of truth for the pinned versions.",
+    "wageCore": false
+   },
+   {
+    "title": "Stale comment in ci.yml claims the gate is advisory-only, contradicting CLAUDE.md's documented required-check status",
+    "severity": "low",
+    "where": ".github/workflows/ci.yml:8-10",
+    "detail": "The comment reads: 'To make it binding rather than advisory, add \"gate\" as a required status check in Settings -> Branches for claude/migrate-to-github-deploy-3F5RD. Until that is set, a red run is visible on the PR but does not block the merge.' CLAUDE.md's Deployment section states both `gate` and `smoke` have been required status checks since 2026-09-07 'via the `deploy gate` ruleset (Settings → Rules)' — a different GitHub feature (repository rulesets) at a different settings location than the comment names, and already configured, not merely a suggestion.",
+    "failure": "A maintainer who reads only this workflow file (not CLAUDE.md) before touching branch protection would look for a 'required status checks' toggle under Settings -> Branches, not find the ruleset that's actually doing the enforcing under Settings -> Rules, and could conclude CI is advisory when a red run in fact already blocks the merge (and blocks direct pushes to the deploy branch, per Invariant 9/CLAUDE.md) — leading to wasted effort re-configuring branch protection or false confidence that a failing PR could still be merged manually.",
+    "fix": "Update or remove the comment to reflect that the `deploy gate` ruleset (Settings → Rules) already makes both checks required as of 2026-09-07, per CLAUDE.md.",
+    "wageCore": false
+   }
+  ]
+ }
+]

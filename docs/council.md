@@ -84,39 +84,66 @@ applies to an auto-applying council. Every finding carries a `wageCore` flag for
 
 ## Running it
 
+A full run does not fit one usage window and the session container that holds the workflow cache
+is reclaimed between firings, so since 2026-09-13 the council runs in **batches whose state lives in
+git**, under `docs/council-runs/<date>/`. Each batch reads the previous batches' output from those
+files and writes its own back; nothing depends on the workflow cache or on a container surviving.
+
 ```
-Workflow({ scriptPath: '.claude/workflows/council.mjs' })
+# build the args for a batch from the run dir, launch, then fold the result back in
+node scripts/council_state.mjs args --run docs/council-runs/2026-09-13 --upTo 1   # -> JSON
+Workflow({ scriptPath: '.claude/workflows/council.mjs', args: <that JSON> })
+node scripts/council_state.mjs persist --run docs/council-runs/2026-09-13 --result <the .output file>
+git add docs/council-runs && git commit && git push
 ```
 
-(`Workflow({ name: 'council' })` is the intended form, but on 2026-09-13 the name registry did not
-see the committed file and only `scriptPath` worked. Same script either way.)
+`upTo` is cumulative and everything already on file is skipped, so a batch pays only for its own
+work:
+
+| `upTo` | Runs | Cost shape |
+|---|---|---|
+| `review` | the 56 review cells (only when the run dir has none) | ~9M tokens — one whole window |
+| `1` | per-lens dedup, then refuters for every **critical/high** finding | ~20–30% of a window |
+| `2a` | refuters for **medium** findings in the money/anonymity/data lenses | ~25–35% |
+| `2b` | refuters for the other medium findings (all `sonnet`) | ~15–20% |
+| `3` | the 10 scorers and the synthesis | ~10% |
+
+**Low-severity findings are never agent-verified.** They are kept as backlog candidates and the
+scorers see them labelled as such. This is a deliberate, stated deviation from "every finding is
+verified" — at three refuters each they were a third of the verification bill for the least
+consequential third of the findings. The `2026-07-30` baseline had no lows at all, so the
+confirmed/rejected count still means what it meant.
+
+**Ladder the batches across days when the account is in use for other work.** The usage limit is
+per account and shared with chat and Cowork; a batch is a bounded dip, a full run is a spike that
+caps everything else for the rest of the window. The 2026-09-13 run was scheduled one batch per
+night (03:00 UTC) via one-shot Routines firing into the same session — `docs/history.md`.
 
 Prerequisites, in order of how likely they are to bite:
 
-- **It will hit the session usage limit; plan to resume.** The first run (2026-09-13) died at 5 of
-  56 cells with every agent on the frontier model, taking every refuter, scorer and the synthesis
-  with it. That is the normal shape of a full run, not a failure of it: when the limit resets,
-  relaunch with `resumeFromRunId` and every completed agent replays from cache. The script reports
-  which cells never ran (`unreviewed`, `lensesLost`) so a partial run is honest about its coverage
-  rather than looking like a clean one.
+- **Persist after every batch, before anything else.** The `.output` file with the workflow's return
+  value lives in the container; `persist` is what moves it into git. A batch whose result was not
+  persisted has to be bought again.
 - **Concurrency is CPU-bound, not configurable.** Agents run `min(16, CPUs − 2)` at a time; on the
-  4-core session box that is two. A full run is measured in hours regardless of budget.
-- **Raise the workflow size limit first.** The default guideline is *medium — under 15 agents*. A
-  full run is ~56 review agents, ~3 verifiers per surviving finding, 10 scorers and 1 synthesis:
-  realistically 150–300 agents. Change it under `/config` → "Dynamic workflow size", or the run will
-  be shaped to a budget that defeats the point.
+  4-core session box that is two. Even a batch is measured in hours.
 - **Model tiers.** The session's model is the *frontier* tier and is what the script means when it
-  passes no `model`: the `wage-math`, `cross-surface` and `security` reviewers, refuters on
-  medium-or-worse findings, and the synthesis. Everything else — the seven broad review lenses, the
-  per-lens dedup, refuters on `low` findings, the scorers — runs on `sonnet`. The line is "would a
-  weaker reader miss a real defect, or is a wrong verdict expensive": originating findings in the
-  money and anonymity code is where frontier earns its price; classifying and ranking is not. Start
-  the session on whichever model you want as the frontier tier; the choice is the session's, not
-  the file's.
-- **Read this file and `BACKLOG.md` first.** The known-issues list below is passed to the refuters
-  and the synthesis so a finding that restates the backlog is refuted as such. It is *not* passed to
-  the reviewers: the review prompt is byte-identical to the first run so its cached cells replay on
-  resume — the next run started from scratch should put the list in front of reviewers too.
+  passes no `model`: the reviewers **and refuters** of the four lenses over money, anonymity and
+  data loss (`wage-math`, `cross-surface`, `security`, `data-integrity`), and the synthesis.
+  Everything else — the six broad review lenses, dedup, the other lenses' refuters (at `effort:
+  'low'`), the scorers — runs on `sonnet`. The line is "would a weaker reader miss a real defect, or
+  is a wrong verdict expensive". Start the session on whichever model you want as the frontier
+  tier; the choice is the session's, not the file's.
+- **Refuters are scoped.** Each is told to read the cited location ±80 lines plus at most three
+  greps, in about eight tool calls. The unscoped version averaged 27 tool turns per refuter —
+  nearly a full review cell's worth — because "verify against the real code" sent every one of
+  them through the whole 5,800-line file.
+- **Raise the workflow size limit first.** The default guideline is *medium — under 15 agents*; a
+  batch is 30–100 agents. Change it under `/config` → "Dynamic workflow size", or the run will be
+  shaped to a budget that defeats the point.
+- **`Workflow({ name: 'council' })` did not resolve** on 2026-09-13 (the registry only listed
+  `deep-research`); `scriptPath` is what worked.
+- **Read this file and `BACKLOG.md` first.** The known-issues list below is in the script as
+  `KNOWN` and is passed to reviewers, refuters and the synthesis; keep the two in step.
 
 ## Known — do not re-report
 

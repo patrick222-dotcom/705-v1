@@ -1,0 +1,13 @@
+{
+ "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
+ "severity": "medium",
+ "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
+ "detail": "Generic Day/Night brushes resolve to weekend-day / weekend-eve on Sat/Sun (index.html:1205-1211). A cell painted with a template brush ('tpl:<id>', built at index.html:4350-4358 as kind:'fixed') keeps the template's shiftType verbatim, so a 'My nights' template (shiftType 'night') on Saturday is priced at the plain night differential. The hint under the grid reads, for every brush, 'Weekend days pick up your weekend differentials automatically.' Once painted the two cells are identical: cellLabel gives 'Night 12h from 7:00 PM' for both (differentials.night.name === 'Night'), cellColor gives differentials.night.color for both, same glyph. Ran it: Fri/Sat/Sun nights, 7-day cycle, $50 base, defaults -- generic brush: gross $4,632, net $3,324, calendar types weekend-eve/night/weekend-eve; template brush: gross $4,320, net $3,089, calendar types night/night/night. $312 per paycheck, ~$8.1k/yr, from a brush choice the UI says makes no difference. The exact-type semantics match calendar quick-fill (index.html:2922), so the arithmetic is deliberate; the hint and the indistinguishable cells are the defect.",
+ "failure": "Nurse saves her usual 'Night 12h' template, paints Fri-Sun with it because it's the brush with her name on it, reads the hint that weekends pick up her weekend differentials, and the lab under-quotes her rotation by ~$312 per paycheck; after apply, every Sat/Sun shift on the calendar is typed 'night' rather than 'weekend-eve' and the hero agrees with the low number.",
+ "fix": "Either (a) make the hint brush-aware and mark fixed cells (e.g. the ⚡ glyph or the template name in cellLabel) so a template-painted weekend visibly keeps its exact type, or (b) in patternCellShiftType let a fixed cell whose shiftType is 'base' or 'night' go through the same weekend inference as the generic kinds (an explicitly weekend-typed template still keeps its type). (b) changes displayed dollars via patternCellShiftType/planPatternApply, not the listed wage-core functions, but should still get a harness assertion (generic vs template brush on a Saturday).",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "wage-math-10"
+}

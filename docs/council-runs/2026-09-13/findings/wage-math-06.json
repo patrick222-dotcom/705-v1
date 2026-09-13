@@ -1,0 +1,13 @@
+{
+ "title": "Paystub import turns a premium-only earnings row into a negative differential",
+ "severity": "medium",
+ "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
+ "detail": "applyPaystub derives each differential as `da = round((s.rate - p.baseRate)*100)/100` and stores it as the dollar amount with no floor and no cross-check against `s.earnings`. The parser's row regex (index.html:3360-3363) captures the HOURS AND EARNINGS 'Rate' column as `s.rate`. On PeopleSoft-style stubs (the very format this parser targets: 'Fed MED/EE', 'Fed OASDI/EE', 'TOTAL GROSS'), a shift-differential earnings code is frequently listed at the premium rate alone (e.g. 'PD Night Diff  4.00  36.00  144.00'), not the base-plus-premium rate. The review sheet renders the same `da` via `+$${da.toFixed(2)}/hr` with no guard, so the user is shown '→ Night  ·  +$-61.15/hr' and the Apply button writes it.",
+ "failure": "Base rate $65.15 read from 'Pay Rate: $65.15 Hourly'; a row 'PD Night 4.00 36.00 144.00' classifies as 'night' and yields da = 4.00 - 65.15 = -61.15. Review sheet shows '+$-61.15/hr'; after Apply, every night shift prices at (65.15 - 61.15) = $4.00/hr, so a 12h night reads '+$48 gross' in the Add-Shift preview and the hero collapses accordingly.",
+ "fix": "In applyPaystub (and the matching line in PaystubReview), treat a row whose rate is below the base rate as a premium-only line: `const da = s.rate < p.baseRate ? s.rate : s.rate - p.baseRate` (optionally confirmed by `Math.abs(s.rate*s.hours - s.earnings) < 1`), and never write a negative amount. Add a harness case with a premium-only row asserting the night amount lands at +4.00.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "wage-math-06"
+}

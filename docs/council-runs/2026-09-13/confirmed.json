@@ -1,0 +1,88 @@
+[
+ {
+  "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so it disagrees with the Breakdown and with Gross − Take-home whenever flat deductions exceed gross",
+  "severity": "medium",
+  "where": "/home/user/705-v1/index.html:3487 (chip reads calc.ded); computeNet 1231-1255 (ded uncapped, pre/post capped for display, flat-dollar custom withholdings never capped); Breakdown 3980-3990 (also not guarded by calc.hours>0 the way the Keep chip is)",
+  "detail": "computeNet returns `ded = pretax+fica+fed+st+posttax+cw` (raw) alongside display-capped `pre`/`post` (and clamps `net` at 0). The hero chip prints `ded`; the Breakdown prints the capped rows. The skill's own invariant says the caps exist 'so Breakdown still sums' — but the hero never received the same treatment, and the flat-dollar half of `cw` is outside the cap too (line 1243 folds dollar and percent withholdings into one number, line 1247 caps only pretax/posttax). Any nurse whose pretax/posttax fields are non-zero — which a paystub scan sets automatically (applyPaystub 3376-3378) — sees this on every pay period that is empty or light.",
+  "failure": "pretax $600 + posttax $25 (typical after a paystub scan), scroll to next pay period with no shifts logged yet: hero reads 'Gross $0 · Taxes & deductions –$625 · $0'. Log one 8h base shift at the default $65.15: hero reads 'Gross $521 · Taxes & deductions –$665 · $0' while 'See the full breakdown' for the same period lists Pre-tax –$481 and FICA –$40, total –$521. Same shape with a flat-dollar custom withholding: $150 'Parking' on an empty period shows 'Other withholdings –$150' under 'Gross $0'. Separately: Pre-tax $300 / Post-tax $50 with no shifts yet shows 'Projected take-home $0 · Gross $0 · Taxes & deductions –$350' while the Breakdown itself shows nothing to subtract.",
+  "fix": "Have computeNet return a display total that is bounded by gross (e.g. `dedDisp = Math.min(ded, gross)` or literally `gross - net`) and print that in the hero chip (or gate the chip with the same `calc.hours>0` guard the Keep chip already has); extend the flat cap to the dollar-typed custom withholdings (track `cwFlat` separately from `cwPct` and apply the same `flatCapTotal` logic) so the Breakdown's 'Other withholdings' row is bounded too. Add a smoke probe: computeNet(0,{pretax:600}).dedDisp === 0 and Breakdown rows sum === gross − net when pretax > gross.",
+  "wageCore": true,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "wage-math-00",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "A blanked or garbage multiplier differential is coerced to 0×, silently pricing every shift of that type at $0",
+  "severity": "medium",
+  "where": "/home/user/705-v1/index.html:1046-1047 (sanitizeData: `amount: isFinite(amt) ? amt : 0` regardless of type); 4715 (Settings multiplier NumInput with min={0}); 4016-4023 (NumInput commits `min` on an empty field); 1121 (hourlyRate: `base * diff.amount`)",
+  "detail": "For a dollar-type differential, 0 is the neutral value. For a multiplier-type differential (Holiday 1.5×, Overtime 1.5×), 0 zeroes the entire hourly rate — `hourlyRate` returns base*0 and shiftGross returns only the per-hour/flat bonus. Two paths produce it: NumInput's blank→min contract commits 0 when the user clears the '×' field and blurs, and sanitizeData maps any non-finite blob value to 0 rather than to 1. Once written, 0 is a finite number so sanitizeData keeps it on every subsequent load; nothing ever repairs it.",
+  "failure": "In Settings, tap the Holiday '1.5 ×' field, select-all/delete to retype, then tap elsewhere before typing (common on a phone). Holiday becomes 0×. Her Christmas 12h shift now shows '~$0' on the calendar and the hero's projected take-home drops by roughly $913 (65.15×1.5×12×0.78) with no warning; the Settings row still reads '0 ×' and looks like a value she chose.",
+  "fix": "In sanitizeData's differential branch, when `type==='multiplier'` coerce non-finite or ≤0 amounts to 1 (not 0). In the Settings row, give multiplier NumInputs `min={0.1}` (or make NumInput's empty-commit revert to the last good value when a `revertOnBlank` prop is set). Add a probe: sanitizeData({differentials:{holiday:{type:'multiplier',amount:''}}}).differentials.holiday.amount === 1 and hourlyRate(50,{type:'multiplier',amount:0}) is never reached from a sanitized blob.",
+  "wageCore": true,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-01",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Independently rounded chips: Gross − Taxes ≠ Take-home by $1 in ~11% of pay periods; Breakdown rows drift the same way",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:3484-3487 (hero: fmt(calc.net), fmt(calc.gross), fmt(calc.ded) each rounded separately); 3982-3987 and 4006 (Breakdown: six rows and the take-home each rounded separately); fmt at 1116",
+  "detail": "`fmt` rounds each figure to whole dollars on its own, so the three hero chips are three independent roundings of gross, ded and gross−ded. Replaying the real shiftGross/computeNet formulas over 220 mixes of base/night 12h shifts at five base rates with default taxes, 24 (11%) print chips whose subtraction is off by one. With six Breakdown rows the residual can reach $3. This is the 'rounding that compounds' the lens asks about — small, but it is the arithmetic a nurse is most likely to check by hand, and the app's credibility rests on the numbers closing.",
+  "failure": "Two 12h base shifts at the default $65.15/hr, default taxes: hero prints 'Gross $1,564 · Taxes & deductions –$346' over a take-home of '$1,217'. 1,564 − 346 = 1,218.",
+  "fix": "Display-only: derive the chip as `Math.round(calc.gross) - Math.round(calc.net)` (and likewise give Breakdown the rounding residual on its largest row, or print cents), so the visible figures always close. No change to net/gross/ded themselves — but it changes displayed dollar text, so run the wage-core equality assertion and name this as the one intended difference.",
+  "wageCore": false,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-02",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanism is real and I reproduced the exact numbers: computeNet(1563.6, defaultTaxes) with two 12h base shifts at $65.15/hr gives gross=1563.6, ded=346.3374, net=1217.2626. fmt() independently rounds each to fmt(gross)=$1,564, fmt(ded)=$346, fmt(net)=$1,217, and indeed 1564−346=1218≠1217 as displayed. So the arithmetic claim checks out exactly.\n\nBut granting the mechanism doesn't make the described outcome a bug worth reporting. Critically, computeNet (index.html:1231-1250) computes net = gross - ded in full floating-point precision from the raw, unrounded gross and ded — it is not derived by subtracting two already-rounded whole-dollar numbers. So the underlying wage math (Invariant 3's domain: shiftGross/hourlyRate/computeNet) is exact and internally consistent; nothing compounds or drifts in the actual computation. What the finding calls a defect is that fmt() — used identically everywhere in this codebase (hero chips, Breakdown rows, YearList, etc.) — rounds each of several related, independently-meaningful currency figures to the nearest whole dollar for *display* only. That a rounded subtotal minus a rounded deduction can differ by $1 from the rounded total is an unavoidable, universal property of showing whole-dollar rounded figures for numbers that don't happen to round the same way (the same artifact appears on bank statements, invoices, and virtually every budgeting app that shows subtotal/tax/total as separately rounded whole-currency amounts). Nothing in CLAUDE.md, the wage-core invariant, or the smoke-test suite promises penny-exact (or dollar-exact) reconciliation between independently displayed chips — that's a bar the finding invents and then holds the code to. The claimed severity (\"the app's credibility rests on the numbers closing\") is a rhetorical overstatement of a $1 cosmetic rounding artifact in a whole-dollar display, not a wage-math correctness bug, and doesn't rise to something the owner needs to act on."
+  ]
+ },
+ {
+  "title": "Pattern lab and calendar price a toggled-off differential differently",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:1206-1213 (patternCellShiftType resolves a 'night'/weekend cell to 'base' unless differentials[k].active); 2646 (statOf) and 2795 (calc) call shiftGross(baseRate, differentials[s.shiftType], s) with no active check; hourlyRate 1119-1124",
+  "detail": "The Settings toggle dims the row and removes the chip from the Add-Shift sheet (4099), and the lab treats it as 'she doesn't get this differential' — but calc/statOf/yearMonths keep applying the amount to any shift already carrying that shiftType (logged before the toggle, imported from .ics via the questionnaire at 3184, or added by a template/quick-fill). Only the delete path (4691) warns about repricing, which implies toggling off was meant to be display-only; the lab contradicts that. Either semantics is defensible; the two surfaces holding different ones is the defect.",
+  "failure": "Log Mon–Wed 12h nights this period (or .ics-import them), then toggle Night off in Settings. Hero still prices them at $75.15/hr (night amount included, +$360 gross for the period). Open Patterns → 'Mon–Wed nights' preset anchored on the same week: it prices the identical three nights at $65.15/hr and shows a take-home per paycheck ~$280 lower than the hero for the same schedule.",
+  "fix": "Pick one: (a) make hourlyRate/shiftGross treat `diff.active===false` as no differential so the calendar reprices to match the lab and the dimmed row (then the delete warning applies to toggling too, and the Settings hint should say so); or (b) drop the `active()` gate in patternCellShiftType so the lab prices what the calendar prices. (a) touches wage core; (b) does not, but leaves the toggle as pure decluttering. Either way add a probe covering an inactive differential on both paths.",
+  "wageCore": true,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-03",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Verified the code (index.html:1119-1134 shiftGross/hourlyRate, 1202-1220 patternCellShiftType/patternCellToShift, 1257-1301 patternMetrics, 2636-2650 statOf, 4089-4104 AddShiftSheet, 4689-4692 tog/del) and the described mechanism is real but the \"defect\" framing doesn't survive scrutiny — it's a coherent, intended design, not a cross-surface contradiction.\n\nThe codebase draws one consistent line everywhere: `active` gates whether a *brand-new* shift instance can be created/classified under a given differential; it never gates the *pricing* of a shift that already carries that shiftType. That rule holds identically in every place a new shift is produced:\n- Add-Shift sheet (line 4099): `differentials` filtered by `d.active` for the chip list offered for a *new* pick.\n- Pattern Lab cell classification (patternCellShiftType, 1202-1211): a generic day/night cell resolves to 'base' instead of 'night'/'weekend-eve' when the differential is inactive — deciding what a *newly generated* cell becomes.\n- AddShiftSheet's own live preview (4104) and statOf/calc (2646, and calc's analogue) do NOT check `.active` when pricing a shift that already has a concrete `shiftType` — by the same rule, because that shift isn't being newly created, it's being priced as recorded.\n\nDeleting a differential (del(), 4691) is a materially different operation: it removes the key from `differentials` entirely, so `differentials[s.shiftType]` becomes `undefined` for every shift using it — hourlyRate then falls back to base for all of them, past and future, which is exactly why only *that* path warns about repricing. Toggling `active` off leaves the key (name/amount/type) intact, so already-tagged shifts keep pricing off the same, still-present definition — consistent with the general (undisputed) behavior that editing a differential's dollar amount immediately reprices every shift already tagged with that type. That's a feature, not the bug being described.\n\nCrucially, the Pattern Lab's readout for a preset (patternMetrics, 1257-1301) never reads or reprices the shifts already on the calendar at all — it takes no `shifts` argument and computes purely from `pattern.cells` + the anchor date, generating hypothetical fresh shifts via `patternCellToShift` for a lcm(cycle,14)-day span. Opening 'Mon–Wed nights' after logging real Mon–Wed night shifts does not touch, reference, or reprice those logged shift records — it's an independent simulation of \"if this preset were applied under current settings,\" reusing shiftGross/computeNet for calculation-methodology parity with the hero (per the comment at 1229), not for value parity with whatever happens to already be on the calendar. `planPatternApply` (1305) only consults `shifts` to decide skip-vs-replace placement, never to reprice; applying with replace=on would regenerate those specific days from scratch and only then would the calendar/hero converge with the lab's number, which is the expected lifecycle.\n\nSo the two 'surfaces' the finding pits against each other actually agree on both of the app's real rules (active gates new-shift classification; existing shiftType instances price off the persisted, non-deleted definition regardless of active). The apparent mismatch in the walkthrough is an artifact of comparing a real, already-logged shift against an unrelated hypothetical preset simulation for the same calendar dates — not a computation disagreement over the same data. This reads as intended, load-bearing behavior (mirrored by the explicit del()-only repricing warning) rather than a genuine defect."
+  ]
+ },
+ {
+  "title": "Year view prints gross as a bare '$' figure while the month cells it opens into print estimated take-home",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:3970-3971 (YearList: fmt(mm.g), no qualifier); 2769-2780 (yearMonths sums shiftGross + PTO gross); 3933 and 3580 (month cells print '~'+fmt(t.g*keepRatio) under the disclaimer 'Day amounts are estimated take-home')",
+  "detail": "The month view carries a disclaimer that day amounts are take-home; the Year list has no equivalent and shows gross with the same `$` formatting. Tapping a year row drops the user into that month, so the two figures are seen back to back for the same days.",
+  "failure": "Year view shows 'September · 72 hrs · $5,327 · 6 shifts'. Tap it: the six day cells inside read ~$702, ~$702, ~$702, ~$716, ~$716, ~$609 — about $4,147 total, 22% less than the row she just tapped, with nothing on either screen explaining that one is gross and the other is take-home. (With six 12h nights at $75.15/hr the same gap shows as $5,411 vs ~$4,212.)",
+  "fix": "Display-only: either label the year row ('$5,327 gross') or print `'~'+fmt(mm.g*keepRatio)` to match the cells and reuse the same disclaimer. No math change.",
+  "wageCore": false,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "wage-math-05",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ }
+]

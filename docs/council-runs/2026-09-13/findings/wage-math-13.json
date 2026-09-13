@@ -1,0 +1,13 @@
+{
+ "title": "≈$/hr take-home is computed from the dollar-rounded net, so identical rates show different cents for different lengths",
+ "severity": "low",
+ "where": "index.html:4105 (previewNet = Math.round(...)) and :4246 (fmt2(previewNet/hours))",
+ "detail": "`previewNet` is rounded to whole dollars at 4105 for the '+$' headline, then reused as the numerator at 4246 and formatted with `fmt2` to two decimals. The rounding error (up to $0.50) is divided by `hours`, giving up to ±$0.04/hr at 12h, ±$0.06 at 8h and ±$0.125 at 4h — presented as exact cents on a line whose stated purpose is 'compare pickups at a glance'.",
+ "failure": "Base $47.30, Night +$10, default taxes (keepRatio 0.7785). 12h: 687.60 gross → 535.30 → rounds to 535 → '$44.58/hr'. 8h: 458.40 → 356.86 → rounds to 357 → '$44.63/hr'. Same hourly rate, two different figures; the true value is $44.61 for both. A nurse choosing between an 8 and a 12 sees a 5-cent/hr edge that does not exist.",
+ "fix": "Keep the rounded value for the headline but divide the unrounded product: `const previewNetExact = previewGross*keepRatio; … fmt2(previewNetExact/hours)`. Same for the goal percentages at 4248 if desired. Sheet-only, no wage-core function touched.",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "wage-math-13"
+}
