@@ -228,7 +228,9 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   pay type; shifts that vanished from the feed are proposed for removal only inside the fetched window
   (60 days back, 366 forward) and never when the 200-event cap truncated the feed; "Not a shift" files a
   wage-neutral day-event chip and "Ignore these" hides it, both remembered by UID. Proxy: host allowlist
-  (Google Calendar hosts only so far — the NurseGrid feed host is still a TODO), https only, no
+  (Google Calendar hosts only so far — the NurseGrid feed host is still a TODO, and still wanted:
+  this is the nurse's own secret `.ics` address and needs no partnership, so the 2026-09-13 decision to
+  rule out the hStream partner API does not touch it), https only, no
   redirects, 2MB cap, 8s timeout. Known limits: the confirm step is all-or-nothing, and a local edit to a
   synced shift's hours loses to the feed on the next sync.
 
