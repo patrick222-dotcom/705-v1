@@ -4,6 +4,44 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-13 — hStream ruled out for good; positioning is "build it better"
+
+The owner closed the hStream question, which had sat as a conditional "revisit if this becomes a real
+product" since 2026-07-07: **no.** The reasoning is worth keeping because it reframes the goal.
+
+The original interest was never in a partnership for its own sake — it was the hope that HealthStream
+published open docs and integrations so a nurse could *connect her own NurseGrid account* and move
+between the two apps easily. That is not what hStream is. It is a gated B2B program over a health
+system's authorized data, sold to health systems rather than to nurses, so the thing that would have
+made it worth pursuing does not exist at any level of effort or spend. Waiting on it would have meant
+blocking a feature on a business relationship.
+
+Positioning instead: **be the better place for nurses to track shifts and trade them**, with the swap
+board as the wedge — pseudonymous cross-nurse matching with anonymity enforced at the database layer
+(column-level grants + security-definer RPCs) is something NurseGrid does not do at all.
+
+**Do NOT read this as "no NurseGrid interop."** The two are different things and only one is dead:
+
+| | Status |
+|---|---|
+| **hStream / HealthStream partner API** | **Dead.** Needs certification, contracts and a HIPAA BAA. Not being pursued. Don't re-scope it. |
+| **NurseGrid `.ics` secret-URL feed** | **Live and shipped** (#50/#57). Needs no partnership — the nurse pastes her own feed address. The allowlist TODO for the NurseGrid feed host in `ical-proxy` is still wanted. |
+
+Also settled the same day: BadgeBudget stores wage rates, shift schedules and PTO — a nurse's own
+employment data, **not PHI**. No BAA is needed now or at scale, which is what made the email-provider
+choice free of compliance constraints (see below). This holds only while the app never ingests a
+health system's data — which is exactly what ruling out hStream guarantees.
+
+**Founder email.** `pat@` and `courtney@badgebudget.com` on Migadu (~$19/yr, unlimited addresses
+across all four domains, full IMAP) rather than Google Workspace ($168/yr for two seats). Workspace's
+one real differentiator at this scale was that it signs a HIPAA BAA on every paid plan; with hStream
+ruled out that stopped mattering. Three rules recorded with the choice: the Porkbun login stays on a
+personal address (never `pat@badgebudget.com` — a domain whose DNS is broken cannot receive the
+password reset that fixes it); there is exactly one SPF TXT record and a second one breaks SPF
+entirely, so a new sender is merged into the existing line; and transactional mail (the Resend
+feedback notifications) goes out from a `send.` subdomain so a spam-flagged blast can never damage
+deliverability for the founders' own mail.
+
 ## 2026-09-05 — Path B: the Siri Shortcut bridge
 
 Same day #61 and #67 merged, the owner asked whether a preconfigured Siri Shortcut could take actions
