@@ -174,6 +174,30 @@ every block rolled back, nothing written:
 | 3c | declared return columns | the 8 promised, no more | **id, created_at, kind, message, contact, signed_in, segment, device** |
 | 4 | revocation takes effect immediately | true → false | **true → false**, no cache, no deploy |
 
+### Verified over the real network, not just simulated
+
+The probes above use `set local role authenticated`, which is the right simulation of how PostgREST
+presents a caller — but it is a simulation. The deployed REST API was therefore hit directly with
+the **public anon key**, exactly what any visitor to badgebudget.com holds, after the deploy:
+
+```
+GET  /rest/v1/feedback            -> 42501 permission denied for table feedback
+GET  /rest/v1/events              -> 42501 permission denied for table events
+GET  /rest/v1/ops_admins          -> 42501 permission denied for table ops_admins
+GET  /rest/v1/user_data           -> []          (policy is scoped to auth.uid(), null for anon)
+POST /rest/v1/rpc/ops_feedback_inbox   -> 42501 permission denied for function
+POST /rest/v1/rpc/ops_feedback_summary -> 42501 permission denied for function
+POST /rest/v1/rpc/is_ops_admin         -> 42501 permission denied for function
+```
+
+**Known gap in this verification:** the production page was never rendered in a real browser from
+the build container — its egress relay resets Chromium's TLS tunnel, so `page.goto` cannot reach
+badgebudget.com from here (curl can; Chromium cannot). What stands in for it: the deployed bytes
+were diffed against the branch and are byte-identical to the file that passes all five signed-out
+gate assertions in `tests/smoke.mjs` section 7, and the database side was probed independently both
+ways above. The untested leg is the RPC round-trip from a signed-in browser, which is worth one
+manual look on a phone before handing the URL to anyone.
+
 **The best result was an error I did not plan for.** Probe 3 initially failed with *permission denied
 for table feedback* — as the owner, on the allow-list. That is the design working: an ops admin
 cannot read `feedback` directly at all. The function is the only door, and being on the allow-list
