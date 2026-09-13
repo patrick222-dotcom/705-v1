@@ -312,6 +312,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (owner-directed, interactive) — **Brand mark: favicon + wordmark set to the "bb." lettermark
+  (option D, no arrows).** After an interactive logo exploration (refresh-loop arrows, clock/$ loop, taper,
+  barrel-roll — all in the branding artifact), owner + Courtney landed on original mark option D: the
+  lowercase name with a small green dot to the right, extended to `bb.`. Wired into `index.html` only:
+  favicon data-URI now an indigo tile with white `bb` + green dot (was a single white `B`); the topbar
+  and onboarding `.brand` wordmark and the `#splash` logo now render the green **round** dot (`--money`)
+  *after* "badgebudget" instead of the indigo rounded-square dot *before* it. Head-only + CSS/markup, so
+  the 3-file publish set is untouched; no wage-core, boot-hardening or storage-key changes. Gate 8/8,
+  groom 33/33, smoke 29/29; verified the rendered topbar + splash in the harness.
 - 2026-09-12 (owner-directed, interactive) — **Ops dashboard: insider segmentation + anonymous funnel,
   and nightly auto-refresh wired.** Owner asked to separate their + Courtney's own testing from real
   visitors and, specifically, to see where anonymous visitors who arrive but don't register abandon —
