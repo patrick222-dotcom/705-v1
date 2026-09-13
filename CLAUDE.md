@@ -26,11 +26,11 @@ hosts an anonymous shift-swap board.
 | `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
 | `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `001_swap_board.sql` (swap board) and `002_ical_subscription.sql` (the iCal feed table); `user_data`/`feedback`/`events` still exist only in the live project |
+| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag). 000→003 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 27 assertions on an iPhone 13 profile |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 57 assertions on an iPhone 13 profile |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
@@ -121,8 +121,21 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `anon`+`authenticated` (nobody can read back via the anon key). Offline submissions queue in
   localStorage and flush on next load. **Each row also carries `page` (pathname, ≤120 chars) and
   `user_agent` (≤400 chars)** — undisclosed until 2026-09-02; keep-or-strip is an open product call.
-  Owner read: `select created_at, message, contact, user_id, page, user_agent from public.feedback
-  order by created_at desc;`
+  **Tiles, not a blank box (2026-09-13).** The sheet opens on four one-tap tiles — *A number looks
+  wrong* / *Something didn't work* / *I couldn't find how to…* / *I wish it could…* — and each
+  pre-fills the textarea with a scaffold whose blanks are the questions the owner would otherwise
+  have to ask by email, so a nurse fills two lines instead of composing a bug report. The tile sets
+  `feedback.kind` (migration 003, CHECK-constrained to the five values in `FEEDBACK_KINDS`; tapping
+  no tile is the old open box, filed as `'other'`, and `kind is null` means "before the tiles
+  shipped"). The wrong-number scaffold stamps a **`Where:`** line from the surface the sheet was
+  opened from — `page` can't supply it, since this is a single-page app and the pathname is always
+  `/`. Three guards, each negative-tested: switching tiles rewrites the box only while it still
+  holds an untouched scaffold, so her own words are never eaten; submitting an untouched scaffold is
+  refused rather than filed as a row of prompts; and the textarea no longer `autoFocus`es, because on
+  a phone that raised the keyboard over the tiles before she could read them.
+  Owner read: `select created_at, kind, message, contact, user_id, page, user_agent from
+  public.feedback order by created_at desc;` and `select kind, count(*) from public.feedback group
+  by kind order by 2 desc;`
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
@@ -132,7 +145,8 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
   `ics_import_parsed/done`, `ics_sync_done`, `pattern_lab_opened`, `pattern_saved` `{cycle}`,
-  `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`, `feedback_submitted`, `swap_group_created/joined`,
+  `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`,
+  `feedback_submitted` `{kind}` (which tile, or `'other'` for the open box), `swap_group_created/joined`,
   `swap_invite_shared/opened`, `swap_posted`, `swap_withdrawn`,
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
   `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
@@ -207,6 +221,22 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
   reach this" (#68); a month-first calendar whose month label + weekday row stay pinned while scrolling
   (#63); a breakdown view; paystub PDF import (parsed on-device, never
   uploaded); Settings.
+- **Top bar (2026-09-13).** The avatar is the account menu at every width — it absorbed the separate
+  gear and sign-out icon buttons, so the bar carries exactly one icon (feedback 💬) plus the avatar,
+  and a signed-out visitor also gets a first-class **Sign in** button. Two problems it closes: on
+  desktop the gear sat immediately beside the topnav's own "Settings" link, and below 920px `.topnav`
+  is `display:none`, so the avatar is now the *only* route to Settings and Sign out on a phone —
+  which is why the `≤360px` rule may never hide it again (it used to, as decoration; that would
+  strand an iPhone SE with neither). Removing two icon buttons freed ~96px, so the bar got narrower,
+  not wider. Feedback deliberately stays a one-tap icon rather than moving into the menu: the tiles
+  exist to lower the cost of reporting something, and a menu would raise it. Menu mechanics: an
+  outside tap closes it through a transparent fixed backdrop, not a document listener (on iOS WebKit
+  a document-level click handler misses taps on non-interactive elements unless a touch handler is
+  bound too); Escape closes it; `z-index` clears `.topbar` (40) and `.fab` (45) but stays under
+  `.scrim` (80), so an open sheet always covers it. **Known a11y limit:** the items carry
+  `role="menuitem"` but there is no roving-tabindex arrow-key handling, which `role="menu"`
+  technically implies — Tab and Escape both work, and at two items it isn't worth a focus manager
+  the rest of the app doesn't have either (no sheet traps focus). Revisit if the menu grows.
 - **Pattern lab (#65, 2026-09-04).** Top-nav "Patterns", a dashboard card and the empty-state CTA open
   a modal lab: presets nurses actually describe (Mon–Wed nights, 3/1/3/7, 2-2-3 Pitman, 4 on/4 off,
   Fri–Sun weekend program) or a blank 7/8/14/28/custom-day cycle anchored on a date; paint cells with
@@ -359,7 +389,9 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
 
 - Project `mnnlgcxnvodjwlhhiphq`, free tier, and **the only project** — it holds real users' pay
   history while RLS audits and migrations run against it (a dev project is a parked item). Tables,
-  all RLS-enabled: `user_data`, `feedback`, `events`, `ical_subscriptions` (migration 002, applied
+  all RLS-enabled: `user_data`, `feedback` (+ `kind`, migration 003, applied 2026-09-13; nullable,
+  CHECK-constrained, no RLS change needed — the insert-only policies are per-command, not
+  per-column), `events`, `ical_subscriptions` (migration 002, applied
   2026-09-02; 4 per-command policies, `anon` unlisted), `swap_profiles`, `swap_groups`, `swap_members`,
   `swap_posts`, `swap_matches`, `swap_match_legs`. One Edge Function: `ical-proxy` (ACTIVE, `verify_jwt`
   on — an unauthenticated POST is 401, so it is not an open proxy).
@@ -409,9 +441,10 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
 **The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
-builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (27 assertions:
+builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (57 assertions:
 boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
-drain, the onboarding funnel, and both failure modes). `node tests/smoke.mjs` runs it; it resolves
+drain, the onboarding funnel, the account menu, the feedback tiles, and both failure modes).
+`node tests/smoke.mjs` runs it; it resolves
 the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
 registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
 FAIL when each invariant is deliberately broken, because a gate that has only ever passed proves
