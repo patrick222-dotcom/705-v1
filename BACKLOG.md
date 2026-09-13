@@ -86,9 +86,9 @@ _(empty — promote from the candidate lists below with judgment)_
   - **Attribution:** widen `ARRIVED_VIA` from the fixed {qr,link} whitelist to accept any short
     sanitized `?via=`/`?ref=` token (`[a-z0-9_-]{1,24}`, lowercased), so evangelists get personal/unit
     links (`?via=courtney`, `?via=unit7`) and each person's multiplier is measurable.
-  - **Share-surface tagging:** add a `{surface}` prop to `share_opened`/`share_sent`
-    (settings | hero | onboarding | swap) to see which entry point actually drives shares (feeds the
-    share-placement decision below).
+  - **Share-surface tagging:** DONE 2026-09-13 — `share_opened`/`share_sent` now carry `{surface}`
+    (`settings` | `topbar` | `hero`); swap invites stay on the separate `swap_invite_shared {via}`. Add
+    `onboarding` if surface (4) is built.
   - **Abandonment/depth:** `ob_step` covers welcome→done; add milestones for the estimate→signup gap
     and feature discovery — `first_shift_saved` (once/device), `returned_day2`. Event-based only
     (insert-only, free-tier safe); no heartbeats.
@@ -96,10 +96,11 @@ _(empty — promote from the candidate lists below with judgment)_
     and fold the milestones into `anon_funnel` (dashboard auto-refreshes nightly).
   - **Privacy:** via/ref tags are self-chosen and non-personal — no new PII, so privacy.html needs no
     change (confirm at build time).
-- [ ] **Share entry points beyond Settings** — placement TBD pending owner pick from the options in the
-  2026-09-13 discussion (top-bar share icon, post-estimate share chip, onboarding-end "send to a
-  coworker", prominent swap "invite your unit", share-the-result, add-to-home-screen). Depends on the
-  `{surface}` tagging above so each placement's contribution is measurable. `harness:drivable`.
+- [~] **Share entry points beyond Settings** — surfaces **1–3 SHIPPED 2026-09-13** (see Done log):
+  top-bar share icon, post-estimate hero link ("Share BadgeBudget ›"), and prominent swap "Invite your
+  unit" (Board-created screen + group header). **Remaining (backlogged):** (4) onboarding-end
+  "send to a coworker", (5) share-the-result, (6) add-to-home-screen (PWA). Each new surface should carry
+  the `{surface}` tag so its contribution is measurable. `harness:drivable`.
 - [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
@@ -350,6 +351,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (owner-directed, interactive) — **Share entry points 1–3 (top-bar icon, hero link, prominent
+  swap invite).** Grassroots distribution: the QR/share sheet was only reachable via Settings. Added a
+  persistent **top-bar share icon** (`Ic.share`, opens the existing ShareSheet), a **post-estimate hero
+  link** "Share BadgeBudget ›" beside the breakdown link (peak-enthusiasm timing), and made the swap
+  **"Invite your unit"** the primary action on the Board-created screen + a stronger `btn-soft` in the
+  group header (the swap board needs critical mass). Instrumentation: `share_opened`/`share_sent` now
+  carry `{surface}` (`settings`|`topbar`|`hero`) so we can see which door drives shares; swap invites
+  keep `swap_invite_shared {via}`. No new event names (inventory still 41), no wage-core/boot/SRI/storage
+  changes. Gate 8/8, groom 33/33, smoke 29/29; drove the top-bar + hero surfaces in the harness (sheet
+  opens, QR renders) — swap prominence is `needs-live-auth`, verified it parses + doesn't regress boot.
+  Surfaces 4–6 (onboarding-end, share-the-result, add-to-home-screen) remain backlogged.
 - 2026-09-13 (owner-directed, interactive) — **Captured core schema as `supabase/migrations/000_core.sql`.**
   `user_data` / `feedback` / `events` existed only in the live project; reconstructed their columns,
   constraints and RLS from the deployed schema (introspected 2026-09-13) into an idempotent migration
