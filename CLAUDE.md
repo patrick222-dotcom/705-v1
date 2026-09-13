@@ -14,6 +14,11 @@ hosts an anonymous shift-swap board.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
+  The council became reusable on 2026-09-13 — charter in `docs/council.md`, runnable in
+  `.claude/workflows/council.mjs`; before that it lived only in whichever session ran it. Review is
+  automated, **fixes are still applied serially by the orchestrator** (workflow scripts have no
+  filesystem access, and parallel edits to one 5,800-line file would conflict anyway), so the
+  "automated fix→re-review" half of this goal is genuinely unmet.
   Council history lives in `docs/history.md`.
 
 ## Where things are
@@ -35,6 +40,7 @@ hosts an anonymous shift-swap board.
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
+| `docs/council.md` | the council charter — the 13×10 lens/slice matrix, the ≥8/10 standard, adversarial verification, and what a run deliberately does not do. Runnable form: `.claude/workflows/council.mjs` |
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
 | `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
@@ -279,7 +285,9 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
   probes, a new assertion for the changed behaviour, and the equality assertion against the
   *deployed* build. Refuses the nightly loop.
 - **`harness`** — driving the app for real. Rebuild, run, add an assertion, and the rule that every
-  new assertion is negative-tested. Covers the dev-build console diagnostic and what is still missing.
+  new assertion is negative-tested — plus the three ways that check lies (an aborted run is not a
+  failed assertion; a short timeout caps `page.goto` and fakes a clean sweep; patch a copy, never
+  the working tree) and `SMOKE_ONLY` for re-running just the affected sections. Covers the dev-build console diagnostic and what is still missing.
 
 ## Ops dashboard
 
