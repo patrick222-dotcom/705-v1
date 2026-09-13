@@ -433,7 +433,9 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   executable by `anon`/`authenticated` — expected: those RPCs *are* the anonymity boundary and gate on
   membership/party checks inside (audited 2026-07-30). Plus "leaked password protection disabled" —
   HIBP is Pro-only; the API silently ignores it on free.
-- **Headroom.** 3 `user_data` rows, 4 feedback, ~270 events; DB far under 500MB. Watch MAU (50k cap)
+- **Headroom (re-read 2026-09-13).** 4 `user_data` rows, 9 feedback, 689 events, 278 distinct
+  `anon_id` devices, 4 `auth.users`; DB far under 500MB. The prior figures in this line (3/4/~270)
+  had drifted badly — re-read them, don't trust them. Watch MAU (50k cap)
   and DB size; `MAX_BLOB_BYTES` and the feedback length caps bound per-row growth.
 
 ## Testing (no device needed)
@@ -526,7 +528,12 @@ name='client_error' order by created_at desc;`
   basic-scope sign-in; the `<noscript>` half of that is worth fixing on its own merits. **Watch for the
   payoff:** `sign_in_attempted` vs `signed_in` vs new rows in `auth.users`. First
   `sign_in_attempted` landed 2026-09-07 21:16 — the deferred queue survives the OAuth redirect in
-  production, not just in the harness. Baseline to beat: **3 users, zero signups since 2026-09-02.**
+  production, not just in the harness. **The baseline was beaten: a 4th `auth.users` row landed
+  2026-09-12 12:14 UTC via Google, and it is not one of the three builder accounts — the first
+  genuine signup since 2026-09-02, and the first evidence the consent-screen work paid off.** It
+  is also a one-visit account: `last_sign_in_at` equals `created_at` to the millisecond, so they
+  signed in once and never came back. Nobody noticed for a day, which is the case the ops console
+  exists for.
 - **The nightly Routine's prompt still curls the github.io URL** for its live check (a 301 with no
   body, so it can never see the change it verifies) — change it to
   `https://badgebudget.com/index.html?cb=N`. The `ship` skill already encodes the correct check.

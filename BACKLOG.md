@@ -420,6 +420,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (dedicated session, read-only) — **Live figures re-read; CLAUDE.md's were badly stale,
+  and one of them was hiding good news.** Actual: 4 `user_data`, **9 feedback** (doc said 4), **689
+  events** (doc said ~270), 278 devices (doc said 135), 4 `auth.users`. The important one: **a 4th
+  auth user signed up 2026-09-12 12:14 UTC via Google and is not a builder account** — the first
+  genuine signup since 2026-09-02, so the consent-screen publishing on 2026-09-07 did pay off. It is
+  a one-visit account (`last_sign_in_at` == `created_at`), and nobody noticed for a day. All 9
+  feedback rows are `kind is null` (all predate the tiles, which shipped 2026-09-13), 1 of 9 is
+  anonymous — so the `feedback.anon_id` gap already bites today, not hypothetically. Corrected in
+  CLAUDE.md → Supabase Headroom and Open items.
 - 2026-09-13 (dedicated session) — **Ops console phase 1: a live feedback inbox at `/ops.html`.**
   Reading feedback was a SQL session; it is now a page Courtney can open on her phone. New
   `004_ops_console.sql`: an `ops_admins` allow-list (RLS on, **zero policies**, so it is invisible
