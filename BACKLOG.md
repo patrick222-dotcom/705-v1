@@ -420,6 +420,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (dedicated session) — **Ops console phase 1 is LIVE at badgebudget.com/ops.html**
+  (#103 squash-merged, 585ab69). Deployed bytes verified byte-identical to the branch; the other four
+  publish-set files still 200 and `CNAME` still reads `badgebudget.com` (Invariant 8 intact).
+  **Verified over the real network, not just simulated:** hit the deployed REST API with the public
+  anon key — `feedback`, `events` and `ops_admins` all 42501 permission denied, all three `ops_*`
+  RPCs 42501 permission denied for function, `user_data` returns `[]` (its policy is scoped to
+  `auth.uid()`, null for anon). **Known gap:** the production page was never rendered in a real
+  browser from the build container — the egress relay resets Chromium's TLS tunnel, so `page.goto`
+  can't reach badgebudget.com from here even though curl can. One manual look on a phone, signed in,
+  is still owed before the URL goes to anyone.
 - 2026-09-13 (dedicated session) — **Migration 004 applied to the live project; the ops gate probed
   10/10.** Non-admin refused at `is_ops_admin()` (false), at the table (permission denied) and at both
   RPCs (42501); `anon` refused one step earlier at EXECUTE permission; both owner and Courtney get
