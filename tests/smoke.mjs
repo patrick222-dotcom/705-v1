@@ -368,6 +368,28 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 7. ops console: the signed-out gate ---------------------------------------------
+     ops.html is published to a guessable public URL. Everything that makes that safe is on the
+     server (ops_feedback_inbox raises 42501 for anyone off the allow-list), but the page must
+     also never render feedback to a visitor who is not signed in at all — and in the sandbox,
+     where Supabase is unreachable, "no session" is exactly the state a stranger arrives in. */
+  if (want(7)) {
+    const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+    await page.goto(url + '/ops.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.gate, .row', { timeout: 15000 }).catch(() => {});
+
+    const gated = await page.locator('.gate h2').innerText().catch(() => '');
+    ok('ops: a signed-out visitor gets the sign-in gate', /sign in first/i.test(gated), gated);
+    ok('ops: no feedback rows render without a session', (await page.locator('.row').count()) === 0);
+    ok('ops: no inbox controls render without a session', (await page.locator('button').count()) === 0);
+
+    const body = await page.locator('body').innerText();
+    ok('ops: the gate leaks no row content', !/Reply to:/.test(body));
+    ok('ops: gate raises no page error', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -48,6 +48,37 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Ops console phase 2 — the monitoring panels** — `harness:drivable` — wrap
+  `scripts/dashboard_snapshot.sql` (202 lines, already written and iterated) in an admin-gated
+  `ops_snapshot()` and render it on `/ops.html`: health + `client_error`, the activation funnel with
+  its cohort/insider splits, and swap-board health as **counts only**. Not nightly work — it adds a
+  SECURITY DEFINER function, and the guard inside one is the only line of defence there is.
+  Design: `docs/ops-console-scope.md`.
+
+- [ ] **Ops console phase 3a — add `feedback.anon_id` (DO THIS EARLY)** — `harness:drivable` —
+  `feedback` carries `user_id`, `page` and `user_agent` and nothing that identifies the device, so an
+  anonymous nurse's feedback row **cannot be joined to her event trail** — precisely the join the
+  support tool exists to make. Small migration, one extra field on the insert in `submitFeedback`.
+  **Only works going forward:** every row submitted before it ships stays unjoinable, which is why
+  this is worth doing ahead of the rest of phase 3 rather than after.
+
+- [ ] **Ops console phase 3b — the per-device drill-down** — `harness:needs-live-auth` —
+  `ops_device(anon_id)`: one device's event trail, which `ob_step` it stalled at, its `client_error`
+  rows, first/last seen. Blocked on 3a for anonymous rows. The line on what it may never return is in
+  `docs/ops-console-scope.md` → *Where the line is*; read it before widening the function.
+
+- [ ] **Ops console phase 4 — triage state on the inbox** — `harness:unscoped` — an inbox becomes a
+  tool when a row can be marked handled. Needs a write path into `feedback` and a column; a write path
+  is a bigger decision than a read one, hence last.
+
+- [ ] **Adversarially audit the ops RPCs** — `harness:needs-live-auth` — the swap board's anonymity
+  boundary got 29/29 + 5/5 on 2026-07-30 because someone tried to break it. The ops functions deserve
+  the same, and the questions are known: can a non-admin call any `ops_*` function; can an admin reach
+  `user_data`, a swap `poster_key`, or an `ical_subscriptions` URL through one; does `ops_admins` leak
+  through PostgREST; does a revoked admin lose access immediately. **A security-definer guard that has
+  only ever been tested by someone it lets through has not been tested.**
+
+
 - [ ] **Swap board de-emphasis — Courtney's call vs. the just-shipped invite prominence (OWNER DECISION)** —
   feedback 2026-09-12 16:48 from Courtney (bagwellc0387, the target nurse): *"Take the shift swap option
   off or at least out of the cue for now. Until we have more users that's just taking up space."* This
@@ -389,6 +420,41 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (dedicated session) — **Migration 004 applied to the live project; the ops gate probed
+  10/10.** Non-admin refused at `is_ops_admin()` (false), at the table (permission denied) and at both
+  RPCs (42501); `anon` refused one step earlier at EXECUTE permission; both owner and Courtney get
+  true and see all 9 rows; revocation flips true→false with no cache and no deploy. **The useful
+  surprise:** probe 3 first failed with *permission denied for table feedback* — as the owner, on the
+  allow-list. That is the design working. Being on the list opens the door, not the table; the
+  function is the only way in. `feedback` and `events` each still carry zero SELECT policies.
+  Advisors: no ERRORs, 19 security-definer WARNs (8 anon = the swap RPCs only, 11 authenticated =
+  those plus the 3 new ops functions), 1 new INFO for `ops_admins` RLS-with-no-policy, which is
+  intentional. Results table in `docs/ops-console-scope.md`.
+- 2026-09-13 (dedicated session, read-only) — **Live figures re-read; CLAUDE.md's were badly stale,
+  and one of them was hiding good news.** Actual: 4 `user_data`, **9 feedback** (doc said 4), **689
+  events** (doc said ~270), 278 devices (doc said 135), 4 `auth.users`. The important one: **a 4th
+  auth user signed up 2026-09-12 12:14 UTC via Google and is not a builder account** — the first
+  genuine signup since 2026-09-02, so the consent-screen publishing on 2026-09-07 did pay off. It is
+  a one-visit account (`last_sign_in_at` == `created_at`), and nobody noticed for a day. All 9
+  feedback rows are `kind is null` (all predate the tiles, which shipped 2026-09-13), 1 of 9 is
+  anonymous — so the `feedback.anon_id` gap already bites today, not hypothetically. Corrected in
+  CLAUDE.md → Supabase Headroom and Open items.
+- 2026-09-13 (dedicated session) — **Ops console phase 1: a live feedback inbox at `/ops.html`.**
+  Reading feedback was a SQL session; it is now a page Courtney can open on her phone. New
+  `004_ops_console.sql`: an `ops_admins` allow-list (RLS on, **zero policies**, so it is invisible
+  through the API), `is_ops_admin()`, and two admin-gated SECURITY DEFINER RPCs —
+  `ops_feedback_inbox()` (keyset-paginated) and `ops_feedback_summary()`. **`feedback` and `events`
+  keep zero select policies**: the first read path into them is the function bodies, not the tables,
+  which is the same pattern the swap board uses as its anonymity boundary. The inbox returns message,
+  contact, tile kind, a coarse device label and an insider flag; it withholds `user_id` (you cannot
+  email a uuid), the raw user agent, and everything from `user_data` / the swap board /
+  `ical_subscriptions`. Page borrows the app's session (same origin = same localStorage), so it needs
+  no auth UI and no OAuth redirect allow-list entry. **Publish set 4 → 5** (Invariant 8 edit) with four
+  new mechanical checks on `ops.html` — noindex, no `service_role`, no `innerHTML`, unlinked from the
+  app — plus smoke section 7 on the signed-out gate. All 9 new assertions negative-tested; suite
+  58 → 63. Also the first indexes on `events`/`feedback`, backing queries the nightly snapshot already
+  runs as seq scans. Scope, phases 2–4 and the privacy line: `docs/ops-console-scope.md`.
+  **Migration not yet applied to the live project — owner action, see the doc.**
 - 2026-09-13 (nightly, groom-only) — **GROOM run: triaged 2 new feedback items; no gate-safe build item
   (queue dry), nothing shipped to the app.** Read `feedback`/`events` live: 2 new feedback rows in 24h,
   both from Courtney (target nurse) — (1) de-emphasize the swap board until there are users [**tensions

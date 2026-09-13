@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Publicly reachable but not for the public: never indexed, never linked from the app. -->
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src https://*.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>BadgeBudget ops</title>
+<!--
+  THE OPS CONSOLE — feedback inbox (phase 1).
+
+  Deliberately plain: no React, no Babel, no build step, no fonts, no third-party anything except
+  supabase-js. privacy.html set that precedent and it is the right one here too — this page has to
+  work at 3am on a phone when something is already going wrong, so it must not share a failure mode
+  with the app it is used to diagnose.
+
+  AUTH IS BORROWED, NOT IMPLEMENTED. Same origin as the app means the same localStorage, and
+  supabase-js keys its session by project ref, so a person already signed in at badgebudget.com is
+  already signed in here. That is why there is no sign-in button: adding one would mean adding
+  /ops.html to the Supabase OAuth redirect allow-list and maintaining a second auth path for two
+  people who are permanently signed in on their phones anyway.
+
+  NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML. Every value that came out of the database
+  was typed by a member of the public into a feedback box. It reaches the DOM through textContent,
+  never innerHTML. See esc-free rendering in row().
+
+  The gate is in Postgres, not here: ops_feedback_inbox() raises 42501 for anyone not on the
+  allow-list (supabase/migrations/004_ops_console.sql). This page cannot grant itself access by
+  being edited, which is the point of putting the check down there.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #16181d; --dim: #6b7280; --line: #e5e7eb;
+    --accent: #2f6df6; --warn: #b45309; --warn-bg: #fef3c7; --ok: #047857;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111317; --card: #191c22; --ink: #e8eaed; --dim: #9aa1ad; --line: #2a2f38;
+      --accent: #7aa2ff; --warn: #fbbf24; --warn-bg: #3a2f10; --ok: #34d399;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px 16px 64px; }
+  header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 8px 0 4px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 16px; }
+  button {
+    font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+    min-height: 40px;
+  }
+  button:active { transform: translateY(1px); }
+  button[disabled] { opacity: 0.5; cursor: default; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .chip {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px; min-width: 78px;
+  }
+  .chip b { display: block; font-size: 19px; line-height: 1.2; letter-spacing: -0.02em; }
+  .chip span { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .row {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 13px 14px; margin-bottom: 10px;
+  }
+  .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .kind {
+    font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--warn-bg); color: var(--warn);
+  }
+  .kind.wish  { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .kind.other,
+  .kind.pre_tiles { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+  .when { font-size: 12px; color: var(--dim); }
+  .tag {
+    font-size: 11px; color: var(--dim); border: 1px solid var(--line);
+    border-radius: 999px; padding: 2px 8px;
+  }
+  .tag.insider { color: var(--ok); border-color: currentColor; }
+  .msg { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
+  .contact { font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
+  .contact a { color: var(--accent); }
+  .gate { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .gate h2 { font-size: 16px; margin: 0 0 8px; }
+  .gate p { margin: 0 0 10px; color: var(--dim); }
+  .gate a { color: var(--accent); }
+  .empty { color: var(--dim); padding: 24px 2px; }
+  .err { color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>BadgeBudget ops</h1>
+    <span class="sub" id="sub">loading…</span>
+  </header>
+  <div id="main" aria-live="polite"><p class="empty">Checking your session…</p></div>
+</div>
+
+<script crossorigin="anonymous" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var SUPABASE_URL = 'https://mnnlgcxnvodjwlhhiphq.supabase.co';
+  var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA';
+  var PAGE = 50;
+  var POLL_MS = 30000;
+
+  /* The tile labels, verbatim from the app so the inbox reads in the nurse's words rather than in
+     column values. Keep in step with FEEDBACK_KINDS in index.html. */
+  var KIND_LABEL = {
+    wrong_number: 'A number looks wrong',
+    broken: "Something didn't work",
+    confused: "Couldn't find how to…",
+    wish: 'I wish it could…',
+    other: 'Open box',
+    pre_tiles: 'Before the tiles'
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var main = $('main');
+  var sub = $('sub');
+
+  /* Same guard the app uses: if the CDN script never arrived, say so instead of throwing. */
+  var supabase = (window.supabase && window.supabase.createClient)
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON)
+    : null;
+
+  /* getSession() can deadlock on WebKit — Invariant 1's hard-won lesson. Never await it bare. */
+  function withTimeout(p, ms, label) {
+    return Promise.race([p, new Promise(function (_, rej) {
+      setTimeout(function () { rej(new Error((label || 'operation') + ' timed out')); }, ms);
+    })]);
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;   // never innerHTML: this is public-authored text
+    return n;
+  }
+
+  function ago(iso) {
+    var s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    if (s < 604800) return Math.floor(s / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  function gate(title, body, linkText, linkHref) {
+    main.replaceChildren();
+    var box = el('div', 'gate');
+    box.appendChild(el('h2', null, title));
+    box.appendChild(el('p', null, body));
+    if (linkText) {
+      var a = el('a', null, linkText);
+      a.href = linkHref;
+      box.appendChild(a);
+    }
+    main.appendChild(box);
+    sub.textContent = '';
+  }
+
+  function row(r) {
+    var node = el('div', 'row');
+    var meta = el('div', 'meta');
+
+    var kindKey = r.kind || 'pre_tiles';
+    meta.appendChild(el('span', 'kind ' + kindKey, KIND_LABEL[kindKey] || kindKey));
+    meta.appendChild(el('span', 'when', ago(r.created_at)));
+    if (r.segment === 'insider') meta.appendChild(el('span', 'tag insider', 'insider'));
+    meta.appendChild(el('span', 'tag', r.device));
+    meta.appendChild(el('span', 'tag', r.signed_in ? 'signed in' : 'anonymous'));
+    node.appendChild(meta);
+
+    node.appendChild(el('p', 'msg', r.message));
+
+    if (r.contact) {
+      var c = el('div', 'contact');
+      c.appendChild(el('span', null, 'Reply to: '));
+      /* Linkify only an unambiguous email. Anything else stays inert text — a contact field is
+         free-form and a nurse could paste anything into it. */
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.contact.trim())) {
+        var a = el('a', null, r.contact.trim());
+        a.href = 'mailto:' + encodeURIComponent(r.contact.trim());
+        c.appendChild(a);
+      } else {
+        c.appendChild(el('span', null, r.contact));
+      }
+      node.appendChild(c);
+    }
+    return node;
+  }
+
+  var state = { rows: [], done: false, loading: false };
+  var lastSummary = null;
+
+  function render(summary) {
+    main.replaceChildren();
+
+    var bar = el('div', 'bar');
+    var refresh = el('button', null, 'Refresh');
+    refresh.addEventListener('click', function () { load({ reset: true }); });
+    bar.appendChild(refresh);
+    main.appendChild(bar);
+
+    if (summary) {
+      var chips = el('div', 'chips');
+      [['total', summary.total], ['7 days', summary.last_7d], ['24 hours', summary.last_24h]]
+        .forEach(function (pair) {
+          var chip = el('div', 'chip');
+          chip.appendChild(el('b', null, String(pair[1] == null ? '—' : pair[1])));
+          chip.appendChild(el('span', null, pair[0]));
+          chips.appendChild(chip);
+        });
+      main.appendChild(chips);
+    }
+
+    if (!state.rows.length) {
+      main.appendChild(el('p', 'empty', 'No feedback yet.'));
+      return;
+    }
+    state.rows.forEach(function (r) { main.appendChild(row(r)); });
+
+    if (!state.done) {
+      var more = el('button', null, state.loading ? 'Loading…' : 'Load older');
+      more.disabled = state.loading;
+      more.addEventListener('click', function () { load({ reset: false }); });
+      main.appendChild(more);
+    }
+  }
+
+  function load(opts) {
+    if (!supabase || state.loading) return;
+    state.loading = true;
+
+    var last = state.rows[state.rows.length - 1];
+    var args = { p_limit: PAGE };
+    if (!opts.reset && last) { args.p_before = last.created_at; args.p_before_id = last.id; }
+
+    var inbox = supabase.rpc('ops_feedback_inbox', args);
+    var summaryCall = opts.reset ? supabase.rpc('ops_feedback_summary') : Promise.resolve({ data: null });
+
+    withTimeout(Promise.all([inbox, summaryCall]), 10000, 'ops query').then(function (res) {
+      state.loading = false;
+      var got = res[0], sum = res[1];
+
+      if (got.error) {
+        /* 42501 is the allow-list saying no. Anything else is a real fault worth showing raw. */
+        if (got.error.code === '42501' || /not authorized/i.test(got.error.message || '')) {
+          gate('Not an ops account',
+               'You are signed in, but this account is not on the ops list.');
+        } else {
+          gate('Could not load', String(got.error.message || got.error));
+        }
+        return;
+      }
+
+      var rows = got.data || [];
+      state.rows = opts.reset ? rows : state.rows.concat(rows);
+      state.done = rows.length < PAGE;
+      if (opts.reset) lastSummary = (sum && sum.data) || null;
+      render(lastSummary);
+      sub.textContent = 'updated ' + new Date().toLocaleTimeString();
+    }).catch(function (e) {
+      state.loading = false;
+      gate('Could not load', String((e && e.message) || e));
+    });
+  }
+
+  function start() {
+    if (!supabase) {
+      gate('Offline', 'The Supabase client did not load, so there is nothing to read. Check the network and reload.');
+      return;
+    }
+    withTimeout(supabase.auth.getSession(), 4000, 'getSession')
+      .then(function (res) {
+        var session = res && res.data && res.data.session;
+        if (!session) {
+          gate('Sign in first',
+               'This console borrows your badgebudget.com session. Sign in there, then come back to this page.',
+               'Open badgebudget.com', 'https://badgebudget.com/');
+          return;
+        }
+        load({ reset: true });
+      })
+      .catch(function () {
+        gate('Sign in first',
+             'Could not read a signed-in session. Sign in at badgebudget.com, then reload this page.',
+             'Open badgebudget.com', 'https://badgebudget.com/');
+      });
+  }
+
+  /* Poll only while the tab is actually being looked at — same discipline as the app's sync poll,
+     and the reason a console left open on a phone overnight costs nothing. */
+  setInterval(function () {
+    if (document.visibilityState === 'visible' && state.rows.length && !state.loading) {
+      load({ reset: true });
+    }
+  }, POLL_MS);
+
+  start();
+})();
+</script>
+</body>
+</html>
