@@ -40,6 +40,10 @@ jobs:
           # Privacy policy — a real URL is required to publish the Google OAuth consent screen,
           # and the app collects wage data, so it needs one regardless.
           cp privacy.html _site/
+          # Ops console — the feedback inbox for the two admins. Publicly reachable by URL but
+          # noindex'd, never linked from the app, and it shows nothing without an allow-listed
+          # session (the gate is a Postgres SECURITY DEFINER check, not this page).
+          cp ops.html _site/
           # Custom domain — Pages reads this from the artifact. Removing it
           # reverts the site to the github.io URL and breaks badgebudget.com.
           cp CNAME _site/

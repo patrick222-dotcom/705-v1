@@ -60,7 +60,24 @@ export function buildScratch(root, outDir, { dev = false } = {}) {
   if (n < MAP.length) throw new Error(`expected ${MAP.length} rewritten scripts, got ${n}`);
 
   writeFileSync(join(outDir, 'index.html'), html);
+  buildOpsScratch(root, outDir);
   return join(outDir, 'index.html');
+}
+
+/* The ops console is a second published page, so the harness has to serve it too or the
+   signed-out gate can never be asserted. It loads exactly one of the five CDN scripts
+   (supabase-js), so it gets the same rewrite treatment — again, in the scratch copy only. */
+export function buildOpsScratch(root, outDir) {
+  const [cdn, local] = MAP.find(([u]) => u.includes('supabase-js'));
+  let html = readFileSync(join(root, 'ops.html'), 'utf8');
+  if (!html.includes(cdn)) throw new Error(`ops.html supabase pin moved, harness is stale: ${cdn}`);
+  html = html.replace(cdn, `/node_modules/${local}`)
+    .replace(/\s+integrity="sha384-[^"]*"/g, '')
+    .replace(/\s+crossorigin="[^"]*"/g, '');
+  /* The meta CSP names the real CDN host; the local path is same-origin, which 'self' already
+     covers, so nothing else needs rewriting for the page to run under the harness. */
+  writeFileSync(join(outDir, 'ops.html'), html);
+  return join(outDir, 'ops.html');
 }
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',

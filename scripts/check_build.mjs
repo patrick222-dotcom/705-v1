@@ -24,6 +24,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const html = read('index.html');
+const ops = read('ops.html');
 const deploy = read('.github/workflows/deploy.yml');
 
 const results = [];
@@ -121,11 +122,29 @@ check(8, 'Publish set is exactly the intended files', () => {
     'Google OAuth consent screen and leaving the app with no privacy notice');
   // Anything NOT copied silently 404s on Pages; anything added by accident ships publicly. Both
   // directions matter, so the set is asserted exactly rather than as a minimum.
-  const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'CNAME'];
+  must(/cp ops\.html _site\//.test(deploy),
+    'ops.html dropped from the publish set — the ops console would 404');
+  const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'ops.html', 'CNAME'];
   const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
   must(copies.length === expected.length && expected.every((f) => copies.includes(f)),
     `publish set should be exactly [${expected.join(', ')}], found [${copies.join(', ')}]`);
   return copies.join(', ');
+});
+
+/* ---- Invariant 8: ops.html is published, so what it contains is a public question ---------
+   It sits on the open internet at a guessable URL. The gate that makes that safe lives in
+   Postgres (ops_feedback_inbox raises 42501), but three things about the page itself would
+   turn a safe design into a leak, and all three are mechanically checkable. */
+check(8, 'Ops console ships nothing it should not', () => {
+  must(/name="robots"[^>]*noindex/.test(ops),
+    'ops.html lost its noindex — an admin console in Google results is not an admin console');
+  must(!/service_role/.test(ops) && !/"role":"service_role"/.test(ops),
+    'ops.html contains a service_role key — that key bypasses RLS entirely and must never ship');
+  must(!/\.innerHTML\s*=/.test(ops),
+    'ops.html assigns innerHTML — every string it renders was typed by the public into a feedback box');
+  must(!html.includes('ops.html'),
+    'the app links to ops.html — it must stay unreferenced so nurses never discover it exists');
+  return 'noindex, no service_role, no innerHTML, unlinked';
 });
 
 check(9, 'Deploy branch still triggers a deploy', () => {

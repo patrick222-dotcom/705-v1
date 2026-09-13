@@ -28,16 +28,18 @@ hosts an anonymous shift-swap board.
 | `index.html` | the whole app: CSS, a plain-JS boot script, one Babel-transformed JSX block |
 | `pdf.worker.min.js` | pdf.js worker, served same-origin next to `index.html` |
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
+| `ops.html` | the ops console — a live feedback inbox for the two admins, served at `/ops.html`. In the publish set. Plain JS, no React/Babel/fonts, supabase-js only (same SRI pin as the app). Borrows the app's session (same origin = same localStorage), so it has no auth UI of its own. `noindex`, and deliberately **unlinked from the app** — the gate is `is_ops_admin()` in Postgres, not this page. Design: `docs/ops-console-scope.md` |
 | `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
-| `.github/workflows/deploy.yml` | the only workflow: 3-file publish to GitHub Pages, no CI gate |
+| `.github/workflows/deploy.yml` | the deploy workflow: 5-file publish to GitHub Pages. (`ci.yml` is the PR gate — see Deployment) |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag). 000→003 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
+| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 57 assertions on an iPhone 13 profile |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 63 assertions on an iPhone 13 profile. `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
+| `docs/ops-console-scope.md` | the ops console design record — why an artifact can never be live, the three read-path shapes and why security-definer functions won, the wedge that shipped, phases 2–4, and the written-down line on what the console may never show |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
 | `docs/council.md` | the council charter — the 13×10 lens/slice matrix, the ≥8/10 standard, adversarial verification, and what a run deliberately does not do. Runnable form: `.claude/workflows/council.mjs` |
@@ -81,10 +83,13 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
    function. It is the swap board's anonymity model, not a string.
 8. **The publish set is load-bearing** (`cp … _site/` in `deploy.yml`): `index.html`,
-   `pdf.worker.min.js`, `privacy.html`, `CNAME`. Pages reads the custom domain from `CNAME` in the
+   `pdf.worker.min.js`, `privacy.html`, `ops.html`, `CNAME`. Pages reads the custom domain from `CNAME` in the
    deployed artifact, so a deploy without it knocks the site off badgebudget.com. `privacy.html`
    backs the URL on the Google OAuth consent screen — drop it and `/privacy.html` 404s, which breaks
-   consent-screen publishing and leaves the app with no reachable privacy notice.
+   consent-screen publishing and leaves the app with no reachable privacy notice. `ops.html` joined
+   the set 2026-09-13; because it ships to a public URL, `check_build.mjs` also asserts it carries
+   `noindex`, contains no `service_role` string, never assigns `innerHTML` (every string it renders
+   was typed by the public into a feedback box), and is not linked from `index.html`.
 9. **No `main` branch.** `claude/migrate-to-github-deploy-3F5RD` is the de facto default and deploy
    branch, deliberately in the workflow's push triggers. Add `main` to the triggers *before* removing
    it, never in the same commit — removing it first stopped all deploys once.
@@ -291,6 +296,16 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
 
 ## Ops dashboard
 
+**Two surfaces, deliberately.** `/ops.html` is the **live** one (phase 1 shipped 2026-09-13: the
+feedback inbox). The nightly artifact below is the **batched** one. The split is not a preference,
+it is a constraint: a claude.ai artifact cannot fetch Supabase — its CSP blocks all outbound
+fetch/XHR/WebSocket — so an artifact can only ever show what something else pushed into it, and its
+freshness ceiling is the push cadence. Anything that has to answer "what just happened" has to live
+on badgebudget.com. Design record and phases 2–4: `docs/ops-console-scope.md`.
+**Open question recorded there:** once phase 2 lands, the live page can compute trends too
+(`events` *is* the history), at which point the artifact's only remaining advantage is being
+readable without signing in.
+
 `scripts/dashboard_snapshot.sql` returns the whole operational picture as one JSON blob;
 `scripts/dashboard_snapshot.mjs` folds in the `track()` inventory read from `index.html` (the database
 can only say which events *have* fired — "never fired" is the interesting half and lives in the
@@ -326,7 +341,7 @@ so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 
 ## Deployment
 
 - GitHub Pages via `deploy.yml`, on push to the deploy branch (and to `main`/`master`, which don't
-  exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `privacy.html`, `CNAME`
+  exist yet). The publish set is exactly `index.html`, `pdf.worker.min.js`, `privacy.html`, `ops.html`, `CNAME`
   — anything else silently 404s, and `check_build.mjs` asserts the set exactly (in both directions:
   a missing file 404s, an accidental one ships publicly). **CI** (`.github/workflows/ci.yml`, added 2026-09-07) gates pull requests — a
   `gate` job running `scripts/check_build.mjs` (Babel-parses the JSX block and mechanically asserts
@@ -399,7 +414,8 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   history while RLS audits and migrations run against it (a dev project is a parked item). Tables,
   all RLS-enabled: `user_data`, `feedback` (+ `kind`, migration 003, applied 2026-09-13; nullable,
   CHECK-constrained, no RLS change needed — the insert-only policies are per-command, not
-  per-column), `events`, `ical_subscriptions` (migration 002, applied
+  per-column), `events`, `ops_admins` (migration 004 — the ops-console allow-list; RLS on with **zero policies**, so it is
+  invisible through the API and readable only by `is_ops_admin()` as owner), `ical_subscriptions` (migration 002, applied
   2026-09-02; 4 per-command policies, `anon` unlisted), `swap_profiles`, `swap_groups`, `swap_members`,
   `swap_posts`, `swap_matches`, `swap_match_legs`. One Edge Function: `ical-proxy` (ACTIVE, `verify_jwt`
   on — an unauthenticated POST is 401, so it is not an open proxy).
@@ -449,9 +465,9 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
 **The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
-builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (57 assertions:
+builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (63 assertions:
 boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
-drain, the onboarding funnel, the account menu, the feedback tiles, and both failure modes).
+drain, the onboarding funnel, the account menu, the feedback tiles, both failure modes, and the ops console's signed-out gate).
 `node tests/smoke.mjs` runs it; it resolves
 the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
 registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
