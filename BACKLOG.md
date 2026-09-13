@@ -312,6 +312,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (owner-directed, interactive) — **Captured core schema as `supabase/migrations/000_core.sql`.**
+  `user_data` / `feedback` / `events` existed only in the live project; reconstructed their columns,
+  constraints and RLS from the deployed schema (introspected 2026-09-13) into an idempotent migration
+  numbered before 001/002. Now a fresh project (e.g. the dev/test one) can be stood up with 000→001→002,
+  and the RLS security model lives in git, not just the dashboard. Also serves portability: the whole
+  backend is now reproducible plain-Postgres SQL. Not deployed (outside the publish set); gate + groom
+  green. Privacy disclosure of `page`/`user_agent` (the other half of this ask) was already shipped in
+  privacy.html on 2026-09-07 — no change needed there.
 - 2026-09-13 (owner-directed, interactive) — **Favicon → black tile.** Owner preferred the dark app-icon
   treatment over the indigo one shipped earlier the same day. Favicon data-URI tile recolored `#5B4FE9`
   → `#16181F` (`--ink`) with white `bb` bumped slightly (font 16→17, nudged left) for legibility at 16px
