@@ -14,9 +14,14 @@ process is gone. The charter is this file; the runnable form is `.claude/workflo
 1. **Every lens scores ≥ 8/10.** Below 8 means work remains, and the lens must say what would clear it.
 2. **Every finding is adversarially verified** before it counts. Three refuters per finding, each
    given a *different* angle — already handled elsewhere / path unreachable in the shipped UI /
-   outcome is actually intended — and the finding dies on a 2-of-3 refute. Three copies of the same
+   outcome is actually intended — and the finding dies on a majority refute. Three copies of the same
    skeptic is redundancy, not verification. The 2026-07-30 run's credibility came from exactly this:
    30 confirmed, 2 rejected. A run that rejects nothing did not verify anything.
+   **A dead refuter is not a vote.** A finding needs at least two *live* verdicts to count either
+   way; with fewer it is reported as `unverified`, never as confirmed. The first automated run
+   (2026-09-13) lost every refuter to a usage limit and, because the script only counted refutes,
+   all 25 findings sailed through with an empty dissent list — a run that verified nothing and
+   reported 25 confirmations. The script now carries that floor.
 3. **A score without `ranAgainst` is a badge, not a result.** Every lens states which functions and
    line ranges it actually read. Zero findings is not automatically a 10 — a lens that could not
    examine something it owns must say so and score accordingly.
@@ -53,6 +58,13 @@ Lenses, with the count of slices each owns:
 | `privacy-telemetry` | 3 | collected vs disclosed |
 | `cross-surface` | 3 | **new** — see below |
 
+**Findings are deduplicated per lens before verification.** A lens's cells review the same
+functions from different slices, so the same defect arrives more than once under different titles —
+the first run's four `wage-math` cells reported the keepRatio omission three times and the hero-chip
+disagreement twice, which under per-cell verification is nine refuters for two findings. A `sonnet`
+merge step folds same-root-cause-same-site duplicates and unions their `slices` before any refuter is
+paid for; when in doubt it keeps both. Cross-lens duplicates are still merged at synthesis.
+
 **`cross-surface` has never run.** Three surfaces now compute dollars independently — the hero, the
 Add-Shift preview, and the pattern lab readout. `CLAUDE.md` mandates a hero/breakdown equality check
 for wage-core changes, but nothing has ever checked the trio against each other. Seeded identically,
@@ -73,19 +85,38 @@ applies to an auto-applying council. Every finding carries a `wageCore` flag for
 ## Running it
 
 ```
-Workflow({ name: 'council' })
+Workflow({ scriptPath: '.claude/workflows/council.mjs' })
 ```
+
+(`Workflow({ name: 'council' })` is the intended form, but on 2026-09-13 the name registry did not
+see the committed file and only `scriptPath` worked. Same script either way.)
 
 Prerequisites, in order of how likely they are to bite:
 
+- **It will hit the session usage limit; plan to resume.** The first run (2026-09-13) died at 5 of
+  56 cells with every agent on the frontier model, taking every refuter, scorer and the synthesis
+  with it. That is the normal shape of a full run, not a failure of it: when the limit resets,
+  relaunch with `resumeFromRunId` and every completed agent replays from cache. The script reports
+  which cells never ran (`unreviewed`, `lensesLost`) so a partial run is honest about its coverage
+  rather than looking like a clean one.
+- **Concurrency is CPU-bound, not configurable.** Agents run `min(16, CPUs − 2)` at a time; on the
+  4-core session box that is two. A full run is measured in hours regardless of budget.
 - **Raise the workflow size limit first.** The default guideline is *medium — under 15 agents*. A
   full run is ~56 review agents, ~3 verifiers per surviving finding, 10 scorers and 1 synthesis:
   realistically 150–300 agents. Change it under `/config` → "Dynamic workflow size", or the run will
   be shaped to a budget that defeats the point.
-- **Start the session on whichever model you want the lenses to use.** Agents inherit the session
-  model; the script deliberately hard-codes no model, so the choice is the session's, not the file's.
-- **Read this file and `BACKLOG.md` first.** The known-issues list below exists so lenses spend their
-  attention on what nobody has found yet.
+- **Model tiers.** The session's model is the *frontier* tier and is what the script means when it
+  passes no `model`: the `wage-math`, `cross-surface` and `security` reviewers, refuters on
+  medium-or-worse findings, and the synthesis. Everything else — the seven broad review lenses, the
+  per-lens dedup, refuters on `low` findings, the scorers — runs on `sonnet`. The line is "would a
+  weaker reader miss a real defect, or is a wrong verdict expensive": originating findings in the
+  money and anonymity code is where frontier earns its price; classifying and ranking is not. Start
+  the session on whichever model you want as the frontier tier; the choice is the session's, not
+  the file's.
+- **Read this file and `BACKLOG.md` first.** The known-issues list below is passed to the refuters
+  and the synthesis so a finding that restates the backlog is refuted as such. It is *not* passed to
+  the reviewers: the review prompt is byte-identical to the first run so its cached cells replay on
+  resume — the next run started from scratch should put the list in front of reviewers too.
 
 ## Known — do not re-report
 
