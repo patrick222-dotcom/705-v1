@@ -177,7 +177,134 @@ const run = async () => {
     await ctx.close();
   }
 
-  /* ---- 3. failure mode: getSession() hangs (the WebKit deadlock) ----------------------- */
+  /* ---- 3. account menu: the avatar is the only Settings/sign-out route on a phone ------- */
+  {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
+
+    /* The gear and sign-out icons folded into the avatar on 2026-09-13; only feedback stays an
+       icon, deliberately — burying it would fight the whole point of the feedback tiles. */
+    const iconBtns = await page.locator('.top-actions .iconbtn').count();
+    ok('account: top bar keeps exactly one icon button (feedback)', iconBtns === 1, `${iconBtns} .iconbtn`);
+    ok('account: no standalone Settings gear in the top bar',
+      await page.locator('.top-actions [title="Settings"]').count() === 0);
+
+    const avatar = page.locator('.avatar');
+    ok('account: avatar is a menu trigger, not decoration',
+      await avatar.evaluate((n) => n.tagName === 'BUTTON' && n.getAttribute('aria-haspopup') === 'menu'));
+    ok('account: menu starts closed', await page.locator('.acct-menu').count() === 0);
+    /* The reason the avatar may never be hidden by a breakpoint again. */
+    ok('account: .topnav is display:none at phone width',
+      await page.locator('.topnav').evaluate((n) => getComputedStyle(n).display === 'none'));
+
+    await avatar.click();
+    await page.waitForSelector('.acct-menu', { timeout: 4000 }).catch(() => {});
+    const menuText = await page.locator('.acct-menu').innerText().catch(() => '');
+    ok('account: tapping the avatar opens the menu', /Settings/.test(menuText), menuText.replace(/\n/g, ' / '));
+    ok('account: signed out shows no Sign out row', !/Sign out/.test(menuText));
+    ok('account: aria-expanded tracks the menu', (await avatar.getAttribute('aria-expanded')) === 'true');
+
+    await page.keyboard.press('Escape');
+    ok('account: Escape closes the menu', await page.locator('.acct-menu').count() === 0);
+
+    await avatar.click();
+    await page.waitForSelector('.acct-menu', { timeout: 4000 }).catch(() => {});
+    await page.locator('.acct-scrim').click({ position: { x: 5, y: 5 } });
+    ok('account: an outside tap closes the menu', await page.locator('.acct-menu').count() === 0);
+
+    await avatar.click();
+    await page.locator('.acct-menu button', { hasText: 'Settings' }).click();
+    const settings = await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 4000 }).catch(() => null);
+    ok('account: Settings opens from the menu', !!settings);
+    ok('account: choosing an item closes the menu', await page.locator('.acct-menu').count() === 0);
+    await page.locator('.modal .back').click();   // Settings is a .modal; the feedback sheet is a .sheet
+
+    /* iPhone SE. This block used to hide the avatar as decorative; now that it carries Settings
+       and Sign out, hiding it would strand an SE with neither — and the bar still must not
+       scroll sideways, which is what the rule was written for. */
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.waitForTimeout(120);
+    ok('account: avatar survives at 360px (iPhone SE)', await avatar.isVisible());
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth);
+    ok('account: top bar does not overflow at 360px', wide <= 360, `scrollWidth ${wide}`);
+
+    ok('account: no page errors driving the menu', errors.filter((e) => !isExpectedNetwork(e)).length === 0);
+    await ctx.close();
+  }
+
+  /* ---- 4. feedback tiles: pick the shape, get a scaffold ------------------------------- */
+  {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
+
+    /* Must match the CHECK in supabase/migrations/003_feedback_kind.sql exactly: a value the DB
+       rejects comes back 23514 and loses the whole submission. */
+    const kinds = await page.evaluate(() => FEEDBACK_KINDS);
+    ok('feedback: client kinds mirror the DB CHECK',
+      JSON.stringify(kinds) === JSON.stringify(['wrong_number', 'broken', 'confused', 'wish', 'other']),
+      String(kinds));
+
+    const openSheet = async () => {
+      await page.locator('button[aria-label="Send feedback"]').click();
+      await page.waitForSelector('.fb-tiles', { timeout: 4000 });
+    };
+    await openSheet();
+    ok('feedback: four tiles offered', await page.locator('.fb-tile').count() === 4);
+    /* No autoFocus any more: on a phone it raised the keyboard over the tiles before she could
+       read them, which is exactly the choice the tiles exist to offer. */
+    ok('feedback: the box does not steal focus on open',
+      await page.evaluate(() => document.activeElement && document.activeElement.id !== 'fb-msg'));
+
+    const box = page.locator('#fb-msg');
+    ok('feedback: box starts empty', (await box.inputValue()) === '');
+
+    await page.locator('.fb-tile', { hasText: 'A number looks wrong' }).click();
+    let v = await box.inputValue();
+    ok('feedback: the wrong-number tile scaffolds the box', /What I see:/.test(v) && /What I expected:/.test(v), JSON.stringify(v));
+    ok('feedback: and stamps the surface it was opened from', /Where: Planner \(month view\)$/.test(v), v.split('\n').pop());
+
+    await page.locator('.fb-tile', { hasText: 'I wish it could' }).click();
+    ok('feedback: switching tiles replaces an untouched scaffold', (await box.inputValue()) === 'I wish it could: ');
+
+    await box.fill('the night differential is missing on Sundays');
+    await page.locator('.fb-tile', { hasText: "Something didn't work" }).click();
+    ok('feedback: switching tiles never eats words she typed',
+      (await box.inputValue()) === 'the night differential is missing on Sundays');
+    ok('feedback: but still re-tags the report',
+      /didn.t work/.test(await page.locator('.fb-tile.on').innerText()));
+
+    /* Re-open clean to test the toggle and the blank-scaffold guard. */
+    await page.locator('.sheet .back').click();
+    await openSheet();
+    await page.locator('.fb-tile', { hasText: 'A number looks wrong' }).click();
+    await page.locator('.fb-tile.on').click();
+    ok('feedback: tapping the active tile clears back to the open box',
+      (await box.inputValue()) === '' && await page.locator('.fb-tile.on').count() === 0);
+
+    await page.locator('.fb-tile', { hasText: 'A number looks wrong' }).click();
+    await page.locator('.sheet .btn-primary').click();
+    const refused = await page.waitForSelector('text=/Fill in a line or two/i', { timeout: 3000 }).catch(() => null);
+    ok('feedback: an untouched scaffold is refused, not filed as a row of prompts', !!refused);
+
+    /* Opened from Settings, the scaffold says Settings — the pathname never could, since this is
+       a single-page app and `page` is always '/'. */
+    await page.locator('.sheet .back').click();
+    await page.locator('.avatar').click();
+    await page.locator('.acct-menu button', { hasText: 'Settings' }).click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 4000 });
+    await page.locator('.modal button', { hasText: 'Send feedback' }).click();
+    await page.waitForSelector('.fb-tiles', { timeout: 4000 });
+    await page.locator('.fb-tile', { hasText: 'A number looks wrong' }).click();
+    ok('feedback: opened from Settings, the scaffold says Settings',
+      /Where: Settings$/.test(await box.inputValue()), (await box.inputValue()).split('\n').pop());
+
+    ok('feedback: no page errors driving the tiles', errors.filter((e) => !isExpectedNetwork(e)).length === 0);
+    await ctx.close();
+  }
+
+  /* ---- 5. failure mode: getSession() hangs (the WebKit deadlock) ----------------------- */
   {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.addInitScript(() => {
@@ -206,7 +333,7 @@ const run = async () => {
     await ctx.close();
   }
 
-  /* ---- 4. failure mode: Babel blocked -> the boot error screen ------------------------- */
+  /* ---- 6. failure mode: Babel blocked -> the boot error screen ------------------------- */
   {
     const { ctx, page } = await newPage(browser, url);
     await page.route('**/babel.min.js', (r) => r.abort());

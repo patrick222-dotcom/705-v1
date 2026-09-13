@@ -77,7 +77,24 @@
   .iconbtn:hover{background:var(--glass-strong)}
   /* keyboard-focusable link-styled buttons (nav, inline affordances) */
   .linklike{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-align:inherit}
-  .avatar{width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+  /* Account menu. Since 2026-09-13 the avatar is the single account surface at EVERY width: it
+     absorbed the top bar's separate gear and sign-out icon buttons, so the bar got narrower, not
+     wider (which is why the <=360px rule further down no longer needs to hide the avatar). It is a
+     real button now, never decorative -- below 920px .topnav is display:none, so this is the only
+     route to Settings and Sign out on a phone. z-index clears .topbar (40) and .fab (45) but stays
+     under .scrim (80), so an open sheet always covers the menu. */
+  .avatar{width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .acct{position:relative;display:flex;flex:0 0 auto}
+  /* Outside-tap closes through this transparent fixed backdrop rather than a document listener:
+     on iOS WebKit a document-level click handler misses taps on non-interactive elements unless a
+     touchstart handler is bound too, so a backdrop is both simpler and more reliable. */
+  .acct-scrim{position:fixed;inset:0;z-index:59;background:transparent;border:0;padding:0;cursor:default}
+  .acct-menu{position:absolute;right:0;top:calc(100% + 10px);z-index:60;min-width:212px;padding:6px;background:rgba(246,245,241,.97);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5);border:1px solid var(--glass-line);border-radius:16px;box-shadow:inset 0 1px 0 var(--glass-hi),0 12px 40px rgba(30,26,20,.18);animation:fade .14s}
+  .acct-who{padding:9px 12px 8px;font-size:11.5px;font-weight:600;color:var(--muted-2);letter-spacing:.02em;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acct-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border:0;background:none;border-radius:11px;font:inherit;font-size:14px;font-weight:600;color:var(--ink);text-align:left;cursor:pointer}
+  .acct-menu button:hover{background:var(--glass-strong)}
+  .acct-menu button.danger{color:var(--danger)}
+  .acct-sep{height:1px;background:var(--line);margin:5px 8px}
 
   .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 120px}
   .greet-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
@@ -278,6 +295,13 @@
   .inp .pfx{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
   .inp .sfx{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
   .inp input:focus,.inp select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,79,233,.12)}
+  /* Feedback tiles. One tap picks the SHAPE of the report and pre-fills the box with a scaffold,
+     so a nurse fills two blanks instead of composing a bug report from a blank textarea. */
+  .fb-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .fb-tile{display:flex;align-items:center;gap:9px;min-height:58px;padding:10px 12px;background:#fff;border:1.5px solid var(--line);border-radius:14px;font:inherit;font-size:13px;font-weight:600;line-height:1.3;color:var(--ink);text-align:left;cursor:pointer}
+  .fb-tile .g{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+  .fb-tile.on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo)}
+  .fb-tile.on .g{background:var(--indigo);color:#fff}
   .fb-text{width:100%;padding:13px 14px;border:1.5px solid var(--line-2);border-radius:13px;font-size:16px;background:#fff;color:var(--ink);outline:none;font-family:inherit;resize:vertical;min-height:110px;line-height:1.45}
   .fb-text:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,79,233,.12)}
 
@@ -414,13 +438,14 @@
     .hero .num{font-size:60px}
   }
   @media (max-width:919px){ .desk-only{display:none!important} }
-  /* Very small phones (≤360px, e.g. iPhone SE): the fixed-width top bar (~362px of brand +
-     icon buttons) overflows the viewport and scrolls the page sideways. The avatar is decorative
-     on mobile — the sign-out/gear buttons already convey identity + Settings — so drop it here and
-     tighten the bar padding. 375px+ (iPhone mini/12/13 and up) already fits, so it is untouched. */
+  /* Very small phones (≤360px, e.g. iPhone SE): the fixed-width top bar overflowed the viewport
+     and scrolled the page sideways, so the padding is tightened here. This block used to ALSO hide
+     the avatar as decorative — it can't any more: since 2026-09-13 the avatar is the account menu
+     and the only route to Settings and Sign out below 920px, so hiding it would strand an SE with
+     neither. Removing the gear and sign-out icon buttons freed ~96px, far more than the avatar
+     costs, so the overflow this block was written for is gone either way. */
   @media (max-width:360px){
     .topbar{padding-left:12px;padding-right:12px}
-    .top-actions .avatar{display:none}
   }
 
   /* Solid-fill fallback for browsers without backdrop-filter support — every glass
@@ -428,6 +453,7 @@
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     .topbar{background:rgba(246,245,241,.97)}
     .sheet,.modal,.cdlg{background:rgba(246,245,241,.99)}
+    .acct-menu{background:rgba(246,245,241,.99)}
     .scrim{background:rgba(18,18,26,.66)}
     .whatif,.qf-banner{background:var(--indigo-soft)}
     .stat{background:var(--card)}
@@ -447,6 +473,7 @@
   @media (prefers-reduced-transparency: reduce){
     .topbar{background:rgba(246,245,241,.98);backdrop-filter:none;-webkit-backdrop-filter:none}
     .sheet,.modal,.cdlg{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .acct-menu{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
     .scrim{background:rgba(18,18,26,.7);backdrop-filter:none;-webkit-backdrop-filter:none}
     .whatif,.qf-banner{background:var(--indigo-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
     .stat{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -1319,12 +1346,18 @@ async function saveToSupabase(userId, data){
 /* Feedback goes to the public.feedback table (insert-only RLS: anyone can submit,
    nobody can read back via the anon key). Bounded lengths keep us well under free-tier. */
 const FEEDBACK_PENDING_KEY = 'scrubpay_feedback_pending';
-async function submitFeedback({message, contact, userId}){
+/* Mirrors the CHECK on feedback.kind (supabase/migrations/003_feedback_kind.sql). Kept as an
+   allowlist rather than trusting the caller: an unknown value would be rejected by Postgres with a
+   23514 and lose the whole submission, so anything unrecognised degrades to 'other' instead. */
+const FEEDBACK_KINDS = ['wrong_number','broken','confused','wish','other'];
+
+async function submitFeedback({message, kind, contact, userId}){
   if(!supabase) return false;
   try{
     const {error} = await withTimeout(
       supabase.from('feedback').insert({
         message: String(message||'').slice(0,4000),
+        kind: FEEDBACK_KINDS.indexOf(kind)>=0 ? kind : 'other',
         contact: contact ? String(contact).slice(0,200) : null,
         user_id: userId || null,
         page: String(location.pathname||'').slice(0,120),
@@ -1918,22 +1951,102 @@ async function revealSwapMatch(matchId){
   }catch(e){ return {error:e}; }
 }
 
+/* ---------- account menu (the top-bar avatar) ---------- */
+/* Replaced the separate gear and sign-out icon buttons on 2026-09-13. Two reasons it is a button
+   at every width, not just on mobile: below 920px .topnav is display:none, so this is the ONLY
+   route to Settings and Sign out on a phone; and on desktop the gear sat immediately beside the
+   topnav's own "Settings" link, which is the redundancy that prompted the change.
+   Feedback deliberately stays a one-tap icon in the bar rather than moving in here -- the point of
+   the feedback tiles is to lower the cost of reporting something, and a menu would raise it. */
+function AccountMenu({user, name, onSettings, onSignOut}){
+  const [open,setOpen] = useState(false);
+  const initial = (user ? (user.email||'') : (name||'')).trim().charAt(0).toUpperCase();
+  useEffect(()=>{
+    if(!open) return;
+    const onKey = e => { if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return ()=>document.removeEventListener('keydown', onKey);
+  },[open]);
+  const pick = fn => ()=>{ setOpen(false); fn(); };
+  return (
+    <div className="acct">
+      {open && <button className="acct-scrim" tabIndex={-1} aria-hidden="true" onClick={()=>setOpen(false)}></button>}
+      <button className="avatar" aria-haspopup="menu" aria-expanded={open} aria-label="Account menu"
+        onClick={()=>setOpen(o=>!o)}>{initial||'?'}</button>
+      {open &&
+        <div className="acct-menu" role="menu">
+          <div className="acct-who">{user ? user.email : 'Not signed in'}</div>
+          <button role="menuitem" onClick={pick(onSettings)}>{Ic.gear}Settings</button>
+          {user && <div className="acct-sep"></div>}
+          {user && <button role="menuitem" className="danger" onClick={pick(onSignOut)}>{Ic.logout}Sign out</button>}
+        </div>}
+    </div>
+  );
+}
+
 /* ---------- feedback sheet ---------- */
-function FeedbackSheet({user, onClose}){
+/* Four tiles, then the box. Tapping one sets `kind` (-> feedback.kind, migration 003) and pre-fills
+   the box with a scaffold whose blanks are the questions the owner would otherwise have to ask by
+   email. The single open textarea this replaced made the nurse do the categorising work, and
+   returned nine rows of undifferentiated prose in two months.
+   `surface` stamps the "Where:" line of the wrong-number scaffold — the one detail a nurse reliably
+   omits and that cannot be recovered after the fact. Tapping no tile is still the old open box,
+   filed as 'other'. */
+const FEEDBACK_TILES = [
+  {kind:'wrong_number', glyph:'$', label:'A number looks wrong',
+   scaffold: where => 'What I see: \nWhat I expected: \nWhere: ' + where},
+  {kind:'broken', glyph:'!', label:"Something didn't work",
+   scaffold: () => 'What I did: \nWhat happened instead: '},
+  {kind:'confused', glyph:'?', label:"I couldn't find how to…",
+   scaffold: () => 'I was trying to: \nWhere I got stuck: '},
+  {kind:'wish', glyph:'✦', label:'I wish it could…',
+   scaffold: () => 'I wish it could: '},
+];
+
+function FeedbackSheet({user, surface, onClose}){
+  const [kind,setKind] = useState('other');
   const [msg,setMsg] = useState('');
   const [contact,setContact] = useState((user&&user.email)||'');
   const [sending,setSending] = useState(false);
+  const boxRef = useRef(null);
+  /* The scaffold this sheet last inserted. Switching tiles rewrites the box only while it still
+     holds an untouched scaffold (or nothing): once she has typed her own words, changing the tile
+     re-tags the report without eating them. */
+  const lastScaffold = useRef('');
+  const where = surface || 'Planner';
+
+  const pickTile = (t)=>{
+    const active = kind===t.kind;
+    const next = active ? '' : t.scaffold(where);
+    if(!msg.trim() || msg===lastScaffold.current){
+      setMsg(next);
+      lastScaffold.current = next;
+      /* Park the caret at the end of the first blank so the first keystroke lands where it belongs.
+         Deferred a tick because React writes the value on the next render. Focusing is also what
+         raises the keyboard, which is why the textarea no longer autoFocuses: on a phone that put
+         the keyboard over the tiles before she could read them. */
+      const caret = next.indexOf('\n')>=0 ? next.indexOf('\n') : next.length;
+      setTimeout(()=>{ const el=boxRef.current; if(!el) return; el.focus(); try{ el.setSelectionRange(caret,caret); }catch(_){} }, 0);
+    }
+    setKind(active ? 'other' : t.kind);
+  };
+
   const submit = async ()=>{
     const text = msg.trim();
     if(text.length<2){ toast('Please add a little more detail.','error'); return; }
+    /* An untouched scaffold clears the length check but says nothing. Catch it here rather than
+       filing a row that is just the prompts handed back. */
+    if(lastScaffold.current && text===lastScaffold.current.trim()){
+      toast('Fill in a line or two so we know what happened.','error'); return;
+    }
     setSending(true);
-    const ok = await submitFeedback({message:text, contact:contact.trim()||null, userId:(user&&user.id)||null});
+    const ok = await submitFeedback({message:text, kind, contact:contact.trim()||null, userId:(user&&user.id)||null});
     setSending(false);
-    if(ok){ toast('Thanks! Your feedback was sent. 💜','success'); track('feedback_submitted', null, user&&user.id); onClose(); return; }
+    if(ok){ toast('Thanks! Your feedback was sent. 💜','success'); track('feedback_submitted', {kind}, user&&user.id); onClose(); return; }
     // offline / insert failed — stash locally so it isn't lost; flushed on next load
     try{
       const pend = JSON.parse(localStorage.getItem(FEEDBACK_PENDING_KEY)||'[]');
-      pend.push({message:text, contact:contact.trim()||null});
+      pend.push({message:text, kind, contact:contact.trim()||null});
       localStorage.setItem(FEEDBACK_PENDING_KEY, JSON.stringify(pend.slice(-20)));
     }catch(_){}
     toast("Saved on this device — we'll send it when you're back online.",'info');
@@ -1944,9 +2057,16 @@ function FeedbackSheet({user, onClose}){
       <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Send feedback">
         <div className="grab"></div>
         <div className="sheet-h"><div className="t">Send feedback</div><button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button></div>
-        <p style={{fontSize:13.5,color:'var(--muted)',margin:'0 0 16px',lineHeight:1.5}}>Found a bug, a wrong number, or something confusing? Tell us — it goes straight to the team.</p>
+        <p style={{fontSize:13.5,color:'var(--muted)',margin:'0 0 14px',lineHeight:1.5}}>Pick whichever is closest — it just gives us a head start. Or skip it and write whatever you like.</p>
+        <div className="fb-tiles">
+          {FEEDBACK_TILES.map(t=>
+            <button key={t.kind} type="button" className={'fb-tile'+(kind===t.kind?' on':'')}
+              aria-pressed={kind===t.kind} onClick={()=>pickTile(t)}>
+              <span className="g" aria-hidden="true">{t.glyph}</span>{t.label}
+            </button>)}
+        </div>
         <label className="sec-lab" htmlFor="fb-msg">WHAT'S ON YOUR MIND?</label>
-        <textarea id="fb-msg" className="fb-text" value={msg} onChange={e=>setMsg(e.target.value)} maxLength={4000} rows={5} autoFocus
+        <textarea id="fb-msg" ref={boxRef} className="fb-text" value={msg} onChange={e=>setMsg(e.target.value)} maxLength={4000} rows={5}
           placeholder="What's working, what's not, what you wish it did…" />
         <label className="sec-lab" htmlFor="fb-contact" style={{marginTop:14,display:'block'}}>EMAIL (OPTIONAL — IF YOU'D LIKE A REPLY)</label>
         <div className="inp"><input id="fb-contact" type="email" inputMode="email" autoComplete="email" value={contact} onChange={e=>setContact(e.target.value)} placeholder="you@example.com" /></div>
@@ -2114,6 +2234,7 @@ function App(){
   const [paystub,setPaystub] = useState(null);
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
+  const [fbSurface,setFbSurface] = useState('Planner');  // stamped into the feedback scaffold's "Where:" line
   const [showSwaps,setShowSwaps] = useState(false);   // shift swap board sheet
   const [showPatterns,setShowPatterns] = useState(false);   // pattern lab modal
   // 6-char code carried in by a ?join= invite link (or stashed across the OAuth round-trip),
@@ -2484,7 +2605,8 @@ function App(){
     (async()=>{
       const remaining=[];
       for(const f of pend){
-        const ok = await submitFeedback({message:f.message, contact:f.contact, userId:(user&&user.id)||null});
+        // f.kind is absent on rows queued before the tiles shipped; submitFeedback maps that to 'other'.
+        const ok = await submitFeedback({message:f.message, kind:f.kind, contact:f.contact, userId:(user&&user.id)||null});
         if(!ok) remaining.push(f);
       }
       try{ localStorage.setItem(FEEDBACK_PENDING_KEY, JSON.stringify(remaining)); }catch(_){}
@@ -2802,6 +2924,10 @@ function App(){
   };
 
   /* ---- pattern lab: save / delete / put on the calendar / pull back off ---- */
+  /* The feedback sheet's wrong-number scaffold pre-fills a "Where:" line from this. The feedback
+     row's `page` column can't supply it -- this is a single-page app, so the pathname is always '/'
+     and never distinguishes the planner from Settings. */
+  const openFeedback = (surface)=>{ setFbSurface(surface); setShowFeedback(true); };
   const openPatternLab = ()=>{ if(qfMode){ setQfMode(false); setQfTemplate(null); } setShowPatterns(true); track('pattern_lab_opened', null, user?.id); };
   const savePattern = (p)=>{
     const isNew = !patterns.some(x=>x.id===p.id);
@@ -3314,12 +3440,11 @@ function App(){
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <button className="linklike" onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',padding:'11px 6px',margin:'-11px 6px -11px 0',display:'inline-flex',alignItems:'center',cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</button>}
           <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); openSheet(k);}}>+ Log a shift</button>
-          <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>setShowFeedback(true)}>{Ic.chat}</button>
-          <button className="iconbtn" title="Settings" onClick={()=>setShowSettings(true)}>{Ic.gear}</button>
-          {user
-            ? <button className="iconbtn" title="Sign out" onClick={handleSignOut}>{Ic.logout}</button>
-            : <button className="btn btn-primary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAuth(true)}>Sign in</button>}
-          <div className="avatar">{user ? (user.email||'?').charAt(0).toUpperCase() : (name||'?').trim().charAt(0).toUpperCase()}</div>
+          <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>openFeedback('Planner ('+calView+' view)')}>{Ic.chat}</button>
+          {/* Sign in stays a first-class button rather than a menu row -- it is the one action a
+              signed-out visitor should not have to go looking for. */}
+          {!user && <button className="btn btn-primary btn-sm" style={{whiteSpace:'nowrap'}} onClick={()=>setShowAuth(true)}>Sign in</button>}
+          <AccountMenu user={user} name={name} onSettings={()=>setShowSettings(true)} onSignOut={handleSignOut} />
         </div>
       </div>
 
@@ -3507,7 +3632,7 @@ function App(){
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
-            onFeedback:()=>{ setShowSettings(false); setShowFeedback(true); },
+            onFeedback:()=>{ setShowSettings(false); openFeedback('Settings'); },
             onShare:()=>{ setShowSettings(false); setShowShare(true); track('share_opened', null, user?.id); }}} />}
 
       {showSwaps &&
@@ -3527,7 +3652,7 @@ function App(){
 
       {showShare && <ShareSheet userId={user?.id} onClose={()=>setShowShare(false)} />}
 
-      {showFeedback && <FeedbackSheet user={user} onClose={()=>setShowFeedback(false)} />}
+      {showFeedback && <FeedbackSheet user={user} surface={fbSurface} onClose={()=>setShowFeedback(false)} />}
 
       {paystub && <PaystubReview paystub={paystub} differentials={differentials} onApply={applyPaystub} onCancel={()=>setPaystub(null)} />}
 

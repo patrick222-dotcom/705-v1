@@ -34,6 +34,9 @@ _(empty — promote from the candidate lists below with judgment)_
 - [x] ~~**Top bar overflows the viewport by 42px on a 320px phone**~~ — SHIPPED 2026-09-09 (see Done
   log). At ≤360px the decorative `.avatar` is hidden and `.topbar` padding tightened; iPhone SE no
   longer scrolls sideways (layout back to 320px), iPhone 13 unchanged.
+  **Half superseded 2026-09-13:** the avatar is the account menu now, so it can no longer be hidden
+  at any width — the padding half stands, and removing two icon buttons freed ~96px, far more than
+  the avatar costs. Pinned by a smoke assertion on scrollWidth at 360px.
 
 ### P3
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
@@ -122,6 +125,23 @@ here so the loop's queue contains only work it can actually finish; pick these u
   shifts-per-week model over the user's actual history — trailing average? scheduled future shifts?
   pattern-lab rotation if one is applied? — which the nightly correctly flagged as a design call.
   Decide the model, then it is one run. No-nudge constraint stands (no "behind", no deadline pressure).
+- [ ] **Goal deadlines: "$20k by May" → what it costs** (owner-directed 2026-09-13; supersedes and
+  absorbs the "cadence-based on track for <month>" item above, which was parked only because nobody
+  had decided the shifts-per-week model — a user-declared deadline dissolves that question).
+  Today goals are `{id,name,target}` with no date, and the pattern lab runs *forward*:
+  pattern → paychecks → months (`goalLine`). The missing direction is the inverse — target + date →
+  what it takes — which is the one that changes a decision. **Owner decided the shape already:**
+  add `by` to the goal, compute required-per-paycheck as `target / paychecks remaining`, and
+  annotate every preset and saved pattern in the lab with one honest line ("gets you there by
+  March" / "$5,800 short of $20,000 by May — about one extra shift a month closes it"). Two
+  constraints settled with it: the marginal-shift rate is her own **trailing average take-home from
+  logged shifts**, not `baseRate × 12 × keepRatio` (the next shift is almost never a base shift —
+  it's the weekend or night pickup, so the Settings-style divisor understates the answer badly);
+  and the readout states **arithmetic only** — no color, streak, "behind", or deadline pressure, the
+  no-nudge rule holds. `harness:drivable`, but **wage-core (Invariant 3)**: it touches
+  `patternMetrics`/`computeNet` consumers and changes displayed dollar figures, so it needs a
+  dedicated session, the `/wage-core` protocol, and the hero-equality assertion against the
+  *deployed* build. Not for the nightly.
 - [ ] **Pattern lab follow-ups** (from the #65 ship, 2026-09-04): per-cell start-time/bonus editing
   beyond what a template brush carries; "off every other week" as a softer sibling of "always off" for
   14-day cycles (`harness:drivable`, probably one run); holiday awareness; exporting a pattern to the
@@ -312,6 +332,62 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (owner-directed, interactive) — **Account menu under the avatar + feedback tiles.** Two
+  asks from the owner using the app on a phone, settled as options `A2` and `B2+B4`.
+  **(A2) The avatar is the account menu at every width.** It absorbed the top bar's separate gear and
+  sign-out icon buttons, so `.top-actions` now carries exactly one icon (feedback 💬), a first-class
+  **Sign in** button when signed out, and the avatar. Closes two things at once: on desktop the gear
+  sat immediately beside the topnav's own "Settings" link (the redundancy the owner reported), and
+  below 920px `.topnav` is `display:none`, so the avatar is now the *only* route to Settings and Sign
+  out on a phone. **That made the 2026-09-09 `≤360px` rule a live regression risk** — it hid the
+  avatar as decorative, which would have stranded an iPhone SE with neither Settings nor Sign out, so
+  the `display:none` half was removed and the padding half kept. Removing two icon buttons freed
+  ~96px, so the bar is narrower than before either way (smoke pins `scrollWidth ≤ 360`). Menu
+  mechanics: outside-tap closes through a transparent fixed backdrop rather than a document listener
+  (on iOS WebKit a document-level click handler misses taps on non-interactive elements unless a
+  touch handler is bound too), Escape closes, `aria-haspopup`/`aria-expanded`/`role=menu`, and
+  `z-index` clears `.topbar` (40) and `.fab` (45) but stays under `.scrim` (80). Feedback
+  deliberately stayed a one-tap icon instead of moving into the menu — the tiles below exist to lower
+  the cost of reporting something, and a menu would raise it.
+  **(B2) Four feedback tiles that pre-fill the box.** The single open textarea made the nurse do the
+  categorising work and returned 9 rows of undifferentiated prose in two months. The sheet now opens
+  on four one-tap tiles — *A number looks wrong* / *Something didn't work* / *I couldn't find how
+  to…* / *I wish it could…* — each scaffolding the box with the questions the owner would otherwise
+  have to ask by email, so she fills two blanks instead of composing a bug report. The wrong-number
+  scaffold stamps a `Where:` line from the surface the sheet was opened from (`page` can't supply it
+  — single-page app, the pathname is always `/`). Three guards, all negative-tested: switching tiles
+  rewrites the box **only** while it still holds an untouched scaffold, so her own words are never
+  eaten; submitting an untouched scaffold is refused rather than filed as a row of prompts; and the
+  textarea no longer `autoFocus`es, because on a phone that raised the keyboard over the tiles before
+  she could read them. Tapping the active tile toggles back to the plain open box.
+  **(B4) `feedback.kind`** — `supabase/migrations/003_feedback_kind.sql`, applied live. Nullable
+  `text` with a CHECK closing the value set to the five kinds; `kind is null` means "before the tiles
+  shipped", and the open box writes `'other'` explicitly so every new row is tagged. No RLS change
+  needed (the insert-only policies are per-command, not per-column). Chosen over a `[kind]` prefix
+  inside `message` precisely so a typo or a stale client can't invent a sixth bucket that silently
+  splits the owner's group-by; `FEEDBACK_KINDS` mirrors the CHECK client-side and degrades an
+  unrecognised value to `'other'` rather than losing the submission to a 23514. `feedback_submitted`
+  now carries `{kind}`. Owner read: `select kind, count(*) from public.feedback group by kind order
+  by 2 desc;`
+  **Gate:** 8/8 mechanical checks (JSX parses; boot hardening, SRI 5/5, wage-core and the storage
+  keys all untouched), groom_seed 33/33, smoke **57/57** on an iPhone 13 profile — 29 existing plus
+  28 new covering the menu, the SE width, and every tile guard.
+  **Negative testing — partial at commit time, and worth being precise about.** The `feedback_kind`
+  CHECK is fully proven: the live table rejects `'bogus_kind'` with 23514 and inserts nothing. On the
+  UI side a 16-break rig (`scratchpad/negtest.py`) patches one thing at a time and re-runs the suite;
+  **3 of 28 assertions are confirmed so far** — restoring the gear flips both top-bar assertions, and
+  reverting the avatar to a `<div>` flips the menu-trigger assertion. The remaining 13 breaks were
+  still running at ~10 min each (a broken build burns Playwright's 30s timeouts), so the run was
+  stopped rather than block the commit; it restores `index.html` on exit and 13 content markers were
+  re-verified before committing. Finishing it needs the suite to be section-filterable so a break
+  re-runs only the affected section — that is the follow-up, not a nice-to-have: a gate that has only
+  ever passed proves nothing, which is the rule this rig exists to enforce.
+  No wage math touched, so Invariant 3 did not apply.
+  **Deliberately not done:** A5 (deleting the `≤360px` block outright — only its avatar-hiding half
+  was a correctness problem), A3 (dropping 💬 from the bar), B3 (the inline "does this look right?"
+  tap on the hero and breakdown, which is the one most likely to actually produce signal), and B6
+  (`000_core.sql`, which landed separately the same day as #95). C — goal deadlines in the pattern
+  lab — is scoped under *Needs a dedicated session* with the owner's decisions already recorded.
 - 2026-09-13 (owner-directed, interactive) — **Captured core schema as `supabase/migrations/000_core.sql`.**
   `user_data` / `feedback` / `events` existed only in the live project; reconstructed their columns,
   constraints and RLS from the deployed schema (introspected 2026-09-13) into an idempotent migration
