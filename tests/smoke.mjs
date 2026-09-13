@@ -195,10 +195,11 @@ const run = async () => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
 
-    /* The gear and sign-out icons folded into the avatar on 2026-09-13; only feedback stays an
-       icon, deliberately — burying it would fight the whole point of the feedback tiles. */
+    /* The gear and sign-out icons folded into the avatar on 2026-09-13, leaving share (#98, which
+       landed on the deploy branch while this was in review) and feedback. Feedback stays an icon
+       deliberately — burying it would fight the whole point of the feedback tiles. */
     const iconBtns = await page.locator('.top-actions .iconbtn').count();
-    ok('account: top bar keeps exactly one icon button (feedback)', iconBtns === 1, `${iconBtns} .iconbtn`);
+    ok('account: top bar carries only the share + feedback icons', iconBtns === 2, `${iconBtns} .iconbtn`);
     ok('account: no standalone Settings gear in the top bar',
       await page.locator('.top-actions [title="Settings"]').count() === 0);
 
@@ -240,6 +241,14 @@ const run = async () => {
     ok('account: avatar survives at 360px (iPhone SE)', await avatar.isVisible());
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     ok('account: top bar does not overflow at 360px', wide <= 360, `scrollWidth ${wide}`);
+
+    /* #98's top-bar share icon shares this bar, and resolving the merge meant rewriting the exact
+       line both changes touched — so prove its behaviour survived the resolution, not just its
+       markup. openShare('topbar') tags the event surface; the sheet opening is the observable half. */
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('button[aria-label="Share BadgeBudget"]').click();
+    const shareSheet = await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { timeout: 4000 }).catch(() => null);
+    ok('account: #98 share icon still opens the share sheet after the merge', !!shareSheet);
 
     ok('account: no page errors driving the menu', errors.filter((e) => !isExpectedNetwork(e)).length === 0);
     await ctx.close();

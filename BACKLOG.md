@@ -65,6 +65,45 @@ _(empty — promote from the candidate lists below with judgment)_
   `baseRate/2` at base *even when the shift carries a night/OT rate* → byte-identical deployed-equality
   across OT/PTO/deductions — `.claude/skills/wage-core`. Sanitizer gets a `missedMeal` boolean branch
   (strict-boolean coerce, old shifts → false), which is a new-data-shape addition.
+- [ ] **Post-value sign-in nudge (anonymous → account)** — `harness:drivable`. Data (2026-09-13):
+  ~90 real mobile visitors / 14d, 8 setups, but only **1 signup** (first external: saradeedleb, Sep 12).
+  Expected — the app works fully anonymously and an account only buys cross-device sync — so the lever
+  for more accounts is a gentle, well-timed prompt, **not** more traffic. Add a one-time, dismissible
+  nudge at a value moment, never on arrival:
+  - **Trigger:** after the user's first `shift_saved` while anonymous (they've felt the value), OR on
+    their second distinct-day open while anonymous — whichever first. Never on welcome/estimate, never
+    for signed-in users.
+  - **Form:** light, dismissible banner/sheet (respect the app's no-nudge tone — not a modal wall):
+    "Keep this on your other devices — sign in. Your data stays private to you." Primary = sign in,
+    secondary = "Not now."
+  - **Once only:** remember state in a NEW localStorage key (e.g. `scrubpay_signin_nudge`); do NOT
+    rename existing keys (Invariant 5).
+  - **Instrument:** `signin_nudge_shown` / `_dismissed` / `_accepted` `{trigger:'first_shift'|'day2'}`,
+    coarse only (no wage figures), to measure lift.
+  - Gate-safe and harness-drivable, but owner will likely want to tune copy/timing (anticipatory-UX call).
+- [ ] **Grassroots growth instrumentation (attribution + abandonment + per-sharer links)** —
+  `harness:drivable` (client) + owner-side (dashboard). Goal: sense arrival source, movement and
+  abandonment so the net can be adjusted fast, and support the multiplier effect with trackable share
+  links. Gap (2026-09-13): of ~90 mobile arrivals only **2 tagged `via=qr`, 0 `via=link`** — nearly all
+  arrivals are untagged, so acquisition is blind.
+  - **Attribution:** widen `ARRIVED_VIA` from the fixed {qr,link} whitelist to accept any short
+    sanitized `?via=`/`?ref=` token (`[a-z0-9_-]{1,24}`, lowercased), so evangelists get personal/unit
+    links (`?via=courtney`, `?via=unit7`) and each person's multiplier is measurable.
+  - **Share-surface tagging:** DONE 2026-09-13 — `share_opened`/`share_sent` now carry `{surface}`
+    (`settings` | `topbar` | `hero`); swap invites stay on the separate `swap_invite_shared {via}`. Add
+    `onboarding` if surface (4) is built.
+  - **Abandonment/depth:** `ob_step` covers welcome→done; add milestones for the estimate→signup gap
+    and feature discovery — `first_shift_saved` (once/device), `returned_day2`. Event-based only
+    (insert-only, free-tier safe); no heartbeats.
+  - **Dashboard:** add an acquisition block (arrivals by via/ref, per-sharer) to the nightly snapshot
+    and fold the milestones into `anon_funnel` (dashboard auto-refreshes nightly).
+  - **Privacy:** via/ref tags are self-chosen and non-personal — no new PII, so privacy.html needs no
+    change (confirm at build time).
+- [~] **Share entry points beyond Settings** — surfaces **1–3 SHIPPED 2026-09-13** (see Done log):
+  top-bar share icon, post-estimate hero link ("Share BadgeBudget ›"), and prominent swap "Invite your
+  unit" (Board-created screen + group header). **Remaining (backlogged):** (4) onboarding-end
+  "send to a coworker", (5) share-the-result, (6) add-to-home-screen (PWA). Each new surface should carry
+  the `{surface}` tag so its contribution is measurable. `harness:drivable`.
 - [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
@@ -335,8 +374,10 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - 2026-09-13 (owner-directed, interactive) — **Account menu under the avatar + feedback tiles.** Two
   asks from the owner using the app on a phone, settled as options `A2` and `B2+B4`.
   **(A2) The avatar is the account menu at every width.** It absorbed the top bar's separate gear and
-  sign-out icon buttons, so `.top-actions` now carries exactly one icon (feedback 💬), a first-class
-  **Sign in** button when signed out, and the avatar. Closes two things at once: on desktop the gear
+  sign-out icon buttons, so `.top-actions` now carries the share and feedback icons (share arrived on
+  the deploy branch as #98 while this was in review, and merges cleanly — both are new behaviour and
+  the gear/sign-out it replaced live in the menu), a first-class **Sign in** button when signed out,
+  and the avatar. Four bar items became three. Closes two things at once: on desktop the gear
   sat immediately beside the topnav's own "Settings" link (the redundancy the owner reported), and
   below 920px `.topnav` is `display:none`, so the avatar is now the *only* route to Settings and Sign
   out on a phone. **That made the 2026-09-09 `≤360px` rule a live regression risk** — it hid the
@@ -400,6 +441,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   tap on the hero and breakdown, which is the one most likely to actually produce signal), and B6
   (`000_core.sql`, which landed separately the same day as #95). C — goal deadlines in the pattern
   lab — is scoped under *Needs a dedicated session* with the owner's decisions already recorded.
+- 2026-09-13 (owner-directed, interactive) — **Share entry points 1–3 (top-bar icon, hero link, prominent
+  swap invite).** Grassroots distribution: the QR/share sheet was only reachable via Settings. Added a
+  persistent **top-bar share icon** (`Ic.share`, opens the existing ShareSheet), a **post-estimate hero
+  link** "Share BadgeBudget ›" beside the breakdown link (peak-enthusiasm timing), and made the swap
+  **"Invite your unit"** the primary action on the Board-created screen + a stronger `btn-soft` in the
+  group header (the swap board needs critical mass). Instrumentation: `share_opened`/`share_sent` now
+  carry `{surface}` (`settings`|`topbar`|`hero`) so we can see which door drives shares; swap invites
+  keep `swap_invite_shared {via}`. No new event names (inventory still 41), no wage-core/boot/SRI/storage
+  changes. Gate 8/8, groom 33/33, smoke 29/29; drove the top-bar + hero surfaces in the harness (sheet
+  opens, QR renders) — swap prominence is `needs-live-auth`, verified it parses + doesn't regress boot.
+  Surfaces 4–6 (onboarding-end, share-the-result, add-to-home-screen) remain backlogged.
 - 2026-09-13 (owner-directed, interactive) — **Captured core schema as `supabase/migrations/000_core.sql`.**
   `user_data` / `feedback` / `events` existed only in the live project; reconstructed their columns,
   constraints and RLS from the deployed schema (introspected 2026-09-13) into an idempotent migration

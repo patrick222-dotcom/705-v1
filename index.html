@@ -2226,6 +2226,8 @@ function App(){
   const [showAuth,setShowAuth] = useState(false);  // auth modal
   const [authMode,setAuthMode] = useState('signin'); // 'signin' or 'signup'
   const [showShare,setShowShare] = useState(false);  // QR/link sheet — the app's only distribution surface
+  const [shareSurface,setShareSurface] = useState('settings');  // which entry point opened the share sheet (measures where sharing happens)
+  const openShare = (surface)=>{ setShareSurface(surface); setShowShare(true); track('share_opened',{surface},user?.id); };
   const [estimateMode,setEstimateMode] = useState('');  // '' | 'rough' | 'sample' — drives the honesty banner
   const [user,setUser] = useState(null);  // current user
   const [session,setSession] = useState(null);  // auth session
@@ -3440,6 +3442,7 @@ function App(){
           {syncing && <span style={{fontSize:12,color:'var(--muted-2)',marginRight:8}}>Syncing...</span>}
           {!syncing && syncError && <button className="linklike" onClick={retrySync} title="Tap to retry" style={{fontSize:12,color:'var(--danger)',padding:'11px 6px',margin:'-11px 6px -11px 0',display:'inline-flex',alignItems:'center',cursor:'pointer'}}>Couldn't sync — saved on this device ⟳</button>}
           <button className="btn btn-primary btn-sm desk-only" onClick={()=>{const k=keyOf(days.find(d=>!(shifts[keyOf(d)])) || days[0]); openSheet(k);}}>+ Log a shift</button>
+          <button className="iconbtn" title="Share BadgeBudget" aria-label="Share BadgeBudget" onClick={()=>openShare('topbar')}>{Ic.share}</button>
           <button className="iconbtn" title="Send feedback" aria-label="Send feedback" onClick={()=>openFeedback('Planner ('+calView+' view)')}>{Ic.chat}</button>
           {/* Sign in stays a first-class button rather than a menu row -- it is the one action a
               signed-out visitor should not have to go looking for. */}
@@ -3486,6 +3489,7 @@ function App(){
                 {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
               <button className="hero more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
+              <button className="hero more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
             </div>
 
             <div className="stats">
@@ -3633,7 +3637,7 @@ function App(){
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
             onFeedback:()=>{ setShowSettings(false); openFeedback('Settings'); },
-            onShare:()=>{ setShowSettings(false); setShowShare(true); track('share_opened', null, user?.id); }}} />}
+            onShare:()=>{ setShowSettings(false); openShare('settings'); }}} />}
 
       {showSwaps &&
         <SwapsSheet user={user} shifts={shifts} dayEvents={dayEvents} notes={notes} saveDayShifts={saveDayShifts} differentials={differentials}
@@ -3650,7 +3654,7 @@ function App(){
 
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
-      {showShare && <ShareSheet userId={user?.id} onClose={()=>setShowShare(false)} />}
+      {showShare && <ShareSheet userId={user?.id} surface={shareSurface} onClose={()=>setShowShare(false)} />}
 
       {showFeedback && <FeedbackSheet user={user} surface={fbSurface} onClose={()=>setShowFeedback(false)} />}
 
@@ -5373,8 +5377,8 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created!</div>
             <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Send your unit the link — it drops them straight onto this board.</div>
             <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
-            <button className="btn btn-ghost" style={{marginBottom:10}} onClick={()=>shareInvite(justCreated.invite_code, justCreated.name)}>Share invite link</button>
-            <button className="btn btn-primary" onClick={()=>setJustCreated(null)}>Continue to board</button>
+            <button className="btn btn-primary" style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}} onClick={()=>shareInvite(justCreated.invite_code, justCreated.name)}>{Ic.share}<span>Invite your unit</span></button>
+            <button className="btn btn-ghost" onClick={()=>setJustCreated(null)}>Continue to board</button>
           </div>}
 
         {!loading && !loadError && !tablesMissing && profile && !inviteCode && !justCreated && groups.length===0 &&
@@ -5411,7 +5415,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             {activeGroupId && <React.Fragment>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
                 {activeGroup && activeGroup.invite_code
-                  ? <button className="btn btn-ghost btn-sm" style={{minHeight:44,gap:6}} onClick={()=>shareInvite(activeGroup.invite_code, activeGroup.name)} title="Send a colleague a link that joins this board">Invite · <b>{activeGroup.invite_code}</b></button>
+                  ? <button className="btn btn-soft btn-sm" style={{minHeight:44,gap:6,display:'inline-flex',alignItems:'center'}} onClick={()=>shareInvite(activeGroup.invite_code, activeGroup.name)} title="Send a colleague a link that joins this board">{Ic.share}<span>Invite your unit · <b>{activeGroup.invite_code}</b></span></button>
                   : <span></span>}
                 <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={openComposer}>+ Post to the board</button>
               </div>
@@ -5659,20 +5663,20 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
    other's numbers, which on a unit of travellers and float staff is most of them. The link path
    mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
    into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
-function ShareSheet({onClose, userId}){
+function ShareSheet({onClose, userId, surface}){
   const blurb = 'BadgeBudget — see what a shift is really worth before you pick it up.';
   const sendLink = async ()=>{
     if(navigator.share){
       try{
         await navigator.share({title:'BadgeBudget', text:blurb, url:SHARE_LINK_URL});
-        track('share_sent', {via:'share'}, userId);
+        track('share_sent', {via:'share',surface}, userId);
         return;
       }catch(e){
         if(e && e.name==='AbortError') return;   // backed out of the share sheet — not a failure
       }
     }
     copyText(blurb + '\n' + SHARE_LINK_URL, 'Link copied!');
-    track('share_sent', {via:'copy'}, userId);
+    track('share_sent', {via:'copy',surface}, userId);
   };
   return (
     <div className="scrim" onClick={onClose}>
