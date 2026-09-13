@@ -312,6 +312,11 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-13 (owner-directed, interactive) — **Favicon → black tile.** Owner preferred the dark app-icon
+  treatment over the indigo one shipped earlier the same day. Favicon data-URI tile recolored `#5B4FE9`
+  → `#16181F` (`--ink`) with white `bb` bumped slightly (font 16→17, nudged left) for legibility at 16px
+  and the green dot kept at r=3. Head-only, one line; wordmark unchanged. Note for later: at true 16px a
+  single `b.` reads crispest, but the `bb.` holds up on the dark tile; owner accepted `bb.`.
 - 2026-09-13 (owner-directed, interactive) — **Brand mark: favicon + wordmark set to the "bb." lettermark
   (option D, no arrows).** After an interactive logo exploration (refresh-loop arrows, clock/$ loop, taper,
   barrel-roll — all in the branding artifact), owner + Courtney landed on original mark option D: the
