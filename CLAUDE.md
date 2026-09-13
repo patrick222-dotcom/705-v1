@@ -54,35 +54,74 @@ hosts an anonymous shift-swap board.
 
 ## Invariants — never weaken, never rename
 
-The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
+`scripts/check_build.mjs` gates **1, 2, 4, 5, 6, 8 and 9** on every PR. **3, 7, 10, 11, 12 and 13
+are human-held** — no machine sees them.
+
+Each one carries a `↳` trailer in a fixed shape: **Detect** (what would tell you it is *already*
+broken in production), **Blast** (what breaks, and how widely, when it is) and **Verify** (the
+command that proves it holds right now). The prose is for a reader; the trailer is a fixed shape so
+it can be parsed later instead of re-excavated from the history — it is the remediation graph in
+denormalized form, so don't strip it as decoration. `Detect: none` is not a hole in the notes, it
+is the finding: **exactly one invariant (4) has a live production signal**, and it was added *after*
+the 47-day outage it exists to catch.
 
 1. **Boot hardening** in the plain-JS boot script: 8s watchdog error screen; Supabase client creation
    null-guarded (app degrades to localStorage-only if the CDN script fails); `getSession()` raced
    against a 4s timeout (WebKit deadlock — iPhone Chrome is WebKit too). These fixed a long-standing
    iPhone infinite spinner.
+   ↳ **Detect** none — a device that never boots never fires `app_open` and never flushes the error
+   buffer, so the spinner was invisible in analytics for its entire life. **Blast** every WebKit
+   device including iPhone Chrome; app unusable, silently. **Verify** `node scripts/check_build.mjs`
+   plus `tests/smoke.mjs` §1 (boots), §5 (`getSession` hangs), §6 (Babel blocked).
 2. **SRI on all 5 CDN scripts** (`grep -c 'integrity="sha384-' index.html` → 5), exact pinned versions.
+   ↳ **Detect** none — SRI *working* is a blocked script, which surfaces as the watchdog screen,
+   indistinguishable from a CDN outage. **Blast** without it a CDN compromise runs arbitrary JS with
+   the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
    hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`, and the
    rate/differential coercions in `sanitizeData`): touch only in a dedicated session, with the
    wage-math probes **and the hero/breakdown equality assertion against the deployed build**, never in
    a nightly build. Adding a sanitizer branch for a *new* data shape (as #62 did for `goals`) is fine
    in a nightly if it comes with a unit test and the existing probes stay green.
+   ↳ **Detect** none automated — a wrong take-home figure throws no error, so the *A number looks
+   wrong* feedback tile (2026-09-13) is the only channel, and it is opt-in and human. **Blast** every
+   displayed dollar figure, i.e. the one thing the app is for. **Verify** the `wage-core` skill:
+   baseline probes, a new assertion for the changed behaviour, then the equality check against the
+   **deployed** build. Probes live in `tests/smoke.mjs` §1; `check_build.mjs` reports this UNCHECKED
+   on purpose.
 4. **`saveToSupabase` upserts with `{onConflict:'user_id'}`.** The table's PK is a generated `id` and
    `user_id` carries a separate unique constraint; without the option every save after the first fails
    with 23505. That silently broke cloud sync for every signed-in user from 2026-07-07 to 2026-08-23.
    Companion rules from the fix: the per-user failed-save backup carries `savedAt` and wins when newer
    than the cloud row; `console.error` is mirrored into the error ring buffer.
+   ↳ **Detect** 23505 → error ring buffer → `client_error`, live since 2026-09-07 — *that channel did
+   not exist during the outage, which is why it ran 47 days.* **Blast** every signed-in user, silent;
+   cloud sync dead, data surviving only in the per-user localStorage backup. **Verify**
+   `check_build.mjs`; end-to-end, save twice and reload on a second device.
 5. **Storage keys are data, not branding.** Renaming any of them orphans user data or severs analytics
    joins: `nursingWagePlannerData` (anonymous users' data — contains no brand string, so a
    ScrubPay→BadgeBudget find/replace misses it) and `nursingWagePlannerData::<uid>` (per-user
    failed-save backup); `scrubpay_anon_id`; `scrubpay_feedback_pending`; `scrubpay_pending_invite`;
    `scrubpayErrors` (`ERR_KEY` in the boot script; every read goes through it since #64);
    `scrubpay_events_pending` (deferred analytics events awaiting the next load).
+   ↳ **Detect** none — a rename orphans data silently; the symptom is a returning user seeing an empty
+   app and not saying so. **Blast** anonymous users lose everything (localStorage is the only copy);
+   signed-in users lose the failed-save backup; `anon_id` joins break historically. **Verify**
+   `check_build.mjs` asserts each key literal.
 6. **`@scrubpay` is the .ics self-recognition sentinel**: export stamps UIDs as
    `scrubpay-<date>-<id>@scrubpay`, import drops any UID containing `@scrubpay`. Change either half and
    every previously exported event re-imports as a duplicate.
+   ↳ **Detect** none — the symptom is duplicate shifts after a re-import, visible to the nurse and
+   reported nowhere. **Blast** every previously exported shift duplicates, inflating hours and every
+   wage figure downstream of them. **Verify** `check_build.mjs` asserts both halves; there is no
+   round-trip test — a known gap.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
    function. It is the swap board's anonymity model, not a string.
+   ↳ **Detect** none, and nothing in this repo *can* see it — the salt lives in the deployed Postgres
+   function, not in `index.html`, so `check_build.mjs` is blind to it by construction. **Blast**
+   rotating it re-derives every `poster_key`, silently breaking the identity linkage the reveal step
+   depends on and changing the anonymity model with no visible error. **Verify** the swap-UI standard
+   in `docs/swap-board.md`; `rls_audit.js` — **not in git**, so currently unreproducible.
 8. **The publish set is load-bearing** (`cp … _site/` in `deploy.yml`): `index.html`,
    `pdf.worker.min.js`, `privacy.html`, `ops.html`, `CNAME`. Pages reads the custom domain from `CNAME` in the
    deployed artifact, so a deploy without it knocks the site off badgebudget.com. `privacy.html`
@@ -91,19 +130,54 @@ The nightly safety gate checks 1–3 mechanically; a human has to hold the rest.
    the set 2026-09-13; because it ships to a public URL, `check_build.mjs` also asserts it carries
    `noindex`, contains no `service_role` string, never assigns `innerHTML` (every string it renders
    was typed by the public into a feedback box), and is not linked from `index.html`.
+   ↳ **Detect** derivable but unwatched — a missing `CNAME` takes the site off the domain within one
+   deploy and `events` goes silent; nothing watches for that silence. **Blast** total outage on
+   badgebudget.com; a missing `privacy.html` 404s the consent-screen URL. `ops.html` ships to a
+   public URL, so its four page-level assertions are defence in depth behind the real gate
+   (`is_ops_admin()` in Postgres) — except the `service_role` one, where a shipped key bypasses RLS
+   outright and is a breach, not a weakened layer. **Verify** `check_build.mjs` asserts the set
+   exactly in both directions and runs the four ops-console checks, then
+   `curl -sI https://badgebudget.com/index.html?cb=N` per the `ship` skill.
 9. **No `main` branch.** `claude/migrate-to-github-deploy-3F5RD` is the de facto default and deploy
    branch, deliberately in the workflow's push triggers. Add `main` to the triggers *before* removing
    it, never in the same commit — removing it first stopped all deploys once.
+   ↳ **Detect** derivable but unwatched — deploys stop while pushes keep succeeding, so nothing fails
+   loudly; the signal is an empty Actions tab. **Blast** everything merged after that point sits
+   unshipped while looking merged. **Verify** `check_build.mjs` asserts the branch is still in the
+   triggers; confirm a run actually appears in Actions after the merge.
 10. **Fetch before touching the deploy branch.** Fresh checkouts are shallow and have been seen 14
     commits behind origin. Always `git fetch origin claude/migrate-to-github-deploy-3F5RD` and branch
     from `origin/…`, never from the local ref.
+    ↳ **Detect** none — a stale branch is a valid branch, so the PR merges green while quietly
+    reverting recent commits. **Blast** up to N commits of other people's work reverted on merge; 14
+    observed. **Verify** `git merge-base --is-ancestor origin/claude/migrate-to-github-deploy-3F5RD
+    HEAD` before you push. UNCHECKED in the gate.
 11. **Don't delete `claude/clause-md-review-9tqlj8`** (the nightly's working branch) or the head of any
     open PR. Merged heads are fair game (see Open items for the current list).
+    ↳ **Detect** none — a deleted branch is noticed only the next time something needs it, which for
+    the nightly is the next 04:0x ET run. **Blast** deleting the nightly's branch stops the loop
+    silently; deleting an open PR's head closes the PR and loses the work. **Verify** cross-check
+    `git branch -r` against open PRs before any delete. UNCHECKED in the gate.
 12. **URL Forwarding stays OFF on badgebudget.com at Porkbun** — it overrides the A records entirely.
+    ↳ **Detect** none — registrar state sits outside every check in this repo, and the failure
+    presents as a Pages problem. **Blast** total site outage; the A records are ignored wholesale.
+    **Verify** `dig +short badgebudget.com` → the 4 GitHub Pages A records, and
+    `curl -sI https://badgebudget.com` → 200 from Pages, not a 301 to a Porkbun redirector. UNCHECKED
+    in the gate.
 13. **The iCal feed URL is a bearer credential.** It lives only in `ical_subscriptions` (owner-only RLS,
     no `anon` grants), is absent from `serializeState` so it never enters the `user_data` blob (which
     is exported, mirrored to localStorage and echoed by the sync poll), never goes into `events`, and
     is never logged by `ical-proxy`. The parser stores dates, times, hours and UIDs — never titles.
+    ↳ **Detect** none, and a leak is silent by construction — nothing observable changes when a bearer
+    credential escapes. **Blast** anyone holding the URL reads the nurse's whole calendar
+    indefinitely; the only revocation is the calendar provider reissuing it. **Verify** confirm
+    `serializeState` never touches the feed field, `ical-proxy` logs no URL, and an exported blob
+    contains no feed address. UNCHECKED in the gate.
+
+**What this shape surfaced (2026-09-13).** Filling in `Detect` for all thirteen showed that only #4
+has a live production signal; #8 and #9 have one that exists in the data but nothing watches. The
+other ten fail silently. Detection, not remediation, is the thin layer here — a plan for fixing a
+break is worth nothing against a break nobody sees, and the 47-day sync outage is the proof.
 
 ## Architecture
 

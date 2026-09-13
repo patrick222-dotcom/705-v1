@@ -9,9 +9,12 @@
  *
  *   node scripts/check_build.mjs
  *
- * Scope: only what a machine can check honestly. Invariants 3 (wage-core), 10 (fetch before
- * touching the deploy branch), 11 (protected branches) and 12 (registrar settings) are human
- * disciplines and are listed as UNCHECKED in the output rather than silently omitted.
+ * Scope: only what a machine can check honestly. Six invariants are human-held and are listed as
+ * UNCHECKED in the output rather than silently omitted: 3 (wage-core), 7 (the swap salt, which
+ * lives in a deployed Postgres function this repo cannot see), 10 (fetch before touching the
+ * deploy branch), 11 (protected branches), 12 (registrar settings) and 13 (the iCal feed URL as a
+ * bearer credential). 7 and 13 were missing from that roll-call until 2026-09-13 — neither checked
+ * nor declared, which is the silent omission this comment exists to forbid.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -159,7 +162,7 @@ console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core, 10 fetch-before-branch, 11 protected branches, 12 URL forwarding off\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core, 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {
