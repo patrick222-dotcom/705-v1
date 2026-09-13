@@ -62,6 +62,44 @@ _(empty — promote from the candidate lists below with judgment)_
   `baseRate/2` at base *even when the shift carries a night/OT rate* → byte-identical deployed-equality
   across OT/PTO/deductions — `.claude/skills/wage-core`. Sanitizer gets a `missedMeal` boolean branch
   (strict-boolean coerce, old shifts → false), which is a new-data-shape addition.
+- [ ] **Post-value sign-in nudge (anonymous → account)** — `harness:drivable`. Data (2026-09-13):
+  ~90 real mobile visitors / 14d, 8 setups, but only **1 signup** (first external: saradeedleb, Sep 12).
+  Expected — the app works fully anonymously and an account only buys cross-device sync — so the lever
+  for more accounts is a gentle, well-timed prompt, **not** more traffic. Add a one-time, dismissible
+  nudge at a value moment, never on arrival:
+  - **Trigger:** after the user's first `shift_saved` while anonymous (they've felt the value), OR on
+    their second distinct-day open while anonymous — whichever first. Never on welcome/estimate, never
+    for signed-in users.
+  - **Form:** light, dismissible banner/sheet (respect the app's no-nudge tone — not a modal wall):
+    "Keep this on your other devices — sign in. Your data stays private to you." Primary = sign in,
+    secondary = "Not now."
+  - **Once only:** remember state in a NEW localStorage key (e.g. `scrubpay_signin_nudge`); do NOT
+    rename existing keys (Invariant 5).
+  - **Instrument:** `signin_nudge_shown` / `_dismissed` / `_accepted` `{trigger:'first_shift'|'day2'}`,
+    coarse only (no wage figures), to measure lift.
+  - Gate-safe and harness-drivable, but owner will likely want to tune copy/timing (anticipatory-UX call).
+- [ ] **Grassroots growth instrumentation (attribution + abandonment + per-sharer links)** —
+  `harness:drivable` (client) + owner-side (dashboard). Goal: sense arrival source, movement and
+  abandonment so the net can be adjusted fast, and support the multiplier effect with trackable share
+  links. Gap (2026-09-13): of ~90 mobile arrivals only **2 tagged `via=qr`, 0 `via=link`** — nearly all
+  arrivals are untagged, so acquisition is blind.
+  - **Attribution:** widen `ARRIVED_VIA` from the fixed {qr,link} whitelist to accept any short
+    sanitized `?via=`/`?ref=` token (`[a-z0-9_-]{1,24}`, lowercased), so evangelists get personal/unit
+    links (`?via=courtney`, `?via=unit7`) and each person's multiplier is measurable.
+  - **Share-surface tagging:** add a `{surface}` prop to `share_opened`/`share_sent`
+    (settings | hero | onboarding | swap) to see which entry point actually drives shares (feeds the
+    share-placement decision below).
+  - **Abandonment/depth:** `ob_step` covers welcome→done; add milestones for the estimate→signup gap
+    and feature discovery — `first_shift_saved` (once/device), `returned_day2`. Event-based only
+    (insert-only, free-tier safe); no heartbeats.
+  - **Dashboard:** add an acquisition block (arrivals by via/ref, per-sharer) to the nightly snapshot
+    and fold the milestones into `anon_funnel` (dashboard auto-refreshes nightly).
+  - **Privacy:** via/ref tags are self-chosen and non-personal — no new PII, so privacy.html needs no
+    change (confirm at build time).
+- [ ] **Share entry points beyond Settings** — placement TBD pending owner pick from the options in the
+  2026-09-13 discussion (top-bar share icon, post-estimate share chip, onboarding-end "send to a
+  coworker", prominent swap "invite your unit", share-the-result, add-to-home-screen). Depends on the
+  `{surface}` tagging above so each placement's contribution is measurable. `harness:drivable`.
 - [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
