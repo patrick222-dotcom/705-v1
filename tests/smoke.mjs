@@ -25,6 +25,15 @@ const LAUNCH = existsSync(BROWSER)
   ? { executablePath: BROWSER, args: ['--no-sandbox'] }
   : { args: ['--no-sandbox'] };
 
+/* SMOKE_ONLY=3,4 runs just those sections. This exists for negative testing: proving an assertion
+   actually fails when its invariant is broken means one full run per break, and re-running all six
+   sections for a break that can only affect one burns ~10 minutes a piece. SMOKE_TIMEOUT shortens
+   Playwright's 30s default so a deliberately broken build fails fast instead of waiting it out.
+   Unset, both default to the full suite at normal timeouts — CI is unaffected. */
+const ONLY = (process.env.SMOKE_ONLY || '').split(',').map((x) => x.trim()).filter(Boolean);
+const want = (n) => !ONLY.length || ONLY.includes(String(n));
+const STEP_TIMEOUT = Number(process.env.SMOKE_TIMEOUT || 0);
+
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
   if (cond) { pass++; console.log(`PASS  ${name}${detail ? '  ' + detail : ''}`); }
@@ -35,6 +44,9 @@ const near = (a, b, eps = 0.01) => Math.abs(a - b) < eps;
 const newPage = async (browser, url, { seed = true } = {}) => {
   const ctx = await browser.newContext({ ...devices['iPhone 13'] });
   const page = await ctx.newPage();
+  /* Navigation keeps its own generous budget: setDefaultTimeout caps page.goto too, and this app
+     boots through an in-browser Babel transform of ~315KB, which is nowhere near a step. */
+  if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
   const errors = [], failures = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('requestfailed', (r) => failures.push(`${r.url()} ${r.failure()?.errorText || ''}`));
@@ -53,7 +65,7 @@ const run = async () => {
   const browser = await chromium.launch(LAUNCH);
 
   /* ---- 1. boot happy path ------------------------------------------------------------- */
-  {
+  if (want(1)) {
     const { ctx, page, errors, failures } = await newPage(browser, url);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root > *', { timeout: 15000 }).catch(() => {});
@@ -146,7 +158,7 @@ const run = async () => {
   }
 
   /* ---- 2. onboarding funnel instrumentation ------------------------------------------- */
-  {
+  if (want(2)) {
     const { ctx, page } = await newPage(browser, url, { seed: false });
     const tracked = [];
     await page.addInitScript(() => { window.__tracked = []; });
@@ -178,7 +190,7 @@ const run = async () => {
   }
 
   /* ---- 3. account menu: the avatar is the only Settings/sign-out route on a phone ------- */
-  {
+  if (want(3)) {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
@@ -234,7 +246,7 @@ const run = async () => {
   }
 
   /* ---- 4. feedback tiles: pick the shape, get a scaffold ------------------------------- */
-  {
+  if (want(4)) {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
@@ -305,7 +317,7 @@ const run = async () => {
   }
 
   /* ---- 5. failure mode: getSession() hangs (the WebKit deadlock) ----------------------- */
-  {
+  if (want(5)) {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.addInitScript(() => {
       let real;
@@ -334,7 +346,7 @@ const run = async () => {
   }
 
   /* ---- 6. failure mode: Babel blocked -> the boot error screen ------------------------- */
-  {
+  if (want(6)) {
     const { ctx, page } = await newPage(browser, url);
     await page.route('**/babel.min.js', (r) => r.abort());
     await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -351,7 +363,7 @@ const run = async () => {
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
 
-  console.log(`\n==== smoke: ${pass} passed / ${fail} failed ====\n`);
+  console.log(`\n==== smoke: ${pass} passed / ${fail} failed ====${ONLY.length ? `  (sections ${ONLY.join(',')} only)` : ''}\n`);
   process.exit(fail ? 1 : 0);
 };
 
