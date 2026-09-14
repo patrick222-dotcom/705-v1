@@ -48,6 +48,19 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero
+  (DESIGN CALL)** — `wish` feedback 2026-09-13 22:11 from Courtney: *"calendar should default to current
+  pay period upon opening. Keep the hero locked at the current pay period unless someone intentionally
+  clicks a different pay period or a 'next pay period' button."* This is really two things: (a) confirm
+  the app lands on the **current** period on open (payPeriodStart inits to today; applyData has a
+  `landCurrent` path — verify a returning user with drifted state still opens on current), and (b) the
+  bigger one — she wants the hero to **stop auto-following scroll**, but the "Hero auto-follows scroll
+  (Month view)" behavior (`onMonthScroll`, ~index.html:2707) is a **deliberate, documented product
+  feature**. Changing it is an **owner design call**, not a nightly fix: options are (i) keep scroll-follow
+  but guarantee open-to-current; (ii) make scroll-follow a setting (default off per Courtney); (iii)
+  remove it so only the ‹ › stepper moves the period. Delicate (interacts with the 15s sync's
+  `keepPeriod` guard and `suppressFollow`), so verify in the harness against the deployed build.
+  `harness:drivable` once the owner picks a direction.
 - [ ] **Ops console phase 2 — the monitoring panels** — `harness:drivable` — wrap
   `scripts/dashboard_snapshot.sql` (202 lines, already written and iterated) in an admin-gated
   `ops_snapshot()` and render it on `/ops.html`: health + `client_error`, the activation funnel with
@@ -170,6 +183,9 @@ _(empty — promote from the candidate lists below with judgment)_
   affordance would give a direct path even when the correlation engine finds nothing. Feature-sized
   and `harness:needs-live-auth` (touches the `propose_swap` flow + the anonymity/reveal gate — verify
   by the swap-UI standard, never weaken RLS/`poster_key`), so a dedicated session, not a nightly.
+  **Corroborated 2026-09-14 by a real `broken` feedback tile** (owner, on the MLH board): *"there's
+  nothing to click, it just says they want a shift and i have no actionable step"* — exactly cause (2).
+  Now user-confirmed, not just dashboard-inferred; strongest candidate for the next dedicated swap session.
 - [x] ~~**Ops dashboard — nightly auto-refresh**~~ — WIRED 2026-09-12 (owner green-lit "Yes, wire it
   in"). CLAUDE.md → Ops dashboard now instructs each nightly to regenerate + republish the artifact
   after GROOM, with the URL and the snapdata-swap mechanics recorded there. Dashboard upkeep, separate
@@ -425,6 +441,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-14 (nightly, groom-only) — **GROOM: triaged 2 feedback-tile items; no gate-safe build (queue
+  dry), nothing shipped to the app.** The feedback tiles are working — both new rows arrived typed:
+  (1) `broken` (owner) "clicked a swap post wanting a shift 9/16, nothing to click, no actionable step" →
+  **corroborates the existing swap zero-proposal item** (cause 2, the inert non-owner post); now
+  user-confirmed, `needs-live-auth`, still a dedicated session. (2) `wish` (Courtney) "default to current
+  pay period on open + keep the hero locked unless I navigate" → filed as a **design call** (she's asking
+  to change the deliberate scroll-follow-pay-period feature; owner picks the direction) + delicate
+  period-init surgery → dedicated session. Neither is nightly-safe. Positive signal: `share_opened` fired
+  4× in 24h — the share surfaces shipped 2026-09-13 are being used. Signal: 4 users (0 new), 66 devices/24h,
+  0 setups/24h, 11 feedback total. Gate 8/8, groom 33/33.
 - 2026-09-14 (dedicated session) — **Ops console phase 3a: `feedback.anon_id` (migration 005),
   applied and live.** The column that makes an anonymous nurse's report traceable to what her device
   actually did — `page` is always `/` in a single-page app and `user_id` is null when she isn't
