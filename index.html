@@ -1360,6 +1360,12 @@ async function submitFeedback({message, kind, contact, userId}){
         kind: FEEDBACK_KINDS.indexOf(kind)>=0 ? kind : 'other',
         contact: contact ? String(contact).slice(0,200) : null,
         user_id: userId || null,
+        /* The join key to this device's event trail (migration 005). Without it an anonymous
+           nurse's report cannot be connected to what she actually did, because `page` is always
+           '/' in a single-page app and `user_id` is null when she is not signed in. Set here
+           rather than at the call site so the offline-queue flush carries it too — same device,
+           same localStorage, same id. */
+        anon_id: anonId(),
         page: String(location.pathname||'').slice(0,120),
         user_agent: String(navigator.userAgent||'').slice(0,400)
       }),

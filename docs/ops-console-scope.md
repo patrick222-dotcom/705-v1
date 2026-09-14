@@ -141,16 +141,28 @@ funnel with its cohort and insider splits, and swap-board health as **counts onl
 members per group, posts, matches by state, age of open posts). The hard part is already written
 and iterated on; this is mostly a wrapper.
 
-**Phase 3: the support drill-down.** `ops_device(anon_id)` returning one device's event trail,
-which `ob_step` it stalled at, its `client_error` rows, first and last seen.
+**Phase 3b: the support drill-down.** `ops_device(anon_id)` returning one device's event trail,
+which `ob_step` it stalled at, its `client_error` rows, first and last seen. **Unblocked as of
+2026-09-14** — 3a shipped the join key. `ops_feedback_inbox()` does not return `anon_id` yet; that
+belongs with 3b, when there is a drill-down worth linking to.
 
-> **Phase 3 has a blocker that has to be fixed first.** `feedback` has no `anon_id` column. It
-> carries `user_id`, `page` and `user_agent` — nothing that identifies the device. So when an
-> anonymous nurse taps "A number looks wrong" and submits, **there is no way to join that row to
-> her event trail**, which is precisely the join the support tool exists to make. Adding
-> `feedback.anon_id` is a small migration, but it only works going forward: every row submitted
-> before it ships stays unjoinable. That argues for doing it early, ahead of the rest of phase 3,
-> not for building the whole console first.
+> **Phase 3a — DONE 2026-09-14 (migration 005).** `feedback` had no `anon_id` column: it carried
+> `user_id`, `page` and `user_agent`, nothing identifying the device, and `page` can't help because
+> it is always `/` here. So an anonymous nurse's report could not be joined to her event trail —
+> precisely the join the support tool exists to make. `feedback.anon_id` now mirrors
+> `events.anon_id` exactly (same type, same 64-char cap, same nullability — columns that drift
+> apart fail a join quietly rather than loudly), and `submitFeedback` sets it, which also covers the
+> offline-queue flush since that path goes through the same function.
+>
+> **It only works forward, and the cost is already visible.** Rows submitted before 2026-09-14 are
+> permanently unjoinable — there was never an id to backfill from. On the day it shipped that was
+> all 10 existing rows, including one that arrived a few hours earlier: the first row ever tagged
+> by the feedback tiles, and already untraceable. `anon_id is null` therefore reads as "before
+> 2026-09-14", the same way `kind is null` reads as "before the tiles".
+>
+> No index, deliberately: 004 justified each of its four by naming a query that already ran, and
+> nothing queries this column yet — phase 3b's lookup goes the other way (a row's own `anon_id`,
+> then `idx_events_anon`). It comes with 3b, when "every report from this device" is a real query.
 
 **Phase 4: triage state.** An inbox becomes a tool when rows can be marked handled. That needs a
 write path and a column, and a write path into `feedback` is a bigger decision than a read one —
