@@ -55,7 +55,10 @@ _(empty — promote from the candidate lists below with judgment)_
   SECURITY DEFINER function, and the guard inside one is the only line of defence there is.
   Design: `docs/ops-console-scope.md`.
 
-- [ ] **Ops console phase 3a — add `feedback.anon_id` (DO THIS EARLY)** — `harness:drivable` —
+- [x] ~~**Ops console phase 3a — add `feedback.anon_id` (DO THIS EARLY)**~~ — SHIPPED 2026-09-14
+  (migration 005, see Done log). Original note below for the reasoning, which held up: the day it
+  shipped, all 10 existing rows were already permanently unjoinable, one of them submitted hours
+  earlier. ORIGINAL:** — `harness:drivable` —
   `feedback` carries `user_id`, `page` and `user_agent` and nothing that identifies the device, so an
   anonymous nurse's feedback row **cannot be joined to her event trail** — precisely the join the
   support tool exists to make. Small migration, one extra field on the insert in `submitFeedback`.
@@ -64,7 +67,9 @@ _(empty — promote from the candidate lists below with judgment)_
 
 - [ ] **Ops console phase 3b — the per-device drill-down** — `harness:needs-live-auth` —
   `ops_device(anon_id)`: one device's event trail, which `ob_step` it stalled at, its `client_error`
-  rows, first/last seen. Blocked on 3a for anonymous rows. The line on what it may never return is in
+  rows, first/last seen. **Unblocked 2026-09-14** (3a shipped the join key). Also add
+  `anon_id` to `ops_feedback_inbox()`'s return and an index on `feedback (anon_id)` — both were
+  deliberately left out of 3a because nothing queried them yet. The line on what it may never return is in
   `docs/ops-console-scope.md` → *Where the line is*; read it before widening the function.
 
 - [ ] **Ops console phase 4 — triage state on the inbox** — `harness:unscoped` — an inbox becomes a
@@ -420,6 +425,23 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-14 (dedicated session) — **Ops console phase 3a: `feedback.anon_id` (migration 005),
+  applied and live.** The column that makes an anonymous nurse's report traceable to what her device
+  actually did — `page` is always `/` in a single-page app and `user_id` is null when she isn't
+  signed in, so this is the only join there is. Mirrors `events.anon_id` exactly (type, 64-char cap,
+  nullability) because columns that drift apart fail a join quietly. Set inside `submitFeedback`, so
+  the offline-queue flush carries it too. **privacy.html updated in the same change** — the
+  per-device id was disclosed under Usage analytics but not under Feedback, and feedback now carries
+  it; both are in the publish set, so notice and behaviour moved together. Two new smoke assertions
+  (65 total), both negative-tested, asserting the real insert over the wire rather than trusting the
+  code: the row carries `anon_id`, and it is *this device's* id. Verified as `anon` against the live
+  DB in rolled-back transactions: the insert path accepts it, the CHECK rejects 65 chars. No index —
+  004 set the standard that each index names a query that already runs, and nothing queries this
+  column until 3b. **Only works forward:** all 10 pre-existing rows stay permanently unjoinable.
+- 2026-09-14 — **First feedback row ever tagged by the tiles** arrived 2026-09-13 22:11 UTC
+  (`kind: 'wish'`, a calendar-default request), hours after the tiles shipped — so the tiles are
+  being used. It landed hours before migration 005, so it is also permanently untraceable: the exact
+  cost 3a was rushed to stop accruing.
 - 2026-09-13 (dedicated session) — **Ops console phase 1 is LIVE at badgebudget.com/ops.html**
   (#103 squash-merged, 585ab69). Deployed bytes verified byte-identical to the branch; the other four
   publish-set files still 200 and `CNAME` still reads `badgebudget.com` (Invariant 8 intact).

@@ -321,6 +321,29 @@ const run = async () => {
     ok('feedback: opened from Settings, the scaffold says Settings',
       /Where: Settings$/.test(await box.inputValue()), (await box.inputValue()).split('\n').pop());
 
+    /* The row must carry anon_id, or an anonymous nurse's report can never be tied to what her
+       device actually did (migration 005). `page` cannot stand in — it is always '/' here — and
+       `user_id` is null when she is not signed in, so this column is the only join key there is.
+       Intercepting the real insert rather than stubbing the client means this asserts what
+       genuinely goes over the wire, not what we believe the code builds. */
+    let resolveSent;
+    const sentP = new Promise((r) => { resolveSent = r; });
+    await page.route('**/rest/v1/feedback*', async (route) => {
+      resolveSent(route.request().postData());
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await box.fill('The take-home number looks too low on my night shifts.');
+    await page.locator('.sheet .btn-primary').click();
+    const sent = await Promise.race([sentP, new Promise((r) => setTimeout(() => r(null), 8000))]);
+    const parsed = sent ? JSON.parse(sent) : null;
+    const row = Array.isArray(parsed) ? parsed[0] : parsed;
+    const devId = await page.evaluate(() => localStorage.getItem('scrubpay_anon_id'));
+    ok('feedback: the submitted row carries anon_id', !!(row && row.anon_id),
+      row ? Object.keys(row).join(',') : 'no insert was captured');
+    ok('feedback: and it is this device id, so the row joins to the event trail',
+      !!devId && !!row && row.anon_id === devId, devId ? `${String(devId).slice(0, 8)}…` : 'no device id');
+    await page.unroute('**/rest/v1/feedback*');
+
     ok('feedback: no page errors driving the tiles', errors.filter((e) => !isExpectedNetwork(e)).length === 0);
     await ctx.close();
   }

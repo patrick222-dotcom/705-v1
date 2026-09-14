@@ -32,11 +32,11 @@ hosts an anonymous shift-swap board.
 | `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
 | `.github/workflows/deploy.yml` | the deploy workflow: 5-file publish to GitHub Pages. (`ci.yml` is the PR gate — see Deployment) |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
+| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 63 assertions on an iPhone 13 profile. `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 65 assertions on an iPhone 13 profile. `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
@@ -205,8 +205,15 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   `supabase_realtime` publication plus `wss://*.supabase.co` in the CSP.
 - **Feedback.** Widget (top-bar 💬 + Settings) → `feedback` table, insert-only RLS for
   `anon`+`authenticated` (nobody can read back via the anon key). Offline submissions queue in
-  localStorage and flush on next load. **Each row also carries `page` (pathname, ≤120 chars) and
-  `user_agent` (≤400 chars)** — undisclosed until 2026-09-02; keep-or-strip is an open product call.
+  localStorage and flush on next load. **Each row also carries `page` (pathname, ≤120 chars), `user_agent`
+  (≤400 chars) and — since migration 005, 2026-09-14 — `anon_id`**, the same per-device id
+  `events.anon_id` carries, which is the *only* join from a report to what that device actually did
+  (`page` is always `/` in a single-page app, and `user_id` is null when she isn't signed in). **It
+  only works forward:** `anon_id is null` means "submitted before 2026-09-14" and those rows are
+  permanently unjoinable. Set inside `submitFeedback` rather than at the call site, so the
+  offline-queue flush carries it too. Disclosed in `privacy.html` → Feedback, which shipped in the
+  same change. `page`/`user_agent` were undisclosed until 2026-09-02; keep-or-strip is an open
+  product call.
   **Tiles, not a blank box (2026-09-13).** The sheet opens on four one-tap tiles — *A number looks
   wrong* / *Something didn't work* / *I couldn't find how to…* / *I wish it could…* — and each
   pre-fills the textarea with a scaffold whose blanks are the questions the owner would otherwise
@@ -219,8 +226,10 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   holds an untouched scaffold, so her own words are never eaten; submitting an untouched scaffold is
   refused rather than filed as a row of prompts; and the textarea no longer `autoFocus`es, because on
   a phone that raised the keyboard over the tiles before she could read them.
-  Owner read: `select created_at, kind, message, contact, user_id, page, user_agent from
-  public.feedback order by created_at desc;` and `select kind, count(*) from public.feedback group
+  Owner read: `select created_at, kind, message, contact, user_id, anon_id, page, user_agent from
+  public.feedback order by created_at desc;` — and the join migration 005 unlocked:
+  `select f.created_at, f.kind, f.message, f.anon_id, (select count(*) from public.events e where
+  e.anon_id = f.anon_id) as events_from_device from public.feedback f order by 1 desc;` and `select kind, count(*) from public.feedback group
   by kind order by 2 desc;`
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
@@ -547,9 +556,9 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
 **The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
-builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (63 assertions:
+builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (65 assertions:
 boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
-drain, the onboarding funnel, the account menu, the feedback tiles, both failure modes, and the ops console's signed-out gate).
+drain, the onboarding funnel, the account menu, the feedback tiles, both failure modes, the ops console's signed-out gate, and that a submitted feedback row really carries this device's `anon_id` — asserted by intercepting the insert, not by trusting the code).
 `node tests/smoke.mjs` runs it; it resolves
 the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
 registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
