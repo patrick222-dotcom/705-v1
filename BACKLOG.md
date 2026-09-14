@@ -48,7 +48,11 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
-- [ ] **Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero
+- [x] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero**~~
+  — **SHIPPED 2026-09-14** (owner authorized Courtney's request; see Done log). `onMonthScroll` neutered so
+  the hero stays on the period set by open/‹›/chip/Today; open-to-current already worked via `landCurrent`.
+  Original note kept below for context:
+- [ ] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero
   (DESIGN CALL)** — `wish` feedback 2026-09-13 22:11 from Courtney: *"calendar should default to current
   pay period upon opening. Keep the hero locked at the current pay period unless someone intentionally
   clicks a different pay period or a 'next pay period' button."* This is really two things: (a) confirm
@@ -171,7 +175,13 @@ _(empty — promote from the candidate lists below with judgment)_
   unit" (Board-created screen + group header). **Remaining (backlogged):** (4) onboarding-end
   "send to a coworker", (5) share-the-result, (6) add-to-home-screen (PWA). Each new surface should carry
   the `{surface}` tag so its contribution is measurable. `harness:drivable`.
-- [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
+- [~] **Swap board: the zero-proposal funnel** — **cause (2) the code gap SHIPPED 2026-09-14** (see Done
+  log): non-mine open posts now carry a **"Propose a swap"** button that proposes the vetted suggestion
+  when one correlates, else guides to the composer. **Cause (1) critical mass remains** — with
+  `dense_units=0` the suggester still finds no pairs, so most taps hit the compose-your-side path; that's
+  a growth problem, not code. Awaiting Courtney's live verification of the authed round-trip. Original
+  scoping kept below:
+- [ ] ~~**Swap board: the zero-proposal funnel — no way to respond to a specific post**~~ (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
   is 2 members, so the client-side suggestion engine (which correlates posts by `poster_key` into
@@ -441,6 +451,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-14 (owner-directed, interactive) — **Two Courtney/owner feedback fixes: hero stops following
+  scroll + a "Propose a swap" action on colleagues' posts.** Owner authorized building both deferred items.
+  **(Calendar)** `onMonthScroll` neutered — the hero take-home now stays on the period set by open
+  (`landCurrent`, already correct), the ‹ › stepper, a boundary-chip tap, or Today; scrolling the calendar
+  only browses months. Verified in the harness: opens on the current period, stays put through a full-height
+  scroll, and the stepper still advances it. `focusRowDates` left unused so it's a one-line revert / could
+  become a setting. **(Swap)** non-mine open posts now render a **"Propose a swap"** button (`respondToPost`):
+  if the existing suggester correlates the post with one of mine it proposes that vetted match (same path as
+  the SUGGESTED FOR YOU card, anonymous until every leg accepts); otherwise it guides to the composer to post
+  the shift they'd trade. **No new backend, no change to `propose_swap` / `poster_key` / the anonymity model.**
+  `needs-live-auth`, so parse + boot verified here (gate 9/9, smoke 65/65) and **Courtney live-verifies the
+  authed round-trip** (steps emailed 2026-09-14). Cause (1) critical mass (dense_units=0) still means most
+  taps hit the compose path — a growth problem, not code.
 - 2026-09-14 (nightly, groom-only) — **GROOM: triaged 2 feedback-tile items; no gate-safe build (queue
   dry), nothing shipped to the app.** The feedback tiles are working — both new rows arrived typed:
   (1) `broken` (owner) "clicked a swap post wanting a shift 9/16, nothing to click, no actionable step" →
