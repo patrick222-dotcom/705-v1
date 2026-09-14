@@ -1,0 +1,13 @@
+{
+ "title": "The 'live' shift-value preview doesn't update while typing custom Hours or a custom Bonus amount -- only on blur",
+ "severity": "medium",
+ "where": "index.html:4016-4035 (NumInput buffers keystrokes in local `raw` state and only calls onCommit on blur or Enter), consumed by Hours at :4226 and Custom bonus at :4241, feeding previewGross/previewNet at :4104-4105 and the preview block at :4243-4249",
+ "detail": "NumInput's onChange only updates its own local `raw` string; the value it hands back to AddShiftSheet (and thus `hours`/`customBonus` state, and therefore previewGross/previewNet) only changes in the onBlur/Enter commit handler. Every other control in the sheet (hour-preset buttons, shift-type chips, the Overtime toggle, the bonus <select>) updates the preview the instant it's clicked, but the two free-text numeric fields do not.",
+ "failure": "A nurse is offered a 10-hour pickup with a $200 flat incentive and wants to see if it's worth it before committing. She taps the Hours field and types '10' (replacing the default 12), then taps the Bonus dropdown to 'Custom' and types '200' into the amount field. If she reads the 'This shift adds +$X gross ... take-home' line at that point -- exactly the moment the feature exists to answer -- it still reflects the pre-edit 12h/$0-bonus shift, because neither keystroke has been committed yet. The number only becomes correct once she taps/tabs to another field. Anyone who trusts what's on screen at the moment of decision, rather than blurring the field first, is shown a stale figure for exactly the two most decision-relevant customizable inputs (hours and a flat bonus).",
+ "fix": "Either have NumInput report a best-effort parsed value on every keystroke (falling back to the last committed value on unparseable input, e.g. '1.') so previewGross/previewNet track it live like every other control, or have AddShiftSheet read the field's in-progress text directly for the preview calculation while it's focused.",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "product-design-03"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "monthSecRefs never evicts refs for months that scroll out of the window, leaking detached DOM and corrupting the scroll-follow's nearest-section search",
+ "severity": "low",
+ "where": "index.html:2672 (monthSecRefs), :3568 (secRef callback), :2715-2734 (focusRowDates), :2720 (filter(Boolean))",
+ "detail": "`monthSecRefs.current` (a plain object, :2672) is written only on mount: `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }}` (:3568). React calls a callback ref with `null` on unmount, but the `if(el)` guard means that branch is silently skipped — so when `monthWindow` (:2663) recenters around a new `calFocus` (Year-view month taps, repeated Today jumps from a different month, or scrollFocusToDate's setCalFocus when walking many pay periods forward via movePeriod), the months that fall out of the ±3/+12 window unmount their DOM but their entries are never deleted from `monthSecRefs.current`. `focusRowDates()` (:2715-2734), which runs on every scroll-settle in Month view, reads `Object.values(monthSecRefs.current).filter(Boolean)` (:2720) — `filter(Boolean)` does not remove these, since a detached DOM node reference is still truthy. So the list this function iterates over grows for the lifetime of the session with every distinct month ever visited, not just the 16 currently mounted, and it never shrinks.",
+ "failure": "A nurse who browses several months via Year view over a session accumulates stale detached-DOM references that are retained for the life of the tab (can't be GC'd) and are re-scanned via getBoundingClientRect() on every scroll-settle; in the edge case where the focus line briefly falls outside every live section's rect (scrolling to the very top/bottom of the loaded range), the fallback distance calc can pick one of these zero-rect detached sections as \"closest\" (its collapsed (0,0) rect can read as nearer to the focus line than a real, merely-off-screen section), pulling `.cell[data-date]` values from a long-abandoned month and silently snapping the active/highlighted pay period (via setPPS) to a date the user isn't looking at.",
+ "fix": "Have the ref callback also clear on unmount (`el===null`), e.g. `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; else delete monthSecRefs.current[mo.key]; }}`, or rebuild `monthSecRefs.current` from `monthWindow`'s current key set whenever it changes.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "performance-02"
+}

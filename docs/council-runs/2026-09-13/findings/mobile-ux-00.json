@@ -1,0 +1,13 @@
+{
+ "title": "Hero's 'See the full breakdown' / 'Share BadgeBudget' links accidentally inherit the full .hero card style, ballooning them and adding dead scroll space to the very first screen",
+ "severity": "high",
+ "where": "index.html:3491-3492 (className=\"hero more linklike\"); CSS: .linklike padding:0 at 79, .hero padding/border-radius/background/box-shadow at 114, .hero .more at 119",
+ "detail": "The two footer buttons are given className=\"hero more linklike\" — three independent classes, not a scoped \".hero .more\" selector. Because the token \"hero\" is also the class name of the enclosing card, both buttons literally match the top-level `.hero{background:var(--ink);border-radius:22px;padding:22px 24px;...box-shadow:...}` rule (line 114) in addition to `.hero .more` (119) and `.linklike` (79). `.hero` and `.linklike` have equal CSS specificity (one class each), so the tie is broken by source order, and `.hero` (declared later, at line 114) beats `.linklike`'s `padding:0` (line 79) — the buttons keep `.hero`'s 22px/24px padding, border-radius and box-shadow instead of being flush, padding-free text links. Verified live on an iPhone-13 viewport: document.querySelectorAll('.hero') genuinely returns 3 elements (the card plus both buttons); each button's computed style is 'padding: 22px 24px', height balloons to 59px, and a screenshot shows each rendering as its own visible dark rounded pill with an inset highlight seam nested inside the real hero card, rather than a plain link line.",
+ "failure": "On every load, the hero card — the first thing a nurse sees, and the thing the whole app is built around — is roughly 120px taller than intended, almost entirely padding around two one-line links. One-handed on a phone, that's extra scrolling distance before she reaches the calendar / '+ Log a shift' controls beneath it, and the two links visually read as broken/unstyled boxes rather than the intended small footer actions.",
+ "fix": "Stop reusing the literal token \"hero\" as a class on these buttons — give them a distinct class (e.g. \"hero-more\") so they no longer match the card-level .hero rule, or restructure so the descendant relationship is expressed purely through DOM nesting rather than a repeated class name.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "mobile-ux-00"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "'Pick up a weekend night?' card prices weekend-eve even when that differential is switched off or deleted",
+ "severity": "low",
+ "where": "index.html:3434 (sampleWeekendNet), rendered 3510-3513; Settings toggle/delete at 4712 and 4716",
+ "detail": "sampleWeekendNet = shiftGross(baseRate, differentials['weekend-eve'], {shiftType:'weekend-eve',...}) * keepRatio, with no check of `.active` and no fallback when the key is absent. Settings lets a nurse toggle weekend-eve off (4712) or delete it (4716, any key but 'base'). When off, the Add-Shift sheet the card's 'Try it' button opens does not offer weekend-eve as a chip (4099 filters on active) and the pattern lab resolves a weekend night to 'night' (1208-1209), so the shift she can actually log is base+night, not base+weekend-eve — the card is the odd one out. When deleted, hourlyRate(base, undefined) returns base, so the card prices a 'weekend night' at the bare base rate. Also inherits the keepRatio omission from the percent-custom-withholdings finding.",
+ "failure": "Nurse whose hospital pays a single night differential turns off 'Weekend night' in Settings. Dashboard still says 'Pick up a weekend night? That's about +$609 take-home' (base 50, $16.50 weekend-eve, 12h, default taxes); she taps Try it, the sheet only offers Night, and adding it raises the hero by $550.",
+ "fix": "At 3434 pick the shift type the way the pattern lab does: `const wkKey = differentials['weekend-eve']?.active ? 'weekend-eve' : (differentials['night']?.active ? 'night' : 'base');` and price that; hide the card (or reword it) when the resolved key is 'base'.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "cross-surface-06"
+}

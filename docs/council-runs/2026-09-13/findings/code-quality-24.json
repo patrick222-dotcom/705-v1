@@ -1,0 +1,13 @@
+{
+ "title": "Manual .ics file re-import mislabels unchanged icsUid matches as \"updated\", contradicting the code's own documented purpose of the `changed` flag",
+ "severity": "medium",
+ "where": "index.html:1507-1509 (comment defining `changed`), index.html:3125-3137 (onImportICS passes unfiltered plan.toUpdate), index.html:3269-3283 (runIcalSync filters to `changed` only), index.html:3811 (confirm-screen text: 'update N that changed')",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "code-quality-24"
+}

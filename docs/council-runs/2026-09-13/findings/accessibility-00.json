@@ -1,0 +1,14 @@
+{
+ "title": "Overtime tag text fails AA contrast in the Add-Shift live preview and shift list",
+ "severity": "high",
+ "where": "index.html:4197 and index.html:4245 (color '#11A86B' inline overrides; also the decorative badge at 3923 and legend swatch text-adjacent use at 4218 share the same token)",
+ "detail": "The 'OT ×1.5' annotation is rendered with inline color:'#11A86B' (var(--money)). At line 4197 it sits on the 'ON THIS DAY' row list's white background (.row-item{background:#fff}, line 421) — measured contrast 3.07:1. At line 4245 it sits on the live preview's mint-tinted panel (.preview{background:var(--money-soft)}, line 418) — measured contrast 2.75:1. Both are far under the 4.5:1 WCAG AA minimum for normal-weight text this size (12-12.5px, not 'large text' under WCAG's 14pt-bold/18pt threshold). The base take-home figures next to it use var(--money-ink) (#0B5D3C), which passes easily (7.1:1+) — only the OT accent color is broken. (Independently confirmed by the add-shift slice: same two call sites, same computed ratios ≈3.07:1 / ≈2.75:1, same root cause of using the literal '#11A86B' instead of --money-ink.)",
+ "failure": "A low-vision nurse comparing 'is this shift worth picking up because of the OT multiplier' sees a washed-out, hard-to-read 'OT ×1.5' tag right next to the dollar amount that explains why the number is higher than a normal shift — exactly the moment this app is built to make legible.",
+ "fix": "Swap the inline color:'#11A86B' for var(--money-ink) (#0B5D3C) in the OT tag at both call sites (and the calendar badge/legend for consistency) — it already passes AA against every background in use and matches the color already used for the adjacent dollar figures.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces",
+  "add-shift"
+ ],
+ "id": "accessibility-00"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "Day-cell tap targets drop to ~42px square at the ≤360px breakpoint this file itself treats as supported small-phone width",
+ "severity": "low",
+ "where": "index.html:221 (.cell), sizing driven by .cal-vscroll padding and .grid gap at index.html:206-212",
+ "detail": "At the ≤360px breakpoint (the same one index.html:441-448 singles out by name — \"Very small phones (≤360px, e.g. iPhone SE)\" — for a topbar-padding fix), the Month grid's available width is viewport minus 18px .wrap padding ×2, minus .card's 1px border and 18px padding ×2 (cancelled back out by `.cal-vscroll-wrap{margin:0 -18px}`), minus `.cal-vscroll`'s mobile padding of 8px×2 (line 211) — leaving ~306px for 7 columns with a 2px gap (line 212), i.e. (306-12)/7 ≈ 42px per cell. That's under the 44px tap-target guideline; at ≥375px (a real iPhone SE/6/7/8) the same math clears ~44px, so this only bites below that width.",
+ "failure": "On a ≤360px-wide Android phone (the class of device the file's own ≤360px media query is written for), the day cells — the single most-used tap target in the whole calendar, used to open every shift — are individually ~2px narrower/shorter than the 44px minimum, with no compensating hit-area expansion the way `.calnav`/`.period` buttons get elsewhere in this file. Marginal, but it's the primary tap surface of the screen shrinking below the line other small controls in this codebase were explicitly tuned to meet.",
+ "fix": "If ≤360px devices matter enough to have their own topbar rule, either drop the grid gap further at that breakpoint or reduce `.cal-vscroll`'s side padding by a couple px so cells stay at/above 44px, or accept it as a known trade-off explicitly (it isn't currently called out anywhere).",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "mobile-ux-04"
+}

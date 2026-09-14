@@ -1,0 +1,13 @@
+{
+ "title": "The month-scroll container isn't keyboard-scrollable on its own",
+ "severity": "medium",
+ "where": "index.html:3561 (`<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll}>`)",
+ "detail": "`.cal-vscroll` is a nested `overflow-y:auto; max-height:60vh` scroll region (index.html:184) holding 16 months of day-cell buttons. It has no `tabIndex` and no keydown handler, so it is never itself a focus stop and never responds to arrow/Page keys. The outer page (`body`/document) is what actually scrolls when a keyboard-only user (no mouse/touch — e.g. a switch or keyboard-only sighted user, not necessarily a screen-reader user) presses Page Down/Space with focus elsewhere on the page; that scrolls the page around the calendar card, not the calendar's own internal 60vh viewport.",
+ "failure": "A sighted keyboard-only user wants to browse forward from the current month inside the calendar card without a pointer device. There is no key they can press with focus inside the calendar region to page the 60vh scroller itself — their only route is Tab-ing individually through every day-cell button in the current month (up to ~31 Tab presses) until focus-follows-into-view scrolls the next month into range, which works only as an incidental side effect of tabbing through unrelated buttons, not as an intentional \"scroll the calendar\" action.",
+ "fix": "Give `.cal-vscroll` `tabIndex={0}` (and ideally an `aria-label`, e.g. \"Calendar months\") so it becomes a standard scrollable region that responds to the browser's native arrow/Page/Home/End key scrolling once focused.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "accessibility-09"
+}

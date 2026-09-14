@@ -1,0 +1,13 @@
+{
+ "title": "Savings-goal \"Del\" is a ~35x34px target sitting next to an editable field, with no confirmation (unlike the equivalent differential delete)",
+ "severity": "medium",
+ "where": "index.html:4687 (delGoal), 4755 (goal Del button), 4691 (del — differentials, has confirmAsync), index.html:423 (.danger-link CSS)",
+ "detail": "`delGoal=id=>setGoals((goals||[]).filter(g=>g.id!==id))` (4687) removes a savings goal immediately with no dialog. The structurally identical destructive action one section up, deleting a differential, is guarded: `del=async k=>{ if(!(await confirmAsync(...))) return; ... }` (4691) with an explicit warning. I rendered the actual `.danger-link` markup (color/font-weight/font-size/padding/margin from index.html:423) inside a `.drow` at 390px width and measured its real hit box: 35.45 x 34px — under the 44px minimum in both dimensions — placed directly beside the goal's `NumInput` (the thing a user is actually trying to tap to edit the target amount, line 4754).",
+ "failure": "Editing a goal's target amount one-handed, a thumb that lands a few px off the amount field hits \"Del\" instead and the goal — name, target, everything — is gone instantly with zero confirmation and no undo, unlike the differential row one section above which stops to ask first.",
+ "fix": "Route delGoal through the same confirmAsync(...) used for del(k) at 4691, and/or enlarge the Del hit area (bump .danger-link padding or add an ::after inset like .iconbtn) so it isn't both undersized and irreversible.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "mobile-ux-11"
+}

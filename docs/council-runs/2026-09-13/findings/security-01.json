@@ -1,0 +1,14 @@
+{
+ "title": "propose_swap never checks the caller is a leg: any member can reserve and hide any two posts on the board",
+ "severity": "high",
+ "where": "supabase/migrations/001_swap_board.sql:245-265 (propose_swap); live pg_get_functiondef is identical",
+ "detail": "The RPC validates membership, 2-3 legs, and that each post is open and in the group -- but never that auth.uid() authors any of the legs. The only thing keeping proposals to \"matches involving me\" is the client: computeSwapSuggestions (index.html:1763-1835) only emits suggestions with a 'me' leg and doPropose (index.html:5079-5099) passes them through. Any member can call `supabase.rpc('propose_swap',{g, post_ids:[x,y]})` with any two open post ids returned by swap_board. Each call flips both posts to 'proposed': swap_board (:164) then hides them from everyone but their authors, openPosts (index.html:5302) drops them, and computeSwapSuggestions ignores them; the two authors get a \"WAITING ON 2 OF 2 TO ACCEPT\" card pairing them with a stranger's unrelated post. The proposer is not a party, so they can neither see nor decline it -- only the victims can (decline_swap_match) -- and the attacker re-proposes on the next 15s poll. No rate limit, no per-user cap on open matches, and status 'expired' exists but nothing ever sets it.",
+ "failure": "One member with the invite code pairs every open post on the board in a loop from the console: the board reads \"Nothing posted yet\" for the whole unit and every poster is stuck declining nonsense matches that come straight back. Selectively: lock every other 'give' for Friday so only their own remains visible to the colleague who wants it.",
+ "fix": "In propose_swap, after the foreach loop and before `return m`: `if not exists (select 1 from swap_match_legs where match_id = m and leg_user = auth.uid()) then raise exception 'not_a_party'; end if;` -- the exception rolls back the match, legs and status flips. Optionally cap concurrent 'proposed' matches per proposer (e.g. 5) in the same function. Add an audit probe: as member C, propose posts by A and B only -> must raise not_a_party and leave both posts 'open'.",
+ "wageCore": false,
+ "slices": [
+  "swap-board",
+  "infra"
+ ],
+ "id": "security-01"
+}

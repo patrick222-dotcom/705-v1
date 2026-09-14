@@ -1,0 +1,13 @@
+{
+ "title": "Onboarding back button has no accessible name",
+ "severity": "medium",
+ "where": "index.html:5739",
+ "detail": "<button className=\"back\" onClick={()=>setObStep(obStep-1)}>‹</button> -- the only content is the raw '‹' glyph; no aria-label, no title, no visually-hidden text. The visually identical arrow glyphs used for pay-period navigation in the main dashboard do carry one: aria-label=\"Previous pay period\" / \"Next pay period\" (index.html:3457).",
+ "failure": "A screen-reader user on the base-rate, differentials, or taxes step reaches the top-left button and hears only 'button' or an unhelpful glyph reading ('single left-pointing angle quotation mark, button') with no indication it goes back a step, unlike every other chevron button in the app.",
+ "fix": "Add aria-label=\"Back\" (or a dynamic 'Back to <previous step>') to the Head component's back button, matching the pattern already used for the pay-period nav arrows.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-18"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "Stale comment in ci.yml claims the gate is advisory-only, contradicting CLAUDE.md's documented required-check status",
+ "severity": "low",
+ "where": ".github/workflows/ci.yml:8-10",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "code-quality-30"
+}

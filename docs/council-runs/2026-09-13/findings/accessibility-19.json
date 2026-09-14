@@ -1,0 +1,13 @@
+{
+ "title": "Dismissing the est-banner removes the focused control with no focus handoff",
+ "severity": "medium",
+ "where": "index.html:3471-3474 (banner buttons), index.html:2991-3001 (clearSample)",
+ "detail": "Both dismiss paths -- 'Got it' (setEstimateMode('')) and 'Clear the sample' (clearSample(), which also ends in setEstimateMode('')) -- cause the entire `{estimateMode && <div className=\"est-banner\">...}` block, including the very button just activated, to unmount. Neither path moves focus anywhere afterward (clearSample's confirmAsync dialog autoFocuses its own Confirm button while open, per index.html:2143, but once confirmed and the dialog+banner both unmount, nothing receives focus).",
+ "failure": "A keyboard or screen-reader user who presses 'Got it' (or confirms 'Clear the sample') has focus silently dropped to <body> with no announcement that the banner is gone or where to go next -- they lose their place on a page that just changed shape under them.",
+ "fix": "After clearing estimateMode, move focus to a stable nearby landmark (e.g. the hero take-home heading) with a ref + effect, so focus lands somewhere meaningful rather than being dropped.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-19"
+}

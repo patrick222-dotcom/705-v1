@@ -1,0 +1,13 @@
+{
+ "title": "Month/Year view control uses role=\"tablist\"/\"tab\" without the tab keyboard pattern",
+ "severity": "medium",
+ "where": "index.html:3547-3550 (the .viewseg buttons)",
+ "detail": "The Month/Year toggle is marked up as `<div className=\"viewseg\" role=\"tablist\" aria-label=\"Calendar view\">` wrapping two `role=\"tab\" aria-selected={...}` buttons. Per the ARIA tab pattern this markup promises to a screen-reader/keyboard user: Left/Right arrow keys move selection between tabs, and each tab is wired to its panel via aria-controls (with a matching role=\"tabpanel\"). Neither exists: there is no onKeyDown handler anywhere on these buttons or their container (confirmed — the only onKeyDown handlers in the whole file are on unrelated text inputs at lines 4035, 4281, 5357, 5579, 5597), and `aria-controls`/`role=\"tabpanel\"` appear nowhere in the file.",
+ "failure": "A screen-reader user tabs to the control and hears \"Month, tab, 1 of 2, selected\" — the standard tab-pattern announcement — and, following that pattern, presses the Right arrow key expecting focus/selection to move to \"Year\". Nothing happens; they have to already know to abandon the arrow-key convention and Tab past it instead.",
+ "fix": "Either implement the real pattern (roving tabindex + arrow-key handler that calls setCalView, plus aria-controls pointing at a role=\"tabpanel\" wrapping the YearList/cal-vscroll region), or drop role=\"tablist\"/\"tab\"/aria-selected and let it be a plain labeled button group — a segmented control doesn't have to be ARIA tabs.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "accessibility-06"
+}

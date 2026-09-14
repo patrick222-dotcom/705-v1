@@ -1,0 +1,13 @@
+{
+ "title": "A shift whose shiftType is an Object.prototype property name (`constructor`, `__proto__`, `toString`…) survives sanitizeData and poisons every gross/take-home sum for its pay period to $0",
+ "severity": "low",
+ "where": "index.html:967-978 (shift filter accepts any string shiftType); lookups without an own-property guard at index.html:1290 (patternMetrics), 2646, 2775, 2795 (calc/statOf), 3419, 4104 (preview); hourlyRate at index.html:1124-1129.",
+ "detail": "`differentials` is a plain object built by `{...DIFF_DEFAULTS, ...}` (applyData 2323-2326), so `differentials['constructor']` is `Object` and `differentials['__proto__']` is `Object.prototype` — both truthy. `hourlyRate(base, Object)` falls to `base + diff.amount` = `base + undefined` = NaN; `shiftGross` returns NaN; `calc`'s `gross += NaN` poisons the whole period, and `fmt`/`fmt2` (`Number(n||0)`) then render NaN as `$0`. The sanitizer's stated purpose (947-950) is precisely that a corrupt or hostile blob 'must never … silently corrupt every calculation with string/NaN fields', and legitimate unknown shiftTypes (e.g. a deleted custom differential) already fall back to base rate because `differentials[k]` is undefined — only inherited property names break that fallback. Reachable via the JSON import path or a direct API write to the user's own row; both persist, so the damage survives reloads and syncs to every device.",
+ "failure": "A nurse imports a JSON file containing one shift `{shiftType:'constructor', hours:12}` in the current fortnight. The hero, the Gross/Taxes/Keep chips, the breakdown and the pattern-lab readout for that pay period all show $0 instead of her real figures, on every device, with nothing on the calendar cell that looks abnormal (the dot just takes the fallback grey).",
+ "fix": "Route every `differentials[s.shiftType]` lookup through one helper, e.g. `const diffFor = (diffs,k) => Object.prototype.hasOwnProperty.call(diffs,k) ? diffs[k] : undefined;`, and use it at 1290, 2646, 2775, 2795, 3419, 4104 (and the display-only lookups at 3028, 3535, 3929, 4069, 4181, 4195-4196, 4324 for consistency). Do not reject unknown shiftTypes in sanitizeData — that would drop real shifts whose custom differential was deleted. Because this touches calc/statOf/patternMetrics, run the wage-math probes and the hero/breakdown equality assertion against the deployed build, plus a new probe asserting a `constructor` shift is paid at base rate.",
+ "wageCore": true,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "security-07"
+}

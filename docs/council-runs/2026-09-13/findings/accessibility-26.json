@@ -1,0 +1,13 @@
+{
+ "title": "Withdraw/Decline confirm dialog (used by the reveal-flow actions) has no Escape handler and lets Tab escape the dialog",
+ "severity": "medium",
+ "where": "index.html:2127-2148 (ConfirmHost), invoked from SwapsSheet's doWithdraw (:5069) and doDecline (:5155)",
+ "detail": "`confirmAsync(...)` — the confirmation shown for 'Withdraw this post?' (index.html:5069) and 'Decline this proposed swap?' (index.html:5155) inside the matching/reveal flow — renders `role=\"alertdialog\" aria-modal=\"true\"` (index.html:2138) with only two buttons: Cancel then Confirm (`autoFocus`, index.html:2143). autoFocus correctly seeds initial focus on Confirm, but there is no keydown handler anywhere in ConfirmHost, so Escape does not dismiss it, and Tab forward from the auto-focused Confirm button (the last element inside the dialog) is not intercepted, so focus leaves the dialog into whatever follows ConfirmHost in the document instead of cycling back to Cancel.",
+ "failure": "A nurse using the keyboard to decline a proposed swap (index.html:5155) reaches the confirm dialog, and either presses Escape expecting it to cancel (it does nothing — the destructive choice stays on screen with no keyboard-conventional way to back out) or tabs forward from the focused Confirm button and lands outside the alertdialog entirely, again with the modal claim unmet.",
+ "fix": "Give ConfirmHost the same Escape-to-cancel keydown handler AccountMenu already has (index.html:1966-1969), and trap Tab between Cancel and Confirm.",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "accessibility-26"
+}

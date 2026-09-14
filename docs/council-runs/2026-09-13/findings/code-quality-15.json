@@ -1,0 +1,13 @@
+{
+ "title": "Settings destructures an unused `num` prop",
+ "severity": "low",
+ "where": "index.html:4676 (destructure) and index.html:3633 (passed in)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "code-quality-15"
+}

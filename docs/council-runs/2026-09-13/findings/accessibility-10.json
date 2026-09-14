@@ -1,0 +1,13 @@
+{
+ "title": "Add-Shift sheet has no dialog semantics, unlike every sibling sheet in the same file",
+ "severity": "high",
+ "where": "index.html:4164 (AddShiftSheet's outer <div className=\"sheet\">)",
+ "detail": "Every other modal sheet in the app declares role=\"dialog\" aria-modal=\"true\" aria-label=\"...\" on its .sheet element: the feedback sheet (line 2057, aria-label=\"Send feedback\"), the .ics import-confirm sheet (3820, \"Confirm schedule import\"), the classify-imported-shift sheet (3848, \"Classify imported shift\"), and both swap sheets (5311/5330, \"Shift swaps\"). AddShiftSheet's own <div className=\"sheet\"> at 4164 carries none of these. There is also no Escape-key handler anywhere for this sheet (the only keydown listener in the whole app is the account menu's, lines 1966-1968) or focus management on open/close.",
+ "failure": "A screen-reader user who opens 'Add a shift' from a calendar day gets no announcement that a dialog named 'Add a shift' just opened, and the assistive-tech virtual cursor is free to wander into the calendar/dashboard behind the scrim while it is nominally modal — the exact opposite of what happens one sheet over (Import/Classify/Feedback/Swaps) for the identical visual pattern. The same user also has no keyboard way to dismiss it (Escape does nothing here, though it works for the account menu).",
+ "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Add a shift\" to the .sheet div at line 4164, matching the existing pattern, and give it the same document keydown Escape->dismiss() handling already implemented for the account menu (1966-1968).",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "accessibility-10"
+}

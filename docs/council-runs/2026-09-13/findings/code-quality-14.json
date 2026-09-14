@@ -1,0 +1,13 @@
+{
+ "title": "Body-scroll lock effect omits showShare, so the Share sheet lets the page scroll behind it",
+ "severity": "medium",
+ "where": "index.html:2596-2600 (body-overflow effect) vs index.html:2228 (showShare state) and index.html:5666-5702 (ShareSheet)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "code-quality-14"
+}

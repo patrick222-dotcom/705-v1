@@ -1,0 +1,13 @@
+{
+ "title": "Breakdown and Settings close buttons have no accessible name",
+ "severity": "high",
+ "where": "index.html:3623 (Breakdown modal) and index.html:4697 (Settings modal)",
+ "detail": "Both render `<button className=\"back\" onClick={...}>{Ic.x}</button>` — Ic.x (line 603) is a bare `<svg>` with no `<title>` and no text content. Every other close button using the same Ic.x glyph in this file sets `aria-label=\"Close\"` (lines 2059, 3822, 3850, 4170, 4419, 4493, 5305, 5687) or an equivalent specific label — these two are the only ones that don't.",
+ "failure": "A screen reader user opening 'Your paycheck math' (Breakdown) or Settings (where the savings-goal lines live) tabs to the dismiss button and hears only 'button' with no name, so they can't tell it's the close control without trial-and-error activation.",
+ "fix": "Add aria-label=\"Close\" to both buttons, matching every sibling close button in the file.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "accessibility-02"
+}

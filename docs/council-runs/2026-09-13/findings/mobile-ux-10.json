@@ -1,0 +1,13 @@
+{
+ "title": "Avatar (sole mobile Settings/Sign-out entry point) is a 40px tap target with no hit-area bump, unlike its sibling icon button",
+ "severity": "medium",
+ "where": "index.html:86 (.avatar) vs index.html:75-76 (.iconbtn / .iconbtn::after) and index.html:1974-1975 (AccountMenu's avatar button)",
+ "detail": "`.iconbtn` (the topbar feedback 💬 button) is 40x40 visually but gets `.iconbtn::after{position:absolute;inset:-2px}` (line 76), which is hit-testable and bumps its real tap target to 44x44 — the app clearly knows and applies the 44px minimum. `.avatar` (line 86) is also 40x40 but gets no such pseudo-element or padding; `.acct` (87) adds no padding either. I rendered both in a real browser at 390px width and measured: iconbtn effectively 44x44 (via the -2px inset), avatar exactly 40x40 with no expansion. Per the file's own comment (index.html:80-85), since 2026-09-13 this avatar is \"the only route to Settings and Sign out on a phone\" below 920px — it absorbed the old separate gear/sign-out icon buttons.",
+ "failure": "A nurse reaching one-handed for the top-right corner to open Settings or sign out gets a target 4px narrower on each axis than Apple's 44pt minimum and than the feedback button right next to it — on the one control in the bar that has no fallback route if missed.",
+ "fix": "Give `.avatar` the same `::after{content:'';position:absolute;inset:-2px}` treatment `.iconbtn` already has (or increase its own width/height to 44px), so its real hit area matches its sibling.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "mobile-ux-10"
+}

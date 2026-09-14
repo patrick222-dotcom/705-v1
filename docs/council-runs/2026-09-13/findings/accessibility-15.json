@@ -1,0 +1,13 @@
+{
+ "title": "Onboarding step transitions never move focus and use no heading markup",
+ "severity": "high",
+ "where": "index.html:5704-5835 (all 5 obStep branches), goObStep index.html:2198-2201, exit-to-app at index.html:3081/3391/3412",
+ "detail": "Every step change in the wizard (welcome -> base-rate -> differentials -> taxes -> done, the back button, and the final exit into the main dashboard when setupComplete flips to true) is a full React remount of a different JSX subtree in the same container. None of the five branches use an <h1>-<h6> for its question/heading text (\"What's your base hourly rate?\", \"How does your pay change by shift?\", etc. are all plain <div className=\"q\">), there is no ref.focus()/autoFocus placed on any heading or first control after a transition, and no aria-live region wraps the step content. grep -n \"<h1\\|<h2\\|<h3\\|<h4\" confirms zero headings anywhere inside Onboarding().",
+ "failure": "A VoiceOver or NVDA user taps 'Get my estimate' (index.html:5729). The button they were focused on is unmounted and replaced by the base-rate step; the browser silently drops focus to <body> (or leaves it nowhere useful), and nothing is announced. The user hears nothing happen and has no heading to jump to with the AT's heading-navigation shortcut (H in NVDA/JAWS, rotor in VoiceOver) -- they must re-explore the whole page from the top to discover the new question exists. This repeats at every one of the 5 steps and again on the transition out of onboarding into the live app.",
+ "fix": "Give each step's question a real heading (e.g. <h1 className=\"q\">), and on obStep change move focus to that heading (or the step's first control) via a ref + useEffect keyed on obStep. Same treatment for the setupComplete flip into the main app.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-15"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "Pattern-grid day cells drop below the 44px tap target on iPhone SE/mini-width phones",
+ "severity": "medium",
+ "where": "index.html:347-348 (.pl-grid/.pl-cell), rendered at index.html:4520-4531, inside .modal's fixed padding at index.html:399",
+ "detail": "`.pl-grid` is a 7-column CSS grid with a fixed `gap:5px`, sitting inside `.modal{padding:24px}` (line 399, no per-breakpoint reduction anywhere in the file's three @media blocks at lines 206, 440, 447). Cell side = ((viewportWidth-48)-30)/7. At 390px (iPhone 13, the harness's own device profile) that's 44.6px — just barely compliant — but at 375px (iPhone 13 mini / iPhone SE 2nd-3rd gen) it's 42.4px, at 360px (the width the app itself explicitly designs for at line 441's SE comment) it's 40.3px, and at 320px (older SE) it's 34.6px. Contrast with the main calendar grid the app already tuned for this: `.grid` uses `gap:3px` dropping to `gap:2px` under 520px (lines 174, 212) and its outer padding shrinks to 8px under 520px (line 211) — the pattern-lab grid never received the equivalent treatment even though it's the same 7-column layout squeezed into a much more heavily padded (24px) modal.",
+ "failure": "A nurse one-handed, mid-shift, painting a 14- or 28-day custom rotation (PATTERN_CYCLE_CHOICES includes 28, PATTERN_MAX_CYCLE is 42) on an iPhone SE/mini-class phone taps a ~40-42px square. A thumb mis-tap lands on the adjacent day and silently paints or clears the wrong cell — there's no per-tap confirmation, only the eventual 'Put it on the calendar' preview many taps later, by which point it's easy to have several wrong cells that look plausible and go unnoticed.",
+ "fix": "Give `.pl-grid`/`.pl-cell` the same narrow-viewport treatment already applied to the main calendar grid: shrink the gap and/or reduce the modal's side padding specifically around the pattern grid under ~400px, so each of the 7 columns clears 44px down to 360px width.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "mobile-ux-06"
+}

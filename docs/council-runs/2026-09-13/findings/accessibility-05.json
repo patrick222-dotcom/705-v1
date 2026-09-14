@@ -1,0 +1,13 @@
+{
+ "title": "Pay-period stepper's scroll animation ignores prefers-reduced-motion",
+ "severity": "high",
+ "where": "animateScrollTop (index.html:674-683), used by scrollFocusToDate (index.html:2751-2766) via movePeriod (index.html:2826-2831)",
+ "detail": "The ‹/› pay-period stepper in the greet row calls movePeriod, which calls scrollFocusToDate, which drives the calendar's scroll position with animateScrollTop — a hand-rolled requestAnimationFrame loop that eases el.scrollTop over 380ms. This is plain JS, not a CSS transition/animation. The file's own reduced-motion rule (index.html:469-471, `@media (prefers-reduced-motion: reduce){ *{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important} }`) only collapses CSS-driven durations and `scroll-behavior` (native smooth-scroll); it has no effect on a loop that sets `el.scrollTop` directly on every rAF frame. There is no `matchMedia('(prefers-reduced-motion: reduce)')` check anywhere in the file (confirmed via grep).",
+ "failure": "A user with 'reduce motion' enabled at the OS level taps › next to the pay-period label while in Month view. The entire calendar viewport still animates a smooth 380ms scroll to the new period's position — exactly the kind of scrolling motion the reduced-motion setting exists to suppress, and exactly the kind of thing this same file is careful to suppress for boot timers/CSS transitions elsewhere.",
+ "fix": "Check `matchMedia('(prefers-reduced-motion: reduce)').matches` at the top of animateScrollTop (or in scrollFocusToDate before calling it) and jump `el.scrollTop = clamped` synchronously instead of animating when the user has that preference set.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "accessibility-05"
+}

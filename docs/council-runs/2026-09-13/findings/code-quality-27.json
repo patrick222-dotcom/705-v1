@@ -1,0 +1,13 @@
+{
+ "title": "Migration 002 breaks the migration set's advertised re-run safety",
+ "severity": "high",
+ "where": "supabase/migrations/002_ical_subscription.sql:24-31",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "code-quality-27"
+}

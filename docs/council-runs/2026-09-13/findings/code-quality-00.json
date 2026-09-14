@@ -1,0 +1,14 @@
+{
+ "title": "Manual sign-out doesn't mirror the SIGNED_OUT cleanup it claims to, leaking the previous user's iCal credential into the next sign-in",
+ "severity": "high",
+ "where": "index.html:2528-2538 (handleSignOut) vs index.html:2409-2419 (onAuthStateChange SIGNED_OUT branch)",
+ "detail": "onAuthStateChange's else-branch (2409-2419) resets several things on sign-out including, per its own comment 'Drop the signed-in user's calendar subscription from memory (never leak it to anon state)': setHydratedUserId(null), setIcalSub(null), setIcalUrl(''), icalSyncedForUser.current=null. handleSignOut (the only call site is the account-menu Sign out button, wired at line 3450) is commented 'Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires)' and exists specifically because signOut() can deadlock on iOS WebKit so onAuthStateChange may never fire (same bug the getSession 4s-race guards, per the comment at 2518-2521). But its own reset block (2533-2536) only touches hydratedForUser.current/lastSeenAt.current/prevUserId.current/setSyncError/setSession/setUser/resetToDefaults() — it omits all four iCal statements. In the exact WebKit-deadlock case this function was written for, onAuthStateChange never runs, so nothing clears hydratedUserId/icalSub/icalUrl/icalSyncedForUser.current. resetToDefaults() itself (2335-2340) also doesn't touch them; that state lives only in the two places above, and the Settings sheet's calendar-sync input is bound directly to icalUrl (index.html:4790) plus icalSub.lastSynced (4800-4801).",
+ "failure": "Two nurses share one phone (the app's own documented sharing model — a QR handed over 'off Courtney's screen'). Nurse A signs out on iOS Safari during a WebKit signOut() deadlock (handleSignOut times out via withTimeout, purges the auth token, but onAuthStateChange's cleanup never fires). React state still holds A's icalUrl/icalSub/hydratedUserId. Nurse B then signs in on the same phone. onAuthStateChange sets user=B immediately, so Settings' `{user && <CALENDAR SYNC>}` block (index.html:4781-4802) renders right away — showing A's still-resident icalUrl (a bearer credential per Invariant 13, 'treat the link like a password') in B's Settings until the async loadIcalSub(B.id) resolves and overwrites it a network round-trip later.",
+ "fix": "Add the same four lines handleSignOut is missing — setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; — to handleSignOut's reset block, or factor both cleanup blocks into one shared function so they can't diverge again.",
+ "wageCore": false,
+ "slices": [
+  "boot",
+  "telemetry-auth"
+ ],
+ "id": "code-quality-00"
+}

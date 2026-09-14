@@ -1,0 +1,13 @@
+{
+ "title": "\"Apply to my calendar\" writes another member's unvalidated shift_meta into the victim's shifts",
+ "severity": "medium",
+ "where": "index.html:5280-5290 (doApplyPlan), specifically :5285",
+ "detail": "shift_meta is free-form jsonb authored by another member: the insert grant (001:142-143) and policy (:120-122) accept any JSON under 500 bytes, including scalars, and match_details passes it through verbatim. doApplyPlan pushes `{shiftType:meta.shiftType, hours:meta.hours, start:meta.start}` straight into saveDayShifts -> setShifts (index.html:2857-2858) with no coercion; sanitizeData (:953-986) runs only on load. Until the next load the hero and breakdown compute `shiftGross(baseRate, differentials[s.shiftType], s)` (:1290, :2646, :2775, :2795) with whatever `hours` was sent: a string -> NaN, 1e6 -> millions, a scalar shift_meta -> undefined -> NaN; `h+=s.hours` (:2646) concatenates. The debounced save persists the row; on the next open sanitizeData (:976-977) drops it. Display-only helpers are safe -- giveMetaLine (:4067-4071) and fmtTime12 (:4039-4040, TIME_RE :738) coerce, so the board render itself cannot be crashed this way.",
+ "failure": "After a confirmed pickup the nurse taps \"Add to my calendar\": the hero take-home reads \"$NaN\" (or an absurd figure) for the rest of the session, the malformed shift is synced to the cloud, and when she reopens the app the shift she just picked up is silently gone from her calendar.",
+ "fix": "In doApplyPlan (before the push at :5285) accept incoming.shift_meta only if it is an object with `typeof shiftType==='string'`, `Number(hours)` finite and in (0,24], and `start` absent or matching TIME_RE; otherwise toast the existing \"copy the plan instead\" message and return. Server side, add a CHECK on swap_posts.shift_meta guarded by jsonb_typeof so the cast never throws: `shift_meta is null or (jsonb_typeof(shift_meta)='object' and jsonb_typeof(shift_meta->'shiftType')='string' and jsonb_typeof(shift_meta->'hours')='number' and (shift_meta->>'hours')::numeric between 0.1 and 24)`. Neither change touches shiftGross/hourlyRate/computeNet or the sanitizeData coercions.",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "security-03"
+}

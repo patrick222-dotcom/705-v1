@@ -1,0 +1,13 @@
+{
+ "title": "privacy.html's Feedback section omits that a signed-in submitter's account id is always attached, regardless of the optional contact field",
+ "severity": "medium",
+ "where": "privacy.html:117-119 vs index.html:2006-2045 (FeedbackSheet submit) and 1354-1371 (submitFeedback)",
+ "detail": "privacy.html says: 'If you use the feedback button, your message is stored along with the page you were on and your browser's user-agent string. An email address is optional — supply one only if you want a reply.' This frames identification as opt-in via the 'contact' field. But FeedbackSheet's submit (index.html:2043) calls submitFeedback({..., userId:(user&&user.id)||null}), and submitFeedback (1354-1371) writes that straight into feedback.user_id whenever the person is signed in — independent of whether 'contact' is filled in.",
+ "failure": "A signed-in nurse who deliberately leaves the optional contact field blank, believing (per the notice's framing) that doing so keeps her feedback unattributed, has her account id stored on the row anyway — the row is linkable to her account from the moment it's inserted, contact field or not.",
+ "fix": "State plainly that feedback submitted while signed in carries your account id on the row in addition to whatever you put in the optional contact field, so 'optional... only if you want a reply' isn't read as 'optional... only way to be identified'.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "privacy-telemetry-02"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "webcal:// (and http://) feed links pass the client check but are rejected by the proxy forever",
+ "severity": "low",
+ "where": "supabase/functions/ical-proxy/index.ts:57-58; index.html:3245-3251 providerOf and :3293-3306 onSaveIcalUrl",
+ "detail": "Not a security hole, but a defect inside the SSRF guard that the client and server disagree on. The proxy does `target.protocol = \"https:\"` on a `webcal:` URL; per the WHATWG URL spec the protocol setter refuses to change a non-special scheme to a special one, so it is a no-op (verified in Node: protocol stays `webcal:`) and the next line returns 400 https_only. Live probe with the deployed function and `{\"url\":\"webcal://calendar.google.com/calendar/ical/x/basic.ics\"}` -> 400 {\"error\":\"https_only\"}. The client's providerOf strips `webcal:` only for host detection and onSaveIcalUrl saves and syncs the raw string, so the subscription is persisted in a state that can never succeed. `http://calendar.google.com/...` behaves the same way (providerOf has no scheme check).",
+ "failure": "A nurse pastes a webcal://calendar.google.com/... link (the form Apple Calendar and many share sheets produce). She sees 'Calendar link saved.' followed immediately by \"Couldn't reach your calendar. Check the link and try again.\", and every subsequent app-open sync silently fails; the link looks correct to her so there is nothing to fix.",
+ "fix": "In the proxy, rewrite the string before parsing: `if (/^webcal:/i.test(raw)) raw = 'https:' + raw.slice(7);` then `new URL(raw)`. In onSaveIcalUrl, normalise the same way before saving so the stored ical_url is always https, and have providerOf return null for any scheme other than https/webcal so the toast names the problem at save time. Add the webcal case to the harness sync assertions.",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "security-10"
+}

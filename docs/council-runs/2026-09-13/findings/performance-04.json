@@ -1,0 +1,13 @@
+{
+ "title": "The cloud-sync 'syncing' flag forces two full unmemoized re-renders of the entire mounted calendar (~490 day cells) on every save",
+ "severity": "medium",
+ "where": "index.html:2234 (syncing state), 2470/2473 (setSyncing toggled by every debounced save), 2510/2513 (retrySync does the same), 2662-2670 (monthWindow mounts MONTH_BEFORE+MONTH_AFTER+1 = 16 months simultaneously, no windowing), 2644-2650 (statOf/ptoStatOf recomputed per cell), 3883-3939 (Calendar renders one cell per day calling statOf), 3941-3960 (MonthSection, not memoized) - confirmed zero React.memo/memo( usages anywhere in the file via grep",
+ "detail": "App is one component with no memo boundary anywhere on the calendar path. Every setState in App - including setSyncing(true) then setSyncing(false), which fires on every single debounced cloud save (itself triggerable by pure scrolling per the pay-period-boundary finding) - re-renders the whole App return tree. Because the continuous month view mounts all 16 MonthSections at once (no virtualization, by design per the doc), each of the two syncing toggles forces a fresh statOf()/shiftGross() pass and a fresh React diff over roughly 16 months x ~30 days = ~490 <button class=\"cell\"> elements, even though nothing about shifts/dayEvents/differentials actually changed - only an unrelated boolean driving a 12px 'Syncing...' label (line 3442).",
+ "failure": "Right after any shift edit is saved (or after merely scrolling across a pay-period boundary, per the pay-period-boundary finding), the app does 2-3 full recomputations of ~490 day cells' stats plus a DOM diff of that many nodes in quick succession. On an older/slower iPhone this is a plausible, avoidable stutter immediately after saving or while scrolling, perceived as the calendar 'catching up' for no visible reason.",
+ "fix": "Move syncing/syncError into a small isolated component (or context) that renders only the status label, so toggling it doesn't re-render Calendar/MonthSection at all - or wrap Calendar and MonthSection in React.memo with stabilized props (useCallback for statOf/keyOf/onPick, memoized differentials/shifts references) so a sync-status-only render bails out before reaching the calendar cells. Note: statOf/ptoStatOf are named Invariant-3 wage-core functions, so changing how/where they're invoked (even just wrapping the reference in useCallback) should go through the wage-core protocol even though the tax/pay arithmetic itself would not change.",
+ "wageCore": true,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "performance-04"
+}

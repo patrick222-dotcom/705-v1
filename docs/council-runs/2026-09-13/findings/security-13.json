@@ -1,0 +1,13 @@
+{
+ "title": "events/feedback INSERT policies accept any `user_id` — attribution is client-asserted, not bound to auth.uid()",
+ "severity": "low",
+ "where": "supabase/migrations/000_core.sql:59-62 and :86-88 (live policies verified: `check=((char_length(name) >= 1) AND (char_length(name) <= 64))` on events, message-length only on feedback); callers index.html:1385-1398 (track) and :1356-1366 (submitFeedback)",
+ "detail": "Both insert policies check only a length; `user_id` is whatever the client sends. The FK to `auth.users(id)` means the value must be a real user's uuid, and the app itself never surfaces other users' ids (the swap RPCs return `display_name`, not uids), so the attacker needs the uuid from elsewhere — but anyone holding the public anon key who has one can write `signed_in`, `client_error` or `feedback` rows attributed to that user. The ops dashboard's `segment` classifies a device as `insider` from \"any anon_id ever seen signed in as one of\" the owner accounts, so a single forged `signed_in` row with an insider uuid re-labels an arbitrary anon_id. Every real call site already passes either `null` (index.html:3004, flushes) or the id of the JWT the request carries (2410 `track('signed_in', null, nextId)` fires after the client has installed the new session; 3283 and submitFeedback use `user.id`), so tightening the policy breaks nothing.",
+ "failure": "Someone with the anon key (it is in the page source) and a known user uuid inserts `{name:'signed_in', user_id:<owner uuid>, anon_id:<their device>}`; the next dashboard snapshot counts their device as an insider and drops it from the public activation funnel, or floods `feedback` with rows that appear to come from a real signed-in nurse and carry her uuid in the owner read.",
+ "fix": "Migration 004: `alter policy \"anyone can insert events\" on public.events with check (char_length(name) between 1 and 64 and (user_id is null or user_id = (select auth.uid())))` and the same `(user_id is null or user_id = (select auth.uid()))` clause on `anyone can submit feedback`. Mirror both in 000_core.sql's successor rather than back-editing 000. Negative-test with the anon key: an insert carrying a real uuid must now fail with 42501.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "security-13"
+}

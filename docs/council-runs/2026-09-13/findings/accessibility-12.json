@@ -1,0 +1,13 @@
+{
+ "title": "Pattern Lab's dialog has no dialog role, no aria-modal, and no accessible name — unlike every sibling sheet",
+ "severity": "high",
+ "where": "index.html:4417-4419 (list mode) and index.html:4486-4488 (edit mode), function PatternLab",
+ "detail": "PatternLab's outer markup is `<div className=\"scrim\" onClick={dismiss}><div className=\"modal\" onClick={e=>e.stopPropagation()}>...`. Neither the scrim nor the modal div carries `role=\"dialog\"`, `aria-modal=\"true\"`, or an `aria-label`/`aria-labelledby`. Every other overlay in the app that plays the same role does carry this: FeedbackSheet (`role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\"`, line 2057), the confirm dialog (`role=\"alertdialog\" aria-modal=\"true\"`, line 2138), the ICS import confirm (line 3820) and classify-shift (line 3848) sheets, and SwapsSheet (lines 5311, 5330) all declare it. PatternLab is the odd one out even though it visually looks and behaves like the same kind of sheet.",
+ "failure": "A VoiceOver/NVDA/TalkBack user taps 'Patterns' in the topnav (openPatternLab, line 2933). No 'dialog' role is announced and no name is given for what just opened — the screen reader has no signal that a new modal context replaced the page, and (because there is no aria-modal) it does not treat the rest of the page as hidden, so rotor/browse-mode navigation can wander into the calendar and topnav that are still present in the accessibility tree underneath.",
+ "fix": "Add `role=\"dialog\" aria-modal=\"true\"` and an `aria-label` (e.g. \"Pattern lab\" / \"Edit pattern\") to the `.modal` div in both the list-mode and edit-mode returns, matching the convention already used by FeedbackSheet/SwapsSheet/the ICS sheets.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "accessibility-12"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "'ESTIMATED' tax-rate tag fails WCAG AA contrast",
+ "severity": "high",
+ "where": "index.html:328 (.tag.est rule), rendered at index.html:5796 and index.html:5798",
+ "detail": ".tag.est{color:#C2820A;background:#FDF3DD} at 10.5px/600-weight. Computed contrast of #C2820A on #FDF3DD is 2.93:1 -- well under the 4.5:1 AA minimum for normal text (it doesn't even clear the 3:1 large-text bar, and 10.5px isn't large text anyway). This is the badge sitting directly on 'Federal income tax' and 'State tax' in the onboarding taxes step (obStep 3), the two rates that feed the projected take-home figure shown one step later.",
+ "failure": "A low-vision nurse using the taxes step at obStep 3 cannot read the word 'ESTIMATED' next to Federal/State tax -- it visually all but disappears against its own pill background, so she can't tell which of the pre-filled numbers are guesses she should check versus fixed values (FICA's .tag.auto pill, by contrast, passes at 4.75:1).",
+ "fix": "Darken #C2820A (or lighten the pill background) until contrast clears 4.5:1 -- e.g. swap to the same indigo-on-indigo-soft treatment already used for .tag.auto, or darken to roughly #8A5A05 on the existing #FDF3DD.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-16"
+}

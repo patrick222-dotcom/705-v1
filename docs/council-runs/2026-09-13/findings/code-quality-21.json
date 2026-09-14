@@ -1,0 +1,13 @@
+{
+ "title": "Post-save success bookkeeping (lastSeenAt + backup-clear) is duplicated verbatim in three places",
+ "severity": "low",
+ "where": "index.html:2475 (debounced save), 2496 (flush), 2515 (retrySync)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "code-quality-21"
+}

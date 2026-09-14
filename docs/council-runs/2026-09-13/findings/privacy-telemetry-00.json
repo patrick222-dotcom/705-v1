@@ -1,0 +1,14 @@
+{
+ "title": "privacy.html misdescribes sign-in as Google-only and claims no password is ever stored, but email/password is the app's primary, first-shown auth path",
+ "severity": "high",
+ "where": "privacy.html:89-91 (\"Your account\" section) vs index.html:4584-4671 (AuthModal), specifically handleEmailAuth at index.html:4591-4613",
+ "detail": "privacy.html says: \"Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores no password.\" But AuthModal (index.html:4584) renders an email+password form (the <form onSubmit={handleEmailAuth}> block, index.html:4638-4651) ABOVE the \"or\" divider, with \"Continue with Google\" as the secondary option below it (index.html:4658-4661). handleEmailAuth calls supabase.auth.signUp({email,password}) or supabase.auth.signInWithPassword({email,password}) (index.html:4600-4602) -- Supabase Auth stores a (hashed) password for every such account. `git log -S\"signInWithPassword\"` shows this path was added 2026-08-23 (PR #45), three weeks before privacy.html was written/last-updated 2026-09-07 (PR #78), so this isn't stale copy that predates the feature -- the notice was written after the feature existed and still doesn't mention it.",
+ "failure": "A nurse who reads privacy.html before signing up, sees 'stores no password', and then creates an account via the email+password form (the first, more prominent option in the modal) has just had a password stored by the service, contradicting what she was told. She also isn't told BadgeBudget/Supabase directly receives and stores the email address she typed (the notice frames email receipt as something that only happens 'from Google'). This is a factual misstatement about data handling on the one page whose job is to state that accurately, and the same page backs the Google OAuth consent screen the owner is trying to get brand-verified.",
+ "fix": "Update the \"Your account\" section of privacy.html to disclose both auth paths: e.g. \"Sign-in uses Google OAuth or email/password, your choice. With Google, BadgeBudget receives your email address and name and stores no password. With email/password, your password is stored (hashed) by the auth provider (Supabase) -- BadgeBudget's own code never sees or stores it in plain text.\" No app-code change needed; this is a documentation-accuracy fix, not a wage-core or telemetry-code change.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth",
+  "infra"
+ ],
+ "id": "privacy-telemetry-00"
+}

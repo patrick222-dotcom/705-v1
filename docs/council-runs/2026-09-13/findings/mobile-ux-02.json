@@ -1,0 +1,13 @@
+{
+ "title": "Calendar scroll box has an absolute 420px height floor that exceeds the entire viewport in landscape",
+ "severity": "medium",
+ "where": "index.html:184 (.cal-vscroll), contrast with .sheet/.modal at index.html:396,399",
+ "detail": "`.cal-vscroll{max-height:60vh;min-height:420px;...}` sets a hard 420px minimum height on the Month-view scroll box, in plain (non-dynamic) `vh`. Elsewhere in this same file the sheet/modal containers were deliberately switched to `dvh` (`.sheet{max-height:92dvh}` line 396, `.modal{max-height:90dvh}` line 399) specifically because mobile browser chrome changes available height — the calendar container is the one scroll surface that was never brought in line with that pattern, and unlike them it also carries a bare pixel floor with no viewport-relative cap under it.",
+ "failure": "Rotate an iPhone 13 (the project's own test profile) to landscape while on Month view. Landscape viewport height for a phone is typically ~350-390px after Safari's toolbar, well under the 420px the calendar box is forced to occupy. The calendar's own scroll container alone now consumes more vertical space than the entire screen, pushing the greet-row/hero, the +Log a shift button and the bottom nav completely off-screen — a one-handed nurse who rotates her phone (even accidentally) has to scroll the whole page up and down just to see anything besides the calendar grid, including controls that were one glance away in portrait.",
+ "fix": "Cap `.cal-vscroll` against the real viewport instead of a fixed px floor — e.g. drop `min-height:420px` (or express it as `min(420px, 60dvh)`) and switch `60vh` to `60dvh` so the box shrinks with the actual available height in landscape the same way `.sheet`/`.modal` already do.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "mobile-ux-02"
+}

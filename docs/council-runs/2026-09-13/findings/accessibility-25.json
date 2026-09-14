@@ -1,0 +1,13 @@
+{
+ "title": "SwapsSheet dialog claims aria-modal but has no focus trap, no initial focus, and no Escape handler",
+ "severity": "high",
+ "where": "index.html:5330 (and :5311 signed-out variant) — SwapsSheet's role=\"dialog\" aria-modal=\"true\" wrapper",
+ "detail": "SwapsSheet renders `<div className=\"sheet\" ... role=\"dialog\" aria-modal=\"true\" aria-label=\"Shift swaps\">` (index.html:5330; signed-out gate identical at :5311) but nothing in the component manages keyboard focus: no ref/useEffect moves focus into the dialog on open (grep of the whole 4819-5659 body finds only one unrelated `autoFocus`, on the display-name input at :5356, and the single `useRef` in the file, :4873, is for a stale-reveal timestamp, not focus), no keydown handler traps Tab inside the sheet, and no Escape handler exists anywhere in SwapsSheet (the only 'Escape' handler in the whole file is AccountMenu's, index.html:1966-1969, scoped to that component's own `open` state). Because `showSwaps` is rendered mid-tree inside App's JSX (index.html:3642-3647), after the main calendar content and the `+ Log a shift` FAB (index.html:3608-3609) which precede it in DOM order, the live page behind the scrim is never removed from the tab sequence.",
+ "failure": "A keyboard user (or screen-reader user driving via Tab) opens Shift swaps (topnav 'Swaps' or the Home card button at index.html:3596), lands on the sheet's Close button (index.html:5305, the first focusable element in the dialog) and presses Shift+Tab once: focus jumps out of the dialog entirely and onto the `+ Log a shift` FAB (index.html:3608), a fully live, visibly-covered-by-the-scrim button. Pressing Enter there opens the Add-Shift sheet stacked on top of the swap board, even though `aria-modal=\"true\"` asserts the rest of the page is inert. Symmetrically, Tab forward past the sheet's last control (e.g. the composer's 'Post to the board' button at :5653, or '+ Join another board' at :5587) leaves the dialog instead of wrapping back to Close — a keyboard user loses their place with no way back except tabbing all the way through the hidden background page. There is also no way to dismiss the sheet from the keyboard except tabbing all the way to the Close button and activating it, since Escape is not wired up here.",
+ "fix": "Add a mount-time effect that moves focus to the dialog (or its first control) and a keydown handler on the sheet that (a) calls onClose on Escape and (b) cycles Tab/Shift+Tab between the sheet's first and last focusable elements (a small focus-trap utility, reused by the other `role=\"dialog\"` sheets at :2057, :3820, :3848 which have the identical gap).",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "accessibility-25"
+}
