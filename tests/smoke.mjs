@@ -171,6 +171,55 @@ const run = async () => {
       Math.round((spine.withhold.pre + spine.withhold.fed + spine.withhold.fica + spine.withhold.st
         + spine.withhold.post + spine.withhold.cw) * 100) === Math.round(spine.withhold.ded * 100),
       `rows=${(spine.withhold.pre+spine.withhold.fed+spine.withhold.fica+spine.withhold.st+spine.withhold.post+spine.withhold.cw).toFixed(2)} ded=${spine.withhold.ded.toFixed(2)}`);
+    /* ---- the unpaid meal break -----------------------------------------------------
+       Main Line Health schedules a 12.5-hour block, auto-deducts 30 minutes, and pays 12.0.
+       So the "12 hours" a nurse types is ALREADY net of the meal — the deduction is not
+       missing from our math, it is baked into her input. What we cannot express is the
+       exception: submitting "received no lunch" pays the full 12.5. That is an ADD-BACK.
+       'deducted' is the other shape, where the logged hours are the scheduled block and the
+       employer subtracts the meal — the arrangement behind most healthcare meal-break
+       litigation. Both exist because this varies by employer; only 'included' is proven. */
+    const meal = await page.evaluate(() => {
+      const J = (o) => makeJob({ id: 'job-1', baseRate: 65.15, ...o });
+      const mk = (o) => ({ shiftType: 'base', bonusType: 'none', customBonus: 0, isOvertime: false, jobId: 'job-1', hours: 12, ...o });
+      const inc = J({}), ded = J({ mealBreakMode: 'deducted' });
+      const days = (n) => Array.from({ length: n }, (_, i) => `2025-12-${String(7 + i).padStart(2, '0')}`);
+      return {
+        defaults: { mins: inc.mealBreakMins, mode: inc.mealBreakMode },
+        /* the normal case: what she types is what she is paid, so nothing moves */
+        plain: paidHoursOf(mk({}), inc),
+        noLunch: paidHoursOf(mk({ noMeal: true }), inc),
+        /* the other shape: the block is logged and the meal comes off it */
+        dedPlain: paidHoursOf(mk({ hours: 12.5 }), ded),
+        dedNoLunch: paidHoursOf(mk({ hours: 12.5, noMeal: true }), ded),
+        /* a shift can never be worth less than zero hours, however the config is set */
+        dedTiny: paidHoursOf(mk({ hours: 0.25 }), ded),
+        /* gross follows paid hours, not logged hours */
+        grossPlain: shiftGrossCents(6515, null, mk({}), inc),
+        grossNoLunch: shiftGrossCents(6515, null, mk({ noMeal: true }), inc),
+        /* and the extra half hour counts toward the overtime threshold */
+        otWithout: overtimePremiumCents(J({ differentials: {} }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({})]])), days(7)),
+        otWith: overtimePremiumCents(J({ differentials: {} }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ noMeal: true })]])), days(7)),
+      };
+    });
+    ok('meal: defaults are 30 minutes, already-deducted — so nothing moves by default',
+      meal.defaults.mins === 30 && meal.defaults.mode === 'included',
+      JSON.stringify(meal.defaults));
+    ok('meal: a logged 12h shift still pays 12h', meal.plain === 12, `got ${meal.plain}`);
+    ok('meal: "no lunch" pays the full 12.5h block', meal.noLunch === 12.5, `got ${meal.noLunch}`);
+    ok('meal: on a deduct employer a logged 12.5h block pays 12h',
+      meal.dedPlain === 12, `got ${meal.dedPlain}`);
+    ok('meal: and "no lunch" cancels the deduction', meal.dedNoLunch === 12.5, `got ${meal.dedNoLunch}`);
+    ok('meal: paid hours never go negative', meal.dedTiny === 0, `got ${meal.dedTiny}`);
+    ok('meal: gross follows PAID hours, not logged hours',
+      meal.grossPlain === 78180 && meal.grossNoLunch === 81438,
+      `plain=${meal.grossPlain} noLunch=${meal.grossNoLunch} (12.5 x 65.15 = 814.375 -> 814.38)`);
+    ok('meal: four 12h shifts are not overtime, but four missed lunches are',
+      meal.otWithout.otHours === 8 && meal.otWith.otHours === 10,
+      `without=${meal.otWithout.otHours} with=${meal.otWith.otHours} (4 x 12.5 = 50h)`);
+
     /* ---- overtime derived from the work period ------------------------------------
        Fixture is the Main Line Health workweek reconstructed to the cent from the
        2023-09-30 stub: 24.50h at $65.15 + 16.75h at $69.79 = 41.25h, a printed FLSA
@@ -575,6 +624,55 @@ const run = async () => {
       /check it against your stub/i.test(g.note), g.note);
     ok('ot: no page errors driving it', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 9. the missed lunch reaches the screen ---------------------------------------- */
+  if (want(9)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const base = {
+      setupComplete: true, baseRate: 65.15, payPeriodStart: day(0),
+      federalTaxRate: 0, stateTaxRate: 0, ficaWithholdingType: 'percent', ficaWithholdingPercent: 0,
+      pretaxDeductions: 0, posttaxDeductions: 0,
+    };
+    const shift = (extra) => ({ id: 1, shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false, ...extra });
+    const read = async (seed) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const out = await page.evaluate(() => {
+        const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+        return {
+          gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
+          hrs: txt([...document.querySelectorAll('.hero .chip')].find((c) => /hrs/.test(c.textContent))),
+        };
+      });
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      await ctx.close();
+      return { ...out, errors: real };
+    };
+    const got = await read({ ...base, shifts: { [day(0)]: [shift({})] } });
+    const missed = await read({ ...base, shifts: { [day(0)]: [shift({ noMeal: true })] } });
+
+    ok('meal: an ordinary 12h shift is unchanged — the default moves nothing',
+      got.gross === 'Gross $782' && got.hrs === '12 hrs · 1 shifts', `${got.gross} / ${got.hrs}`);
+    ok('meal: a missed lunch pays the full 12.5h block',
+      missed.gross === 'Gross $814' && missed.hrs === '12.5 hrs · 1 shifts', `${missed.gross} / ${missed.hrs}`);
+    ok('meal: no page errors either way',
+      got.errors.length === 0 && missed.errors.length === 0, (got.errors[0] || missed.errors[0] || ''));
+
+    /* the control itself has to exist, or the flag is unreachable in the real app */
+    const { ctx, page } = await newPage(browser, url, { seed: { ...base, shifts: {} } });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.fab', { timeout: 25000 });
+    await page.locator('.fab').first().click();
+    await page.waitForSelector('.sheet', { timeout: 15000 });
+    const sheet = await page.evaluate(() => document.body.innerText);
+    ok('meal: the Add Shift sheet offers the toggle, worded as what happened',
+      /MEAL BREAK/.test(sheet) && /never got my 30-minute lunch/.test(sheet),
+      (sheet.match(/never got[^\n]*/) || ['<missing>'])[0]);
     await ctx.close();
   }
 

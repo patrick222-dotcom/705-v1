@@ -981,6 +981,8 @@ function sanitizeData(d){
      a nurse onto an 8/80 schedule and inventing overtime she is not owed. */
   if(WORK_PERIODS.indexOf(d.workPeriod)>=0) out.workPeriod = d.workPeriod;
   if(OT_METHODS.indexOf(d.otMethod)>=0) out.otMethod = d.otMethod;
+  if(d.mealBreakMins!=null){ const mm=Number(d.mealBreakMins); if(isFinite(mm)&&mm>=0&&mm<=120) out.mealBreakMins = mm; }
+  if(MEAL_MODES.indexOf(d.mealBreakMode)>=0) out.mealBreakMode = d.mealBreakMode;
   /* estimateMode: '' (fully set up, or the banner was dismissed) | 'rough' (their own base rate,
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
@@ -995,6 +997,9 @@ function sanitizeData(d){
           && isFinite(Number(x.hours)) && Number(x.hours)>0 && Number(x.hours)<=24)
         .map(x=>{
           const o = {...x, hours:Number(x.hours), isOvertime:x.isOvertime===true};
+          /* Omitted rather than stored false: this rides on every shift in the blob, which is
+             capped at MAX_BLOB_BYTES, and the overwhelming majority of shifts did get a lunch. */
+          if(x.noMeal===true) o.noMeal = true; else delete o.noMeal;
           if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
           if(typeof o.icsUid!=='string' || !ICS_UID_RE.test(o.icsUid)) delete o.icsUid;
           return o;
@@ -1142,7 +1147,8 @@ function sanitizeData(d){
        baseRate means changing status (per diem -> staff) silently repriced every past shift. */
     out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate,
       differentials: out.differentials || null,
-      workPeriod: out.workPeriod, otMethod: out.otMethod })];
+      workPeriod: out.workPeriod, otMethod: out.otMethod,
+      mealBreakMins: out.mealBreakMins, mealBreakMode: out.mealBreakMode })];
   }
   if(out.shifts){
     const known = {}; out.jobs.forEach(j=>{ known[j.id]=true; });
@@ -1198,6 +1204,18 @@ const WORK_PERIODS = ['40','8-80'];
    paystub and is not ours to assume. */
 const OT_METHODS = ['regular-rate','base-plus-diff'];
 const PAY_FREQUENCIES = ['weekly','biweekly','semimonthly'];
+/* How an employer handles the unpaid meal break.
+   'included'  — the hours she logs are ALREADY net of it. Main Line Health schedules a
+                 12.5-hour block, deducts 30 minutes and pays 12.0, so the "12 hours" she
+                 types is the paid figure and nothing needs subtracting. Submitting
+                 "received no lunch" pays the full block, which is an ADD-BACK.
+   'deducted'  — she logs the scheduled block and the employer subtracts the meal. This is
+                 the arrangement behind most healthcare meal-break litigation (auto-deduct
+                 with an opt-out gated behind the very condition that creates it).
+   Only 'included' is proven against a real stub, so it is the default and the other is a
+   setting — this varies by employer and guessing it wrong silently moves every shift. */
+const MEAL_MODES = ['included','deducted'];
+const DEFAULT_MEAL_MINS = 30;
 
 function makeJob(o){
   const j = o && typeof o==='object' ? o : {};
@@ -1211,6 +1229,8 @@ function makeJob(o){
     workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
     otMethod: OT_METHODS.indexOf(j.otMethod)>=0 ? j.otMethod : 'regular-rate',
     payFrequency: PAY_FREQUENCIES.indexOf(j.payFrequency)>=0 ? j.payFrequency : 'biweekly',
+    mealBreakMins: (()=>{ const m=Number(j.mealBreakMins); return (isFinite(m)&&m>=0&&m<=120)?m:DEFAULT_MEAL_MINS; })(),
+    mealBreakMode: MEAL_MODES.indexOf(j.mealBreakMode)>=0 ? j.mealBreakMode : 'included',
     active: j.active !== false,
   };
 }
@@ -1234,8 +1254,8 @@ const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.i
    silently double anybody's existing figure. */
 
 /* Straight-time cents for a shift: what it earns before any overtime premium. */
-const straightTimeCents = (baseCents, diff, s) =>
-  shiftGrossCents(baseCents, diff, {...s, isOvertime:false});
+const straightTimeCents = (baseCents, diff, s, meal) =>
+  shiftGrossCents(baseCents, diff, {...s, isOvertime:false}, meal);
 
 /* Split date keys into the job's work periods. A 40-hour workweek is seven consecutive days
    from the first key — biweekly pay periods here start on a Sunday, the same day MLH's do, so
@@ -1262,9 +1282,11 @@ function overtimePremiumCents(job, shifts, dateKeys){
       let dayHours = 0;
       ((shifts||{})[k]||[]).forEach(s=>{
         if(job && job.id && typeof s.jobId==='string' && s.jobId!==job.id) return;
-        const h = Number(s.hours)||0;
+        /* Paid hours, not logged hours: a missed lunch is half an hour of real work and
+           counts toward the overtime threshold like any other. */
+        const h = paidHoursOf(s, job);
         hours += h; dayHours += h;
-        stCents += straightTimeCents(baseCents, diffs[s.shiftType], s);
+        stCents += straightTimeCents(baseCents, diffs[s.shiftType], s, job);
         if(s.isOvertime===true) flaggedHours += h;
       });
       if(dayHours > 8) dailyExcess += dayHours - 8;
@@ -1306,9 +1328,9 @@ function groupHoursByJob(jobs, shifts, dateKeys, dayEvents){
       const id = (typeof s.jobId==='string' && s.jobId) ? s.jobId : DEFAULT_JOB_ID;
       const job = (jobs||{})[id];
       const b = bucket(id);
-      b.hours += Number(s.hours)||0;
+      b.hours += paidHoursOf(s, job);
       b.shifts++;
-      if(job) b.grossCents += shiftGrossCents(toCents(job.baseRate), (job.differentials||{})[s.shiftType], s);
+      if(job) b.grossCents += shiftGrossCents(toCents(job.baseRate), (job.differentials||{})[s.shiftType], s, job);
     });
     /* PTO is paid by a specific employer too, but a day event carries no job today, so it lands
        on the default job — the same job every pre-migration shift landed on. */
@@ -1325,6 +1347,19 @@ function groupHoursByJob(jobs, shifts, dateKeys, dayEvents){
   return out;
 }
 
+/* Hours this shift is PAID for, which is not always the hours she logged. `meal` is a job
+   (or anything carrying mealBreakMins/mealBreakMode); omit it and the logged hours are used
+   verbatim, which is what every pre-existing call site does. */
+function paidHoursOf(s, meal){
+  const h = Number(s && s.hours)||0;
+  if(!meal) return h;
+  const mins = Number(meal.mealBreakMins);
+  const m = (isFinite(mins) && mins>0) ? mins/60 : 0;
+  if(!m) return h;
+  if(meal.mealBreakMode==='deducted') return Math.max(0, s.noMeal===true ? h : h - m);
+  return s.noMeal===true ? h + m : h;
+}
+
 /* The differential-inclusive hourly rate, in (possibly fractional) cents. */
 function hourlyRateCents(baseCents, diff){
   if(!diff) return baseCents;
@@ -1336,8 +1371,8 @@ function hourlyRateCents(baseCents, diff){
 /* One shift's gross, in whole cents. Each component rounds on its own line the way a payroll
    system prints it (rate x hours is one line, a per-hour bonus is another), then the lines are
    summed as integers so a period total cannot accumulate float dust. */
-function shiftGrossCents(baseCents, diff, s){
-  const hours = Number(s.hours)||0;
+function shiftGrossCents(baseCents, diff, s, meal){
+  const hours = paidHoursOf(s, meal);
   const perHrCents = s.bonusType==='custom' ? 0 : toCents(BONUS[s.bonusType]||0);
   const flatCents  = s.bonusType==='custom' ? toCents(parseFloat(s.customBonus)||0) : 0;
   // Overtime stacks ON TOP of the shift differential: the differential-inclusive hourly rate
@@ -1351,7 +1386,7 @@ function shiftGrossCents(baseCents, diff, s){
 }
 /* Dollar-in/dollar-out wrappers. Every existing call site reads these and is unchanged. */
 function hourlyRate(base, diff){ return fromCents(hourlyRateCents(toCents(base), diff)); }
-function shiftGross(base, diff, s){ return fromCents(shiftGrossCents(toCents(base), diff, s)); }
+function shiftGross(base, diff, s, meal){ return fromCents(shiftGrossCents(toCents(base), diff, s, meal)); }
 
 
 /* ---------- Pattern lab: repeating rotations ----------
@@ -2435,6 +2470,8 @@ function App(){
      multi-job UI lands, the direction flips and these read from the active job. */
   const [workPeriod,setWorkPeriod] = useState('40');
   const [otMethod,setOtMethod] = useState('regular-rate');
+  const [mealBreakMins,setMealMins] = useState(DEFAULT_MEAL_MINS);
+  const [mealBreakMode,setMealMode] = useState('included');
   const [obStep,setObStep] = useState(0); // 0 welcome..4 done
   /* Onboarding funnel. app_open -> setup_completed was a 132-device to 9-device cliff with no
      event in between, so there was no way to tell a bounce off the welcome screen from one off
@@ -2538,7 +2575,7 @@ function App(){
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
     payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,
-    workPeriod,otMethod
+    workPeriod,otMethod,mealBreakMins,mealBreakMode
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -2577,6 +2614,8 @@ function App(){
     setEstimateMode(d.estimateMode || '');
     if(WORK_PERIODS.indexOf(d.workPeriod)>=0) setWorkPeriod(d.workPeriod);
     if(OT_METHODS.indexOf(d.otMethod)>=0) setOtMethod(d.otMethod);
+    if(d.mealBreakMins!=null && isFinite(Number(d.mealBreakMins))) setMealMins(Number(d.mealBreakMins));
+    if(MEAL_MODES.indexOf(d.mealBreakMode)>=0) setMealMode(d.mealBreakMode);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -2587,6 +2626,7 @@ function App(){
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
     setWorkPeriod('40'); setOtMethod('regular-rate');
+    setMealMins(DEFAULT_MEAL_MINS); setMealMode('included');
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -2734,7 +2774,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2882,6 +2922,13 @@ function App(){
     return `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}, ${b.getFullYear()}`;
   },[days]);
 
+  /* The employer whose pay rules price this period. One job for now, assembled from the state
+     above rather than from the blob's `jobs` array so there is exactly one source of truth for
+     the rate; the array is the migration target the multi-job UI will switch to. */
+  const activeJob = useMemo(()=> makeJob({ id:DEFAULT_JOB_ID, baseRate, differentials, workPeriod, otMethod,
+    mealBreakMins, mealBreakMode }),
+    [baseRate,differentials,workPeriod,otMethod,mealBreakMins,mealBreakMode]);
+
   /* PTO gross/hours for a date: hours × baseRate, taxed normally, no differentials/bonuses. */
   const ptoStatOf = (k)=>{
     const evs = dayEvents[k]||[];
@@ -2893,7 +2940,7 @@ function App(){
   /* per-day {gross,hours,count} for any date — powers every calendar view */
   const statOf = (k)=>{
     const arr = shifts[k]||[];
-    let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
+    let g=0,h=0; arr.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s,activeJob); h+=paidHoursOf(s,activeJob); });
     const pto = ptoStatOf(k);
     g += pto.g; h += pto.h;
     return {g,h,n:arr.length};
@@ -3015,18 +3062,12 @@ function App(){
     return Array.from({length:12},(_,m)=>{
       const prefix = `${y}-${String(m+1).padStart(2,'0')}-`;
       let g=0,h=0,n=0;
-      Object.keys(shifts).forEach(k=>{ if(k.indexOf(prefix)===0){ (shifts[k]||[]).forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; n++; }); } });
+      Object.keys(shifts).forEach(k=>{ if(k.indexOf(prefix)===0){ (shifts[k]||[]).forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s,activeJob); h+=paidHoursOf(s,activeJob); n++; }); } });
       // PTO adds to gross/hours like every other rollup (statOf/calc) — n counts shifts only, not PTO days.
       Object.keys(dayEvents).forEach(k=>{ if(k.indexOf(prefix)===0){ (dayEvents[k]||[]).forEach(e=>{ if(e.kind==='pto' && e.hours>0){ g+=e.hours*baseRate; h+=e.hours; } }); } });
       return {m,g,h,n};
     });
-  },[calView,calFocus,shifts,dayEvents,baseRate,differentials]);
-
-  /* The employer whose pay rules price this period. One job for now, assembled from the state
-     above rather than from the blob's `jobs` array so there is exactly one source of truth for
-     the rate; the array is the migration target the multi-job UI will switch to. */
-  const activeJob = useMemo(()=> makeJob({ id:DEFAULT_JOB_ID, baseRate, differentials, workPeriod, otMethod }),
-    [baseRate,differentials,workPeriod,otMethod]);
+  },[calView,calFocus,shifts,dayEvents,baseRate,differentials,activeJob]);
 
   /* the per-paycheck tax inputs, as one stable object — read by calc() and the pattern lab */
   const taxInputs = useMemo(()=>({pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings}),
@@ -3041,8 +3082,8 @@ function App(){
     Object.keys(shifts).forEach(k=>{
       if(!periodKeys.has(k)) return;
       (shifts[k]||[]).forEach(s=>{
-        gross += shiftGross(baseRate, differentials[s.shiftType], s);
-        hours += s.hours;
+        gross += shiftGross(baseRate, differentials[s.shiftType], s, activeJob);
+        hours += paidHoursOf(s, activeJob);
       });
     });
     // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
@@ -3867,7 +3908,7 @@ function App(){
         <button className="fab" onClick={openSheetForLog}>+ Log a shift</button>}
 
       {sheetDate &&
-        <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials}
+        <AddShiftSheet dateKey={sheetDate} days={days} keyOf={keyOf} differentials={differentials} job={activeJob}
           existing={shifts[sheetDate]||[]} existingEvents={dayEvents[sheetDate]||[]} existingNote={notes[sheetDate]||''}
           baseRate={baseRate} keepRatio={keepRatio}
           templates={templates} goals={goals} onSaveTemplate={saveTemplate} onDeleteTemplate={deleteTemplate} userId={user?.id}
@@ -3886,6 +3927,7 @@ function App(){
       {showSettings &&
         <Settings onClose={()=>setShowSettings(false)}
           workPeriod={workPeriod} setWorkPeriod={setWorkPeriod} otMethod={otMethod} setOtMethod={setOtMethod}
+          mealBreakMins={mealBreakMins} setMealMins={setMealMins} mealBreakMode={mealBreakMode} setMealMode={setMealMode}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
             goals,setGoals,keepRatio,
@@ -4343,7 +4385,7 @@ function giveMetaLine(meta, differentials){
 }
 
 /* ---------- Add Shift Sheet ---------- */
-function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,goals,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave}){
+function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,goals,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave,job}){
   const [list,setList] = useState(existing.map(s=>({...s})));
   const [shiftType,setType] = useState('night');
   const [hours,setHours] = useState(12);
@@ -4351,6 +4393,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const [customBonus,setCustomBonus] = useState(0);
   const [start,setStart] = useState('');   // optional "HH:MM" start time for the shift being configured
   const [isOvertime,setOvertime] = useState(false);   // independent OT flag — stacks 1.5× on top of the shift differential
+  const [noMeal,setNoMeal] = useState(false);         // "I never got my lunch" — pays the unpaid meal break back
   const [events,setEvents] = useState((existingEvents||[]).map(e=>({...e})));   // "also on this day" life events
   const [note,setNote] = useState(existingNote||'');
   const [dirty,setDirty] = useState(false);   // list/events/note changed vs incoming props — used to save-on-dismiss
@@ -4371,14 +4414,15 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
   const dateLabel = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
-  const draft = {shiftType,hours,bonusType,customBonus,isOvertime};
-  const previewGross = shiftGross(baseRate, differentials[shiftType], draft);
+  const draft = {shiftType,hours,bonusType,customBonus,isOvertime,noMeal};
+  const previewGross = shiftGross(baseRate, differentials[shiftType], draft, job);
+  const mealMins = (job && job.mealBreakMins) || 0;
   const previewNet = Math.round(previewGross*keepRatio);
   const ptoEvent = events.find(e=>e.kind==='pto');
 
   // A configured-but-not-yet-added shift, clamped to a legal hours range (no blocking alert).
-  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus, isOvertime}; if(start) o.start=start; return o; };
-  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setOvertime(false); setDirty(true); configDirtySinceAdd.current=false; };
+  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus, isOvertime}; if(start) o.start=start; if(noMeal) o.noMeal=true; return o; };
+  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setOvertime(false); setNoMeal(false); setDirty(true); configDirtySinceAdd.current=false; };
   const remove = id=>{ setList(list.filter(s=>s.id!==id)); setDirty(true); };
   // Day events (PTO/education/appt/off) toggle: one entry per kind, tap again to remove.
   const toggleEvent = (kind)=>{
@@ -4491,6 +4535,26 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         {isOvertime &&
           <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>1.5× is applied to your <b>differential rate</b> — a night/weekend shift earns 1.5×(base + differential), not just 1.5×base. Per-hour add-ons (charge, preceptor, on-call) stay at face value.</div>}
 
+        {/* The meal break. Nested and off by default — a nurse who gets her lunch never touches
+            this and her figures are untouched. The wording is deliberately about what happened,
+            not about what she is owed: it logs the date so she has a contemporaneous record, and
+            claims nothing about her employer (TP-024). */}
+        {mealMins>0 && <React.Fragment>
+          <div className="sec-lab">MEAL BREAK</div>
+          <button className={'chip-sel'+(noMeal?' on':'')} aria-pressed={noMeal}
+            style={{width:'100%',marginBottom:noMeal?8:16,minHeight:44}}
+            onClick={()=>{ setNoMeal(v=>!v); configDirtySinceAdd.current=true; }}>
+            <i style={{background:'#F5A524'}}></i>I never got my {mealMins}-minute lunch
+          </button>
+          {noMeal &&
+            <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>
+              {job && job.mealBreakMode==='deducted'
+                ? <React.Fragment>Your {mealMins} minutes stay paid instead of being deducted from this shift.</React.Fragment>
+                : <React.Fragment>Adds {mealMins} minutes to this shift, because your hours normally come to you with the lunch already taken out.</React.Fragment>}
+              {' '}Logged with the date, so you have your own record of it. Whether it gets paid is your employer's process — check your stub.
+            </div>}
+        </React.Fragment>}
+
         <div className="sec-lab">HOURS</div>
         <div className="hrs" style={{marginBottom:12}}>
           {[4,8,12,16].map(h=><button key={h} className={'hc'+(hours===h?' on':'')} aria-pressed={hours===h} onClick={()=>{ setHours(h); configDirtySinceAdd.current=true; }}>{h}h</button>)}
@@ -4513,7 +4577,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
         <div className="preview">
           <div className="k">This shift adds</div>
-          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}{noMeal && <span style={{fontWeight:700,color:'#F5A524'}}> · incl. missed lunch</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
           {goals && goals.length>0 && previewNet>0 &&
             <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
@@ -4948,7 +5012,7 @@ function Settings(props){
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
-    workPeriod,setWorkPeriod,otMethod,setOtMethod}=props;
+    workPeriod,setWorkPeriod,otMethod,setOtMethod,mealBreakMins,setMealMins,mealBreakMode,setMealMode}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -5020,6 +5084,25 @@ function Settings(props){
             The first is what federal law requires. Some employers use the second, which pays less — if
             your stub shows the smaller number, set it here so your projection matches your real check.
           </div>
+        </div>
+
+        <div className="sec-lab" style={{marginTop:18}}>MEAL BREAK</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>
+          Only matters on shifts where you tap "I never got my lunch".
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <label className="field" style={{margin:0}}><span className="lab">Unpaid break</span>
+            <div className="inp suf"><NumInput value={mealBreakMins} onCommit={v=>setMealMins(Math.min(120,Math.max(0,v)))} min={0} step="5" ariaLabel="Unpaid meal break minutes"/><span className="sfx">min</span></div></label>
+          <label className="field" style={{margin:0}}><span className="lab">The hours I log are</span>
+            <div className="inp"><select value={mealBreakMode} onChange={e=>setMealMode(e.target.value)} aria-label="How logged hours treat the meal break">
+              <option value="included">what I'm paid</option>
+              <option value="deducted">my scheduled block</option>
+            </select></div></label>
+        </div>
+        <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>
+          Most hospitals schedule a 12½-hour block, take the break out, and pay 12 — if you'd call that "a 12-hour
+          shift" and log 12, leave this on <b>what I'm paid</b>. Switch to <b>my scheduled block</b> only if you log
+          the whole 12½ and your employer subtracts the break.
         </div>
 
         <div className="sec-lab" style={{marginTop:18}}>TAXES</div>

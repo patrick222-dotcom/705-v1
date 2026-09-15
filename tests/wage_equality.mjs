@@ -64,6 +64,22 @@ const INTENDED = [{
   },
 }, {
   since: '2026-09-15',
+  only: 'a missed lunch pays the block back',
+  what: 'a shift flagged "I never got my lunch" pays the unpaid meal break back',
+  why: 'The deployed build has no meal-break concept, so the flag is inert there and the shift '
+     + 'pays 12 hours. Here it pays the full 12.5-hour block. Default-off: a shift without the '
+     + 'flag is byte-identical, which the other six cases show.',
+  matches: (localLine, deployedLine) => {
+    const money = (l) => { const m = String(l).match(/\$([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
+    const hrs = (l) => { const m = String(l).match(/([\d.]+) hrs/); return m ? Number(m[1]) : NaN; };
+    const a = money(localLine), b = money(deployedLine);
+    const ha = hrs(localLine), hb = hrs(deployedLine);
+    /* Paying a break back can only raise the figure, never lower it. */
+    if (Number.isFinite(ha) && Number.isFinite(hb)) return ha >= hb;
+    return Number.isFinite(a) && Number.isFinite(b) && a >= b;
+  },
+}, {
+  since: '2026-09-15',
   only: 'overtime derived from a 48-hour week',
   what: 'overtime is derived from the work period instead of a per-shift checkbox',
   why: 'The deployed build only pays overtime on shifts the nurse ticked by hand, so a 48-hour '
@@ -120,6 +136,15 @@ const CASES = {
     pretaxDeductions: 0, posttaxDeductions: 0,
     differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
     shifts: Object.fromEntries([0, 1, 2, 3].map((n) => [day(n), [sh({ shiftType: 'night', hours: 12 })]])),
+  },
+  /* Courtney's employer schedules a 12.5-hour block, deducts 30 minutes and pays 12.0, so the
+     12 she logs is already net. The deployed build has no concept of the flag and pays 12; this
+     build pays the full block back. Taxes zeroed so the diff is only the half hour. */
+  'a missed lunch pays the block back': {
+    baseRate: 65.15, federalTaxRate: 0, stateTaxRate: 0,
+    ficaWithholdingType: 'percent', ficaWithholdingPercent: 0,
+    pretaxDeductions: 0, posttaxDeductions: 0,
+    shifts: { [day(0)]: [sh({ shiftType: 'base', hours: 12, noMeal: true })] },
   },
   'awkward rates + bonuses (float dust)': {
     baseRate: 70.81, federalTaxRate: 13.33, stateTaxRate: 3.07, ficaWithholdingType: 'standard',
