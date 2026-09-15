@@ -1110,28 +1110,154 @@ function sanitizeData(d){
       }));
   }
   if('setupComplete' in d) out.setupComplete = d.setupComplete;
+  /* jobs + the jobId stamp. Runs last so a migrated job can carry the already-sanitized rate
+     and differentials, and so every shift above has been validated before it is stamped. */
+  if(Array.isArray(d.jobs) && d.jobs.length){
+    const seen = {};
+    out.jobs = d.jobs.slice(0, MAX_JOBS).map(makeJob)
+      .filter(j=>{ if(!j.id || seen[j.id]) return false; seen[j.id]=true; return true; });
+  }
+  if(!out.jobs || !out.jobs.length){
+    /* A pre-jobs blob: everything she has ever logged belongs to one implicit employer. The
+       rate and differentials move onto it verbatim, so no historical shift reprices. This is
+       the bug the job record fixes today, before any second employer exists — one global
+       baseRate means changing status (per diem -> staff) silently repriced every past shift. */
+    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate,
+      differentials: out.differentials || null })];
+  }
+  if(out.shifts){
+    const known = {}; out.jobs.forEach(j=>{ known[j.id]=true; });
+    const fallbackId = out.jobs[0].id;
+    Object.keys(out.shifts).forEach(k=>{
+      out.shifts[k] = out.shifts[k].map(x=>
+        (typeof x.jobId==='string' && known[x.jobId]) ? x : {...x, jobId: fallbackId});
+    });
+  }
   return out;
 }
 
 const fmt = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const fmt2 = n => '$' + Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-function hourlyRate(base, diff){
-  if(!diff) return base;
-  if(diff.type==='multiplier') return base * diff.amount;
-  if(diff.type==='percent') return base * (1 + diff.amount/100);
-  return base + diff.amount;
+/* ---------- money: integer cents ------------------------------------------------------
+   A float cannot hold a cent. 70.81 * 47.10 is 3335.1509999999994, and once figures like that
+   accumulate across a pay period the total drifts away from the paycheck it is meant to predict.
+   Every computation in the wage core runs on integer cents. The dollar-taking/returning wrappers
+   below (hourlyRate, shiftGross, computeNet) exist so that call sites which still speak dollars
+   keep working byte-identically while the cents layer is pushed outward commit by commit.
+
+   Rates stay FRACTIONAL cents on purpose — a real regular rate is $67.034424/hr (Main Line
+   Health, 2023-09-30 stub) — and rounding happens once, at the earnings line, exactly where a
+   payroll system rounds it. */
+const toCents   = d => Math.round((Number(d)||0) * 100);
+const fromCents = c => c / 100;
+/* Commercial rounding: half away from zero. Matches the printed earnings lines on every real
+   stub checked — 69.79 x 12.50h prints as 872.38, not 872.37. Math.round alone rounds -0.5
+   toward +Infinity, which would silently favour one direction on negative adjustments. */
+const roundCents = x => (x < 0 ? -Math.round(-x) : Math.round(x));
+
+/* ---------- jobs -----------------------------------------------------------------------
+   One nurse, N employment relationships. This is a data spine, not a feature: until a second
+   job is created nothing about the UI changes. It exists now because `user_data` is a single
+   un-versioned blob that sanitizeData must validate forever, so adding keys is cheap today and
+   a migration later.
+
+   What lives on a job is what an EMPLOYER decides: the rate, the differentials, the work
+   period, how overtime is computed, how often it pays. What does NOT live here is tax — that
+   follows the nurse's residence and the state she works in, both of which change independently
+   of the employer (one travel contract can span several states), so tax stays user-level.
+   Don't "tidy" it onto the job. */
+const DEFAULT_JOB_ID = 'job-1';
+const MAX_JOBS = 8;
+/* '40' = the FLSA 40-hour workweek. '8-80' = the section 7(j) hospital election: overtime past
+   8 in a day AND 80 in a 14-day period, whichever is crossed. Read by the overtime derivation,
+   which lands in the next commit; stored here so one migration covers both. */
+const WORK_PERIODS = ['40','8-80'];
+/* 'regular-rate' = FLSA 778.115: total straight-time remuneration / total hours, premium at 0.5x
+   on the overtime hours. 'base-plus-diff' = the common (and often incorrect) shortcut of
+   1.5 x base with the differential added flat. Which one an employer uses is observable from a
+   paystub and is not ours to assume. */
+const OT_METHODS = ['regular-rate','base-plus-diff'];
+const PAY_FREQUENCIES = ['weekly','biweekly','semimonthly'];
+
+function makeJob(o){
+  const j = o && typeof o==='object' ? o : {};
+  const rate = Number(j.baseRate);
+  return {
+    id: (typeof j.id==='string' && j.id) ? j.id : DEFAULT_JOB_ID,
+    name: typeof j.name==='string' ? j.name.trim().slice(0,40) : '',
+    baseRate: isFinite(rate) ? rate : 0,
+    differentials: (j.differentials && typeof j.differentials==='object' && !Array.isArray(j.differentials))
+      ? j.differentials : null,
+    workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
+    otMethod: OT_METHODS.indexOf(j.otMethod)>=0 ? j.otMethod : 'regular-rate',
+    payFrequency: PAY_FREQUENCIES.indexOf(j.payFrequency)>=0 ? j.payFrequency : 'biweekly',
+    active: j.active !== false,
+  };
 }
-function shiftGross(base, diff, s){
-  const perHr = s.bonusType==='custom' ? 0 : (BONUS[s.bonusType]||0);
-  const flat  = s.bonusType==='custom' ? (parseFloat(s.customBonus)||0) : 0;
+/* jobs as a map for lookup by id; the blob stores an array so ordering survives a round trip. */
+const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.id]=j; }); return m; };
+
+/* Hours, shift count and gross PER JOB across a set of date keys.
+   The grouping is the entire point. An FLSA workweek belongs to one employer, so hours worked
+   for two employers must never land in a single overtime computation — unrelated employers do
+   not aggregate, and a nurse holding a staff line plus a marketplace account has two separate
+   40-hour weeks, not one 80-hour one. Today there is exactly one group; the discipline has to
+   exist before the second job does, or the first two-job user silently gets phantom overtime. */
+function groupHoursByJob(jobs, shifts, dateKeys, dayEvents){
+  const out = {};
+  const bucket = id => (out[id] = out[id] || { hours:0, shifts:0, grossCents:0, ptoHours:0 });
+  (dateKeys||[]).forEach(k=>{
+    ((shifts||{})[k]||[]).forEach(s=>{
+      const id = (typeof s.jobId==='string' && s.jobId) ? s.jobId : DEFAULT_JOB_ID;
+      const job = (jobs||{})[id];
+      const b = bucket(id);
+      b.hours += Number(s.hours)||0;
+      b.shifts++;
+      if(job) b.grossCents += shiftGrossCents(toCents(job.baseRate), (job.differentials||{})[s.shiftType], s);
+    });
+    /* PTO is paid by a specific employer too, but a day event carries no job today, so it lands
+       on the default job — the same job every pre-migration shift landed on. */
+    ((dayEvents||{})[k]||[]).forEach(e=>{
+      if(e.kind!=='pto' || !(e.hours>0)) return;
+      const id = (typeof e.jobId==='string' && e.jobId) ? e.jobId : DEFAULT_JOB_ID;
+      const job = (jobs||{})[id];
+      const b = bucket(id);
+      b.ptoHours += Number(e.hours)||0;
+      b.hours += Number(e.hours)||0;
+      if(job) b.grossCents += roundCents(toCents(job.baseRate) * (Number(e.hours)||0));
+    });
+  });
+  return out;
+}
+
+/* The differential-inclusive hourly rate, in (possibly fractional) cents. */
+function hourlyRateCents(baseCents, diff){
+  if(!diff) return baseCents;
+  const amt = Number(diff.amount)||0;
+  if(diff.type==='multiplier') return baseCents * amt;
+  if(diff.type==='percent') return baseCents * (1 + amt/100);
+  return baseCents + toCents(amt);
+}
+/* One shift's gross, in whole cents. Each component rounds on its own line the way a payroll
+   system prints it (rate x hours is one line, a per-hour bonus is another), then the lines are
+   summed as integers so a period total cannot accumulate float dust. */
+function shiftGrossCents(baseCents, diff, s){
+  const hours = Number(s.hours)||0;
+  const perHrCents = s.bonusType==='custom' ? 0 : toCents(BONUS[s.bonusType]||0);
+  const flatCents  = s.bonusType==='custom' ? toCents(parseFloat(s.customBonus)||0) : 0;
   // Overtime stacks ON TOP of the shift differential: the differential-inclusive hourly rate
   // is paid at 1.5× (per-hour/flat bonuses stay at face value, matching the legacy 'overtime'
   // shift-type which only multiplied the hourly rate). isOvertime is an independent flag, so a
   // night OT shift earns 1.5×(base+night diff) instead of losing the differential to a flat 1.5×base.
   const otMult = s.isOvertime ? 1.5 : 1;
-  return hourlyRate(base, diff) * otMult * s.hours + perHr*s.hours + flat;
+  return roundCents(hourlyRateCents(baseCents, diff) * otMult * hours)
+       + roundCents(perHrCents * hours)
+       + flatCents;
 }
+/* Dollar-in/dollar-out wrappers. Every existing call site reads these and is unchanged. */
+function hourlyRate(base, diff){ return fromCents(hourlyRateCents(toCents(base), diff)); }
+function shiftGross(base, diff, s){ return fromCents(shiftGrossCents(toCents(base), diff, s)); }
 
 
 /* ---------- Pattern lab: repeating rotations ----------
@@ -1228,26 +1354,40 @@ function patternIndexFor(pattern, dateObj){
 
 /* The per-paycheck tax model, factored out of App's calc() so the pattern lab prices a rotation
    with exactly the math the hero uses. `t` carries the same per-period inputs calc() reads. */
-function computeNet(gross, t){
-  const pretax = Number(t.pretaxDeductions)||0, posttax = Number(t.posttaxDeductions)||0;
+function computeNet(grossIn, t){
+  /* Accepts either a plain gross (every existing call: all of it is taxable wages) or a
+     {taxable, nonTaxable} split. The split is what a travel package actually looks like:
+     Aya Healthcare, week of 2022-05-15, paid $3,096.00 of taxable wages and $1,442.00 of
+     meals + housing stipend, and the stub's net is taxable - taxes + stipend to the cent.
+     Withholding NEVER touches the non-taxable side; it passes straight through to net. */
+  const isSplit = grossIn && typeof grossIn==='object' && !Array.isArray(grossIn);
+  const taxable    = toCents(isSplit ? grossIn.taxable    : grossIn);
+  const nonTaxable = toCents(isSplit ? grossIn.nonTaxable : 0);
+  const pretax = toCents(t.pretaxDeductions), posttax = toCents(t.posttaxDeductions);
   // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
   // deferrals only reduce income-tax wages. Keep the two bases separate.
-  const ficaBase = gross;
-  const incomeTaxBase = Math.max(0, gross - pretax);
+  const ficaBase = taxable;
+  const incomeTaxBase = Math.max(0, taxable - pretax);
   let fica = 0;
-  if(t.ficaType==='standard') fica = ficaBase*0.0765;
-  else if(t.ficaType==='percent') fica = ficaBase*((parseFloat(t.ficaPct)||0)/100);
-  const fed = incomeTaxBase*((Number(t.federalTaxRate)||0)/100);
-  const st  = incomeTaxBase*((Number(t.stateTaxRate)||0)/100);
+  if(t.ficaType==='standard') fica = roundCents(ficaBase*0.0765);
+  else if(t.ficaType==='percent') fica = roundCents(ficaBase*((parseFloat(t.ficaPct)||0)/100));
+  const fed = roundCents(incomeTaxBase*((Number(t.federalTaxRate)||0)/100));
+  const st  = roundCents(incomeTaxBase*((Number(t.stateTaxRate)||0)/100));
   let cw = 0;
-  (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent' ? incomeTaxBase*((parseFloat(w.amount)||0)/100) : (parseFloat(w.amount)||0); });
+  (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent'
+    ? roundCents(incomeTaxBase*((parseFloat(w.amount)||0)/100))
+    : toCents(parseFloat(w.amount)||0); });
   const ded = pretax+fica+fed+st+posttax+cw;
-  const net = Math.max(0, gross-ded);
+  const net = Math.max(0, taxable-ded) + nonTaxable;
   // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum.
-  const flatCapTotal = Math.max(0, gross - (fica+fed+st+cw));
+  const flatCapTotal = Math.max(0, taxable - (fica+fed+st+cw));
   const dispPre  = Math.min(pretax, flatCapTotal);
   const dispPost = Math.min(posttax, Math.max(0, flatCapTotal - dispPre));
-  return {gross,fica,fed,st,cw,ded,net,pre:dispPre,post:dispPost, pct: gross>0 ? Math.round(net/gross*100) : 0};
+  const total = taxable + nonTaxable;
+  return {gross:fromCents(taxable), nonTaxable:fromCents(nonTaxable), total:fromCents(total),
+    fica:fromCents(fica), fed:fromCents(fed), st:fromCents(st), cw:fromCents(cw),
+    ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), post:fromCents(dispPost),
+    pct: total>0 ? Math.round(net/total*100) : 0};
 }
 
 /* Everything the lab shows about a pattern — the money AND the shape of the life it makes.

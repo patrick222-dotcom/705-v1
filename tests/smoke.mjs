@@ -105,6 +105,77 @@ const run = async () => {
       near(wage.net.fica, 76.5) && near(wage.net.fed, 108) && near(wage.net.st, 45) && near(wage.net.net, 620.5),
       `fica=${wage.net.fica} fed=${wage.net.fed} st=${wage.net.st} net=${wage.net.net}`);
 
+    /* ---- job record + integer cents: the structural spine ----------------------------
+       Fixtures are Courtney's real Main Line Health and Aya Healthcare stubs, reconciled to
+       the cent against the printed earnings lines. See docs/pay-model-research-2026-09.md. */
+    const spine = await page.evaluate(() => {
+      const t0 = { ficaType: 'standard', federalTaxRate: 0, stateTaxRate: 0,
+        pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+      const legacy = sanitizeData({
+        setupComplete: true, baseRate: 70.81,
+        shifts: { '2025-12-08': [{ id: 1, shiftType: 'night', hours: 12, bonusType: 'none' }] },
+      });
+      const job = (legacy.jobs || [])[0] || {};
+      return {
+        /* 1. the float the engine must stop producing: 70.81 x 47.10 = 3335.15 on the stub */
+        floatProduct: 70.81 * 47.10,
+        centsProduct: shiftGrossCents(7081, null, { hours: 47.10, bonusType: 'none' }),
+        /* 2. MLH prints 872.38 for 12.50h at 69.79 — half-up at the line, not truncation */
+        halfUp: shiftGrossCents(6979, null, { hours: 12.5, bonusType: 'none' }),
+        /* 3. computeNet takes a taxable/non-taxable split; Aya week 5/15-5/21/2022 */
+        split: computeNet({ taxable: 3096, nonTaxable: 1442 }, t0),
+        /* 4. a bare number still means "all taxable" so every existing call is unchanged */
+        legacyScalar: computeNet(3096, t0),
+        /* 5. a legacy blob migrates to exactly one job carrying the user-level rate */
+        jobCount: (legacy.jobs || []).length,
+        jobRate: job.baseRate,
+        workPeriod: job.workPeriod,
+        payFrequency: job.payFrequency,
+        jobActive: job.active,
+        /* 6. every shift is stamped with that job */
+        stamped: legacy.shifts['2025-12-08'][0].jobId === job.id,
+        /* 7. withholding lines round to the cent, and the rows sum to the total exactly */
+        withhold: computeNet(1590.94, { ficaType:'standard', federalTaxRate:11, stateTaxRate:4.25,
+          pretaxDeductions:95.5, posttaxDeductions:12.75,
+          customWithholdings:[{name:'Union dues',amount:2.5,type:'percent'},{name:'Parking',amount:33.33,type:'dollar'}] }),
+        /* 8. hours group by job and never combine across employers */
+        grouped: groupHoursByJob(
+          { A: { id: 'A' }, B: { id: 'B' } },
+          { '2025-12-08': [{ jobId: 'A', hours: 30, shiftType: 'base', bonusType: 'none' },
+                           { jobId: 'B', hours: 30, shiftType: 'base', bonusType: 'none' }] },
+          ['2025-12-08']),
+      };
+    });
+    ok('cents: the engine no longer multiplies floats',
+      spine.floatProduct !== 3335.151 && spine.centsProduct === 333515,
+      `float=${spine.floatProduct} cents=${spine.centsProduct}`);
+    ok('cents: a half-cent rounds up, matching the printed stub line',
+      spine.halfUp === 87238, `expected 87238 (872.375 -> 872.38), got ${spine.halfUp}`);
+    ok('jobs: non-taxable money is never taxed',
+      near(spine.split.fica, 236.84), `fica=${spine.split.fica} (7.65% of 3096, not of 4538)`);
+    ok('jobs: non-taxable money passes straight through to net',
+      near(spine.split.net, spine.legacyScalar.net + 1442),
+      `split.net=${spine.split.net} scalar.net=${spine.legacyScalar.net}`);
+    ok('jobs: a bare gross still means all-taxable (every old call unchanged)',
+      near(spine.legacyScalar.gross, 3096) && near(spine.legacyScalar.nonTaxable || 0, 0));
+    ok('jobs: a legacy blob migrates to exactly one job', spine.jobCount === 1);
+    ok('jobs: the migrated job carries the user-level rate', spine.jobRate === 70.81);
+    ok('jobs: it defaults to the 40-hour workweek', spine.workPeriod === '40',
+      `got ${spine.workPeriod}`);
+    ok('jobs: and to a biweekly pay frequency', spine.payFrequency === 'biweekly');
+    ok('jobs: the migrated job is active', spine.jobActive === true);
+    ok('jobs: every legacy shift is stamped with it', spine.stamped);
+    ok('cents: a withholding line rounds to the cent, as payroll does',
+      spine.withhold.fed === 164.5, `expected 164.50 (1495.44 x 11% = 164.4984), got ${spine.withhold.fed}`);
+    ok('cents: Breakdown rows sum to the deduction total exactly',
+      Math.round((spine.withhold.pre + spine.withhold.fed + spine.withhold.fica + spine.withhold.st
+        + spine.withhold.post + spine.withhold.cw) * 100) === Math.round(spine.withhold.ded * 100),
+      `rows=${(spine.withhold.pre+spine.withhold.fed+spine.withhold.fica+spine.withhold.st+spine.withhold.post+spine.withhold.cw).toFixed(2)} ded=${spine.withhold.ded.toFixed(2)}`);
+    ok('jobs: hours group per job and never combine across employers',
+      spine.grouped && spine.grouped.A && spine.grouped.B
+        && spine.grouped.A.hours === 30 && spine.grouped.B.hours === 30,
+      JSON.stringify(spine.grouped));
+
     /* ---- new: money redaction on the error path -------------------------------------- */
     const red = await page.evaluate(() => ({
       dollars: redactMoney('take-home $1,234.56 for the period'),
