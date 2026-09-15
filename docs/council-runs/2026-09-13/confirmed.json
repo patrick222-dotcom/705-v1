@@ -86,6 +86,74 @@
   "dissent": []
  },
  {
+  "title": "Paystub import turns a premium-only earnings row into a negative differential",
+  "severity": "medium",
+  "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
+  "detail": "applyPaystub derives each differential as `da = round((s.rate - p.baseRate)*100)/100` and stores it as the dollar amount with no floor and no cross-check against `s.earnings`. The parser's row regex (index.html:3360-3363) captures the HOURS AND EARNINGS 'Rate' column as `s.rate`. On PeopleSoft-style stubs (the very format this parser targets: 'Fed MED/EE', 'Fed OASDI/EE', 'TOTAL GROSS'), a shift-differential earnings code is frequently listed at the premium rate alone (e.g. 'PD Night Diff  4.00  36.00  144.00'), not the base-plus-premium rate. The review sheet renders the same `da` via `+$${da.toFixed(2)}/hr` with no guard, so the user is shown '→ Night  ·  +$-61.15/hr' and the Apply button writes it.",
+  "failure": "Base rate $65.15 read from 'Pay Rate: $65.15 Hourly'; a row 'PD Night 4.00 36.00 144.00' classifies as 'night' and yields da = 4.00 - 65.15 = -61.15. Review sheet shows '+$-61.15/hr'; after Apply, every night shift prices at (65.15 - 61.15) = $4.00/hr, so a 12h night reads '+$48 gross' in the Add-Shift preview and the hero collapses accordingly.",
+  "fix": "In applyPaystub (and the matching line in PaystubReview), treat a row whose rate is below the base rate as a premium-only line: `const da = s.rate < p.baseRate ? s.rate : s.rate - p.baseRate` (optionally confirmed by `Math.abs(s.rate*s.hours - s.earnings) < 1`), and never write a negative amount. Add a harness case with a premium-only row asserting the night amount lands at +4.00.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "wage-math-06",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Mechanism is real but the finding's precondition is unshown for this parser and the outcome is not silent, so it does not earn a medium. Confirmed from the cited code: index.html:3386 computes `da = Math.round((s.rate-p.baseRate)*100)/100` with no floor and no earnings cross-check; PaystubReview :3739-3745 prints `+$${da.toFixed(2)}/hr` unguarded; and sanitizeData (:1041-1049) keeps any finite `amount`, so a negative would survive reload/sync. Granting all that, three things undercut it. (1) The parser is a single-stub parser, not a PeopleSoft-general one -- it hard-codes `PA W/H`, `PA PHILADELPHIA W/H`, `PA LS Tax`, `403(b)`, `Pay Rate: $X Hourly` and the `PD `/`Incentive - ` prefixes (:3345-3363). Its `rate - baseRate` model only ever worked for its one real user if that stub's PD rows carry the blended rate, so for the format it targets the outcome is the intended one. The finding's claim that PeopleSoft stubs \"frequently\" list the premium alone is asserted, not demonstrated against this stub; the harness has no differential-row fixture at all (`makeMinimalPdf` emits no pay data, BACKLOG.md:876), so nothing in the repo shows a premium-only row ever reaching this code. A stub from another payroll system is more likely to miss the `Pay Rate:`/`HOURS AND EARNINGS…TAXES` anchors entirely than to half-parse into this exact shape. (2) The outcome is visible before it is written: the review sheet shows \"+$-61.15/hr\" next to \"$4.00/hr\" under the explicit contract \"Fix anything that looks off, then apply\" (:3719), so it is a caught-at-review defect, not a silent corruption -- though the rows are not editable in-sheet, so the user's fix is Cancel or Settings afterward. (3) The surface is near-dead by the project's own record: exactly one successful paystub import in two months, and the scan was demoted to a secondary \"instead\" link (CLAUDE.md Product surfaces; BACKLOG.md:680,884). Nothing documents a negative differential as intended, so a zero-floor (`Math.max(0,da)`) or a \"looks off\" flag on a negative row is a legitimate P3 hardening nit; the proposed `rate < base ? rate : rate-base` heuristic silently rewrites the parser's model for an unverified format and touches displayed dollar figures, which the wage-core skill says needs its protocol. As filed -- medium, with a concrete hero-collapse failure -- it restates a speculative stub format as an observed defect."
+  ]
+ },
+ {
+  "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
+  "severity": "medium",
+  "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
+  "detail": "patternMetrics prices the rotation over lcm(n,14) days and divides by span/14, so for any cycle length that is not 7 or 14 the figure is a mean across several different paychecks. The card and the comparison table both present it as *the* paycheck, with no 'average' or 'ranges from' qualifier, while the calendar hero (calc, index.html:2787-2810) shows each real 14-day period. Ran the real functions: '4 on, 4 off nights' preset, $50 base, default differentials, 12%/5%/FICA standard/$200 pretax: lab shows $3,749 (gross $5,196); after 'Put it on the calendar' the hero shows $4,233, $4,233, $3,265, $3,265 for the next four paychecks. A hand-built 28-day cycle (8 nights in fortnight 1, 4 in fortnight 2 -- a normal self-scheduled month) shows $3,089 in the lab; the hero shows $4,174 then $2,004. For the 28-day case the code comment's rationale ('a cycle that doesn't divide a fortnight') doesn't even apply -- it divides into exactly two paychecks that are simply different.",
+  "failure": "Nurse picks '4 on, 4 off nights' because the lab says $3,749/paycheck (vs $3,089 for Mon-Wed nights), applies it, and the very first paycheck on the calendar reads $4,233; the third reads $3,265. Neither matches the number she chose on, and the app never told her it was an average. Same in the side-by-side table: an 8-day or 28-day rotation is compared against 7/14-day ones as if the figures were the same kind of number.",
+  "fix": "Minimal, label-only (no wage-core touch): when lcm(n,14) > 14, caption the .pl-money card and the side-by-side cell, e.g. 'averaged over N paychecks -- checks will vary' (N = lcm(n,14)/14, computable in PatternLab from m.n). Better: have patternMetrics also return periodNetMin/periodNetMax (net of each 14-day window in the span) and show 'between $X and $Y' -- that variant touches patternMetrics and needs the Invariant 3 protocol.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "wage-math-09",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
+  "severity": "medium",
+  "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
+  "detail": "Generic Day/Night brushes resolve to weekend-day / weekend-eve on Sat/Sun (index.html:1205-1211). A cell painted with a template brush ('tpl:<id>', built at index.html:4350-4358 as kind:'fixed') keeps the template's shiftType verbatim, so a 'My nights' template (shiftType 'night') on Saturday is priced at the plain night differential. The hint under the grid reads, for every brush, 'Weekend days pick up your weekend differentials automatically.' Once painted the two cells are identical: cellLabel gives 'Night 12h from 7:00 PM' for both (differentials.night.name === 'Night'), cellColor gives differentials.night.color for both, same glyph. Ran it: Fri/Sat/Sun nights, 7-day cycle, $50 base, defaults -- generic brush: gross $4,632, net $3,324, calendar types weekend-eve/night/weekend-eve; template brush: gross $4,320, net $3,089, calendar types night/night/night. $312 per paycheck, ~$8.1k/yr, from a brush choice the UI says makes no difference. The exact-type semantics match calendar quick-fill (index.html:2922), so the arithmetic is deliberate; the hint and the indistinguishable cells are the defect.",
+  "failure": "Nurse saves her usual 'Night 12h' template, paints Fri-Sun with it because it's the brush with her name on it, reads the hint that weekends pick up her weekend differentials, and the lab under-quotes her rotation by ~$312 per paycheck; after apply, every Sat/Sun shift on the calendar is typed 'night' rather than 'weekend-eve' and the hero agrees with the low number.",
+  "fix": "Either (a) make the hint brush-aware and mark fixed cells (e.g. the ⚡ glyph or the template name in cellLabel) so a template-painted weekend visibly keeps its exact type, or (b) in patternCellShiftType let a fixed cell whose shiftType is 'base' or 'night' go through the same weekend inference as the generic kinds (an explicitly weekend-typed template still keeps its type). (b) changes displayed dollars via patternCellShiftType/planPatternApply, not the listed wage-core functions, but should still get a harness assertion (generic vs template brush on a Saturday).",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "wage-math-10",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Mechanism confirmed but the outcome is the documented template contract, not a defect. index.html:1204 returns cell.shiftType verbatim for kind:'fixed' cells; the section comment directly above it (~1138-1142) states the rule explicitly: \"Generic 'day'/'night' cells resolve to the weekend differential when they land on a Sat/Sun (the same inference the .ics import uses); 'fixed' cells (built from a template) keep their shiftType.\" The app has exactly two weekend-inference sites (grep: .ics import at 902-916 and the generic brushes at 1205-1211); the manual Add-Shift sheet and calendar quick-fill (2922, spreads qfTemplate.shiftType literally) never infer. So the app-wide model is coherent: the app infers a type only where the nurse gave none, and anything she typed herself -- a saved template -- is literal everywhere. The finding's own \"concrete failure\" (\"after apply ... the hero agrees with the low number\") is exactly what quick-filling that same 'night' template onto a Saturday on the calendar already produces today; the lab is faithful to the template contract, not diverging from it. The finding concedes the arithmetic is deliberate and narrows itself to (1) the unconditional hint at 4536 and (2) painted-cell indistinguishability. (2) is by construction -- a fixed 'night' cell and an inferred 'night' cell are the same shift, and the brush chips themselves are visibly distinct (\"⚡ <template name> ×12h\" vs \"☾ Night 12h\"), so the nurse chose the template brush knowingly. (1) is a one-sentence copy imprecision written for the default generic brushes (initial brush is 'night12'); it is a P3 wording nit, not a [medium] wage-math finding worth \"$8.1k/yr\" framing. Proposed fix (b) would actually break the documented contract by making the lab retype a deliberately-'night' template on weekends while calendar quick-fill keeps it literal -- introducing the lab/calendar divergence the #65 design avoided. Not already in the backlog, but does not rise above a nit; if anything, file the hint wording (\"generic Day/Night brushes pick up ...\") as P3 polish."
+  ]
+ },
+ {
+  "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
+  "severity": "medium",
+  "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
+  "detail": "AddShiftSheet initialises `shiftType` to the literal 'night' (line 4077) and never reconciles it with the chip list, which is filtered to `d.active` (line 4099). There is no useEffect in the component (checked 4075-4300). `hourlyRate` (1119-1124) does not consult `active`, so `differentials['night']` with `active:false` still adds its amount. The pattern lab does honour the flag — `patternCellShiftType` (1206-1212) prices a night cell as 'base' when Night is inactive — so the two surfaces disagree on the same setup. Settings (4712) and onboarding (5779) both expose the Night switch, so this is one tap away from the default.",
+  "failure": "Base $50, Night switched off in Settings or onboarding. Tap '+ Log a shift': no shift-type chip is highlighted, yet the preview reads '+$720 gross · about +$561 take-home' (60×12 × 0.7785). Tapping 'Add shift' without touching a chip saves a 'night' shift; the ON THIS DAY row reads 'Night ×12h', the hero rises by $720 and the calendar cell shows ~$561. A day shift at her rate is $600 gross / ~$467 take-home, so every quick log is $120 high on a differential she turned off.",
+  "fix": "Initialise from the first active, non-overtime key: `useState(()=>{ const a=Object.entries(differentials).find(([k,d])=>d.active&&k!=='overtime'); return a?a[0]:'base'; })` — or, equivalently, derive `active` first and seed from `active[0]`. Add a harness assertion: toggle Night off, open the sheet, assert a chip is `aria-pressed` and the preview equals base×12×keepRatio. (Whether an inactive differential should keep paying on already-logged shifts in calc/statOf is a separate product call; this fix does not touch that.)",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "wage-math-12",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "poster_key is reversible: member user_ids and the board creator's id are readable, and the salt is a public constant",
   "severity": "critical",
   "where": "supabase/migrations/001_swap_board.sql:59-69 (\"see co-members\" policy + full-table grants on swap_members and swap_groups), :158 (poster_key derivation); live-verified column grants on project mnnlgcxnvodjwlhhiphq",
@@ -120,6 +188,43 @@
   "dissent": []
  },
  {
+  "title": "Raw 'parties decline matches' UPDATE policy bypasses decline_swap_match and strands the other party's post as 'proposed' forever",
+  "severity": "medium",
+  "where": "supabase/migrations/001_swap_board.sql:202-205 (policy), :233-235 (update (status) grant), :130 and :277-278 (why it is unrecoverable); live policy confirmed via pg_policies",
+  "detail": "decline_swap_match() exists precisely so declining releases the reserved posts in one transaction (001:269-282). But the policy 'parties decline matches' plus `grant ... update (status) on swap_matches` still let any party `PATCH /rest/v1/swap_matches?id=eq.<m>` with `{status:'declined'}` directly. That path never touches swap_posts. Afterwards: the author's 'update own posts' USING requires status='open' (001:130) so she cannot withdraw or edit it; decline_swap_match raises match_not_proposed because status is already 'declined' (001:277-278); reveal_match raises match_not_proposed (001:315); the board RPC hides it from everyone else (001:164). The client only ever uses the RPC (index.html:1938-1944; the sole `.from('swap_matches')` is a select at :1882), so the raw path is pure attack surface.",
+  "failure": "Colleague B, party to a match with A, sends one REST PATCH from devtools. A's give-up post vanishes from the unit's board, shows only in A's own list, cannot be withdrawn, edited or re-proposed, and never comes back -- A's shift is effectively un-swappable until the owner fixes the row in SQL.",
+  "fix": "`drop policy \"parties decline matches\" on public.swap_matches; revoke update on public.swap_matches from authenticated;` (re-grant only `select (id, group_id, status, created_at)`). All declines then go through the security-definer RPC. Add an rls_audit assertion that a direct PATCH to status='declined' is 42501 for a party.",
+  "wageCore": false,
+  "slices": [
+   "swap-board",
+   "infra"
+  ],
+  "id": "security-02",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanism is real but the failure path is not reachable in the shipped app and the stated damage does not materialise. (1) Reachability: the client's only `.from('swap_matches')` call is the SELECT at index.html:1882; decline goes exclusively through `supabase.rpc('decline_swap_match')` at :1941, so the raw PATCH is never issued by the UI. Reaching it requires an authenticated group member who is already a leg-party of the match (is_match_party = leg_user = auth.uid(), 001:189-191) to hand-craft a REST call with their own JWT -- and because they are a leg-party, their own post is a leg too, so the attack strands the attacker's post as much as the victim's. (2) Damage overstated: the finding says A's shift becomes \"un-swappable until the owner fixes the row in SQL\". It does not -- swap_posts has no unique constraint on (author, shift_date) (only the invite_code unique at 001:33 and the housekeeping index at :342), the \"insert own posts\" policy checks only author + membership (001:120-122), and the client insert at index.html:1737 has no already-posted guard, so A re-posts the same give-up shift in one tap. Residual harm is one stale 'proposed' row in A's own list plus a 'declined' match card -- clutter, not loss of function. (3) Context: the swap board has zero real groups (density currently zero per CLAUDE.md) and is de-emphasised by owner decision, so a medium-severity griefing vector that needs a malicious co-worker in her own invite-code unit is not worth a session against the sole production Supabase project. What survives is a low hardening nit, not a medium finding: the `update (status)` grant at 001:233-235 and the \"parties decline matches\" policy at :202-205 are vestigial (the comment \"used by the ... decline flows\" at :231 is stale since the RPC landed), and dropping both is a safe two-line change to fold into the next swap-board migration -- the RPCs are security definer and need no grant."
+  ]
+ },
+ {
+  "title": "\"Apply to my calendar\" writes another member's unvalidated shift_meta into the victim's shifts",
+  "severity": "medium",
+  "where": "index.html:5280-5290 (doApplyPlan), specifically :5285",
+  "detail": "shift_meta is free-form jsonb authored by another member: the insert grant (001:142-143) and policy (:120-122) accept any JSON under 500 bytes, including scalars, and match_details passes it through verbatim. doApplyPlan pushes `{shiftType:meta.shiftType, hours:meta.hours, start:meta.start}` straight into saveDayShifts -> setShifts (index.html:2857-2858) with no coercion; sanitizeData (:953-986) runs only on load. Until the next load the hero and breakdown compute `shiftGross(baseRate, differentials[s.shiftType], s)` (:1290, :2646, :2775, :2795) with whatever `hours` was sent: a string -> NaN, 1e6 -> millions, a scalar shift_meta -> undefined -> NaN; `h+=s.hours` (:2646) concatenates. The debounced save persists the row; on the next open sanitizeData (:976-977) drops it. Display-only helpers are safe -- giveMetaLine (:4067-4071) and fmtTime12 (:4039-4040, TIME_RE :738) coerce, so the board render itself cannot be crashed this way.",
+  "failure": "After a confirmed pickup the nurse taps \"Add to my calendar\": the hero take-home reads \"$NaN\" (or an absurd figure) for the rest of the session, the malformed shift is synced to the cloud, and when she reopens the app the shift she just picked up is silently gone from her calendar.",
+  "fix": "In doApplyPlan (before the push at :5285) accept incoming.shift_meta only if it is an object with `typeof shiftType==='string'`, `Number(hours)` finite and in (0,24], and `start` absent or matching TIME_RE; otherwise toast the existing \"copy the plan instead\" message and return. Server side, add a CHECK on swap_posts.shift_meta guarded by jsonb_typeof so the cast never throws: `shift_meta is null or (jsonb_typeof(shift_meta)='object' and jsonb_typeof(shift_meta->'shiftType')='string' and jsonb_typeof(shift_meta->'hours')='number' and (shift_meta->>'hours')::numeric between 0.1 and 24)`. Neither change touches shiftGross/hourlyRate/computeNet or the sanitizeData coercions.",
+  "wageCore": false,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "security-03",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanics are described accurately (doApplyPlan at index.html:5285 pushes meta.shiftType/meta.hours uncoerced; sanitizeData :972-982 only runs on load), but the failure path is not reachable through the shipped UI and the realistic impact does not justify a medium security finding.\n\n1. The UI cannot produce malformed shift_meta. The only composer path (index.html:5049-5050) builds it from the poster's own calendar shift, which has already been through sanitizeData: shiftType is a string, hours is a finite number in (0,24], start is TIME_RE-valid. Reaching the failure requires a signed-in member of the victim's invite-code group to hand-craft a PostgREST insert (or an update while the post is still 'open' -- 001:126-130 freezes it once proposed), i.e. a hostile coworker bypassing the app.\n\n2. The attacker must then get the victim to match against that post, every leg must accept -- which reveals the attacker's display name to the victim -- and the victim must tap Apply. Before she does, the malformed meta is rendered right beside the button via giveMetaLine (:5473-5476, :4067-4071): a scalar meta reads \"Shift ×undefinedh\", hours 1e6 reads \"×1000000h\", a non-numeric string reads \"×abch\". The only variant that renders innocuously is a numeric string (\"12\"), and that one is harmless: shiftGross (:1131) coerces it in multiplication, hourlyRate (:1120) already guards a missing differential, and sanitizeData coerces hours to Number on reload so the shift survives -- the worst artifact is `h+=s.hours` (:2646) showing \"012\" in a day total until the next load.\n\n3. The persisted damage is self-healing by design: the blob save writes the row, and the next load's sanitizeData drops it -- the comment at :950-952 says this backstop exists precisely so string/NaN fields cannot corrupt calculations. \"The shift she just picked up is silently gone\" is a shift the attacker fabricated with garbage hours; there is no arrangement to lose, and the plan text tells her to confirm through the unit's normal process anyway. No anonymity break, no cross-user read, no persistent corruption, no wage-core involvement.\n\nA colleague with group membership who wants to harm a coworker can post a well-formed fake give and simply not show up; forging JSON to make her hero read $NaN for one session, at the cost of de-anonymizing themselves, is not a threat worth an owner session. The 3-line guard in doApplyPlan is reasonable hygiene and could be filed as a P3 nit, but not as a medium security item with a server-side CHECK migration against the only (production) project."
+  ]
+ },
+ {
   "title": "MAX_BLOB_BYTES is enforced only in the browser; user_data.data has no server-side size bound, so one signed-in account can fill the shared free-tier database",
   "severity": "high",
   "where": "supabase/migrations/000_core.sql:27 (data jsonb, no CHECK); confirmed live via pg_constraint — user_data carries only PRIMARY KEY, FOREIGN KEY and UNIQUE(user_id), no trigger. Client side: index.html:2464 (the only size check), index.html:2496 (pagehide flush) and index.html:2512 (retrySync) call saveToSupabase without it; saveToSupabase itself at index.html:1324-1344 does no size check.",
@@ -131,6 +236,71 @@
    "data-sync"
   ],
   "id": "security-05",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "ical-proxy accepts the public anon key: verify_jwt does not mean \"signed-in user\"",
+  "severity": "medium",
+  "where": "supabase/functions/ical-proxy/index.ts:8-9 and :46-59 (no role/user check anywhere in the handler); anon key shipped at index.html:616",
+  "detail": "The function's header comment and CLAUDE.md both claim `verify_jwt` restricts the proxy to signed-in users (\"an unauthenticated POST is 401, so it is not an open proxy\"). That is only true for a request with NO Authorization header. The Supabase gateway's verify_jwt checks the signature, and the project's anon key is itself a JWT signed with the same secret (`role: anon`, exp 2036). Live probe against the deployed function (version 1, byte-identical to the repo copy): no header -> 401 UNAUTHORIZED_NO_AUTH_HEADER; `Authorization: Bearer <anon key from index.html>` with `{\"url\":\"https://www.google.com/\"}` -> 422 not_a_calendar, i.e. the handler ran and fetched the upstream. The handler never inspects the JWT's `role`/`sub` (index.ts:46-59 go straight from body parsing to the allowlist), so anyone who has viewed the page source can drive it. The allowlist still holds (169.254.169.254 -> 403), so this is not an internal SSRF, but the second allowlist entry `/^www\\.google\\.com$/` (index.ts:22) has no path constraint, so the project is an anonymous relay for arbitrary google.com URLs and any public/secret Google Calendar feed, with `Access-Control-Allow-Origin: *` (index.ts:31) so it works from any web page.",
+  "failure": "A script with the anon key (harvested by any of the crawlers already hitting badgebudget.com) loops POSTs at a large public Google calendar feed: each call is a free-tier invocation plus up to 2MB of egress. The project hits the free-tier egress/compute cap, and every real nurse loses cloud sync and calendar sync until the next billing window, or the owner pays. The intended control (\"only a signed-in user can call this\") is simply not in force.",
+  "fix": "In the handler, before the allowlist: read `req.headers.get('Authorization')`, decode the bearer JWT payload (the gateway has already verified its signature) and return 401 unless `payload.role === 'authenticated'` and `payload.sub` is a UUID; or equivalently build a supabase client with that header and require `auth.getUser()` to return a user. Then correct the two comments (index.ts:8-9, CLAUDE.md Supabase section) and add the negative test to the ship ritual: `curl` with the anon key must return 401. While there, pin both Google entries to the `/calendar/ical/` path prefix so `www.google.com` is not a general-purpose relay.",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync",
+   "infra"
+  ],
+  "id": "security-08",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Previous account's secret feed URL survives a stalled sign-out and is shown/saved for the next account on the same device",
+  "severity": "medium",
+  "where": "index.html:2529-2540 handleSignOut (does not clear icalSub/icalUrl/hydratedUserId/icalSyncedForUser); index.html:2335-2340 resetToDefaults (same omission); index.html:2441 hydration effect `catch(_){ return; }`",
+  "detail": "The only place `icalSub`/`icalUrl` are cleared on sign-out is the SIGNED_OUT branch of onAuthStateChange (index.html:2417). `handleSignOut` exists precisely because that event \"won't fire if signOut stalled\" (its own comment) and it mirrors the branch for every field except the four iCal ones; `resetToDefaults` (which it calls) also skips them. So after a stalled sign-out (the WebKit lock deadlock this codebase already documents) user A's bearer credential stays in React state. When user B signs in on the same tab, hydrateFromCloud sets hydratedUserId, the effect at index.html:2431-2450 calls loadIcalSub(B); if that throws (network blip) it `return`s before the `setIcalSub(sub); setIcalUrl(...)` line, leaving A's URL and subscription object in place. Settings renders the CALENDAR SYNC block for any truthy `user` (index.html:4785) with `value={icalUrl}` (4790), 'Sync now' calls runIcalSync which resolves `url` from `icalSub.icalUrl` (3254), and 'Update link' calls saveIcalSub(user.id=B, url=A's) (3300). Even on the success path there is a render window between setHydratedUserId(B) and loadIcalSub resolving where B's Settings shows A's URL.",
+  "failure": "On a shared unit iPad: nurse A signs out (sign-out stalls, 3s timeout), nurse B signs in on flaky Wi-Fi so loadIcalSub fails. B opens Settings and sees A's secret Google Calendar address in the input; tapping 'Sync now' pulls A's shifts into B's questionnaire; tapping 'Update link' stores A's feed under B's account permanently, so B's app re-fetches A's private calendar on every open from then on.",
+  "fix": "Add `setIcalSub(null); setIcalUrl(''); setHydratedUserId(null); icalSyncedForUser.current = null;` to handleSignOut (or into resetToDefaults, which both sign-out paths call). In the hydration effect, make the catch clear state too (`setIcalSub(null); setIcalUrl('');`) instead of returning with whatever was there, and key the effect so a stale subscription from a different uid can never be reused: in runIcalSync/onSaveIcalUrl, refuse when `icalSub.userId !== user.id` (store the uid on the icalSub object). Harness: seed state as A, simulate a rejected signOut and a rejected loadIcalSub for B, assert the input is empty.",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync"
+  ],
+  "id": "security-09",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Google sign-in runs the OAuth *implicit* flow, not PKCE — tokens land in a URL fragment that stays one Back-press away in browser history",
+  "severity": "medium",
+  "where": "index.html:610-615 (createClient with no options) and index.html:4619-4625 (handleGoogleAuth / signInWithOAuth)",
+  "detail": "CLAUDE.md and the invite-link comment at index.html:1602-1605 (\"supabase-js PKCE puts its own `?code=` here\") both say the Google path is PKCE. It is not. The vendored supabase-js 2.45.4 (auth-js 2.65.0) sets `DEFAULT_AUTH_OPTIONS={autoRefreshToken:!0,persistSession:!0,detectSessionInUrl:!0,flowType:\"implicit\"}`, and `createClient(url, key)` at 610-615 passes no `auth` options, so `signInWithOAuth` sends no code_challenge and Supabase redirects back to `redirectTo` with `#access_token=…&refresh_token=…&provider_token=…` in the fragment. auth-js consumes that fragment and clears it with `window.location.hash=\"\"` (verified in the bundle; the PKCE branch instead does `searchParams.delete(\"code\")` + `history.replaceState`). The clear happens only after an awaited `/auth/v1/user` round-trip, i.e. normally after the page's `load` event — and I verified in the sandbox Chromium (iPhone 13 profile) that a post-load `location.hash=''` grows `history.length` 2→3 and `history.back()` restores the full `#access_token=…&refresh_token=…` URL. (When the round-trip beats `load`, Chromium converts it to a replacement and no entry is left — so it is timing-dependent, not guaranteed.) The fragment refresh token stays valid until the first rotation (~1h) or a server-side sign-out.",
+  "failure": "A nurse signs in with Google on a shared unit workstation or a borrowed phone, then walks away. Whoever next touches the browser presses Back (or opens History) and sees `badgebudget.com/#access_token=…&refresh_token=…` in the address bar; pasting that URL into a tab (or calling /auth/v1/token with the refresh_token) gives them her session and her pay history for up to an hour, and a colleague scrolling the shared machine's history days later still sees the tokens in the list even after they have expired.",
+  "fix": "Opt into PKCE: `window.supabase.createClient(url, key, {auth:{flowType:'pkce'}})` at index.html:611. auth-js then returns `?code=` and scrubs it with replaceState (no history entry, no token in any URL); `takeSwapInviteFromUrl` (1619-1629) already writes foreign params like `code` back byte-identical, so the invite flow is unaffected. Re-run the smoke suite's sign-in section and confirm a real Google sign-in on badgebudget.com still lands (the redirect allow list is unchanged). Then correct the PKCE claim in CLAUDE.md → Auth and the comment at 1602-1605.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "security-11",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "client_error batch can exceed the live `events_props_check` (< 2000 bytes) and is silently dropped after the ring buffer was already cleared",
+  "severity": "medium",
+  "where": "index.html:1443-1456 (flushClientErrors) with index.html:1385-1398 (track) and the live constraint `events_props_check CHECK (pg_column_size(props) < 2000)`",
+  "detail": "`flushClientErrors` ships up to `ERR_FLUSH_CAP`=8 entries, each with a 300-char `msg`, 80-char `src`, `t` and `line`. Measured in the live database: 8 entries at 300 chars = 3,116 jsonb bytes; 6×300 = 2,348; 8×200 = 2,316; 8×170 = 2,060 — all rejected by the CHECK; 5×300 = 1,964 and 8×120 = 1,676 pass. So any batch of ≥6 max-length entries, or 8 entries averaging ≳165 chars, fails with 23514. Max-length entries are the normal case for the errors that matter: `ErrorBoundary.componentDidCatch` (index.html:2160) logs `error` plus the JSON-stringified `errorInfo` (a componentStack of hundreds of chars, sliced to 500 in the buffer and 300 in the flush), and PostgREST error objects mirrored from `console.error('Load error:', error)` (1469) run 150-300 chars. `track()` swallows the rejection into `console.debug` (1396), which is not mirrored into the ring buffer, and `__takeErrorLog()` (567-572) already removed the batch before the send — so the loss is total and self-concealing. Live data so far: 11 client_error rows, max 526 bytes, max n=3, so nothing has been lost *yet*; the arithmetic is deterministic for the first bad session.",
+  "failure": "A nurse hits a React render crash loop (ErrorBoundary fires several times) or a run of failed cloud loads during one visit. On her next app open the flush builds an 8-entry, ~3 KB batch, Postgres rejects it, the ring buffer is already empty, and the owner's `select … where name='client_error'` shows nothing for exactly the session that needed diagnosing — worse than before the telemetry existed, because the local buffer was also drained.",
+  "fix": "Budget the payload in `flushClientErrors` before calling `track`: cut per-entry `msg` to ~160 chars and drop the oldest entries while `JSON.stringify(props).length > ~1700` (jsonb adds ~5-10% over the text form, so 1,700 text bytes stays under 2,000). Optionally also widen the CHECK in a `004` migration (e.g. `< 4000`) so a stale client can't lose a batch either. Add a smoke assertion that seeds 8 long entries into `scrubpayErrors` and asserts the resulting event body is under the cap.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "security-12",
   "lens": "security",
   "status": "confirmed",
   "dissent": []

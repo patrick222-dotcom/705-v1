@@ -60,7 +60,7 @@
   "wageCore": false,
   "title": "Paystub import turns a premium-only earnings row into a negative differential",
   "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "wage-math-07",
@@ -87,7 +87,7 @@
   "wageCore": false,
   "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
   "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "wage-math-10",
@@ -96,7 +96,7 @@
   "wageCore": false,
   "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
   "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "wage-math-11",
@@ -114,7 +114,7 @@
   "wageCore": false,
   "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
   "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "wage-math-13",
@@ -159,7 +159,7 @@
   "wageCore": false,
   "title": "Raw 'parties decline matches' UPDATE policy bypasses decline_swap_match and strands the other party's post as 'proposed' forever",
   "where": "supabase/migrations/001_swap_board.sql:202-205 (policy), :233-235 (update (status) grant), :130 and :277-278 (why it is unrecoverable); live policy confirmed via pg_policies",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-03",
@@ -168,7 +168,7 @@
   "wageCore": false,
   "title": "\"Apply to my calendar\" writes another member's unvalidated shift_meta into the victim's shifts",
   "where": "index.html:5280-5290 (doApplyPlan), specifically :5285",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-04",
@@ -213,7 +213,7 @@
   "wageCore": false,
   "title": "ical-proxy accepts the public anon key: verify_jwt does not mean \"signed-in user\"",
   "where": "supabase/functions/ical-proxy/index.ts:8-9 and :46-59 (no role/user check anywhere in the handler); anon key shipped at index.html:616",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-09",
@@ -222,7 +222,7 @@
   "wageCore": false,
   "title": "Previous account's secret feed URL survives a stalled sign-out and is shown/saved for the next account on the same device",
   "where": "index.html:2529-2540 handleSignOut (does not clear icalSub/icalUrl/hydratedUserId/icalSyncedForUser); index.html:2335-2340 resetToDefaults (same omission); index.html:2441 hydration effect `catch(_){ return; }`",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-10",
@@ -240,7 +240,7 @@
   "wageCore": false,
   "title": "Google sign-in runs the OAuth *implicit* flow, not PKCE — tokens land in a URL fragment that stays one Back-press away in browser history",
   "where": "index.html:610-615 (createClient with no options) and index.html:4619-4625 (handleGoogleAuth / signInWithOAuth)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-12",
@@ -249,7 +249,7 @@
   "wageCore": false,
   "title": "client_error batch can exceed the live `events_props_check` (< 2000 bytes) and is silently dropped after the ring buffer was already cleared",
   "where": "index.html:1443-1456 (flushClientErrors) with index.html:1385-1398 (track) and the live constraint `events_props_check CHECK (pg_column_size(props) < 2000)`",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "security-13",
@@ -699,7 +699,7 @@
   "wageCore": false,
   "title": "An open Add-Shift sheet's stale in-memory draft can silently overwrite a same-day edit just pulled from another device",
   "where": "AddShiftSheet's list/events/note state is captured once at mount from props (index.html:4076, 4083-4084) and never resynced; saveDayShifts unconditionally overwrites shifts[dateKey]/dayEvents[dateKey]/notes[dateKey] with that draft (index.html:2857-2874); the cross-device poll can apply a newer remote blob into the same state at any time the sheet is open (applyData at 2317/2325-2326 via the 15s interval, focus, and visibilitychange refetch at index.html:2547-2574)",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "data-integrity-02",
@@ -726,7 +726,7 @@
   "wageCore": false,
   "title": "A shift that moved outside the 60-day-back/366-day-forward sync window is indistinguishable from a deleted shift, and the confirm screen states it as certain",
   "where": "index.html:1545-1576 (icsPlanFromExisting removal logic, esp. `if(!inWindow(rec.dateKey)) return;`), 826-864 (parseICSSchedule drops out-of-window events before the caller ever sees them), 3828-3834 (IcsImportSheet: \"Removing … — gone from your calendar feed.\")",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "data-integrity-05",
