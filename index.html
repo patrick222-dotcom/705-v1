@@ -484,6 +484,18 @@
 </style>
 </head>
 <body>
+<!-- No-JS fallback: the whole app is JS-rendered, so without this a crawler or a JS-disabled
+     browser sees an empty shell (one word of body text) — which is also why Google's brand
+     verification flagged the home page as "behind a login page". Real content + a working link,
+     self-contained (no external resources, CSP-safe). Copy mirrors the <meta name="description">. -->
+<noscript>
+  <div style="max-width:640px;margin:0 auto;padding:48px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#16181F;line-height:1.6">
+    <h1 style="font-size:26px;margin:0 0 12px">BadgeBudget</h1>
+    <p style="font-size:16px;margin:0 0 16px">Know what a shift is really worth before you pick it up. BadgeBudget projects take-home pay for nurses — differentials, overtime, PTO and taxes — and runs an anonymous shift-swap board.</p>
+    <p style="font-size:15px;color:#52514e;margin:0 0 16px">This is an interactive app and needs JavaScript. Please enable JavaScript, then reload this page to get started.</p>
+    <p style="font-size:14px;margin:0"><a href="/privacy.html" style="color:#1F7A55">Privacy policy</a></p>
+  </div>
+</noscript>
 <div id="splash"><div class="logo"><span class="wm">badgebudget<span class="dot"></span></span></div><div class="spin"></div></div>
 <div id="root"></div>
 
