@@ -53,7 +53,7 @@ const newPage = async (browser, url, { seed = true } = {}) => {
   if (seed) {
     await page.addInitScript(([k, v]) => {
       try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
-    }, [STORAGE_KEY, SEEDED_STATE]);
+    }, [STORAGE_KEY, seed === true ? SEEDED_STATE : seed]);
   }
   return { ctx, page, errors, failures, url };
 };
@@ -104,6 +104,183 @@ const run = async () => {
     ok('wage: computeNet FICA on gross, income tax on gross-pretax',
       near(wage.net.fica, 76.5) && near(wage.net.fed, 108) && near(wage.net.st, 45) && near(wage.net.net, 620.5),
       `fica=${wage.net.fica} fed=${wage.net.fed} st=${wage.net.st} net=${wage.net.net}`);
+
+    /* ---- job record + integer cents: the structural spine ----------------------------
+       Fixtures are Courtney's real Main Line Health and Aya Healthcare stubs, reconciled to
+       the cent against the printed earnings lines. See docs/pay-model-research-2026-09.md. */
+    const spine = await page.evaluate(() => {
+      const t0 = { ficaType: 'standard', federalTaxRate: 0, stateTaxRate: 0,
+        pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+      const legacy = sanitizeData({
+        setupComplete: true, baseRate: 70.81,
+        shifts: { '2025-12-08': [{ id: 1, shiftType: 'night', hours: 12, bonusType: 'none' }] },
+      });
+      const job = (legacy.jobs || [])[0] || {};
+      return {
+        /* 1. the float the engine must stop producing: 70.81 x 47.10 = 3335.15 on the stub */
+        floatProduct: 70.81 * 47.10,
+        centsProduct: shiftGrossCents(7081, null, { hours: 47.10, bonusType: 'none' }),
+        /* 2. MLH prints 872.38 for 12.50h at 69.79 — half-up at the line, not truncation */
+        halfUp: shiftGrossCents(6979, null, { hours: 12.5, bonusType: 'none' }),
+        /* 3. computeNet takes a taxable/non-taxable split; Aya week 5/15-5/21/2022 */
+        split: computeNet({ taxable: 3096, nonTaxable: 1442 }, t0),
+        /* 4. a bare number still means "all taxable" so every existing call is unchanged */
+        legacyScalar: computeNet(3096, t0),
+        /* 5. a legacy blob migrates to exactly one job carrying the user-level rate */
+        jobCount: (legacy.jobs || []).length,
+        jobRate: job.baseRate,
+        workPeriod: job.workPeriod,
+        payFrequency: job.payFrequency,
+        jobActive: job.active,
+        /* 6. every shift is stamped with that job */
+        stamped: legacy.shifts['2025-12-08'][0].jobId === job.id,
+        /* 7. withholding lines round to the cent, and the rows sum to the total exactly */
+        withhold: computeNet(1590.94, { ficaType:'standard', federalTaxRate:11, stateTaxRate:4.25,
+          pretaxDeductions:95.5, posttaxDeductions:12.75,
+          customWithholdings:[{name:'Union dues',amount:2.5,type:'percent'},{name:'Parking',amount:33.33,type:'dollar'}] }),
+        /* 8. hours group by job and never combine across employers */
+        grouped: groupHoursByJob(
+          { A: { id: 'A' }, B: { id: 'B' } },
+          { '2025-12-08': [{ jobId: 'A', hours: 30, shiftType: 'base', bonusType: 'none' },
+                           { jobId: 'B', hours: 30, shiftType: 'base', bonusType: 'none' }] },
+          ['2025-12-08']),
+      };
+    });
+    ok('cents: the engine no longer multiplies floats',
+      spine.floatProduct !== 3335.151 && spine.centsProduct === 333515,
+      `float=${spine.floatProduct} cents=${spine.centsProduct}`);
+    ok('cents: a half-cent rounds up, matching the printed stub line',
+      spine.halfUp === 87238, `expected 87238 (872.375 -> 872.38), got ${spine.halfUp}`);
+    ok('jobs: non-taxable money is never taxed',
+      near(spine.split.fica, 236.84), `fica=${spine.split.fica} (7.65% of 3096, not of 4538)`);
+    ok('jobs: non-taxable money passes straight through to net',
+      near(spine.split.net, spine.legacyScalar.net + 1442),
+      `split.net=${spine.split.net} scalar.net=${spine.legacyScalar.net}`);
+    ok('jobs: a bare gross still means all-taxable (every old call unchanged)',
+      near(spine.legacyScalar.gross, 3096) && near(spine.legacyScalar.nonTaxable || 0, 0));
+    ok('jobs: a legacy blob migrates to exactly one job', spine.jobCount === 1);
+    ok('jobs: the migrated job carries the user-level rate', spine.jobRate === 70.81);
+    ok('jobs: it defaults to the 40-hour workweek', spine.workPeriod === '40',
+      `got ${spine.workPeriod}`);
+    ok('jobs: and to a biweekly pay frequency', spine.payFrequency === 'biweekly');
+    ok('jobs: the migrated job is active', spine.jobActive === true);
+    ok('jobs: every legacy shift is stamped with it', spine.stamped);
+    ok('cents: a withholding line rounds to the cent, as payroll does',
+      spine.withhold.fed === 164.5, `expected 164.50 (1495.44 x 11% = 164.4984), got ${spine.withhold.fed}`);
+    ok('cents: Breakdown rows sum to the deduction total exactly',
+      Math.round((spine.withhold.pre + spine.withhold.fed + spine.withhold.fica + spine.withhold.st
+        + spine.withhold.post + spine.withhold.cw) * 100) === Math.round(spine.withhold.ded * 100),
+      `rows=${(spine.withhold.pre+spine.withhold.fed+spine.withhold.fica+spine.withhold.st+spine.withhold.post+spine.withhold.cw).toFixed(2)} ded=${spine.withhold.ded.toFixed(2)}`);
+    /* ---- the unpaid meal break -----------------------------------------------------
+       Main Line Health schedules a 12.5-hour block, auto-deducts 30 minutes, and pays 12.0.
+       So the "12 hours" a nurse types is ALREADY net of the meal — the deduction is not
+       missing from our math, it is baked into her input. What we cannot express is the
+       exception: submitting "received no lunch" pays the full 12.5. That is an ADD-BACK.
+       'deducted' is the other shape, where the logged hours are the scheduled block and the
+       employer subtracts the meal — the arrangement behind most healthcare meal-break
+       litigation. Both exist because this varies by employer; only 'included' is proven. */
+    const meal = await page.evaluate(() => {
+      const J = (o) => makeJob({ id: 'job-1', baseRate: 65.15, ...o });
+      const mk = (o) => ({ shiftType: 'base', bonusType: 'none', customBonus: 0, isOvertime: false, jobId: 'job-1', hours: 12, ...o });
+      const inc = J({}), ded = J({ mealBreakMode: 'deducted' });
+      const days = (n) => Array.from({ length: n }, (_, i) => `2025-12-${String(7 + i).padStart(2, '0')}`);
+      return {
+        defaults: { mins: inc.mealBreakMins, mode: inc.mealBreakMode },
+        /* the normal case: what she types is what she is paid, so nothing moves */
+        plain: paidHoursOf(mk({}), inc),
+        noLunch: paidHoursOf(mk({ noMeal: true }), inc),
+        /* the other shape: the block is logged and the meal comes off it */
+        dedPlain: paidHoursOf(mk({ hours: 12.5 }), ded),
+        dedNoLunch: paidHoursOf(mk({ hours: 12.5, noMeal: true }), ded),
+        /* a shift can never be worth less than zero hours, however the config is set */
+        dedTiny: paidHoursOf(mk({ hours: 0.25 }), ded),
+        /* gross follows paid hours, not logged hours */
+        grossPlain: shiftGrossCents(6515, null, mk({}), inc),
+        grossNoLunch: shiftGrossCents(6515, null, mk({ noMeal: true }), inc),
+        /* and the extra half hour counts toward the overtime threshold */
+        otWithout: overtimePremiumCents(J({ differentials: {} }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({})]])), days(7)),
+        otWith: overtimePremiumCents(J({ differentials: {} }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ noMeal: true })]])), days(7)),
+      };
+    });
+    ok('meal: defaults are 30 minutes, already-deducted — so nothing moves by default',
+      meal.defaults.mins === 30 && meal.defaults.mode === 'included',
+      JSON.stringify(meal.defaults));
+    ok('meal: a logged 12h shift still pays 12h', meal.plain === 12, `got ${meal.plain}`);
+    ok('meal: "no lunch" pays the full 12.5h block', meal.noLunch === 12.5, `got ${meal.noLunch}`);
+    ok('meal: on a deduct employer a logged 12.5h block pays 12h',
+      meal.dedPlain === 12, `got ${meal.dedPlain}`);
+    ok('meal: and "no lunch" cancels the deduction', meal.dedNoLunch === 12.5, `got ${meal.dedNoLunch}`);
+    ok('meal: paid hours never go negative', meal.dedTiny === 0, `got ${meal.dedTiny}`);
+    ok('meal: gross follows PAID hours, not logged hours',
+      meal.grossPlain === 78180 && meal.grossNoLunch === 81438,
+      `plain=${meal.grossPlain} noLunch=${meal.grossNoLunch} (12.5 x 65.15 = 814.375 -> 814.38)`);
+    ok('meal: four 12h shifts are not overtime, but four missed lunches are',
+      meal.otWithout.otHours === 8 && meal.otWith.otHours === 10,
+      `without=${meal.otWithout.otHours} with=${meal.otWith.otHours} (4 x 12.5 = 50h)`);
+
+    /* ---- overtime derived from the work period ------------------------------------
+       Fixture is the Main Line Health workweek reconstructed to the cent from the
+       2023-09-30 stub: 24.50h at $65.15 + 16.75h at $69.79 = 41.25h, a printed FLSA
+       regular rate of $67.034424, and 1.25h of overtime. MLH pays straight time on all
+       hours plus a half-time premium on the regular rate, which is 29 CFR 778.115. */
+    const ot = await page.evaluate(() => {
+      const J = (o) => makeJob({ id: 'job-1', baseRate: 65.15, ...o });
+      const diffs = { base: { type: 'dollar', amount: 0 }, eve: { type: 'dollar', amount: 4.64 } };
+      const mk = (o) => ({ shiftType: 'base', bonusType: 'none', customBonus: 0, isOvertime: false, jobId: 'job-1', ...o });
+      const days = (n) => Array.from({ length: n }, (_, i) => `2025-12-${String(7 + i).padStart(2, '0')}`);
+      const week = days(7), fortnight = days(14);
+      return {
+        /* MLH: 41.25h over a 40-hour workweek */
+        mlh: overtimePremiumCents(J({ differentials: diffs }), {
+          '2025-12-07': [mk({ shiftType: 'base', hours: 12 }), mk({ shiftType: 'eve', hours: 4.75 })],
+          '2025-12-08': [mk({ shiftType: 'base', hours: 12 }), mk({ shiftType: 'eve', hours: 12 })],
+          '2025-12-09': [mk({ shiftType: 'base', hours: 0.5 })],
+        }, week),
+        /* TP-001 as it should have been written: $30 base + $5 diff, 48-hour week */
+        tp001: overtimePremiumCents(
+          J({ baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } } }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ shiftType: 'night', hours: 12 })]])), week),
+        tp001Straight: days(4).reduce((a, d) => a + shiftGrossCents(3000, { type: 'dollar', amount: 5 }, { hours: 12, bonusType: 'none' }), 0),
+        /* three 12s = 36h: no overtime on a 40-hour week... */
+        under40: overtimePremiumCents(J({ differentials: diffs }),
+          Object.fromEntries(days(3).map((d) => [d, [mk({ hours: 12 })]])), week),
+        /* ...but 4 hours a shift under the section 7(j) daily-8 rule */
+        under40on880: overtimePremiumCents(J({ workPeriod: '8-80', differentials: diffs }),
+          Object.fromEntries(days(3).map((d) => [d, [mk({ hours: 12 })]])), fortnight),
+        /* a hand-flagged shift is already paid 1.5x by shiftGross; never charge it twice */
+        flagged: overtimePremiumCents(J({ differentials: diffs }),
+          Object.fromEntries(days(4).map((d, i) => [d, [mk({ hours: 12, isOvertime: i === 3 })]])), week),
+        /* the employer that uses the common shortcut: half of BASE, not of the regular rate */
+        shortcut: overtimePremiumCents(
+          J({ baseRate: 30, otMethod: 'base-plus-diff', differentials: { night: { type: 'dollar', amount: 5 } } }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ shiftType: 'night', hours: 12 })]])), week),
+      };
+    });
+    ok('ot: the FLSA regular rate is straight-time remuneration over hours worked',
+      Math.round(ot.mlh.periods[0].regularRateCents * 100) === 670342,
+      `MLH printed $67.034424/hr; we compute $${(ot.mlh.periods[0].regularRateCents / 100).toFixed(6)}`);
+    ok('ot: hours past 40 in the workweek are the overtime hours',
+      ot.mlh.otHours === 1.25, `got ${ot.mlh.otHours}`);
+    ok('ot: the premium is half the regular rate, straight time already paid',
+      ot.mlh.premiumCents === 4190, `expected 4190 (0.5 x 67.0342 x 1.25), got ${ot.mlh.premiumCents}`);
+    ok('ot: TP-001 corrected — $30 + $5 over 48h is $1,820, not the $1,830 in the findings file',
+      ot.tp001.periods[0].regularRateCents === 3500 && ot.tp001Straight + ot.tp001.premiumCents === 182000,
+      `rate=${ot.tp001.periods[0].regularRateCents} total=${ot.tp001Straight + ot.tp001.premiumCents}`);
+    ok('ot: three 12s are not overtime on a 40-hour workweek',
+      ot.under40.otHours === 0 && ot.under40.premiumCents === 0);
+    ok('ot: but 8/80 makes every 12-hour shift throw 4 daily overtime hours',
+      ot.under40on880.otHours === 12, `got ${ot.under40on880.otHours}`);
+    ok('ot: a hand-flagged shift is never paid the premium twice',
+      ot.flagged.otHours === 0, `8h over 40 all sit inside the flagged shift; got ${ot.flagged.otHours}`);
+    ok('ot: base-plus-diff pays half of BASE, not half the regular rate',
+      ot.shortcut.premiumCents === 12000, `expected 12000 (0.5 x $30 x 8h), got ${ot.shortcut.premiumCents}`);
+
+    ok('jobs: hours group per job and never combine across employers',
+      spine.grouped && spine.grouped.A && spine.grouped.B
+        && spine.grouped.A.hours === 30 && spine.grouped.B.hours === 30,
+      JSON.stringify(spine.grouped));
 
     /* ---- new: money redaction on the error path -------------------------------------- */
     const red = await page.evaluate(() => ({
@@ -410,6 +587,92 @@ const run = async () => {
     ok('ops: the gate leaks no row content', !/Reply to:/.test(body));
     ok('ops: gate raises no page error', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 8. overtime reaches the screen, and the screen explains it --------------------- */
+  if (want(8)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    /* Four 12s inside one workweek: 48 hours at $30 + $5, the corrected TP-001 case. Straight
+       time is $1,680 and the FLSA premium is $140, so gross must read $1,820. */
+    const shifts = {};
+    [0, 1, 2, 3].forEach((n) => { shifts[day(n)] = [{ id: n, shiftType: 'night', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false }]; });
+    const seed = {
+      setupComplete: true, baseRate: 30, payPeriodStart: day(0),
+      federalTaxRate: 0, stateTaxRate: 0, ficaType: 'percent', ficaWithholdingPercent: 0,
+      pretaxDeductions: 0, posttaxDeductions: 0,
+      differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+      shifts,
+    };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+    const g = await page.evaluate(() => {
+      const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+      return {
+        gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
+        note: txt(document.querySelector('.bd-note')),
+      };
+    });
+    ok('ot: a 48-hour week now projects overtime instead of nothing',
+      g.gross === 'Gross $1,820', `got "${g.gross}" (straight time alone is $1,680)`);
+    ok('ot: the breakdown says how much, over what threshold, at what rate',
+      /overtime/i.test(g.note) && /8 hrs past 40 in a week/.test(g.note) && /\$35\.00\/hr/.test(g.note), g.note);
+    ok('ot: and tells her employers differ, rather than asserting she is owed it',
+      /check it against your stub/i.test(g.note), g.note);
+    ok('ot: no page errors driving it', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 9. the missed lunch reaches the screen ---------------------------------------- */
+  if (want(9)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const base = {
+      setupComplete: true, baseRate: 65.15, payPeriodStart: day(0),
+      federalTaxRate: 0, stateTaxRate: 0, ficaWithholdingType: 'percent', ficaWithholdingPercent: 0,
+      pretaxDeductions: 0, posttaxDeductions: 0,
+    };
+    const shift = (extra) => ({ id: 1, shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false, ...extra });
+    const read = async (seed) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const out = await page.evaluate(() => {
+        const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+        return {
+          gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
+          hrs: txt([...document.querySelectorAll('.hero .chip')].find((c) => /hrs/.test(c.textContent))),
+        };
+      });
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      await ctx.close();
+      return { ...out, errors: real };
+    };
+    const got = await read({ ...base, shifts: { [day(0)]: [shift({})] } });
+    const missed = await read({ ...base, shifts: { [day(0)]: [shift({ noMeal: true })] } });
+
+    ok('meal: an ordinary 12h shift is unchanged — the default moves nothing',
+      got.gross === 'Gross $782' && got.hrs === '12 hrs · 1 shifts', `${got.gross} / ${got.hrs}`);
+    ok('meal: a missed lunch pays the full 12.5h block',
+      missed.gross === 'Gross $814' && missed.hrs === '12.5 hrs · 1 shifts', `${missed.gross} / ${missed.hrs}`);
+    ok('meal: no page errors either way',
+      got.errors.length === 0 && missed.errors.length === 0, (got.errors[0] || missed.errors[0] || ''));
+
+    /* the control itself has to exist, or the flag is unreachable in the real app */
+    const { ctx, page } = await newPage(browser, url, { seed: { ...base, shifts: {} } });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.fab', { timeout: 25000 });
+    await page.locator('.fab').first().click();
+    await page.waitForSelector('.sheet', { timeout: 15000 });
+    const sheet = await page.evaluate(() => document.body.innerText);
+    ok('meal: the Add Shift sheet offers the toggle, worded as what happened',
+      /MEAL BREAK/.test(sheet) && /never got my 30-minute lunch/.test(sheet),
+      (sheet.match(/never got[^\n]*/) || ['<missing>'])[0]);
     await ctx.close();
   }
 
