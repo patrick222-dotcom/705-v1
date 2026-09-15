@@ -217,7 +217,7 @@ if (pending.length) {
         `plausible-sounding finding that wastes the owner's time is worse than a missed nit.\n\n` +
         `ANGLE: ${angle}\n\n` +
         `KNOWN (already in the backlog -- a finding that restates one of these is refuted):\n- ${KNOWN.join('\n- ')}\n\n` +
-        `FINDING ${f.id} [${f.severity}]: ${f.title}\nWHERE: ${f.where}\n${body}\n\n` +
+        `FINDING ${f.id} [${f.severity}]${f.title ? ': ' + f.title : ''}\nWHERE: ${f.where || 'given in the finding file'}\n${body}\n\n` +
         `Scope: read ONLY the cited location(s) with roughly 80 lines of context each side (sed -n 'A,Bp' ` +
         `index.html), plus at most three targeted greps for identifiers the finding names. Do not read ` +
         `index.html end to end, do not run the test suite. A verdict from the cited code and its immediate ` +
@@ -253,11 +253,12 @@ if (wants('3')) {
     const unv = mine.filter((f) => f.severity !== 'low' && statusOf(f.id) === 'unverified')
     const lows = mine.filter((f) => f.severity === 'low')
     const missing = unreviewed.filter((c) => c.startsWith(l.key + ':'))
-    const line = (f) => `- ${f.id} [${f.severity}] ${f.title} (${f.where})`
+    const line = (f) => `- ${f.id} [${f.severity}]` + (f.title ? ` ${f.title}` : '') + (f.where ? ` (${f.where})` : '')
     return agent(
       `You are the ${l.key} lens of the BadgeBudget council. Score this lens 1-10 for the app as it ` +
       `stands; 8 is the bar the council holds.\n\n` +
-      `CONFIRMED after adversarial review (${conf.length}) -- read ${runDir}/findings/<id>.json for any you need in full:\n${conf.map(line).join('\n') || '(none)'}\n\n` +
+      `Titles and locations for every id below are in ${runDir}/index.json (read it first); the full text of any finding is ${runDir}/findings/<id>.json.\n\n` +
+      `CONFIRMED after adversarial review (${conf.length}):\n${conf.map(line).join('\n') || '(none)'}\n\n` +
       `REJECTED by the refuters (${rej.length}) -- these do not count against the app:\n${rej.map((f) => `- ${f.id} ${f.title}`).join('\n') || '(none)'}\n\n` +
       `UNVERIFIED (${unv.length}) -- refuters did not complete; count as open, not confirmed:\n${unv.map(line).join('\n') || '(none)'}\n\n` +
       `LOW severity, not agent-verified by design (${lows.length}) -- backlog candidates, weigh lightly:\n${lows.map(line).join('\n') || '(none)'}\n\n` +

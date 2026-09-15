@@ -93,6 +93,13 @@ function writeDerived({ reviews, dedups, verdicts }) {
     }
   }
   writeJson(P('confirmed.json'), confirmed);
+  /* index.json: one compact row per merged finding, with its current status -- what the scorers
+     read for titles and locations, so the workflow args stay small. */
+  const index = [];
+  for (const lens of LENSES) for (const f of (dedups[lens]?.findings || []))
+    index.push({ id: f.id, lens, severity: f.severity, wageCore: !!f.wageCore, title: f.title, where: f.where,
+      status: f.severity === 'low' ? 'low-unverified' : statusOf(verdicts, f.id) });
+  writeJson(P('index.json'), index);
 }
 
 function summarize({ reviews, dedups, verdicts, scores }) {
@@ -115,8 +122,10 @@ if (cmd === 'args') {
   const haveReviews = CELLS.every((c) => reviews[c]);
   const unreviewed = CELLS.filter((c) => !reviews[c]);
   const rawCounts = Object.fromEntries(LENSES.map((l) => [l, Object.values(reviews).filter((r) => r.lens === l).reduce((n, c) => n + c.findings.length, 0)]));
+  /* Compact on purpose: a full index with titles and locations is ~50KB, which is too large to pass
+     as Workflow args by hand. Refuters and scorers read findings/<id>.json and index.json instead. */
   const index = Object.fromEntries(Object.entries(dedups).map(([lens, d]) => [lens,
-    d.findings.map(({ id, title, severity, where, wageCore }) => ({ id, title, severity, where, wageCore }))]));
+    d.findings.map(({ id, severity, wageCore }) => ({ id, severity, wageCore }))]));
   const flags = Object.fromEntries(Object.entries(verdicts).map(([k, v]) => [k, !!v.refuted]));
   process.stdout.write(JSON.stringify({ runDir: run, upTo, haveReviews, unreviewed, rawCounts, dedups: index, verdicts: flags }) + '\n');
 }

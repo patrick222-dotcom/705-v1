@@ -1,0 +1,1199 @@
+[
+ {
+  "id": "wage-math-00",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so it disagrees with the Breakdown and with Gross − Take-home whenever flat deductions exceed gross",
+  "where": "/home/user/705-v1/index.html:3487 (chip reads calc.ded); computeNet 1231-1255 (ded uncapped, pre/post capped for display, flat-dollar custom withholdings never capped); Breakdown 3980-3990 (also not guarded by calc.hours>0 the way the Keep chip is)",
+  "status": "confirmed"
+ },
+ {
+  "id": "wage-math-01",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "A blanked or garbage multiplier differential is coerced to 0×, silently pricing every shift of that type at $0",
+  "where": "/home/user/705-v1/index.html:1046-1047 (sanitizeData: `amount: isFinite(amt) ? amt : 0` regardless of type); 4715 (Settings multiplier NumInput with min={0}); 4016-4023 (NumInput commits `min` on an empty field); 1121 (hourlyRate: `base * diff.amount`)",
+  "status": "confirmed"
+ },
+ {
+  "id": "wage-math-02",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Independently rounded chips: Gross − Taxes ≠ Take-home by $1 in ~11% of pay periods; Breakdown rows drift the same way",
+  "where": "/home/user/705-v1/index.html:3484-3487 (hero: fmt(calc.net), fmt(calc.gross), fmt(calc.ded) each rounded separately); 3982-3987 and 4006 (Breakdown: six rows and the take-home each rounded separately); fmt at 1116",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-03",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": true,
+  "title": "Pattern lab and calendar price a toggled-off differential differently",
+  "where": "/home/user/705-v1/index.html:1206-1213 (patternCellShiftType resolves a 'night'/weekend cell to 'base' unless differentials[k].active); 2646 (statOf) and 2795 (calc) call shiftGross(baseRate, differentials[s.shiftType], s) with no active check; hourlyRate 1119-1124",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-04",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Every '~take-home' preview ignores percent custom withholdings that computeNet deducts (and sampleNet re-implements the tax model without them)",
+  "where": "/home/user/705-v1/index.html:2818-2820 (keepRatio = 1 − (federal+state+FICA)/100 only); computeNet 1243 (percent customWithholdings taken from every marginal dollar); consumers: 4105/4245-4248 (Add-Shift preview, ≈$/hr, goal %), 3919/3933 (calendar cells), 3434/3512 (weekend-night nudge), 4747 (Settings goal reverse); sampleNet 3416-3424",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-05",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Year view prints gross as a bare '$' figure while the month cells it opens into print estimated take-home",
+  "where": "/home/user/705-v1/index.html:3970-3971 (YearList: fmt(mm.g), no qualifier); 2769-2780 (yearMonths sums shiftGross + PTO gross); 3933 and 3580 (month cells print '~'+fmt(t.g*keepRatio) under the disclaimer 'Day amounts are estimated take-home')",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-06",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Paystub import turns a premium-only earnings row into a negative differential",
+  "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
+  "status": "unverified"
+ },
+ {
+  "id": "wage-math-07",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "'Pick up a weekend night?' card prices a differential the nurse has switched off or deleted",
+  "where": "index.html:3434 (sampleWeekendNet) and index.html:3512-3516 (whatif card guard)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-08",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Hero hours chip renders the raw float sum, so tenth-hour shifts show '36.900000000000006 hrs'",
+  "where": "index.html:3489 (`{calc.hours} hrs · {periodShiftCount} shifts`) vs index.html:3496 and index.html:3970 which use toFixed",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-09",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
+  "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
+  "status": "unverified"
+ },
+ {
+  "id": "wage-math-10",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
+  "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
+  "status": "unverified"
+ },
+ {
+  "id": "wage-math-11",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Goal line prints \"about 1 years\" when a goal takes 26-27 paychecks",
+  "where": "index.html:4339 (fmtMonths inside PatternLab)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-12",
+  "lens": "wage-math",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
+  "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
+  "status": "unverified"
+ },
+ {
+  "id": "wage-math-13",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "≈$/hr take-home is computed from the dollar-rounded net, so identical rates show different cents for different lengths",
+  "where": "index.html:4105 (previewNet = Math.round(...)) and :4246 (fmt2(previewNet/hours))",
+  "status": "low-unverified"
+ },
+ {
+  "id": "wage-math-14",
+  "lens": "wage-math",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Goal with target 0 renders 'Infinity% (≈0 shifts)' in the sheet preview, then vanishes on reload",
+  "where": "index.html:4248 (previewNet/g.target) and :4686 (updGoalTarget → parseFloat(v)||0)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-00",
+  "lens": "security",
+  "severity": "critical",
+  "wageCore": false,
+  "title": "poster_key is reversible: member user_ids and the board creator's id are readable, and the salt is a public constant",
+  "where": "supabase/migrations/001_swap_board.sql:59-69 (\"see co-members\" policy + full-table grants on swap_members and swap_groups), :158 (poster_key derivation); live-verified column grants on project mnnlgcxnvodjwlhhiphq",
+  "status": "confirmed"
+ },
+ {
+  "id": "security-01",
+  "lens": "security",
+  "severity": "high",
+  "wageCore": false,
+  "title": "propose_swap never checks the caller is a leg: any member can reserve and hide any two posts on the board",
+  "where": "supabase/migrations/001_swap_board.sql:245-265 (propose_swap); live pg_get_functiondef is identical",
+  "status": "confirmed"
+ },
+ {
+  "id": "security-02",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Raw 'parties decline matches' UPDATE policy bypasses decline_swap_match and strands the other party's post as 'proposed' forever",
+  "where": "supabase/migrations/001_swap_board.sql:202-205 (policy), :233-235 (update (status) grant), :130 and :277-278 (why it is unrecoverable); live policy confirmed via pg_policies",
+  "status": "unverified"
+ },
+ {
+  "id": "security-03",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "\"Apply to my calendar\" writes another member's unvalidated shift_meta into the victim's shifts",
+  "where": "index.html:5280-5290 (doApplyPlan), specifically :5285",
+  "status": "unverified"
+ },
+ {
+  "id": "security-04",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": false,
+  "title": "anon keeps EXECUTE on all eight RPCs and full column grants on all six swap tables; join_swap_group is an unauthenticated invite-code oracle",
+  "where": "supabase/migrations/001_swap_board.sql:82-83, 166-167, 266-267, 283-284, 300-301, 338-339 (revoke ... from public) and :68-69 (grants with no preceding revoke); live-verified via has_function_privilege and information_schema.column_privileges",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-05",
+  "lens": "security",
+  "severity": "high",
+  "wageCore": false,
+  "title": "MAX_BLOB_BYTES is enforced only in the browser; user_data.data has no server-side size bound, so one signed-in account can fill the shared free-tier database",
+  "where": "supabase/migrations/000_core.sql:27 (data jsonb, no CHECK); confirmed live via pg_constraint — user_data carries only PRIMARY KEY, FOREIGN KEY and UNIQUE(user_id), no trigger. Client side: index.html:2464 (the only size check), index.html:2496 (pagehide flush) and index.html:2512 (retrySync) call saveToSupabase without it; saveToSupabase itself at index.html:1324-1344 does no size check.",
+  "status": "confirmed"
+ },
+ {
+  "id": "security-06",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": false,
+  "title": "sanitizeData passes differential `color` through unvalidated; it lands in `style={{background:…}}` under a CSP that allows `img-src https:`, so an imported JSON file can plant a persistent tracking beacon",
+  "where": "index.html:1039-1046 (differentials branch: `dd[k] = {...v, amount, type}` keeps any `color`); rendered at index.html:3535, 4181, 4195, 4209, 4713, 5776 as `background:` and 3574, 3929 as `color:`; CSP at index.html:6 (`img-src 'self' data: https:`).",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-07",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": true,
+  "title": "A shift whose shiftType is an Object.prototype property name (`constructor`, `__proto__`, `toString`…) survives sanitizeData and poisons every gross/take-home sum for its pay period to $0",
+  "where": "index.html:967-978 (shift filter accepts any string shiftType); lookups without an own-property guard at index.html:1290 (patternMetrics), 2646, 2775, 2795 (calc/statOf), 3419, 4104 (preview); hourlyRate at index.html:1124-1129.",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-08",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "ical-proxy accepts the public anon key: verify_jwt does not mean \"signed-in user\"",
+  "where": "supabase/functions/ical-proxy/index.ts:8-9 and :46-59 (no role/user check anywhere in the handler); anon key shipped at index.html:616",
+  "status": "unverified"
+ },
+ {
+  "id": "security-09",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Previous account's secret feed URL survives a stalled sign-out and is shown/saved for the next account on the same device",
+  "where": "index.html:2529-2540 handleSignOut (does not clear icalSub/icalUrl/hydratedUserId/icalSyncedForUser); index.html:2335-2340 resetToDefaults (same omission); index.html:2441 hydration effect `catch(_){ return; }`",
+  "status": "unverified"
+ },
+ {
+  "id": "security-10",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": false,
+  "title": "webcal:// (and http://) feed links pass the client check but are rejected by the proxy forever",
+  "where": "supabase/functions/ical-proxy/index.ts:57-58; index.html:3245-3251 providerOf and :3293-3306 onSaveIcalUrl",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-11",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Google sign-in runs the OAuth *implicit* flow, not PKCE — tokens land in a URL fragment that stays one Back-press away in browser history",
+  "where": "index.html:610-615 (createClient with no options) and index.html:4619-4625 (handleGoogleAuth / signInWithOAuth)",
+  "status": "unverified"
+ },
+ {
+  "id": "security-12",
+  "lens": "security",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "client_error batch can exceed the live `events_props_check` (< 2000 bytes) and is silently dropped after the ring buffer was already cleared",
+  "where": "index.html:1443-1456 (flushClientErrors) with index.html:1385-1398 (track) and the live constraint `events_props_check CHECK (pg_column_size(props) < 2000)`",
+  "status": "unverified"
+ },
+ {
+  "id": "security-13",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": false,
+  "title": "events/feedback INSERT policies accept any `user_id` — attribution is client-asserted, not bound to auth.uid()",
+  "where": "supabase/migrations/000_core.sql:59-62 and :86-88 (live policies verified: `check=((char_length(name) >= 1) AND (char_length(name) <= 64))` on events, message-length only on feedback); callers index.html:1385-1398 (track) and :1356-1366 (submitFeedback)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "security-14",
+  "lens": "security",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Deploy workflow runs mutable action tags with pages:write + id-token:write",
+  "where": ".github/workflows/deploy.yml:30, 33, 48, 54 (actions/checkout@v4, configure-pages@v4, upload-pages-artifact@v3, deploy-pages@v4); ci.yml:29, 32, 56, 59",
+  "status": "low-unverified"
+ },
+ {
+  "id": "mobile-ux-00",
+  "lens": "mobile-ux",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Hero's 'See the full breakdown' / 'Share BadgeBudget' links accidentally inherit the full .hero card style, ballooning them and adding dead scroll space to the very first screen",
+  "where": "index.html:3491-3492 (className=\"hero more linklike\"); CSS: .linklike padding:0 at 79, .hero padding/border-radius/background/box-shadow at 114, .hero .more at 119",
+  "status": "confirmed"
+ },
+ {
+  "id": "mobile-ux-01",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Dollar-amount edit fields in Settings (differential rate, savings-goal target) have a 17px-tall tap target, versus 44px used everywhere else in the same sheet",
+  "where": "index.html:4715 (differential amount NumInput) and 4754 (goal target NumInput); CSS: .drow .amt / .drow .amt input at 312-313, .danger-link at 423",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-02",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Calendar scroll box has an absolute 420px height floor that exceeds the entire viewport in landscape",
+  "where": "index.html:184 (.cal-vscroll), contrast with .sheet/.modal at index.html:396,399",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-03",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Pay-period boundary chip inside the scrolling grid is a ~19px-tall tap target with no hit-area expansion",
+  "where": "index.html:200-202 (.cal-pp-div, .pp-chip), rendered at index.html:3899-3902",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-04",
+  "lens": "mobile-ux",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Day-cell tap targets drop to ~42px square at the ≤360px breakpoint this file itself treats as supported small-phone width",
+  "where": "index.html:221 (.cell), sizing driven by .cal-vscroll padding and .grid gap at index.html:206-212",
+  "status": "low-unverified"
+ },
+ {
+  "id": "mobile-ux-05",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "SHIFT TYPE chips in Add-Shift sheet are 5px under the 44px tap-target minimum, unlike every sibling control in the same sheet",
+  "where": "index.html:4205-4212 (JSX, the SHIFT TYPE .chips-grid) and index.html:317-321 (.chips-grid/.chip-sel CSS, no min-height set)",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-06",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Pattern-grid day cells drop below the 44px tap target on iPhone SE/mini-width phones",
+  "where": "index.html:347-348 (.pl-grid/.pl-cell), rendered at index.html:4520-4531, inside .modal's fixed padding at index.html:399",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-07",
+  "lens": "mobile-ux",
+  "severity": "low",
+  "wageCore": false,
+  "title": "REPEATS EVERY cycle-length buttons render ~41px tall, under the 44px tap target",
+  "where": "index.html:4503",
+  "status": "low-unverified"
+ },
+ {
+  "id": "mobile-ux-08",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "est-banner action buttons are under the 44px tap-target minimum, unlike every other interactive control in this slice",
+  "where": "index.html:143-144 (.est-banner button / .est-banner button.ghost CSS), rendered at index.html:3470-3475",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-09",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Share sheet is the one sheet that doesn't lock background scroll",
+  "where": "index.html:2596-2600 (body-scroll-lock effect) vs index.html:2228-2230/3657 (showShare state) and index.html:5666-5702 (ShareSheet)",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-10",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Avatar (sole mobile Settings/Sign-out entry point) is a 40px tap target with no hit-area bump, unlike its sibling icon button",
+  "where": "index.html:86 (.avatar) vs index.html:75-76 (.iconbtn / .iconbtn::after) and index.html:1974-1975 (AccountMenu's avatar button)",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-11",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Savings-goal \"Del\" is a ~35x34px target sitting next to an editable field, with no confirmation (unlike the equivalent differential delete)",
+  "where": "index.html:4687 (delGoal), 4755 (goal Del button), 4691 (del — differentials, has confirmAsync), index.html:423 (.danger-link CSS)",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-12",
+  "lens": "mobile-ux",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "First-run join/create inputs miss the Enter-to-submit handler their duplicate 'another board' inputs have",
+  "where": "index.html:5388-5391 (create-board input) and 5396-5400 (join-code input), vs. the near-identical 5576-5579 and 5592-5597",
+  "status": "unverified"
+ },
+ {
+  "id": "mobile-ux-13",
+  "lens": "mobile-ux",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Display-name step autoFocuses its input, raising the keyboard before the question is readable — the same anti-pattern already removed from FeedbackSheet",
+  "where": "index.html:5356 (autoFocus on the display-name input), c.f. index.html:2026 (comment) / FeedbackSheet 2006-2032",
+  "status": "low-unverified"
+ },
+ {
+  "id": "accessibility-00",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Overtime tag text fails AA contrast in the Add-Shift live preview and shift list",
+  "where": "index.html:4197 and index.html:4245 (color '#11A86B' inline overrides; also the decorative badge at 3923 and legend swatch text-adjacent use at 4218 share the same token)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-01",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Danger-red money text narrowly fails AA on the app's translucent glass panels",
+  "where": "index.html:3999 (Breakdown deduction rows, rendered inside the modal at 3620-3628), index.html:4571 (Pattern Lab 'will be replaced' warning inside .preview), index.html:4716/4755 (.danger-link 'Del' buttons in the Settings modal)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-02",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Breakdown and Settings close buttons have no accessible name",
+  "where": "index.html:3623 (Breakdown modal) and index.html:4697 (Settings modal)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-03",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Add-Shift and Pattern Lab live money readouts have no aria-live region",
+  "where": "index.html:4243-4249 (AddShiftSheet .preview block) and index.html:4539-4544 (.pl-money readout in Pattern Lab)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-04",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Calendar grid has no grid semantics or row-based navigation for screen reader / keyboard users",
+  "where": "index.html:3938 (`<div className=\"grid\">`) and the day-cell buttons built at 3915-3936",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-05",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Pay-period stepper's scroll animation ignores prefers-reduced-motion",
+  "where": "animateScrollTop (index.html:674-683), used by scrollFocusToDate (index.html:2751-2766) via movePeriod (index.html:2826-2831)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-06",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Month/Year view control uses role=\"tablist\"/\"tab\" without the tab keyboard pattern",
+  "where": "index.html:3547-3550 (the .viewseg buttons)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-07",
+  "lens": "accessibility",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Year-view prev/next buttons have a vague, ungrouped aria-label",
+  "where": "index.html:3553-3557 (.calnav div and its two buttons)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "accessibility-08",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Day cell's \"today\" state is visual-only — dropped from the accessible name",
+  "where": "index.html:3913-3922 (Calendar function: isToday computed at 3913, cell button's aria-label built at 3916-3922)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-09",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "The month-scroll container isn't keyboard-scrollable on its own",
+  "where": "index.html:3561 (`<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll}>`)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-10",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Add-Shift sheet has no dialog semantics, unlike every sibling sheet in the same file",
+  "where": "index.html:4164 (AddShiftSheet's outer <div className=\"sheet\">)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-11",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Every 'Remove' button for a logged shift shares the identical accessible name",
+  "where": "index.html:4200 (inside the list.map over `list` in AddShiftSheet)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-12",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Pattern Lab's dialog has no dialog role, no aria-modal, and no accessible name — unlike every sibling sheet",
+  "where": "index.html:4417-4419 (list mode) and index.html:4486-4488 (edit mode), function PatternLab",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-13",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Pattern Lab has no focus trap and no Escape-to-close, so keyboard focus leaks into the obscured app behind it",
+  "where": "index.html:4300-4581 (function PatternLab, no keydown handling or focus management anywhere in the component); index.html:2596-2600 (body-scroll lock is the only 'modal open' side effect); index.html:1966-1968 (Escape-to-close exists for the account menu, for contrast)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-14",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "The 'Put it on the calendar' apply preview updates silently for screen-reader users",
+  "where": "index.html:4566-4572 (the `.preview` div inside PatternLab's apply flow); contrast with index.html:3457 (`aria-live=\"polite\"` on the analogous pay-period label)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-15",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Onboarding step transitions never move focus and use no heading markup",
+  "where": "index.html:5704-5835 (all 5 obStep branches), goObStep index.html:2198-2201, exit-to-app at index.html:3081/3391/3412",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-16",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "'ESTIMATED' tax-rate tag fails WCAG AA contrast",
+  "where": "index.html:328 (.tag.est rule), rendered at index.html:5796 and index.html:5798",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-17",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Gross-pay summary line on the 'done' screen falls just under AA contrast",
+  "where": "index.html:5823",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-18",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Onboarding back button has no accessible name",
+  "where": "index.html:5739",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-19",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Dismissing the est-banner removes the focused control with no focus handoff",
+  "where": "index.html:3471-3474 (banner buttons), index.html:2991-3001 (clearSample)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-20",
+  "lens": "accessibility",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Name field on the 'done' step has no label, only a placeholder",
+  "where": "index.html:5826-5828",
+  "status": "low-unverified"
+ },
+ {
+  "id": "accessibility-21",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Settings modal has no dialog semantics and its close button has no accessible name",
+  "where": "index.html:4694-4697 (Settings)",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-22",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "ShareSheet has no dialog role or accessible name for the region",
+  "where": "index.html:5682-5688 (ShareSheet)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-23",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Differential name-edit input has no accessible name",
+  "where": "index.html:4714 (Settings differentials row)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-24",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Duplicate, context-free \"Del\" button labels in differentials and savings-goals lists",
+  "where": "index.html:4716 and 4755 (Settings)",
+  "status": "unverified"
+ },
+ {
+  "id": "accessibility-25",
+  "lens": "accessibility",
+  "severity": "high",
+  "wageCore": false,
+  "title": "SwapsSheet dialog claims aria-modal but has no focus trap, no initial focus, and no Escape handler",
+  "where": "index.html:5330 (and :5311 signed-out variant) — SwapsSheet's role=\"dialog\" aria-modal=\"true\" wrapper",
+  "status": "confirmed"
+ },
+ {
+  "id": "accessibility-26",
+  "lens": "accessibility",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Withdraw/Decline confirm dialog (used by the reveal-flow actions) has no Escape handler and lets Tab escape the dialog",
+  "where": "index.html:2127-2148 (ConfirmHost), invoked from SwapsSheet's doWithdraw (:5069) and doDecline (:5155)",
+  "status": "unverified"
+ },
+ {
+  "id": "performance-00",
+  "lens": "performance",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Render-blocking boot scripts prevent any paint (even the splash) until 5 cross-origin CDN fetches resolve",
+  "where": "index.html:17-21 (script tags), index.html:487 (#splash), index.html:490-592 (boot watchdog)",
+  "status": "unverified"
+ },
+ {
+  "id": "performance-01",
+  "lens": "performance",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Calendar has zero memoization anywhere, so it fully reconciles on every unrelated Settings keystroke while still mounted behind the overlay",
+  "where": "index.html:3883 (Calendar), :3942 (MonthSection), :4706 (Your-name input) & :4714 (differential-rename input), :3560-3571 & :3630-3631 (mount structure — Settings is a sibling overlay, calendar stays mounted underneath), :2189/:2203/:2214 (name/differentials useState in App), :4016-4036 (NumInput — the existing local-buffer fix pattern one field over, not applied to the name field)",
+  "status": "unverified"
+ },
+ {
+  "id": "performance-02",
+  "lens": "performance",
+  "severity": "low",
+  "wageCore": false,
+  "title": "monthSecRefs never evicts refs for months that scroll out of the window, leaking detached DOM and corrupting the scroll-follow's nearest-section search",
+  "where": "index.html:2672 (monthSecRefs), :3568 (secRef callback), :2715-2734 (focusRowDates), :2720 (filter(Boolean))",
+  "status": "low-unverified"
+ },
+ {
+  "id": "performance-03",
+  "lens": "performance",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Scrolling the calendar past a pay-period boundary fires a real Supabase write",
+  "where": "index.html:2735-2748 (onMonthScroll -> setPPS), 2291-2295 (serializeState includes payPeriodStart), 2453-2487 (debounced save effect, payPeriodStart is a dependency at line 2487, and the body at 2459-2479 saves unconditionally once hydrated with no check that anything besides the view state changed)",
+  "status": "unverified"
+ },
+ {
+  "id": "performance-04",
+  "lens": "performance",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "The cloud-sync 'syncing' flag forces two full unmemoized re-renders of the entire mounted calendar (~490 day cells) on every save",
+  "where": "index.html:2234 (syncing state), 2470/2473 (setSyncing toggled by every debounced save), 2510/2513 (retrySync does the same), 2662-2670 (monthWindow mounts MONTH_BEFORE+MONTH_AFTER+1 = 16 months simultaneously, no windowing), 2644-2650 (statOf/ptoStatOf recomputed per cell), 3883-3939 (Calendar renders one cell per day calling statOf), 3941-3960 (MonthSection, not memoized) - confirmed zero React.memo/memo( usages anywhere in the file via grep",
+  "status": "unverified"
+ },
+ {
+  "id": "data-integrity-00",
+  "lens": "data-integrity",
+  "severity": "high",
+  "wageCore": false,
+  "title": "pagehide/visibilitychange flush silently drops an edit when the best-effort save fails",
+  "where": "index.html:2489-2505 (flush), contrast with the debounced save effect's failure handling at index.html:2470-2479; saveToSupabase at index.html:1324-1344",
+  "status": "confirmed"
+ },
+ {
+  "id": "data-integrity-01",
+  "lens": "data-integrity",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "An open Add-Shift sheet's stale in-memory draft can silently overwrite a same-day edit just pulled from another device",
+  "where": "AddShiftSheet's list/events/note state is captured once at mount from props (index.html:4076, 4083-4084) and never resynced; saveDayShifts unconditionally overwrites shifts[dateKey]/dayEvents[dateKey]/notes[dateKey] with that draft (index.html:2857-2874); the cross-device poll can apply a newer remote blob into the same state at any time the sheet is open (applyData at 2317/2325-2326 via the 15s interval, focus, and visibilitychange refetch at index.html:2547-2574)",
+  "status": "unverified"
+ },
+ {
+  "id": "data-integrity-02",
+  "lens": "data-integrity",
+  "severity": "high",
+  "wageCore": false,
+  "title": "15s cross-device refetch can silently discard an edit that hasn't finished its 500ms debounce/network round-trip",
+  "where": "index.html:2547-2574 (poll/refetch effect), specifically the guard at 2557 and the applyData call at 2561; interacts with the debounced save at 2453-2487 (500ms timer at 2485)",
+  "status": "rejected"
+ },
+ {
+  "id": "data-integrity-03",
+  "lens": "data-integrity",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Stale .ics import plan can resurrect a shift another device deleted, or clobber a concurrent edit, and the result gets persisted to the cloud",
+  "where": "index.html:3147-3191 (icsConfirmImport), 3089-3105 (buildIcsImportPlan closes over live `shifts`/`dayEvents`), 1511-1543 (icsPlanFromExisting captures shiftType/bonusType/hours at plan-build time), 2547-2574 (15s cross-device poll calls applyData which does a full setShifts(d.shifts) overwrite)",
+  "status": "rejected"
+ },
+ {
+  "id": "data-integrity-04",
+  "lens": "data-integrity",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "A shift that moved outside the 60-day-back/366-day-forward sync window is indistinguishable from a deleted shift, and the confirm screen states it as certain",
+  "where": "index.html:1545-1576 (icsPlanFromExisting removal logic, esp. `if(!inWindow(rec.dateKey)) return;`), 826-864 (parseICSSchedule drops out-of-window events before the caller ever sees them), 3828-3834 (IcsImportSheet: \"Removing … — gone from your calendar feed.\")",
+  "status": "unverified"
+ },
+ {
+  "id": "data-integrity-05",
+  "lens": "data-integrity",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Whole-blob upsert has no compare-and-swap: a delayed/flaky-network write can silently roll back a newer, already-\"saved\" edit from another device, with no backup to recover it",
+  "where": "saveToSupabase() index.html:1324-1344; sync poll ordering check index.html:2551-2564; MAX_BLOB_BYTES/backup guard index.html:2454-2487",
+  "status": "rejected"
+ },
+ {
+  "id": "data-integrity-06",
+  "lens": "data-integrity",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "differentials is the one user-growable collection in sanitizeData with no cap, so it alone can push the blob past MAX_BLOB_BYTES and freeze cloud sync with no cross-device recovery",
+  "where": "sanitizeData differentials branch index.html:1041-1050 (no slice/cap, contrast with goals at 1072-1082 and MAX_GOALS at 634); addDiff() index.html:4692 (unconditional push, no length check unlike the goals-add path at 4685)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-00",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Manual sign-out doesn't mirror the SIGNED_OUT cleanup it claims to, leaking the previous user's iCal credential into the next sign-in",
+  "where": "index.html:2528-2538 (handleSignOut) vs index.html:2409-2419 (onAuthStateChange SIGNED_OUT branch)",
+  "status": "confirmed"
+ },
+ {
+  "id": "code-quality-01",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": true,
+  "title": "ficaWithholdingType is passed through sanitizeData with no allowlist, so an unrecognized value silently zeroes FICA in computeNet",
+  "where": "index.html:963 (sanitizeData) and index.html:1237-1239 (computeNet)",
+  "status": "confirmed"
+ },
+ {
+  "id": "code-quality-02",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "Per-day/period money rollup (shifts + PTO) hand-duplicated in 3 places instead of calling statOf/ptoStatOf",
+  "where": "index.html:2636-2650 (ptoStatOf/statOf) vs 2775-2777 (yearMonths) vs 2793-2805 (calc)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-03",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "sampleNet() (onboarding's projected take-home) hand-rolls the same tax formula as computeNet() instead of calling it, and isn't part of the Invariant 3 function list",
+  "where": "index.html:3416-3423 (sampleNet, inside applyPaystub's App scope) vs index.html:1231-1251 (computeNet)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-04",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Day-key stringification is independently reimplemented three times over the same shifts/dayEvents object",
+  "where": "index.html:658 (keyOfDate), index.html:837 (keyOfYMD), index.html:2623 (App's local keyOf)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-05",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Month-section ref map never clears entries on unmount, so the pay-period stepper can silently stop scrolling the calendar",
+  "where": "index.html:3568 (secRef callback), consequence at index.html:2762-2765 (scrollFocusToDate) and index.html:2720 (focusRowDates), comment at index.html:2707-2713",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-06",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Removing the only shift on a day silently re-adds a different, unconfirmed phantom shift",
+  "where": "index.html:4127-4130 (hasOtherContent/save), interacting with :4288 (primary button label) and :2857-2867 (saveDayShifts)",
+  "status": "rejected"
+ },
+ {
+  "id": "code-quality-07",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "\"Save as template\" can silently capture the wrong shift type/hours when the last entry came from a template quick-tap",
+  "where": "index.html:4135-4139 (applyTemplateTap), :4140-4160 (doSaveTemplate), :4094 (configDirtySinceAdd ref)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-08",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Legal hours bound (0.1-24) is a literal duplicated in three places with nothing tying them together",
+  "where": "index.html:4109 (draftShift), :4143 (doSaveTemplate's clampedHours), :4226 (NumInput min/max on the HOURS field)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-09",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Editing the cycle anchor silently discards a customized apply-start date",
+  "where": "index.html:4384-4387 (setAnchor) interacting with 4552 and 4557 (applyStart)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-10",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "The ISO date-validity check is copy-pasted three times with no shared helper",
+  "where": "index.html:1088 (validISO in sanitizeData), 4385 (setAnchor), 4557 (Starting date onChange)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-11",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Sign-out resets onboarding data but not onboarding step, so a stale obStep can reopen the wizard mid-flow with defaulted data and silently commit it",
+  "where": "resetToDefaults() index.html:2335-2340 (called from the auth-state-change SIGNED_OUT branch at 2414 and from handleSignOut at 2536); obStep state at 2192-2201; finish() at 3408-3414; Onboarding done screen at 5812-5834",
+  "status": "confirmed"
+ },
+ {
+  "id": "code-quality-12",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Differential edit/toggle logic is duplicated verbatim between Settings and Onboarding and can drift",
+  "where": "index.html:4689-4690 (Settings) and index.html:5709-5710 (Onboarding, step 2 differentials)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-13",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Goal preview divides by a goal target that can be zero, printing \"Infinity%\"",
+  "where": "index.html:4247-4248 (AddShiftSheet preview) combined with index.html:4686 (Settings updGoalTarget) and index.html:4020-4028 (NumInput.commit)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-14",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Body-scroll lock effect omits showShare, so the Share sheet lets the page scroll behind it",
+  "where": "index.html:2596-2600 (body-overflow effect) vs index.html:2228 (showShare state) and index.html:5666-5702 (ShareSheet)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-15",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Settings destructures an unused `num` prop",
+  "where": "index.html:4676 (destructure) and index.html:3633 (passed in)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-16",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "First-run create/join-board inputs don't submit on Enter; their later duplicates do",
+  "where": "index.html:5388-5400 (Create your unit's board / Join with a code, groups.length===0 branch) vs index.html:5574-5601 (Create another board / Join another board, the groups.length>0 duplicate)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-17",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "SwapsSheet's six screen-states are gated by six hand-copied boolean prefixes instead of one switch",
+  "where": "index.html:5351, 5365, 5375, 5384, 5404, 5607 (each an independent `{!loading && !loadError && !tablesMissing && ... && <jsx/>}` block)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-18",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": false,
+  "title": "pagehide/visibility flush silently drops a failed cloud save (no backup, no error surfaced)",
+  "where": "index.html:2489-2505 (the `flush` effect), contrast with the debounced-save effect at 2470-2479",
+  "status": "confirmed"
+ },
+ {
+  "id": "code-quality-19",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "MAX_BLOB_BYTES guard is only enforced on one of three save call sites",
+  "where": "index.html:2464-2469 (the only size check) vs. flush() at 2489-2505 and retrySync() at 2508-2516",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-20",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Cross-device poll's content-equality check doesn't canonicalize key order, so it rarely matches even identical data",
+  "where": "index.html:2550 (`normalize`) and 2560 (the comparison), under the comment block at 2540-2546",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-21",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Post-save success bookkeeping (lastSeenAt + backup-clear) is duplicated verbatim in three places",
+  "where": "index.html:2475 (debounced save), 2496 (flush), 2515 (retrySync)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-22",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "runIcalSync's outer catch swallows every background-sync failure with no console.error or telemetry",
+  "where": "index.html:3285-3288 (runIcalSync), index.html:2442 (loadIcalSub call in the app-open effect)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-23",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Client-side calendar-host allowlist (providerOf) and the ical-proxy Edge Function's ALLOWLIST are independently maintained and already disagree",
+  "where": "index.html:3245-3251 (providerOf) vs supabase/functions/ical-proxy/index.ts:20-26 (ALLOWLIST)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-24",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Manual .ics file re-import mislabels unchanged icsUid matches as \"updated\", contradicting the code's own documented purpose of the `changed` flag",
+  "where": "index.html:1507-1509 (comment defining `changed`), index.html:3125-3137 (onImportICS passes unfiltered plan.toUpdate), index.html:3269-3283 (runIcalSync filters to `changed` only), index.html:3811 (confirm-screen text: 'update N that changed')",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-25",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Google sign-in has no try/catch around signInWithOAuth, unlike the sibling email path a few lines above",
+  "where": "index.html:4615-4628 (handleGoogleAuth)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-26",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "saveToSupabase's returned-error branch bypasses the console.error mirror the same commit introduced for exactly this case",
+  "where": "index.html:1337 (saveToSupabase) vs the console.error override at index.html:517-532",
+  "status": "low-unverified"
+ },
+ {
+  "id": "code-quality-27",
+  "lens": "code-quality",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Migration 002 breaks the migration set's advertised re-run safety",
+  "where": "supabase/migrations/002_ical_subscription.sql:24-31",
+  "status": "rejected"
+ },
+ {
+  "id": "code-quality-28",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "The build gate's own 'never silently omitted' promise is broken for Invariants 7 and 13",
+  "where": "scripts/check_build.mjs:12-14 and :143",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-29",
+  "lens": "code-quality",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "harness.mjs's vendor()/PKGS are dead code duplicating ci.yml's package list",
+  "where": "tests/harness.mjs:16-23 (PKGS) and :41-44 (vendor)",
+  "status": "unverified"
+ },
+ {
+  "id": "code-quality-30",
+  "lens": "code-quality",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Stale comment in ci.yml claims the gate is advisory-only, contradicting CLAUDE.md's documented required-check status",
+  "where": ".github/workflows/ci.yml:8-10",
+  "status": "low-unverified"
+ },
+ {
+  "id": "product-design-00",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Hero's \"Taxes & deductions\" chip can show a bigger deduction than the gross next to it, and disagrees with the Breakdown a tap away",
+  "where": "index.html:3487 (hero chip renders calc.ded) and index.html:1244-1250 (computeNet)",
+  "status": "confirmed"
+ },
+ {
+  "id": "product-design-01",
+  "lens": "product-design",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Every per-shift/day \"before you work it\" preview (Add-Shift, calendar tiles, weekend-pickup suggestion, goal shift-count) uses a flat keepRatio approximation that silently ignores percent-type custom withholdings, while the hero/Breakdown use the real computeNet math that does account for them",
+  "where": "index.html:2818-2820 (keepRatio definition) used at 3434, 3919, 3933, 4104-4105/4245-4246, and Settings 4746",
+  "status": "low-unverified"
+ },
+ {
+  "id": "product-design-02",
+  "lens": "product-design",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Saved templates silently drop the Overtime flag, so reusing one understates the shift's value with no on-screen signal",
+  "where": "index.html:4140-4160 (doSaveTemplate builds `tpl` without isOvertime), :4135-4139 (applyTemplateTap never sets isOvertime on the shift it inserts), :2915-2926 (toggleQuickFillDay same), :1051-1068 (templates sanitizeData branch has no isOvertime field at all)",
+  "status": "unverified"
+ },
+ {
+  "id": "product-design-03",
+  "lens": "product-design",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "The 'live' shift-value preview doesn't update while typing custom Hours or a custom Bonus amount -- only on blur",
+  "where": "index.html:4016-4035 (NumInput buffers keystrokes in local `raw` state and only calls onCommit on blur or Enter), consumed by Hours at :4226 and Custom bonus at :4241, feeding previewGross/previewNet at :4104-4105 and the preview block at :4243-4249",
+  "status": "unverified"
+ },
+ {
+  "id": "product-design-04",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": false,
+  "title": "\"Take-home per paycheck\" is a cycle-average, shown with full confidence, for the exact rotations where real paychecks diverge from it",
+  "where": "patternMetrics index.html:1257-1299 (comment at 1253-1256); displayed unqualified in PatternLab at index.html:4428 (compare table), 4447 (pattern card), 4540-4542 (edit-mode money block)",
+  "status": "confirmed"
+ },
+ {
+  "id": "product-design-05",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Welcome-screen sample take-home figure is hardcoded and doesn't match the app's own math for the identical schedule",
+  "where": "index.html:5721-5722 (welcome screen literal) vs sampleNet() at index.html:3416-3423, DIFF_DEFAULTS at index.html:686-697, default baseRate at index.html:2204",
+  "status": "confirmed"
+ },
+ {
+  "id": "product-design-06",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": false,
+  "title": "\"Clear the sample\" removes the seeded shifts but leaves the placeholder $65.15/hr rate in place with no indication it isn't real, once the honesty banner is gone",
+  "where": "index.html:2991-3000 (clearSample), index.html:3408-3412 (finish('sample')), index.html:2231 and 969 (estimateMode is the only signal that the rate is fake)",
+  "status": "confirmed"
+ },
+ {
+  "id": "product-design-07",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Editing a savings goal's target down to $0 in Settings makes the Add-Shift preview show \"Infinity%\"",
+  "where": "index.html:4248 (AddShiftSheet preview) / index.html:4686 & 4754 (Settings updGoalTarget + NumInput)",
+  "status": "confirmed"
+ },
+ {
+  "id": "product-design-08",
+  "lens": "product-design",
+  "severity": "high",
+  "wageCore": true,
+  "title": "Swap board lets a nurse commit to a shift with zero indication of what it pays",
+  "where": "index.html:3643 (SwapsSheet call site), 4819 (SwapsSheet signature), 5505-5531 (SUGGESTED FOR YOU cards), 5079-5099 (doPropose), 4067-4072 (giveMetaLine)",
+  "status": "confirmed"
+ },
+ {
+  "id": "privacy-telemetry-00",
+  "lens": "privacy-telemetry",
+  "severity": "high",
+  "wageCore": false,
+  "title": "privacy.html misdescribes sign-in as Google-only and claims no password is ever stored, but email/password is the app's primary, first-shown auth path",
+  "where": "privacy.html:89-91 (\"Your account\" section) vs index.html:4584-4671 (AuthModal), specifically handleEmailAuth at index.html:4591-4613",
+  "status": "confirmed"
+ },
+ {
+  "id": "privacy-telemetry-01",
+  "lens": "privacy-telemetry",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "privacy.html claims the anon_id device identifier 'is not linked to your name' — track() writes it into the same row as user_id for every signed-in action",
+  "where": "privacy.html:104-107 vs index.html:1385-1397 (track()), exercised by ~25 call sites passing user?.id (e.g. 2859 shift_saved, 2912 template_applied, 3392 paystub_imported, 5063 swap_posted)",
+  "status": "unverified"
+ },
+ {
+  "id": "privacy-telemetry-02",
+  "lens": "privacy-telemetry",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "privacy.html's Feedback section omits that a signed-in submitter's account id is always attached, regardless of the optional contact field",
+  "where": "privacy.html:117-119 vs index.html:2006-2045 (FeedbackSheet submit) and 1354-1371 (submitFeedback)",
+  "status": "unverified"
+ },
+ {
+  "id": "cross-surface-00",
+  "lens": "cross-surface",
+  "severity": "high",
+  "wageCore": false,
+  "title": "Add-Shift preview, calendar day cells, goal lines and the weekend-night card use a keep-ratio that omits percent custom withholdings, so they disagree with the hero and the pattern lab",
+  "where": "index.html:2819-2820 (keepRatio) -> consumers at 4104-4105 & 4245-4248 (AddShiftSheet preview + goal line), 3919 & 3933 (Calendar day cell), 4747 (Settings '≈ N typical 12h shifts'), 3434 & 3512 ('Pick up a weekend night?' card)",
+  "status": "confirmed"
+ },
+ {
+  "id": "cross-surface-01",
+  "lens": "cross-surface",
+  "severity": "medium",
+  "wageCore": false,
+  "title": "Add-Shift sheet defaults to the Night type even when Night is switched off — sheet and hero pay a differential the lab prices at base",
+  "where": "index.html:4077 (`useState('night')`), with 4099 (`active` chip filter), 4104-4105 (preview), 4108-4109 (`draftShift`/`add`), vs 1198-1207 `patternCellShiftType`",
+  "status": "unverified"
+ },
+ {
+  "id": "cross-surface-02",
+  "lens": "cross-surface",
+  "severity": "medium",
+  "wageCore": true,
+  "title": "Pattern lab 'Take-home per paycheck' is a multi-paycheck average for cycles that don't divide 14, with no cue — no actual paycheck ever matches it",
+  "where": "index.html:1282-1298 (patternMetrics span=lcm(n,14), periodGross=gross/periods), labels at 4540 ('Take-home per paycheck'), 4428 ('Take-home / paycheck'), 4447 ('/ paycheck ·')",
+  "status": "unverified"
+ },
+ {
+  "id": "cross-surface-03",
+  "lens": "cross-surface",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so when flat deductions exceed gross it contradicts both the $0 take-home beside it and the Breakdown rows",
+  "where": "index.html:3487 (chip renders calc.ded) vs 1246-1251 (computeNet caps pre/post for display) and 3980-3987 + 4003-4006 (Breakdown rows use calc.pre/calc.post)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "cross-surface-04",
+  "lens": "cross-surface",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Hero hours chip prints the raw float sum, so it can show '36.900000000000006 hrs' directly above a stat that says '36.9'",
+  "where": "index.html:3489 ({calc.hours} hrs · N shifts) vs 3496 (calc.hours.toFixed(calc.hours%1?1:0)) and 3970 (YearList uses toFixed)",
+  "status": "low-unverified"
+ },
+ {
+  "id": "cross-surface-05",
+  "lens": "cross-surface",
+  "severity": "low",
+  "wageCore": false,
+  "title": "Template ('fixed') brushes never pick up weekend differentials, contradicting the grid hint; two identical-looking Saturday cells price $78 apart",
+  "where": "index.html:1201-1212 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType`), brush construction 4365-4375 (brushCell), hint 4536, cellLabel/cellColor 4318-4327",
+  "status": "low-unverified"
+ },
+ {
+  "id": "cross-surface-06",
+  "lens": "cross-surface",
+  "severity": "low",
+  "wageCore": false,
+  "title": "'Pick up a weekend night?' card prices weekend-eve even when that differential is switched off or deleted",
+  "where": "index.html:3434 (sampleWeekendNet), rendered 3510-3513; Settings toggle/delete at 4712 and 4716",
+  "status": "low-unverified"
+ }
+]
