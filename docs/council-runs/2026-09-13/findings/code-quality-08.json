@@ -1,0 +1,13 @@
+{
+ "title": "Legal hours bound (0.1-24) is a literal duplicated in three places with nothing tying them together",
+ "severity": "low",
+ "where": "index.html:4109 (draftShift), :4143 (doSaveTemplate's clampedHours), :4226 (NumInput min/max on the HOURS field)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "code-quality-08"
+}

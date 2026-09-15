@@ -1,0 +1,13 @@
+{
+ "title": "\"Clear the sample\" removes the seeded shifts but leaves the placeholder $65.15/hr rate in place with no indication it isn't real, once the honesty banner is gone",
+ "severity": "high",
+ "where": "index.html:2991-3000 (clearSample), index.html:3408-3412 (finish('sample')), index.html:2231 and 969 (estimateMode is the only signal that the rate is fake)",
+ "detail": "finish('sample') (line 3408-3412) sets `baseRate` to the placeholder 65.15 and seeds sample shifts, marking the state as fake only via `estimateMode:'sample'`. The est-banner (line 3464-3475) offers two exits when estimateMode==='sample': 'Enter my rate' (opens Settings) and 'Clear the sample' (calls `clearSample`). `clearSample` (line 2991-3000) strips the SAMPLE_PATTERN_ID-tagged shifts and unconditionally does `setEstimateMode('')` — it never checks whether the user actually entered a real base rate first. There is no other field anywhere (grep confirms `estimateMode` is the sole indicator) distinguishing 'nurse's real $65.15/hr' from 'never-touched placeholder $65.15/hr'.",
+ "failure": "A nurse taps 'Show me an example' to see how the app works, then taps 'Clear the sample' directly (never 'Enter my rate'). The seeded shifts vanish and the banner disappears — but baseRate is still the fictitious 65.15. Every shift she now logs herself computes gross/take-home/hero figures against that fake rate with no banner, no warning, and nothing in the UI distinguishing it from a confirmed real rate. This state also serializes into the cloud blob and localStorage (serializeState includes baseRate and estimateMode='' ), so it persists across sessions and devices silently. The app's headline numbers are now systematically wrong for her actual pay, with the one mechanism designed to flag that (the est-banner) already dismissed.",
+ "fix": "Track whether the base rate was ever explicitly set by the user (independent of estimateMode), or make `clearSample` refuse/redirect to rate entry when `baseRate` still equals the untouched sample default, so clearing the sample can never silently promote a placeholder rate to authoritative status.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "product-design-06"
+}

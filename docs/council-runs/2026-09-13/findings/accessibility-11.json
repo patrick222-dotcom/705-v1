@@ -1,0 +1,13 @@
+{
+ "title": "Every 'Remove' button for a logged shift shares the identical accessible name",
+ "severity": "medium",
+ "where": "index.html:4200 (inside the list.map over `list` in AddShiftSheet)",
+ "detail": "`<button className=\"danger-link\" onClick={()=>remove(s.id)}>Remove</button>` renders once per entry in `list`, and the UI explicitly supports multiple shifts logged on one day (the whole 'ON THIS DAY' section exists for that). Every one of those buttons has the literal accessible name 'Remove', with no reference to which shift. The same component already knows how to disambiguate an equivalent case: the template-delete button a few dozen lines earlier is `aria-label={'Delete template '+t.name}`.",
+ "failure": "A screen-reader user who has logged two shifts on the same day (e.g. a regular shift plus a picked-up OT shift) hears 'Remove, button' twice with nothing to tell them apart, and can only guess which one their focus is currently on.",
+ "fix": "Give each Remove button a distinguishing aria-label, e.g. aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}, mirroring the 'Delete template '+t.name pattern already used in the same file.",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "accessibility-11"
+}

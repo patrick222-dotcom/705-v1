@@ -1,0 +1,13 @@
+{
+ "title": "ficaWithholdingType is passed through sanitizeData with no allowlist, so an unrecognized value silently zeroes FICA in computeNet",
+ "severity": "high",
+ "where": "index.html:963 (sanitizeData) and index.html:1237-1239 (computeNet)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": true,
+ "slices": [
+  "wage-core"
+ ],
+ "id": "code-quality-01"
+}

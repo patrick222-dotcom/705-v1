@@ -1,0 +1,13 @@
+{
+ "title": "Name field on the 'done' step has no label, only a placeholder",
+ "severity": "low",
+ "where": "index.html:5826-5828",
+ "detail": "<div className=\"field\" style={{margin:0,textAlign:'left'}}><div className=\"inp\"><input placeholder=\"What should we call you?\" value={...} onChange={...} .../></div></div> -- unlike every other text field in the app (e.g. the base-rate field in Settings, index.html:4707, which wraps its input in <label className=\"field\"><span className=\"lab\">Base hourly rate</span>...), this one supplies no <label>, <span className=\"lab\">, or aria-label -- only a placeholder, which disappears the moment text is typed.",
+ "failure": "A user who fills in her name and then, minutes later, revisits the field (e.g. via 'Edit my setup') sees a populated text box with no visible or reliably-announced label reminding her what it's for; it's also the one field in the app that doesn't follow the app's own established labeling convention.",
+ "fix": "Wrap it in the same <label className=\"field\"><span className=\"lab\">What should we call you?</span>...</label> pattern used everywhere else, keeping the placeholder as a secondary hint if desired.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-20"
+}

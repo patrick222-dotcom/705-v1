@@ -1,0 +1,13 @@
+{
+ "title": "Sign-out resets onboarding data but not onboarding step, so a stale obStep can reopen the wizard mid-flow with defaulted data and silently commit it",
+ "severity": "high",
+ "where": "resetToDefaults() index.html:2335-2340 (called from the auth-state-change SIGNED_OUT branch at 2414 and from handleSignOut at 2536); obStep state at 2192-2201; finish() at 3408-3414; Onboarding done screen at 5812-5834",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "code-quality-11"
+}

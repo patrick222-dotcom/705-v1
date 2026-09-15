@@ -1,0 +1,13 @@
+{
+ "title": "The 'Put it on the calendar' apply preview updates silently for screen-reader users",
+ "severity": "medium",
+ "where": "index.html:4566-4572 (the `.preview` div inside PatternLab's apply flow); contrast with index.html:3457 (`aria-live=\"polite\"` on the analogous pay-period label)",
+ "detail": "`applyPlan` (a `useMemo` over `applyStart`, `applyWeeks`, `applyReplace`, defined at lines 4312-4314) drives a plain `<div className=\"preview\">` at lines 4566-4572 that reports 'This adds N shift(s) · <dates>', how many days were skipped, and how many will be replaced. Changing the Starting date input, the 'FOR' week-count buttons, or the Replace toggle recomputes this text, but the div carries no `aria-live` region. Elsewhere in the same file the app already uses `aria-live=\"polite\"` for exactly this kind of 'a control changed and this readout updated' case (the pay-period `<span className=\"num\" aria-live=\"polite\">{periodLabel}</span>` at line 3457).",
+ "failure": "A screen-reader user changes 'FOR' from 6 weeks to 12 weeks, or flips 'Replace shifts already on those days' on, expecting to hear the updated add/skip/replace counts the sighted preview shows immediately. Nothing is announced — they have to manually re-navigate to the preview div after every change to learn whether their pattern will now replace shifts or add fewer than expected, which is exactly the kind of consequential, silent state change AA's programmatic-status guidance (and the app's own precedent at line 3457) exists to prevent.",
+ "fix": "Add `aria-live=\"polite\"` (and ideally `aria-atomic=\"true\"`) to the `.preview` div at line 4567 so the recomputed adds/skipped/replaced counts are announced whenever `applyStart`, `applyWeeks`, or `applyReplace` change.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "accessibility-14"
+}

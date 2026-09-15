@@ -1,0 +1,13 @@
+{
+ "title": "harness.mjs's vendor()/PKGS are dead code duplicating ci.yml's package list",
+ "severity": "medium",
+ "where": "tests/harness.mjs:16-23 (PKGS) and :41-44 (vendor)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "code-quality-29"
+}

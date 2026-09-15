@@ -1,0 +1,13 @@
+{
+ "title": "Independently rounded chips: Gross − Taxes ≠ Take-home by $1 in ~11% of pay periods; Breakdown rows drift the same way",
+ "severity": "low",
+ "where": "/home/user/705-v1/index.html:3484-3487 (hero: fmt(calc.net), fmt(calc.gross), fmt(calc.ded) each rounded separately); 3982-3987 and 4006 (Breakdown: six rows and the take-home each rounded separately); fmt at 1116",
+ "detail": "`fmt` rounds each figure to whole dollars on its own, so the three hero chips are three independent roundings of gross, ded and gross−ded. Replaying the real shiftGross/computeNet formulas over 220 mixes of base/night 12h shifts at five base rates with default taxes, 24 (11%) print chips whose subtraction is off by one. With six Breakdown rows the residual can reach $3. This is the 'rounding that compounds' the lens asks about — small, but it is the arithmetic a nurse is most likely to check by hand, and the app's credibility rests on the numbers closing.",
+ "failure": "Two 12h base shifts at the default $65.15/hr, default taxes: hero prints 'Gross $1,564 · Taxes & deductions –$346' over a take-home of '$1,217'. 1,564 − 346 = 1,218.",
+ "fix": "Display-only: derive the chip as `Math.round(calc.gross) - Math.round(calc.net)` (and likewise give Breakdown the rounding residual on its largest row, or print cents), so the visible figures always close. No change to net/gross/ded themselves — but it changes displayed dollar text, so run the wage-core equality assertion and name this as the one intended difference.",
+ "wageCore": false,
+ "slices": [
+  "wage-core"
+ ],
+ "id": "wage-math-02"
+}

@@ -1,0 +1,14 @@
+{
+ "title": "Add-Shift sheet defaults to the Night type even when Night is switched off — sheet and hero pay a differential the lab prices at base",
+ "severity": "medium",
+ "where": "index.html:4077 (`useState('night')`), with 4099 (`active` chip filter), 4104-4105 (preview), 4108-4109 (`draftShift`/`add`), vs 1198-1207 `patternCellShiftType`",
+ "detail": "AddShiftSheet initialises `shiftType` to the literal `'night'` and never reconciles it with the `active` list it renders chips from. Settings lets a nurse toggle any differential off (`tog`, index.html:4690). When Night is inactive: no SHIFT TYPE chip is highlighted (the chip row only maps `active`), yet `previewGross` is still `shiftGross(baseRate, differentials['night'], draft)` — `hourlyRate` (1119-1124) never looks at `active` — so the preview prices a Night shift, and the primary button on a fresh day commits `draftShift()` with `shiftType:'night'`. The hero then prices that shift with the Night differential too. The pattern lab's Night brush goes through `patternCellShiftType`, which resolves to `'base'` when `night.active` is false. Numbers from the real functions (base $65.15, defaults, Night off): sheet preview +$902 gross / +$702 take-home; two such shifts → hero $1,404; the same two nights in a 7-day pattern → lab $1,217 (per shift $781.80 vs $901.80). The sheet is the wrong one: it silently selects a type the nurse turned off, with no chip lit to show why. (If she *deletes* Night instead, `differentials['night']` is undefined and all three surfaces fall back to base — dollars agree, but the sheet still saves an unknown `shiftType` key.) A second instance of the same class of bug was also noted at the dashboard's 'Pick up a weekend night?' card (index.html:3434), which likewise prices `differentials['weekend-eve']` without checking `.active`.",
+ "failure": "Nurse deactivates Night in Settings (\"I only work days\"), taps a calendar day, sees no shift-type chip selected but a preview of +$902 gross / +$702 take-home, taps \"Add shift\". Her calendar and hero now carry a Night-differential shift she cannot see a reason for; the pattern lab, given the same rotation, shows $187 less per paycheck than the hero.",
+ "fix": "Initialise from the active list: `useState(()=> (Object.entries(differentials).find(([k,d])=>d.active && k!=='overtime')||['base'])[0])`, and add a small effect that resets `shiftType` to that value whenever the current `shiftType` is no longer in `active` (covers a Settings change while the sheet is open). No wage-core function changes; add a harness assertion: deactivate Night, open the sheet, assert a chip is highlighted and the preview equals `shiftGross(base, differentials[thatChip], ...)`.",
+ "wageCore": false,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "cross-surface-01"
+}

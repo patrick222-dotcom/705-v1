@@ -1,0 +1,13 @@
+{
+ "title": "Goal line prints \"about 1 years\" when a goal takes 26-27 paychecks",
+ "severity": "low",
+ "where": "index.html:4339 (fmtMonths inside PatternLab)",
+ "detail": "`mo<12 ? ... : \\`about ${Math.round(mo/12*10)/10} years\\`` -- for n=26 paychecks mo is exactly 12, so the branch yields 'about 1 years'; n=27 also rounds to 1. Ran fmtMonths over 1..52: 25 -> 'about 12 months', 26 -> 'about 1 years', 27 -> 'about 1 years', 52 -> 'about 2 years'. Twenty-six paychecks is exactly one year on this app's own 26-per-year model (yearNet = periodNet*26), so a goal sized to a year's take-home hits this case precisely.",
+ "failure": "A nurse with a goal equal to roughly a year of take-home sees 'Emergency fund: 26 paychecks (about 1 years)' under the money card.",
+ "fix": "Special-case the singular: `const y=Math.round(mo/12*10)/10; return \\`about ${y} year${y===1?'':'s'}\\``.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "wage-math-11"
+}

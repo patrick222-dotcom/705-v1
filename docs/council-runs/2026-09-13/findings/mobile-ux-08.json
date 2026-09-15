@@ -1,0 +1,13 @@
+{
+ "title": "est-banner action buttons are under the 44px tap-target minimum, unlike every other interactive control in this slice",
+ "severity": "medium",
+ "where": "index.html:143-144 (.est-banner button / .est-banner button.ghost CSS), rendered at index.html:3470-3475",
+ "detail": "`.est-banner button{padding:9px 13px;...font-size:12.5px}` (line 143) has no explicit line-height or min-height, so its rendered height is roughly 9+9px padding plus a ~12.5px line box — about 33-35px tall. That's the button a nurse taps to react to a rough/sample estimate: 'Sharpen it'/'Enter my rate' and 'Clear the sample'/'Got it', 8px apart in a `.row{display:flex;gap:8px;...}` (line 142). I checked whether this app compensates for small controls the way it does elsewhere: `.back` (line 368) and `.tg` (line 281) both carry a `::after{position:absolute;...}` hit-slop overlay (lines 369 and 282) that pads their effective tap area out to ~44px, and `.acct-menu button` (line 94) and `.pl-brushes .chip-sel` (line 346) both set `min-height:44px` directly — so the codebase clearly already treats 44px as the bar elsewhere. `.est-banner button` has neither technique.",
+ "failure": "A nurse reading the est-banner after a rough/sample setup, one-handed, taps to fix her estimate. The two buttons are each ~34px tall with only 8px between them and no invisible hit-slop margin, so a fingertip (which is wider than either button) can land on the wrong one — e.g. tapping 'Got it' (which silently sets estimateMode to '' and dismisses the banner for good) when she meant to tap 'Sharpen it' (which opens Settings), or missing both buttons on the first tap and having to re-aim.",
+ "fix": "Give `.est-banner button` `min-height:44px` (matching `.acct-menu button` / `.pl-brushes .chip-sel`), or add a `::after{content:'';position:absolute;inset:-Npx}` hit-slop overlay the way `.back` and `.tg` already do, and widen the 8px gap between the two banner buttons.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "mobile-ux-08"
+}

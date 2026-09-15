@@ -1,0 +1,13 @@
+{
+ "title": "Scrolling the calendar past a pay-period boundary fires a real Supabase write",
+ "severity": "medium",
+ "where": "index.html:2735-2748 (onMonthScroll -> setPPS), 2291-2295 (serializeState includes payPeriodStart), 2453-2487 (debounced save effect, payPeriodStart is a dependency at line 2487, and the body at 2459-2479 saves unconditionally once hydrated with no check that anything besides the view state changed)",
+ "detail": "payPeriodStart is part of the persisted blob (serializeState) and is a dependency of the 500ms-debounced cloud-save effect. onMonthScroll (a scroll-settle handler on the month view) calls setPPS(ps) whenever the scroll-follow logic decides the visible row belongs to a different pay period (line 2746: `if(ps && ps!==payPeriodStart) setPPS(ps)`). That state change alone re-triggers the save effect, and the effect has no content-equality guard against what was last written (unlike the 15s poll's own normalize() check at 2550/2560) - it only checks blob size and hydration status before calling saveToSupabase. So a signed-in user who just scrolls the month calendar to look at a future/past period, with no edits at all, produces a real network upsert to user_data roughly once per period boundary crossed (throttled only by the 500ms debounce and the 180ms scroll-settle timer).",
+ "failure": "A nurse casually scrolling through several months on her phone (checking a coworker's request, planning ahead) causes a burst of Supabase writes and a flashing 'Syncing...' indicator (line 3442) purely from browsing, once per pay-period boundary she scrolls past - wasted battery/data and free-tier write volume for a pure read/navigation action, and it also bumps updated_at, which can make a second signed-in device's 15s poll believe a real edit just landed when only the view moved.",
+ "fix": "Either drop payPeriodStart from the debounced-save trigger (persist the viewed period separately, e.g. only on pagehide/sign-out, or fold it into an existing save rather than scheduling a new one), or apply the same normalize()-style content-equality check the poll already uses (comparing serialized data with payPeriodStart zeroed out) before calling saveToSupabase, so a save that would be byte-identical is skipped.",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "performance-03"
+}

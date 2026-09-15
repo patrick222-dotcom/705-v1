@@ -1,0 +1,14 @@
+{
+ "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so it disagrees with the Breakdown and with Gross − Take-home whenever flat deductions exceed gross",
+ "severity": "medium",
+ "where": "/home/user/705-v1/index.html:3487 (chip reads calc.ded); computeNet 1231-1255 (ded uncapped, pre/post capped for display, flat-dollar custom withholdings never capped); Breakdown 3980-3990 (also not guarded by calc.hours>0 the way the Keep chip is)",
+ "detail": "computeNet returns `ded = pretax+fica+fed+st+posttax+cw` (raw) alongside display-capped `pre`/`post` (and clamps `net` at 0). The hero chip prints `ded`; the Breakdown prints the capped rows. The skill's own invariant says the caps exist 'so Breakdown still sums' — but the hero never received the same treatment, and the flat-dollar half of `cw` is outside the cap too (line 1243 folds dollar and percent withholdings into one number, line 1247 caps only pretax/posttax). Any nurse whose pretax/posttax fields are non-zero — which a paystub scan sets automatically (applyPaystub 3376-3378) — sees this on every pay period that is empty or light.",
+ "failure": "pretax $600 + posttax $25 (typical after a paystub scan), scroll to next pay period with no shifts logged yet: hero reads 'Gross $0 · Taxes & deductions –$625 · $0'. Log one 8h base shift at the default $65.15: hero reads 'Gross $521 · Taxes & deductions –$665 · $0' while 'See the full breakdown' for the same period lists Pre-tax –$481 and FICA –$40, total –$521. Same shape with a flat-dollar custom withholding: $150 'Parking' on an empty period shows 'Other withholdings –$150' under 'Gross $0'. Separately: Pre-tax $300 / Post-tax $50 with no shifts yet shows 'Projected take-home $0 · Gross $0 · Taxes & deductions –$350' while the Breakdown itself shows nothing to subtract.",
+ "fix": "Have computeNet return a display total that is bounded by gross (e.g. `dedDisp = Math.min(ded, gross)` or literally `gross - net`) and print that in the hero chip (or gate the chip with the same `calc.hours>0` guard the Keep chip already has); extend the flat cap to the dollar-typed custom withholdings (track `cwFlat` separately from `cwPct` and apply the same `flatCapTotal` logic) so the Breakdown's 'Other withholdings' row is bounded too. Add a smoke probe: computeNet(0,{pretax:600}).dedDisp === 0 and Breakdown rows sum === gross − net when pretax > gross.",
+ "wageCore": true,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "wage-math-00"
+}

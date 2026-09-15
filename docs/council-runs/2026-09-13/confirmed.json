@@ -1,0 +1,705 @@
+[
+ {
+  "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so it disagrees with the Breakdown and with Gross − Take-home whenever flat deductions exceed gross",
+  "severity": "medium",
+  "where": "/home/user/705-v1/index.html:3487 (chip reads calc.ded); computeNet 1231-1255 (ded uncapped, pre/post capped for display, flat-dollar custom withholdings never capped); Breakdown 3980-3990 (also not guarded by calc.hours>0 the way the Keep chip is)",
+  "detail": "computeNet returns `ded = pretax+fica+fed+st+posttax+cw` (raw) alongside display-capped `pre`/`post` (and clamps `net` at 0). The hero chip prints `ded`; the Breakdown prints the capped rows. The skill's own invariant says the caps exist 'so Breakdown still sums' — but the hero never received the same treatment, and the flat-dollar half of `cw` is outside the cap too (line 1243 folds dollar and percent withholdings into one number, line 1247 caps only pretax/posttax). Any nurse whose pretax/posttax fields are non-zero — which a paystub scan sets automatically (applyPaystub 3376-3378) — sees this on every pay period that is empty or light.",
+  "failure": "pretax $600 + posttax $25 (typical after a paystub scan), scroll to next pay period with no shifts logged yet: hero reads 'Gross $0 · Taxes & deductions –$625 · $0'. Log one 8h base shift at the default $65.15: hero reads 'Gross $521 · Taxes & deductions –$665 · $0' while 'See the full breakdown' for the same period lists Pre-tax –$481 and FICA –$40, total –$521. Same shape with a flat-dollar custom withholding: $150 'Parking' on an empty period shows 'Other withholdings –$150' under 'Gross $0'. Separately: Pre-tax $300 / Post-tax $50 with no shifts yet shows 'Projected take-home $0 · Gross $0 · Taxes & deductions –$350' while the Breakdown itself shows nothing to subtract.",
+  "fix": "Have computeNet return a display total that is bounded by gross (e.g. `dedDisp = Math.min(ded, gross)` or literally `gross - net`) and print that in the hero chip (or gate the chip with the same `calc.hours>0` guard the Keep chip already has); extend the flat cap to the dollar-typed custom withholdings (track `cwFlat` separately from `cwPct` and apply the same `flatCapTotal` logic) so the Breakdown's 'Other withholdings' row is bounded too. Add a smoke probe: computeNet(0,{pretax:600}).dedDisp === 0 and Breakdown rows sum === gross − net when pretax > gross.",
+  "wageCore": true,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "wage-math-00",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "A blanked or garbage multiplier differential is coerced to 0×, silently pricing every shift of that type at $0",
+  "severity": "medium",
+  "where": "/home/user/705-v1/index.html:1046-1047 (sanitizeData: `amount: isFinite(amt) ? amt : 0` regardless of type); 4715 (Settings multiplier NumInput with min={0}); 4016-4023 (NumInput commits `min` on an empty field); 1121 (hourlyRate: `base * diff.amount`)",
+  "detail": "For a dollar-type differential, 0 is the neutral value. For a multiplier-type differential (Holiday 1.5×, Overtime 1.5×), 0 zeroes the entire hourly rate — `hourlyRate` returns base*0 and shiftGross returns only the per-hour/flat bonus. Two paths produce it: NumInput's blank→min contract commits 0 when the user clears the '×' field and blurs, and sanitizeData maps any non-finite blob value to 0 rather than to 1. Once written, 0 is a finite number so sanitizeData keeps it on every subsequent load; nothing ever repairs it.",
+  "failure": "In Settings, tap the Holiday '1.5 ×' field, select-all/delete to retype, then tap elsewhere before typing (common on a phone). Holiday becomes 0×. Her Christmas 12h shift now shows '~$0' on the calendar and the hero's projected take-home drops by roughly $913 (65.15×1.5×12×0.78) with no warning; the Settings row still reads '0 ×' and looks like a value she chose.",
+  "fix": "In sanitizeData's differential branch, when `type==='multiplier'` coerce non-finite or ≤0 amounts to 1 (not 0). In the Settings row, give multiplier NumInputs `min={0.1}` (or make NumInput's empty-commit revert to the last good value when a `revertOnBlank` prop is set). Add a probe: sanitizeData({differentials:{holiday:{type:'multiplier',amount:''}}}).differentials.holiday.amount === 1 and hourlyRate(50,{type:'multiplier',amount:0}) is never reached from a sanitized blob.",
+  "wageCore": true,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-01",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Independently rounded chips: Gross − Taxes ≠ Take-home by $1 in ~11% of pay periods; Breakdown rows drift the same way",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:3484-3487 (hero: fmt(calc.net), fmt(calc.gross), fmt(calc.ded) each rounded separately); 3982-3987 and 4006 (Breakdown: six rows and the take-home each rounded separately); fmt at 1116",
+  "detail": "`fmt` rounds each figure to whole dollars on its own, so the three hero chips are three independent roundings of gross, ded and gross−ded. Replaying the real shiftGross/computeNet formulas over 220 mixes of base/night 12h shifts at five base rates with default taxes, 24 (11%) print chips whose subtraction is off by one. With six Breakdown rows the residual can reach $3. This is the 'rounding that compounds' the lens asks about — small, but it is the arithmetic a nurse is most likely to check by hand, and the app's credibility rests on the numbers closing.",
+  "failure": "Two 12h base shifts at the default $65.15/hr, default taxes: hero prints 'Gross $1,564 · Taxes & deductions –$346' over a take-home of '$1,217'. 1,564 − 346 = 1,218.",
+  "fix": "Display-only: derive the chip as `Math.round(calc.gross) - Math.round(calc.net)` (and likewise give Breakdown the rounding residual on its largest row, or print cents), so the visible figures always close. No change to net/gross/ded themselves — but it changes displayed dollar text, so run the wage-core equality assertion and name this as the one intended difference.",
+  "wageCore": false,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-02",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanism is real and I reproduced the exact numbers: computeNet(1563.6, defaultTaxes) with two 12h base shifts at $65.15/hr gives gross=1563.6, ded=346.3374, net=1217.2626. fmt() independently rounds each to fmt(gross)=$1,564, fmt(ded)=$346, fmt(net)=$1,217, and indeed 1564−346=1218≠1217 as displayed. So the arithmetic claim checks out exactly.\n\nBut granting the mechanism doesn't make the described outcome a bug worth reporting. Critically, computeNet (index.html:1231-1250) computes net = gross - ded in full floating-point precision from the raw, unrounded gross and ded — it is not derived by subtracting two already-rounded whole-dollar numbers. So the underlying wage math (Invariant 3's domain: shiftGross/hourlyRate/computeNet) is exact and internally consistent; nothing compounds or drifts in the actual computation. What the finding calls a defect is that fmt() — used identically everywhere in this codebase (hero chips, Breakdown rows, YearList, etc.) — rounds each of several related, independently-meaningful currency figures to the nearest whole dollar for *display* only. That a rounded subtotal minus a rounded deduction can differ by $1 from the rounded total is an unavoidable, universal property of showing whole-dollar rounded figures for numbers that don't happen to round the same way (the same artifact appears on bank statements, invoices, and virtually every budgeting app that shows subtotal/tax/total as separately rounded whole-currency amounts). Nothing in CLAUDE.md, the wage-core invariant, or the smoke-test suite promises penny-exact (or dollar-exact) reconciliation between independently displayed chips — that's a bar the finding invents and then holds the code to. The claimed severity (\"the app's credibility rests on the numbers closing\") is a rhetorical overstatement of a $1 cosmetic rounding artifact in a whole-dollar display, not a wage-math correctness bug, and doesn't rise to something the owner needs to act on."
+  ]
+ },
+ {
+  "title": "Pattern lab and calendar price a toggled-off differential differently",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:1206-1213 (patternCellShiftType resolves a 'night'/weekend cell to 'base' unless differentials[k].active); 2646 (statOf) and 2795 (calc) call shiftGross(baseRate, differentials[s.shiftType], s) with no active check; hourlyRate 1119-1124",
+  "detail": "The Settings toggle dims the row and removes the chip from the Add-Shift sheet (4099), and the lab treats it as 'she doesn't get this differential' — but calc/statOf/yearMonths keep applying the amount to any shift already carrying that shiftType (logged before the toggle, imported from .ics via the questionnaire at 3184, or added by a template/quick-fill). Only the delete path (4691) warns about repricing, which implies toggling off was meant to be display-only; the lab contradicts that. Either semantics is defensible; the two surfaces holding different ones is the defect.",
+  "failure": "Log Mon–Wed 12h nights this period (or .ics-import them), then toggle Night off in Settings. Hero still prices them at $75.15/hr (night amount included, +$360 gross for the period). Open Patterns → 'Mon–Wed nights' preset anchored on the same week: it prices the identical three nights at $65.15/hr and shows a take-home per paycheck ~$280 lower than the hero for the same schedule.",
+  "fix": "Pick one: (a) make hourlyRate/shiftGross treat `diff.active===false` as no differential so the calendar reprices to match the lab and the dimmed row (then the delete warning applies to toggling too, and the Settings hint should say so); or (b) drop the `active()` gate in patternCellShiftType so the lab prices what the calendar prices. (a) touches wage core; (b) does not, but leaves the toggle as pure decluttering. Either way add a probe covering an inactive differential on both paths.",
+  "wageCore": true,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "wage-math-03",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Verified the code (index.html:1119-1134 shiftGross/hourlyRate, 1202-1220 patternCellShiftType/patternCellToShift, 1257-1301 patternMetrics, 2636-2650 statOf, 4089-4104 AddShiftSheet, 4689-4692 tog/del) and the described mechanism is real but the \"defect\" framing doesn't survive scrutiny — it's a coherent, intended design, not a cross-surface contradiction.\n\nThe codebase draws one consistent line everywhere: `active` gates whether a *brand-new* shift instance can be created/classified under a given differential; it never gates the *pricing* of a shift that already carries that shiftType. That rule holds identically in every place a new shift is produced:\n- Add-Shift sheet (line 4099): `differentials` filtered by `d.active` for the chip list offered for a *new* pick.\n- Pattern Lab cell classification (patternCellShiftType, 1202-1211): a generic day/night cell resolves to 'base' instead of 'night'/'weekend-eve' when the differential is inactive — deciding what a *newly generated* cell becomes.\n- AddShiftSheet's own live preview (4104) and statOf/calc (2646, and calc's analogue) do NOT check `.active` when pricing a shift that already has a concrete `shiftType` — by the same rule, because that shift isn't being newly created, it's being priced as recorded.\n\nDeleting a differential (del(), 4691) is a materially different operation: it removes the key from `differentials` entirely, so `differentials[s.shiftType]` becomes `undefined` for every shift using it — hourlyRate then falls back to base for all of them, past and future, which is exactly why only *that* path warns about repricing. Toggling `active` off leaves the key (name/amount/type) intact, so already-tagged shifts keep pricing off the same, still-present definition — consistent with the general (undisputed) behavior that editing a differential's dollar amount immediately reprices every shift already tagged with that type. That's a feature, not the bug being described.\n\nCrucially, the Pattern Lab's readout for a preset (patternMetrics, 1257-1301) never reads or reprices the shifts already on the calendar at all — it takes no `shifts` argument and computes purely from `pattern.cells` + the anchor date, generating hypothetical fresh shifts via `patternCellToShift` for a lcm(cycle,14)-day span. Opening 'Mon–Wed nights' after logging real Mon–Wed night shifts does not touch, reference, or reprice those logged shift records — it's an independent simulation of \"if this preset were applied under current settings,\" reusing shiftGross/computeNet for calculation-methodology parity with the hero (per the comment at 1229), not for value parity with whatever happens to already be on the calendar. `planPatternApply` (1305) only consults `shifts` to decide skip-vs-replace placement, never to reprice; applying with replace=on would regenerate those specific days from scratch and only then would the calendar/hero converge with the lab's number, which is the expected lifecycle.\n\nSo the two 'surfaces' the finding pits against each other actually agree on both of the app's real rules (active gates new-shift classification; existing shiftType instances price off the persisted, non-deleted definition regardless of active). The apparent mismatch in the walkthrough is an artifact of comparing a real, already-logged shift against an unrelated hypothetical preset simulation for the same calendar dates — not a computation disagreement over the same data. This reads as intended, load-bearing behavior (mirrored by the explicit del()-only repricing warning) rather than a genuine defect."
+  ]
+ },
+ {
+  "title": "Year view prints gross as a bare '$' figure while the month cells it opens into print estimated take-home",
+  "severity": "low",
+  "where": "/home/user/705-v1/index.html:3970-3971 (YearList: fmt(mm.g), no qualifier); 2769-2780 (yearMonths sums shiftGross + PTO gross); 3933 and 3580 (month cells print '~'+fmt(t.g*keepRatio) under the disclaimer 'Day amounts are estimated take-home')",
+  "detail": "The month view carries a disclaimer that day amounts are take-home; the Year list has no equivalent and shows gross with the same `$` formatting. Tapping a year row drops the user into that month, so the two figures are seen back to back for the same days.",
+  "failure": "Year view shows 'September · 72 hrs · $5,327 · 6 shifts'. Tap it: the six day cells inside read ~$702, ~$702, ~$702, ~$716, ~$716, ~$609 — about $4,147 total, 22% less than the row she just tapped, with nothing on either screen explaining that one is gross and the other is take-home. (With six 12h nights at $75.15/hr the same gap shows as $5,411 vs ~$4,212.)",
+  "fix": "Display-only: either label the year row ('$5,327 gross') or print `'~'+fmt(mm.g*keepRatio)` to match the cells and reuse the same disclaimer. No math change.",
+  "wageCore": false,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "wage-math-05",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Paystub import turns a premium-only earnings row into a negative differential",
+  "severity": "medium",
+  "where": "index.html:3386-3387 (applyPaystub) and index.html:3739-3745 (PaystubReview row rendering)",
+  "detail": "applyPaystub derives each differential as `da = round((s.rate - p.baseRate)*100)/100` and stores it as the dollar amount with no floor and no cross-check against `s.earnings`. The parser's row regex (index.html:3360-3363) captures the HOURS AND EARNINGS 'Rate' column as `s.rate`. On PeopleSoft-style stubs (the very format this parser targets: 'Fed MED/EE', 'Fed OASDI/EE', 'TOTAL GROSS'), a shift-differential earnings code is frequently listed at the premium rate alone (e.g. 'PD Night Diff  4.00  36.00  144.00'), not the base-plus-premium rate. The review sheet renders the same `da` via `+$${da.toFixed(2)}/hr` with no guard, so the user is shown '→ Night  ·  +$-61.15/hr' and the Apply button writes it.",
+  "failure": "Base rate $65.15 read from 'Pay Rate: $65.15 Hourly'; a row 'PD Night 4.00 36.00 144.00' classifies as 'night' and yields da = 4.00 - 65.15 = -61.15. Review sheet shows '+$-61.15/hr'; after Apply, every night shift prices at (65.15 - 61.15) = $4.00/hr, so a 12h night reads '+$48 gross' in the Add-Shift preview and the hero collapses accordingly.",
+  "fix": "In applyPaystub (and the matching line in PaystubReview), treat a row whose rate is below the base rate as a premium-only line: `const da = s.rate < p.baseRate ? s.rate : s.rate - p.baseRate` (optionally confirmed by `Math.abs(s.rate*s.hours - s.earnings) < 1`), and never write a negative amount. Add a harness case with a premium-only row asserting the night amount lands at +4.00.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "wage-math-06",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Mechanism is real but the finding's precondition is unshown for this parser and the outcome is not silent, so it does not earn a medium. Confirmed from the cited code: index.html:3386 computes `da = Math.round((s.rate-p.baseRate)*100)/100` with no floor and no earnings cross-check; PaystubReview :3739-3745 prints `+$${da.toFixed(2)}/hr` unguarded; and sanitizeData (:1041-1049) keeps any finite `amount`, so a negative would survive reload/sync. Granting all that, three things undercut it. (1) The parser is a single-stub parser, not a PeopleSoft-general one -- it hard-codes `PA W/H`, `PA PHILADELPHIA W/H`, `PA LS Tax`, `403(b)`, `Pay Rate: $X Hourly` and the `PD `/`Incentive - ` prefixes (:3345-3363). Its `rate - baseRate` model only ever worked for its one real user if that stub's PD rows carry the blended rate, so for the format it targets the outcome is the intended one. The finding's claim that PeopleSoft stubs \"frequently\" list the premium alone is asserted, not demonstrated against this stub; the harness has no differential-row fixture at all (`makeMinimalPdf` emits no pay data, BACKLOG.md:876), so nothing in the repo shows a premium-only row ever reaching this code. A stub from another payroll system is more likely to miss the `Pay Rate:`/`HOURS AND EARNINGS…TAXES` anchors entirely than to half-parse into this exact shape. (2) The outcome is visible before it is written: the review sheet shows \"+$-61.15/hr\" next to \"$4.00/hr\" under the explicit contract \"Fix anything that looks off, then apply\" (:3719), so it is a caught-at-review defect, not a silent corruption -- though the rows are not editable in-sheet, so the user's fix is Cancel or Settings afterward. (3) The surface is near-dead by the project's own record: exactly one successful paystub import in two months, and the scan was demoted to a secondary \"instead\" link (CLAUDE.md Product surfaces; BACKLOG.md:680,884). Nothing documents a negative differential as intended, so a zero-floor (`Math.max(0,da)`) or a \"looks off\" flag on a negative row is a legitimate P3 hardening nit; the proposed `rate < base ? rate : rate-base` heuristic silently rewrites the parser's model for an unverified format and touches displayed dollar figures, which the wage-core skill says needs its protocol. As filed -- medium, with a concrete hero-collapse failure -- it restates a speculative stub format as an observed defect."
+  ]
+ },
+ {
+  "title": "\"Take-home per paycheck\" for cycles that don't divide 14 is an average that no actual paycheck ever equals, and nothing on screen says so",
+  "severity": "medium",
+  "where": "index.html:1281-1298 (patternMetrics span/periods averaging); labels at index.html:4540 (.pl-money \"Take-home per paycheck\") and index.html:4428 (side-by-side row \"Take-home / paycheck\")",
+  "detail": "patternMetrics prices the rotation over lcm(n,14) days and divides by span/14, so for any cycle length that is not 7 or 14 the figure is a mean across several different paychecks. The card and the comparison table both present it as *the* paycheck, with no 'average' or 'ranges from' qualifier, while the calendar hero (calc, index.html:2787-2810) shows each real 14-day period. Ran the real functions: '4 on, 4 off nights' preset, $50 base, default differentials, 12%/5%/FICA standard/$200 pretax: lab shows $3,749 (gross $5,196); after 'Put it on the calendar' the hero shows $4,233, $4,233, $3,265, $3,265 for the next four paychecks. A hand-built 28-day cycle (8 nights in fortnight 1, 4 in fortnight 2 -- a normal self-scheduled month) shows $3,089 in the lab; the hero shows $4,174 then $2,004. For the 28-day case the code comment's rationale ('a cycle that doesn't divide a fortnight') doesn't even apply -- it divides into exactly two paychecks that are simply different.",
+  "failure": "Nurse picks '4 on, 4 off nights' because the lab says $3,749/paycheck (vs $3,089 for Mon-Wed nights), applies it, and the very first paycheck on the calendar reads $4,233; the third reads $3,265. Neither matches the number she chose on, and the app never told her it was an average. Same in the side-by-side table: an 8-day or 28-day rotation is compared against 7/14-day ones as if the figures were the same kind of number.",
+  "fix": "Minimal, label-only (no wage-core touch): when lcm(n,14) > 14, caption the .pl-money card and the side-by-side cell, e.g. 'averaged over N paychecks -- checks will vary' (N = lcm(n,14)/14, computable in PatternLab from m.n). Better: have patternMetrics also return periodNetMin/periodNetMax (net of each 14-day window in the span) and show 'between $X and $Y' -- that variant touches patternMetrics and needs the Invariant 3 protocol.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "wage-math-09",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Template-brush cells skip the weekend-differential inference the grid hint promises, and are indistinguishable from generic cells that get it",
+  "severity": "medium",
+  "where": "index.html:1204 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType;`); hint at index.html:4536; cellLabel/cellColor at index.html:4316-4326",
+  "detail": "Generic Day/Night brushes resolve to weekend-day / weekend-eve on Sat/Sun (index.html:1205-1211). A cell painted with a template brush ('tpl:<id>', built at index.html:4350-4358 as kind:'fixed') keeps the template's shiftType verbatim, so a 'My nights' template (shiftType 'night') on Saturday is priced at the plain night differential. The hint under the grid reads, for every brush, 'Weekend days pick up your weekend differentials automatically.' Once painted the two cells are identical: cellLabel gives 'Night 12h from 7:00 PM' for both (differentials.night.name === 'Night'), cellColor gives differentials.night.color for both, same glyph. Ran it: Fri/Sat/Sun nights, 7-day cycle, $50 base, defaults -- generic brush: gross $4,632, net $3,324, calendar types weekend-eve/night/weekend-eve; template brush: gross $4,320, net $3,089, calendar types night/night/night. $312 per paycheck, ~$8.1k/yr, from a brush choice the UI says makes no difference. The exact-type semantics match calendar quick-fill (index.html:2922), so the arithmetic is deliberate; the hint and the indistinguishable cells are the defect.",
+  "failure": "Nurse saves her usual 'Night 12h' template, paints Fri-Sun with it because it's the brush with her name on it, reads the hint that weekends pick up her weekend differentials, and the lab under-quotes her rotation by ~$312 per paycheck; after apply, every Sat/Sun shift on the calendar is typed 'night' rather than 'weekend-eve' and the hero agrees with the low number.",
+  "fix": "Either (a) make the hint brush-aware and mark fixed cells (e.g. the ⚡ glyph or the template name in cellLabel) so a template-painted weekend visibly keeps its exact type, or (b) in patternCellShiftType let a fixed cell whose shiftType is 'base' or 'night' go through the same weekend inference as the generic kinds (an explicitly weekend-typed template still keeps its type). (b) changes displayed dollars via patternCellShiftType/planPatternApply, not the listed wage-core functions, but should still get a harness assertion (generic vs template brush on a Saturday).",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "wage-math-10",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": [
+   "Mechanism confirmed but the outcome is the documented template contract, not a defect. index.html:1204 returns cell.shiftType verbatim for kind:'fixed' cells; the section comment directly above it (~1138-1142) states the rule explicitly: \"Generic 'day'/'night' cells resolve to the weekend differential when they land on a Sat/Sun (the same inference the .ics import uses); 'fixed' cells (built from a template) keep their shiftType.\" The app has exactly two weekend-inference sites (grep: .ics import at 902-916 and the generic brushes at 1205-1211); the manual Add-Shift sheet and calendar quick-fill (2922, spreads qfTemplate.shiftType literally) never infer. So the app-wide model is coherent: the app infers a type only where the nurse gave none, and anything she typed herself -- a saved template -- is literal everywhere. The finding's own \"concrete failure\" (\"after apply ... the hero agrees with the low number\") is exactly what quick-filling that same 'night' template onto a Saturday on the calendar already produces today; the lab is faithful to the template contract, not diverging from it. The finding concedes the arithmetic is deliberate and narrows itself to (1) the unconditional hint at 4536 and (2) painted-cell indistinguishability. (2) is by construction -- a fixed 'night' cell and an inferred 'night' cell are the same shift, and the brush chips themselves are visibly distinct (\"⚡ <template name> ×12h\" vs \"☾ Night 12h\"), so the nurse chose the template brush knowingly. (1) is a one-sentence copy imprecision written for the default generic brushes (initial brush is 'night12'); it is a P3 wording nit, not a [medium] wage-math finding worth \"$8.1k/yr\" framing. Proposed fix (b) would actually break the documented contract by making the lab retype a deliberately-'night' template on weekends while calendar quick-fill keeps it literal -- introducing the lab/calendar divergence the #65 design avoided. Not already in the backlog, but does not rise above a nit; if anything, file the hint wording (\"generic Day/Night brushes pick up ...\") as P3 polish."
+  ]
+ },
+ {
+  "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
+  "severity": "medium",
+  "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
+  "detail": "AddShiftSheet initialises `shiftType` to the literal 'night' (line 4077) and never reconciles it with the chip list, which is filtered to `d.active` (line 4099). There is no useEffect in the component (checked 4075-4300). `hourlyRate` (1119-1124) does not consult `active`, so `differentials['night']` with `active:false` still adds its amount. The pattern lab does honour the flag — `patternCellShiftType` (1206-1212) prices a night cell as 'base' when Night is inactive — so the two surfaces disagree on the same setup. Settings (4712) and onboarding (5779) both expose the Night switch, so this is one tap away from the default.",
+  "failure": "Base $50, Night switched off in Settings or onboarding. Tap '+ Log a shift': no shift-type chip is highlighted, yet the preview reads '+$720 gross · about +$561 take-home' (60×12 × 0.7785). Tapping 'Add shift' without touching a chip saves a 'night' shift; the ON THIS DAY row reads 'Night ×12h', the hero rises by $720 and the calendar cell shows ~$561. A day shift at her rate is $600 gross / ~$467 take-home, so every quick log is $120 high on a differential she turned off.",
+  "fix": "Initialise from the first active, non-overtime key: `useState(()=>{ const a=Object.entries(differentials).find(([k,d])=>d.active&&k!=='overtime'); return a?a[0]:'base'; })` — or, equivalently, derive `active` first and seed from `active[0]`. Add a harness assertion: toggle Night off, open the sheet, assert a chip is `aria-pressed` and the preview equals base×12×keepRatio. (Whether an inactive differential should keep paying on already-logged shifts in calc/statOf is a separate product call; this fix does not touch that.)",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "wage-math-12",
+  "lens": "wage-math",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "poster_key is reversible: member user_ids and the board creator's id are readable, and the salt is a public constant",
+  "severity": "critical",
+  "where": "supabase/migrations/001_swap_board.sql:59-69 (\"see co-members\" policy + full-table grants on swap_members and swap_groups), :158 (poster_key derivation); live-verified column grants on project mnnlgcxnvodjwlhhiphq",
+  "detail": "Live, `authenticated` holds SELECT on swap_members(group_id, joined_at, user_id) and swap_groups(id, name, invite_code, created_by, created_at), and the \"see co-members\" policy returns every member row of every group the caller is in. swap_board() derives `poster_key = substr(md5(author::text || group_id::text || 'scrubpay-swaps'), 1, 8)`. The salt is a string constant in a public repo (github.com/patrick222-dotcom/705-v1 answers `\"private\": false`), group_id is known to every member, and md5 is a browser one-liner. So `supabase.from('swap_members').select('user_id,joined_at').eq('group_id',G)` yields the N candidate authors; hashing each gives a complete poster_key -> user_id table for the board. Binding a uuid to a person: swap_groups.created_by names the board creator outright (the one who sent everyone the link); joined_at orders the others against who-got-the-link-when; and a single confirmed match pins uid <-> display_name permanently (reveal returns post_id -> name and that post's key was on the board). The migration comment at :155-157 says \"Not reversible\" and the 2026-07-30 audit checked only that the `author` column can't be selected -- nobody tested rebuilding the key from readable columns. The client never selects from swap_members (only the insert at index.html:1706) and reads only id,name,invite_code (+ order by created_at) from swap_groups (index.html:1675, 1719), so both grants are pure over-exposure.",
+  "failure": "A nurse posts \"give up Fri 9/19 night\" after the app tells her \"Posted -- your unit sees it anonymously.\" (index.html:5062). Any co-member with devtools runs one REST select and one md5 loop and knows which uuid posted it; if she created the board, `created_by` names her with no inference at all. Every post she makes in that group is tagged to her from then on -- the feature's core promise is false.",
+  "fix": "Step 1, grants only (no key change, no client change): `revoke select, update on public.swap_members from authenticated;` (keep insert -- the client's insert at index.html:1706 sends Prefer: return=minimal, and is_swap_member/join_swap_group run as definer) and `revoke select, update on public.swap_groups from authenticated; grant select (id, name, invite_code, created_at) on public.swap_groups to authenticated;`. Step 2: stop deriving the key from a public constant -- keep a per-group random secret in a table with no grants to anon/authenticated and read it inside swap_board (definer), so a leaked uid can never be turned into a key. Nothing persists poster_key client-side (it is recomputed from each board fetch), so changing the derivation has no data impact. Add two probes to the RLS audit: as member A, `select user_id from swap_members` must be 403; `select created_by from swap_groups` must be 403.",
+  "wageCore": false,
+  "slices": [
+   "swap-board",
+   "infra"
+  ],
+  "id": "security-00",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "propose_swap never checks the caller is a leg: any member can reserve and hide any two posts on the board",
+  "severity": "high",
+  "where": "supabase/migrations/001_swap_board.sql:245-265 (propose_swap); live pg_get_functiondef is identical",
+  "detail": "The RPC validates membership, 2-3 legs, and that each post is open and in the group -- but never that auth.uid() authors any of the legs. The only thing keeping proposals to \"matches involving me\" is the client: computeSwapSuggestions (index.html:1763-1835) only emits suggestions with a 'me' leg and doPropose (index.html:5079-5099) passes them through. Any member can call `supabase.rpc('propose_swap',{g, post_ids:[x,y]})` with any two open post ids returned by swap_board. Each call flips both posts to 'proposed': swap_board (:164) then hides them from everyone but their authors, openPosts (index.html:5302) drops them, and computeSwapSuggestions ignores them; the two authors get a \"WAITING ON 2 OF 2 TO ACCEPT\" card pairing them with a stranger's unrelated post. The proposer is not a party, so they can neither see nor decline it -- only the victims can (decline_swap_match) -- and the attacker re-proposes on the next 15s poll. No rate limit, no per-user cap on open matches, and status 'expired' exists but nothing ever sets it.",
+  "failure": "One member with the invite code pairs every open post on the board in a loop from the console: the board reads \"Nothing posted yet\" for the whole unit and every poster is stuck declining nonsense matches that come straight back. Selectively: lock every other 'give' for Friday so only their own remains visible to the colleague who wants it.",
+  "fix": "In propose_swap, after the foreach loop and before `return m`: `if not exists (select 1 from swap_match_legs where match_id = m and leg_user = auth.uid()) then raise exception 'not_a_party'; end if;` -- the exception rolls back the match, legs and status flips. Optionally cap concurrent 'proposed' matches per proposer (e.g. 5) in the same function. Add an audit probe: as member C, propose posts by A and B only -> must raise not_a_party and leave both posts 'open'.",
+  "wageCore": false,
+  "slices": [
+   "swap-board",
+   "infra"
+  ],
+  "id": "security-01",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Raw 'parties decline matches' UPDATE policy bypasses decline_swap_match and strands the other party's post as 'proposed' forever",
+  "severity": "medium",
+  "where": "supabase/migrations/001_swap_board.sql:202-205 (policy), :233-235 (update (status) grant), :130 and :277-278 (why it is unrecoverable); live policy confirmed via pg_policies",
+  "detail": "decline_swap_match() exists precisely so declining releases the reserved posts in one transaction (001:269-282). But the policy 'parties decline matches' plus `grant ... update (status) on swap_matches` still let any party `PATCH /rest/v1/swap_matches?id=eq.<m>` with `{status:'declined'}` directly. That path never touches swap_posts. Afterwards: the author's 'update own posts' USING requires status='open' (001:130) so she cannot withdraw or edit it; decline_swap_match raises match_not_proposed because status is already 'declined' (001:277-278); reveal_match raises match_not_proposed (001:315); the board RPC hides it from everyone else (001:164). The client only ever uses the RPC (index.html:1938-1944; the sole `.from('swap_matches')` is a select at :1882), so the raw path is pure attack surface.",
+  "failure": "Colleague B, party to a match with A, sends one REST PATCH from devtools. A's give-up post vanishes from the unit's board, shows only in A's own list, cannot be withdrawn, edited or re-proposed, and never comes back -- A's shift is effectively un-swappable until the owner fixes the row in SQL.",
+  "fix": "`drop policy \"parties decline matches\" on public.swap_matches; revoke update on public.swap_matches from authenticated;` (re-grant only `select (id, group_id, status, created_at)`). All declines then go through the security-definer RPC. Add an rls_audit assertion that a direct PATCH to status='declined' is 42501 for a party.",
+  "wageCore": false,
+  "slices": [
+   "swap-board",
+   "infra"
+  ],
+  "id": "security-02",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanism is real but the failure path is not reachable in the shipped app and the stated damage does not materialise. (1) Reachability: the client's only `.from('swap_matches')` call is the SELECT at index.html:1882; decline goes exclusively through `supabase.rpc('decline_swap_match')` at :1941, so the raw PATCH is never issued by the UI. Reaching it requires an authenticated group member who is already a leg-party of the match (is_match_party = leg_user = auth.uid(), 001:189-191) to hand-craft a REST call with their own JWT -- and because they are a leg-party, their own post is a leg too, so the attack strands the attacker's post as much as the victim's. (2) Damage overstated: the finding says A's shift becomes \"un-swappable until the owner fixes the row in SQL\". It does not -- swap_posts has no unique constraint on (author, shift_date) (only the invite_code unique at 001:33 and the housekeeping index at :342), the \"insert own posts\" policy checks only author + membership (001:120-122), and the client insert at index.html:1737 has no already-posted guard, so A re-posts the same give-up shift in one tap. Residual harm is one stale 'proposed' row in A's own list plus a 'declined' match card -- clutter, not loss of function. (3) Context: the swap board has zero real groups (density currently zero per CLAUDE.md) and is de-emphasised by owner decision, so a medium-severity griefing vector that needs a malicious co-worker in her own invite-code unit is not worth a session against the sole production Supabase project. What survives is a low hardening nit, not a medium finding: the `update (status)` grant at 001:233-235 and the \"parties decline matches\" policy at :202-205 are vestigial (the comment \"used by the ... decline flows\" at :231 is stale since the RPC landed), and dropping both is a safe two-line change to fold into the next swap-board migration -- the RPCs are security definer and need no grant."
+  ]
+ },
+ {
+  "title": "\"Apply to my calendar\" writes another member's unvalidated shift_meta into the victim's shifts",
+  "severity": "medium",
+  "where": "index.html:5280-5290 (doApplyPlan), specifically :5285",
+  "detail": "shift_meta is free-form jsonb authored by another member: the insert grant (001:142-143) and policy (:120-122) accept any JSON under 500 bytes, including scalars, and match_details passes it through verbatim. doApplyPlan pushes `{shiftType:meta.shiftType, hours:meta.hours, start:meta.start}` straight into saveDayShifts -> setShifts (index.html:2857-2858) with no coercion; sanitizeData (:953-986) runs only on load. Until the next load the hero and breakdown compute `shiftGross(baseRate, differentials[s.shiftType], s)` (:1290, :2646, :2775, :2795) with whatever `hours` was sent: a string -> NaN, 1e6 -> millions, a scalar shift_meta -> undefined -> NaN; `h+=s.hours` (:2646) concatenates. The debounced save persists the row; on the next open sanitizeData (:976-977) drops it. Display-only helpers are safe -- giveMetaLine (:4067-4071) and fmtTime12 (:4039-4040, TIME_RE :738) coerce, so the board render itself cannot be crashed this way.",
+  "failure": "After a confirmed pickup the nurse taps \"Add to my calendar\": the hero take-home reads \"$NaN\" (or an absurd figure) for the rest of the session, the malformed shift is synced to the cloud, and when she reopens the app the shift she just picked up is silently gone from her calendar.",
+  "fix": "In doApplyPlan (before the push at :5285) accept incoming.shift_meta only if it is an object with `typeof shiftType==='string'`, `Number(hours)` finite and in (0,24], and `start` absent or matching TIME_RE; otherwise toast the existing \"copy the plan instead\" message and return. Server side, add a CHECK on swap_posts.shift_meta guarded by jsonb_typeof so the cast never throws: `shift_meta is null or (jsonb_typeof(shift_meta)='object' and jsonb_typeof(shift_meta->'shiftType')='string' and jsonb_typeof(shift_meta->'hours')='number' and (shift_meta->>'hours')::numeric between 0.1 and 24)`. Neither change touches shiftGross/hourlyRate/computeNet or the sanitizeData coercions.",
+  "wageCore": false,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "security-03",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanics are described accurately (doApplyPlan at index.html:5285 pushes meta.shiftType/meta.hours uncoerced; sanitizeData :972-982 only runs on load), but the failure path is not reachable through the shipped UI and the realistic impact does not justify a medium security finding.\n\n1. The UI cannot produce malformed shift_meta. The only composer path (index.html:5049-5050) builds it from the poster's own calendar shift, which has already been through sanitizeData: shiftType is a string, hours is a finite number in (0,24], start is TIME_RE-valid. Reaching the failure requires a signed-in member of the victim's invite-code group to hand-craft a PostgREST insert (or an update while the post is still 'open' -- 001:126-130 freezes it once proposed), i.e. a hostile coworker bypassing the app.\n\n2. The attacker must then get the victim to match against that post, every leg must accept -- which reveals the attacker's display name to the victim -- and the victim must tap Apply. Before she does, the malformed meta is rendered right beside the button via giveMetaLine (:5473-5476, :4067-4071): a scalar meta reads \"Shift ×undefinedh\", hours 1e6 reads \"×1000000h\", a non-numeric string reads \"×abch\". The only variant that renders innocuously is a numeric string (\"12\"), and that one is harmless: shiftGross (:1131) coerces it in multiplication, hourlyRate (:1120) already guards a missing differential, and sanitizeData coerces hours to Number on reload so the shift survives -- the worst artifact is `h+=s.hours` (:2646) showing \"012\" in a day total until the next load.\n\n3. The persisted damage is self-healing by design: the blob save writes the row, and the next load's sanitizeData drops it -- the comment at :950-952 says this backstop exists precisely so string/NaN fields cannot corrupt calculations. \"The shift she just picked up is silently gone\" is a shift the attacker fabricated with garbage hours; there is no arrangement to lose, and the plan text tells her to confirm through the unit's normal process anyway. No anonymity break, no cross-user read, no persistent corruption, no wage-core involvement.\n\nA colleague with group membership who wants to harm a coworker can post a well-formed fake give and simply not show up; forging JSON to make her hero read $NaN for one session, at the cost of de-anonymizing themselves, is not a threat worth an owner session. The 3-line guard in doApplyPlan is reasonable hygiene and could be filed as a P3 nit, but not as a medium security item with a server-side CHECK migration against the only (production) project."
+  ]
+ },
+ {
+  "title": "MAX_BLOB_BYTES is enforced only in the browser; user_data.data has no server-side size bound, so one signed-in account can fill the shared free-tier database",
+  "severity": "high",
+  "where": "supabase/migrations/000_core.sql:27 (data jsonb, no CHECK); confirmed live via pg_constraint — user_data carries only PRIMARY KEY, FOREIGN KEY and UNIQUE(user_id), no trigger. Client side: index.html:2464 (the only size check), index.html:2496 (pagehide flush) and index.html:2512 (retrySync) call saveToSupabase without it; saveToSupabase itself at index.html:1324-1344 does no size check.",
+  "detail": "The 512KB cap that CLAUDE.md calls the 'free-tier guard' is a JavaScript comparison in the debounced save effect. The table has no `pg_column_size(data)` CHECK (compare `events.props`, which does have one in the same migration), and RLS only constrains *which row* an authenticated user may write, not *how big*. Since the Google OAuth app is In production, any Google account is a valid `authenticated` caller against the public anon key. Even inside the app the cap is not actually held: when the debounce path trips it, it toasts 'cloud sync paused' and returns, but the `pagehide`/`visibilitychange` flush (2496) and the manual retry (2512) both call saveToSupabase directly with the same oversized `snapshotRef`/`serializeState()` and write it anyway. Separately, the check compares `JSON.stringify(...).length` (UTF-16 code units) against a byte budget, so non-ASCII notes can be ~3x the intended bytes before it trips.",
+  "failure": "A hostile (or merely curious) signed-in user issues `POST /rest/v1/user_data` (Prefer: resolution=merge-duplicates, on_conflict=user_id) with the public anon key + their own JWT and `data` = tens of MB of random base64 (incompressible, so TOAST does not shrink it), repeating the update to leave dead tuples behind. Nothing in Postgres refuses it. The free-tier project crosses its 500MB database quota and Supabase drops it to read-only: every other user's `saveToSupabase` then fails on every edit, each device falls into the failed-save backup mode with the sync-error badge, and cross-device sync stops for everyone until the owner intervenes in the dashboard. In-app variant a real user would see: after the 'cloud sync paused' toast, backgrounding the tab silently uploads the oversized blob the toast just said was not being uploaded.",
+  "fix": "Add migration 004 (000 is never back-edited): `alter table public.user_data add constraint user_data_data_size check (pg_column_size(data) <= 524288), add constraint user_data_data_is_object check (jsonb_typeof(data) = 'object');` — matches the pattern already used for `events.props`. Then move the size check into `saveToSupabase` itself (return null and logClientError when `new TextEncoder().encode(JSON.stringify(data)).length > MAX_BLOB_BYTES`) so the flush and retry paths share it, and treat a 23514 from the server like any other failed save (backup + syncError), which the existing branch already does.",
+  "wageCore": false,
+  "slices": [
+   "data-sync"
+  ],
+  "id": "security-05",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "ical-proxy accepts the public anon key: verify_jwt does not mean \"signed-in user\"",
+  "severity": "medium",
+  "where": "supabase/functions/ical-proxy/index.ts:8-9 and :46-59 (no role/user check anywhere in the handler); anon key shipped at index.html:616",
+  "detail": "The function's header comment and CLAUDE.md both claim `verify_jwt` restricts the proxy to signed-in users (\"an unauthenticated POST is 401, so it is not an open proxy\"). That is only true for a request with NO Authorization header. The Supabase gateway's verify_jwt checks the signature, and the project's anon key is itself a JWT signed with the same secret (`role: anon`, exp 2036). Live probe against the deployed function (version 1, byte-identical to the repo copy): no header -> 401 UNAUTHORIZED_NO_AUTH_HEADER; `Authorization: Bearer <anon key from index.html>` with `{\"url\":\"https://www.google.com/\"}` -> 422 not_a_calendar, i.e. the handler ran and fetched the upstream. The handler never inspects the JWT's `role`/`sub` (index.ts:46-59 go straight from body parsing to the allowlist), so anyone who has viewed the page source can drive it. The allowlist still holds (169.254.169.254 -> 403), so this is not an internal SSRF, but the second allowlist entry `/^www\\.google\\.com$/` (index.ts:22) has no path constraint, so the project is an anonymous relay for arbitrary google.com URLs and any public/secret Google Calendar feed, with `Access-Control-Allow-Origin: *` (index.ts:31) so it works from any web page.",
+  "failure": "A script with the anon key (harvested by any of the crawlers already hitting badgebudget.com) loops POSTs at a large public Google calendar feed: each call is a free-tier invocation plus up to 2MB of egress. The project hits the free-tier egress/compute cap, and every real nurse loses cloud sync and calendar sync until the next billing window, or the owner pays. The intended control (\"only a signed-in user can call this\") is simply not in force.",
+  "fix": "In the handler, before the allowlist: read `req.headers.get('Authorization')`, decode the bearer JWT payload (the gateway has already verified its signature) and return 401 unless `payload.role === 'authenticated'` and `payload.sub` is a UUID; or equivalently build a supabase client with that header and require `auth.getUser()` to return a user. Then correct the two comments (index.ts:8-9, CLAUDE.md Supabase section) and add the negative test to the ship ritual: `curl` with the anon key must return 401. While there, pin both Google entries to the `/calendar/ical/` path prefix so `www.google.com` is not a general-purpose relay.",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync",
+   "infra"
+  ],
+  "id": "security-08",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Previous account's secret feed URL survives a stalled sign-out and is shown/saved for the next account on the same device",
+  "severity": "medium",
+  "where": "index.html:2529-2540 handleSignOut (does not clear icalSub/icalUrl/hydratedUserId/icalSyncedForUser); index.html:2335-2340 resetToDefaults (same omission); index.html:2441 hydration effect `catch(_){ return; }`",
+  "detail": "The only place `icalSub`/`icalUrl` are cleared on sign-out is the SIGNED_OUT branch of onAuthStateChange (index.html:2417). `handleSignOut` exists precisely because that event \"won't fire if signOut stalled\" (its own comment) and it mirrors the branch for every field except the four iCal ones; `resetToDefaults` (which it calls) also skips them. So after a stalled sign-out (the WebKit lock deadlock this codebase already documents) user A's bearer credential stays in React state. When user B signs in on the same tab, hydrateFromCloud sets hydratedUserId, the effect at index.html:2431-2450 calls loadIcalSub(B); if that throws (network blip) it `return`s before the `setIcalSub(sub); setIcalUrl(...)` line, leaving A's URL and subscription object in place. Settings renders the CALENDAR SYNC block for any truthy `user` (index.html:4785) with `value={icalUrl}` (4790), 'Sync now' calls runIcalSync which resolves `url` from `icalSub.icalUrl` (3254), and 'Update link' calls saveIcalSub(user.id=B, url=A's) (3300). Even on the success path there is a render window between setHydratedUserId(B) and loadIcalSub resolving where B's Settings shows A's URL.",
+  "failure": "On a shared unit iPad: nurse A signs out (sign-out stalls, 3s timeout), nurse B signs in on flaky Wi-Fi so loadIcalSub fails. B opens Settings and sees A's secret Google Calendar address in the input; tapping 'Sync now' pulls A's shifts into B's questionnaire; tapping 'Update link' stores A's feed under B's account permanently, so B's app re-fetches A's private calendar on every open from then on.",
+  "fix": "Add `setIcalSub(null); setIcalUrl(''); setHydratedUserId(null); icalSyncedForUser.current = null;` to handleSignOut (or into resetToDefaults, which both sign-out paths call). In the hydration effect, make the catch clear state too (`setIcalSub(null); setIcalUrl('');`) instead of returning with whatever was there, and key the effect so a stale subscription from a different uid can never be reused: in runIcalSync/onSaveIcalUrl, refuse when `icalSub.userId !== user.id` (store the uid on the icalSub object). Harness: seed state as A, simulate a rejected signOut and a rejected loadIcalSub for B, assert the input is empty.",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync"
+  ],
+  "id": "security-09",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Google sign-in runs the OAuth *implicit* flow, not PKCE — tokens land in a URL fragment that stays one Back-press away in browser history",
+  "severity": "medium",
+  "where": "index.html:610-615 (createClient with no options) and index.html:4619-4625 (handleGoogleAuth / signInWithOAuth)",
+  "detail": "CLAUDE.md and the invite-link comment at index.html:1602-1605 (\"supabase-js PKCE puts its own `?code=` here\") both say the Google path is PKCE. It is not. The vendored supabase-js 2.45.4 (auth-js 2.65.0) sets `DEFAULT_AUTH_OPTIONS={autoRefreshToken:!0,persistSession:!0,detectSessionInUrl:!0,flowType:\"implicit\"}`, and `createClient(url, key)` at 610-615 passes no `auth` options, so `signInWithOAuth` sends no code_challenge and Supabase redirects back to `redirectTo` with `#access_token=…&refresh_token=…&provider_token=…` in the fragment. auth-js consumes that fragment and clears it with `window.location.hash=\"\"` (verified in the bundle; the PKCE branch instead does `searchParams.delete(\"code\")` + `history.replaceState`). The clear happens only after an awaited `/auth/v1/user` round-trip, i.e. normally after the page's `load` event — and I verified in the sandbox Chromium (iPhone 13 profile) that a post-load `location.hash=''` grows `history.length` 2→3 and `history.back()` restores the full `#access_token=…&refresh_token=…` URL. (When the round-trip beats `load`, Chromium converts it to a replacement and no entry is left — so it is timing-dependent, not guaranteed.) The fragment refresh token stays valid until the first rotation (~1h) or a server-side sign-out.",
+  "failure": "A nurse signs in with Google on a shared unit workstation or a borrowed phone, then walks away. Whoever next touches the browser presses Back (or opens History) and sees `badgebudget.com/#access_token=…&refresh_token=…` in the address bar; pasting that URL into a tab (or calling /auth/v1/token with the refresh_token) gives them her session and her pay history for up to an hour, and a colleague scrolling the shared machine's history days later still sees the tokens in the list even after they have expired.",
+  "fix": "Opt into PKCE: `window.supabase.createClient(url, key, {auth:{flowType:'pkce'}})` at index.html:611. auth-js then returns `?code=` and scrubs it with replaceState (no history entry, no token in any URL); `takeSwapInviteFromUrl` (1619-1629) already writes foreign params like `code` back byte-identical, so the invite flow is unaffected. Re-run the smoke suite's sign-in section and confirm a real Google sign-in on badgebudget.com still lands (the redirect allow list is unchanged). Then correct the PKCE claim in CLAUDE.md → Auth and the comment at 1602-1605.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "security-11",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "client_error batch can exceed the live `events_props_check` (< 2000 bytes) and is silently dropped after the ring buffer was already cleared",
+  "severity": "medium",
+  "where": "index.html:1443-1456 (flushClientErrors) with index.html:1385-1398 (track) and the live constraint `events_props_check CHECK (pg_column_size(props) < 2000)`",
+  "detail": "`flushClientErrors` ships up to `ERR_FLUSH_CAP`=8 entries, each with a 300-char `msg`, 80-char `src`, `t` and `line`. Measured in the live database: 8 entries at 300 chars = 3,116 jsonb bytes; 6×300 = 2,348; 8×200 = 2,316; 8×170 = 2,060 — all rejected by the CHECK; 5×300 = 1,964 and 8×120 = 1,676 pass. So any batch of ≥6 max-length entries, or 8 entries averaging ≳165 chars, fails with 23514. Max-length entries are the normal case for the errors that matter: `ErrorBoundary.componentDidCatch` (index.html:2160) logs `error` plus the JSON-stringified `errorInfo` (a componentStack of hundreds of chars, sliced to 500 in the buffer and 300 in the flush), and PostgREST error objects mirrored from `console.error('Load error:', error)` (1469) run 150-300 chars. `track()` swallows the rejection into `console.debug` (1396), which is not mirrored into the ring buffer, and `__takeErrorLog()` (567-572) already removed the batch before the send — so the loss is total and self-concealing. Live data so far: 11 client_error rows, max 526 bytes, max n=3, so nothing has been lost *yet*; the arithmetic is deterministic for the first bad session.",
+  "failure": "A nurse hits a React render crash loop (ErrorBoundary fires several times) or a run of failed cloud loads during one visit. On her next app open the flush builds an 8-entry, ~3 KB batch, Postgres rejects it, the ring buffer is already empty, and the owner's `select … where name='client_error'` shows nothing for exactly the session that needed diagnosing — worse than before the telemetry existed, because the local buffer was also drained.",
+  "fix": "Budget the payload in `flushClientErrors` before calling `track`: cut per-entry `msg` to ~160 chars and drop the oldest entries while `JSON.stringify(props).length > ~1700` (jsonb adds ~5-10% over the text form, so 1,700 text bytes stays under 2,000). Optionally also widen the CHECK in a `004` migration (e.g. `< 4000`) so a stale client can't lose a batch either. Add a smoke assertion that seeds 8 long entries into `scrubpayErrors` and asserts the resulting event body is under the cap.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "security-12",
+  "lens": "security",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Hero's 'See the full breakdown' / 'Share BadgeBudget' links accidentally inherit the full .hero card style, ballooning them and adding dead scroll space to the very first screen",
+  "severity": "high",
+  "where": "index.html:3491-3492 (className=\"hero more linklike\"); CSS: .linklike padding:0 at 79, .hero padding/border-radius/background/box-shadow at 114, .hero .more at 119",
+  "detail": "The two footer buttons are given className=\"hero more linklike\" — three independent classes, not a scoped \".hero .more\" selector. Because the token \"hero\" is also the class name of the enclosing card, both buttons literally match the top-level `.hero{background:var(--ink);border-radius:22px;padding:22px 24px;...box-shadow:...}` rule (line 114) in addition to `.hero .more` (119) and `.linklike` (79). `.hero` and `.linklike` have equal CSS specificity (one class each), so the tie is broken by source order, and `.hero` (declared later, at line 114) beats `.linklike`'s `padding:0` (line 79) — the buttons keep `.hero`'s 22px/24px padding, border-radius and box-shadow instead of being flush, padding-free text links. Verified live on an iPhone-13 viewport: document.querySelectorAll('.hero') genuinely returns 3 elements (the card plus both buttons); each button's computed style is 'padding: 22px 24px', height balloons to 59px, and a screenshot shows each rendering as its own visible dark rounded pill with an inset highlight seam nested inside the real hero card, rather than a plain link line.",
+  "failure": "On every load, the hero card — the first thing a nurse sees, and the thing the whole app is built around — is roughly 120px taller than intended, almost entirely padding around two one-line links. One-handed on a phone, that's extra scrolling distance before she reaches the calendar / '+ Log a shift' controls beneath it, and the two links visually read as broken/unstyled boxes rather than the intended small footer actions.",
+  "fix": "Stop reusing the literal token \"hero\" as a class on these buttons — give them a distinct class (e.g. \"hero-more\") so they no longer match the card-level .hero rule, or restructure so the descendant relationship is expressed purely through DOM nesting rather than a repeated class name.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "mobile-ux-00",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Overtime tag text fails AA contrast in the Add-Shift live preview and shift list",
+  "severity": "high",
+  "where": "index.html:4197 and index.html:4245 (color '#11A86B' inline overrides; also the decorative badge at 3923 and legend swatch text-adjacent use at 4218 share the same token)",
+  "detail": "The 'OT ×1.5' annotation is rendered with inline color:'#11A86B' (var(--money)). At line 4197 it sits on the 'ON THIS DAY' row list's white background (.row-item{background:#fff}, line 421) — measured contrast 3.07:1. At line 4245 it sits on the live preview's mint-tinted panel (.preview{background:var(--money-soft)}, line 418) — measured contrast 2.75:1. Both are far under the 4.5:1 WCAG AA minimum for normal-weight text this size (12-12.5px, not 'large text' under WCAG's 14pt-bold/18pt threshold). The base take-home figures next to it use var(--money-ink) (#0B5D3C), which passes easily (7.1:1+) — only the OT accent color is broken. (Independently confirmed by the add-shift slice: same two call sites, same computed ratios ≈3.07:1 / ≈2.75:1, same root cause of using the literal '#11A86B' instead of --money-ink.)",
+  "failure": "A low-vision nurse comparing 'is this shift worth picking up because of the OT multiplier' sees a washed-out, hard-to-read 'OT ×1.5' tag right next to the dollar amount that explains why the number is higher than a normal shift — exactly the moment this app is built to make legible.",
+  "fix": "Swap the inline color:'#11A86B' for var(--money-ink) (#0B5D3C) in the OT tag at both call sites (and the calendar badge/legend for consistency) — it already passes AA against every background in use and matches the color already used for the adjacent dollar figures.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces",
+   "add-shift"
+  ],
+  "id": "accessibility-00",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Breakdown and Settings close buttons have no accessible name",
+  "severity": "high",
+  "where": "index.html:3623 (Breakdown modal) and index.html:4697 (Settings modal)",
+  "detail": "Both render `<button className=\"back\" onClick={...}>{Ic.x}</button>` — Ic.x (line 603) is a bare `<svg>` with no `<title>` and no text content. Every other close button using the same Ic.x glyph in this file sets `aria-label=\"Close\"` (lines 2059, 3822, 3850, 4170, 4419, 4493, 5305, 5687) or an equivalent specific label — these two are the only ones that don't.",
+  "failure": "A screen reader user opening 'Your paycheck math' (Breakdown) or Settings (where the savings-goal lines live) tabs to the dismiss button and hears only 'button' with no name, so they can't tell it's the close control without trial-and-error activation.",
+  "fix": "Add aria-label=\"Close\" to both buttons, matching every sibling close button in the file.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "accessibility-02",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Pay-period stepper's scroll animation ignores prefers-reduced-motion",
+  "severity": "high",
+  "where": "animateScrollTop (index.html:674-683), used by scrollFocusToDate (index.html:2751-2766) via movePeriod (index.html:2826-2831)",
+  "detail": "The ‹/› pay-period stepper in the greet row calls movePeriod, which calls scrollFocusToDate, which drives the calendar's scroll position with animateScrollTop — a hand-rolled requestAnimationFrame loop that eases el.scrollTop over 380ms. This is plain JS, not a CSS transition/animation. The file's own reduced-motion rule (index.html:469-471, `@media (prefers-reduced-motion: reduce){ *{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important} }`) only collapses CSS-driven durations and `scroll-behavior` (native smooth-scroll); it has no effect on a loop that sets `el.scrollTop` directly on every rAF frame. There is no `matchMedia('(prefers-reduced-motion: reduce)')` check anywhere in the file (confirmed via grep).",
+  "failure": "A user with 'reduce motion' enabled at the OS level taps › next to the pay-period label while in Month view. The entire calendar viewport still animates a smooth 380ms scroll to the new period's position — exactly the kind of scrolling motion the reduced-motion setting exists to suppress, and exactly the kind of thing this same file is careful to suppress for boot timers/CSS transitions elsewhere.",
+  "fix": "Check `matchMedia('(prefers-reduced-motion: reduce)').matches` at the top of animateScrollTop (or in scrollFocusToDate before calling it) and jump `el.scrollTop = clamped` synchronously instead of animating when the user has that preference set.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "accessibility-05",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Add-Shift sheet has no dialog semantics, unlike every sibling sheet in the same file",
+  "severity": "high",
+  "where": "index.html:4164 (AddShiftSheet's outer <div className=\"sheet\">)",
+  "detail": "Every other modal sheet in the app declares role=\"dialog\" aria-modal=\"true\" aria-label=\"...\" on its .sheet element: the feedback sheet (line 2057, aria-label=\"Send feedback\"), the .ics import-confirm sheet (3820, \"Confirm schedule import\"), the classify-imported-shift sheet (3848, \"Classify imported shift\"), and both swap sheets (5311/5330, \"Shift swaps\"). AddShiftSheet's own <div className=\"sheet\"> at 4164 carries none of these. There is also no Escape-key handler anywhere for this sheet (the only keydown listener in the whole app is the account menu's, lines 1966-1968) or focus management on open/close.",
+  "failure": "A screen-reader user who opens 'Add a shift' from a calendar day gets no announcement that a dialog named 'Add a shift' just opened, and the assistive-tech virtual cursor is free to wander into the calendar/dashboard behind the scrim while it is nominally modal — the exact opposite of what happens one sheet over (Import/Classify/Feedback/Swaps) for the identical visual pattern. The same user also has no keyboard way to dismiss it (Escape does nothing here, though it works for the account menu).",
+  "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Add a shift\" to the .sheet div at line 4164, matching the existing pattern, and give it the same document keydown Escape->dismiss() handling already implemented for the account menu (1966-1968).",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "accessibility-10",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Pattern Lab's dialog has no dialog role, no aria-modal, and no accessible name — unlike every sibling sheet",
+  "severity": "high",
+  "where": "index.html:4417-4419 (list mode) and index.html:4486-4488 (edit mode), function PatternLab",
+  "detail": "PatternLab's outer markup is `<div className=\"scrim\" onClick={dismiss}><div className=\"modal\" onClick={e=>e.stopPropagation()}>...`. Neither the scrim nor the modal div carries `role=\"dialog\"`, `aria-modal=\"true\"`, or an `aria-label`/`aria-labelledby`. Every other overlay in the app that plays the same role does carry this: FeedbackSheet (`role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\"`, line 2057), the confirm dialog (`role=\"alertdialog\" aria-modal=\"true\"`, line 2138), the ICS import confirm (line 3820) and classify-shift (line 3848) sheets, and SwapsSheet (lines 5311, 5330) all declare it. PatternLab is the odd one out even though it visually looks and behaves like the same kind of sheet.",
+  "failure": "A VoiceOver/NVDA/TalkBack user taps 'Patterns' in the topnav (openPatternLab, line 2933). No 'dialog' role is announced and no name is given for what just opened — the screen reader has no signal that a new modal context replaced the page, and (because there is no aria-modal) it does not treat the rest of the page as hidden, so rotor/browse-mode navigation can wander into the calendar and topnav that are still present in the accessibility tree underneath.",
+  "fix": "Add `role=\"dialog\" aria-modal=\"true\"` and an `aria-label` (e.g. \"Pattern lab\" / \"Edit pattern\") to the `.modal` div in both the list-mode and edit-mode returns, matching the convention already used by FeedbackSheet/SwapsSheet/the ICS sheets.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "accessibility-12",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Pattern Lab has no focus trap and no Escape-to-close, so keyboard focus leaks into the obscured app behind it",
+  "severity": "high",
+  "where": "index.html:4300-4581 (function PatternLab, no keydown handling or focus management anywhere in the component); index.html:2596-2600 (body-scroll lock is the only 'modal open' side effect); index.html:1966-1968 (Escape-to-close exists for the account menu, for contrast)",
+  "detail": "There is no `useEffect`/`addEventListener('keydown', ...)` and no ref-based focus trap anywhere in PatternLab (confirmed by reading lines 4300-4420 and grepping the whole component body). The app never uses `ReactDOM.createPortal` (grep returns nothing) and never sets `inert` or toggles `aria-hidden` on background content when a sheet opens — the only 'a modal is open' side effect anywhere in the app is `document.body.style.overflow='hidden'` at line 2598, which blocks page scroll but does nothing to the DOM's tab order or accessibility tree. Meanwhile the account menu two thousand lines earlier (lines 1966-1968) does register a document keydown listener that closes on Escape, showing the app knows how to do this and simply didn't do it here.",
+  "failure": "A keyboard user opens Pattern Lab, then presses Shift+Tab from the '×' Close button (aria-label=\"Close\", line 4419) — focus moves backward into whatever topnav/calendar control precedes PatternLab in the DOM (e.g. the 'Patterns'/'Swaps'/'Settings' topnav links or a calendar day cell), all of which are still fully interactive but visually hidden under the `.scrim` overlay (`rgba(18,18,26,.55)` + blur, line 394). The user sees no focus indicator at all (it's under the overlay) and can activate a background control — e.g. re-triggering `openPatternLab` or opening Settings underneath the already-open Pattern Lab — while apparently still 'inside' Pattern Lab. Separately, pressing Escape while Pattern Lab is open does nothing at all; the only ways to close it are clicking the × button or clicking the scrim backdrop.",
+  "fix": "Give the modal a focus trap (cycle Tab/Shift+Tab within its own focusable elements) and move focus onto it when it opens (e.g. the close button or heading), restoring focus to the invoking control on close; add a `keydown` listener for `Escape` that calls `dismiss()`, matching the pattern already used for the account menu at line 1966.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "accessibility-13",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Onboarding step transitions never move focus and use no heading markup",
+  "severity": "high",
+  "where": "index.html:5704-5835 (all 5 obStep branches), goObStep index.html:2198-2201, exit-to-app at index.html:3081/3391/3412",
+  "detail": "Every step change in the wizard (welcome -> base-rate -> differentials -> taxes -> done, the back button, and the final exit into the main dashboard when setupComplete flips to true) is a full React remount of a different JSX subtree in the same container. None of the five branches use an <h1>-<h6> for its question/heading text (\"What's your base hourly rate?\", \"How does your pay change by shift?\", etc. are all plain <div className=\"q\">), there is no ref.focus()/autoFocus placed on any heading or first control after a transition, and no aria-live region wraps the step content. grep -n \"<h1\\|<h2\\|<h3\\|<h4\" confirms zero headings anywhere inside Onboarding().",
+  "failure": "A VoiceOver or NVDA user taps 'Get my estimate' (index.html:5729). The button they were focused on is unmounted and replaced by the base-rate step; the browser silently drops focus to <body> (or leaves it nowhere useful), and nothing is announced. The user hears nothing happen and has no heading to jump to with the AT's heading-navigation shortcut (H in NVDA/JAWS, rotor in VoiceOver) -- they must re-explore the whole page from the top to discover the new question exists. This repeats at every one of the 5 steps and again on the transition out of onboarding into the live app.",
+  "fix": "Give each step's question a real heading (e.g. <h1 className=\"q\">), and on obStep change move focus to that heading (or the step's first control) via a ref + useEffect keyed on obStep. Same treatment for the setupComplete flip into the main app.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "accessibility-15",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": [
+   "The technical claim is accurate (verified: no h1-h6 in Onboarding(), no ref.focus()/useEffect on obStep, no aria-live) but this restates a known, already-accepted class of finding rather than surfacing new information. CLAUDE.md's own KNOWN list already documents an equivalent-severity, same-root-cause a11y gap (the account menu's role=\\\"menuitem\\\" without roving-tabindex) and explicitly reasons it away as consistent with the rest of the app: 'it isn't worth a focus manager the rest of the app doesn't have either (no sheet traps focus).' Onboarding's lack of focus management on step transitions is the identical architectural gap applied to a different component — not a newly discovered defect. The 'high' severity is also overstated for a linear 5-step wizard with a visible progress bar and no branching, where AT users still encounter new content via normal tab/swipe navigation; this is degraded UX, not a broken/inaccessible flow. Filing it as a new high-priority finding would be re-flagging a design tradeoff the project has already made and documented, wasting the owner's time re-litigating it under a different file name.\""
+  ]
+ },
+ {
+  "title": "'ESTIMATED' tax-rate tag fails WCAG AA contrast",
+  "severity": "high",
+  "where": "index.html:328 (.tag.est rule), rendered at index.html:5796 and index.html:5798",
+  "detail": ".tag.est{color:#C2820A;background:#FDF3DD} at 10.5px/600-weight. Computed contrast of #C2820A on #FDF3DD is 2.93:1 -- well under the 4.5:1 AA minimum for normal text (it doesn't even clear the 3:1 large-text bar, and 10.5px isn't large text anyway). This is the badge sitting directly on 'Federal income tax' and 'State tax' in the onboarding taxes step (obStep 3), the two rates that feed the projected take-home figure shown one step later.",
+  "failure": "A low-vision nurse using the taxes step at obStep 3 cannot read the word 'ESTIMATED' next to Federal/State tax -- it visually all but disappears against its own pill background, so she can't tell which of the pre-filled numbers are guesses she should check versus fixed values (FICA's .tag.auto pill, by contrast, passes at 4.75:1).",
+  "fix": "Darken #C2820A (or lighten the pill background) until contrast clears 4.5:1 -- e.g. swap to the same indigo-on-indigo-soft treatment already used for .tag.auto, or darken to roughly #8A5A05 on the existing #FDF3DD.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "accessibility-16",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Settings modal has no dialog semantics and its close button has no accessible name",
+  "severity": "high",
+  "where": "index.html:4694-4697 (Settings)",
+  "detail": "Settings renders as `<div className=\"scrim\"><div className=\"modal\">...<button className=\"back\" onClick={onClose}>{Ic.x}</button>` with no role=\"dialog\", no aria-modal, no aria-label/aria-labelledby on the modal, and the close button wraps only the bare Ic.x SVG (index.html:603, a <path> with no <title>, no aria-hidden) with zero text or aria-label. Every sibling sheet in the same file gets this right at the same call-site shape: FeedbackSheet (index.html:2057, 2059) has role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\" plus aria-label=\"Close\" on its X button; SwapsSheet (index.html:5311, 5305) and the ICS import sheets (index.html:3820,3822 / 3848,3850) do the same. Settings is the one modal in this slice missing all of it.",
+  "failure": "A screen-reader user (VoiceOver/NVDA/TalkBack) opens Settings from the account menu (the only route to Settings on a phone per the top-bar note in CLAUDE.md). Nothing announces that a dialog opened - no 'dialog' role, no name - so the user has no orientation cue and, because there's no aria-modal, can swipe/Tab straight past the sheet into the calendar/hero content still sitting behind the scrim. When they do reach the X button in the header, it announces only 'button' with no label, so they cannot tell it closes Settings; the only other way out is the 'Done' button at the very bottom of a long, multi-section scrolling sheet (goals, differentials, taxes, calendar sync), which they may never discover.",
+  "fix": "Add role=\"dialog\" aria-modal=\"true\" and aria-labelledby pointing at the \"Settings\" title div (or aria-label=\"Settings\") to the .modal div at 4696, and add aria-label=\"Close\" to the back button at 4697 - matching the pattern already used by FeedbackSheet/SwapsSheet/the ICS sheets in this same file.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "accessibility-21",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "SwapsSheet dialog claims aria-modal but has no focus trap, no initial focus, and no Escape handler",
+  "severity": "high",
+  "where": "index.html:5330 (and :5311 signed-out variant) — SwapsSheet's role=\"dialog\" aria-modal=\"true\" wrapper",
+  "detail": "SwapsSheet renders `<div className=\"sheet\" ... role=\"dialog\" aria-modal=\"true\" aria-label=\"Shift swaps\">` (index.html:5330; signed-out gate identical at :5311) but nothing in the component manages keyboard focus: no ref/useEffect moves focus into the dialog on open (grep of the whole 4819-5659 body finds only one unrelated `autoFocus`, on the display-name input at :5356, and the single `useRef` in the file, :4873, is for a stale-reveal timestamp, not focus), no keydown handler traps Tab inside the sheet, and no Escape handler exists anywhere in SwapsSheet (the only 'Escape' handler in the whole file is AccountMenu's, index.html:1966-1969, scoped to that component's own `open` state). Because `showSwaps` is rendered mid-tree inside App's JSX (index.html:3642-3647), after the main calendar content and the `+ Log a shift` FAB (index.html:3608-3609) which precede it in DOM order, the live page behind the scrim is never removed from the tab sequence.",
+  "failure": "A keyboard user (or screen-reader user driving via Tab) opens Shift swaps (topnav 'Swaps' or the Home card button at index.html:3596), lands on the sheet's Close button (index.html:5305, the first focusable element in the dialog) and presses Shift+Tab once: focus jumps out of the dialog entirely and onto the `+ Log a shift` FAB (index.html:3608), a fully live, visibly-covered-by-the-scrim button. Pressing Enter there opens the Add-Shift sheet stacked on top of the swap board, even though `aria-modal=\"true\"` asserts the rest of the page is inert. Symmetrically, Tab forward past the sheet's last control (e.g. the composer's 'Post to the board' button at :5653, or '+ Join another board' at :5587) leaves the dialog instead of wrapping back to Close — a keyboard user loses their place with no way back except tabbing all the way through the hidden background page. There is also no way to dismiss the sheet from the keyboard except tabbing all the way to the Close button and activating it, since Escape is not wired up here.",
+  "fix": "Add a mount-time effect that moves focus to the dialog (or its first control) and a keydown handler on the sheet that (a) calls onClose on Escape and (b) cycles Tab/Shift+Tab between the sheet's first and last focusable elements (a small focus-trap utility, reused by the other `role=\"dialog\"` sheets at :2057, :3820, :3848 which have the identical gap).",
+  "wageCore": false,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "accessibility-25",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "pagehide/visibilitychange flush silently drops an edit when the best-effort save fails",
+  "severity": "high",
+  "where": "index.html:2489-2505 (flush), contrast with the debounced save effect's failure handling at index.html:2470-2479; saveToSupabase at index.html:1324-1344",
+  "detail": "The debounced save effect explicitly guards against a failed cloud write: when saveToSupabase(...) resolves null (it always resolves, never throws — see the catch at 1339-1343 and the error branch at 1337), the else branch at line 2478 calls writeBackup(user.id, dataToSave) so the edit survives locally under BACKUP_KEY. The separate `flush` handler registered for `pagehide`/`visibilitychange`→hidden (added specifically because '500ms debounce would otherwise drop it', per the comment at 2489) does not do this: its call chain is `saveToSupabase(...).then(ts=>{ if(ts){ ...clear backup... } })` — the `if(ts)` guard only handles the success path. When `ts` is null/falsy (network drop, RLS/Postgres error, or the fetch simply being torn down mid-flight as the page actually unloads), the `.then` body does nothing: no writeBackup call, no error surfaced.",
+  "failure": "Signed-in user edits a shift, then immediately backgrounds or closes the tab (the debounce hasn't fired yet, which is exactly the case this handler exists for) on a flaky connection. The pagehide-triggered save fails; because flush's failure branch is a no-op, the edit is written to BACKUP_KEY nowhere, never reaches Supabase, and — once the tab is actually gone — no longer exists in memory either. On the next load, hydrateFromCloud finds no newer backup and no newer cloud row, so the edit is gone with no toast, no syncError, and no recovery path, unlike every other save-failure path in the app.",
+  "fix": "Mirror the debounced effect's failure handling in flush: when saveToSupabase resolves falsy, call writeBackup(snap.user.id, snap.data) just like line 2478 does. Because a `.then()` callback isn't guaranteed to run once actual page teardown begins, prefer writing the backup synchronously before firing the best-effort save (optimistic backup, cleared only on confirmed success) rather than only in the async continuation.",
+  "wageCore": false,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "data-integrity-00",
+  "lens": "data-integrity",
+  "status": "confirmed",
+  "dissent": [
+   "The asymmetry the finding describes is real (index.html:2496 has no writeBackup on a null result; 2478 does) and it is not in the KNOWN list or BACKLOG.md. But it is not a data-loss defect of the shape or severity claimed. (1) The flush is layered on top of the debounced save, not a replacement for it: on visibilitychange→hidden the 500ms timer at 2452 is still pending and is not cancelled. On desktop it fires within ~1s (throttled); on iOS it fires the moment the tab is foregrounded again. That path then does the full failure handling — writeBackup + setSyncError(true) — so the \"no toast, no syncError, no recovery\" claim is false for every background-and-return case, which is the common phone gesture. The edit is only unrecoverable if the OS discards the suspended tab before it is ever resumed, on top of a failed network write, on top of the edit having landed in the final 500ms. (2) On real pagehide (tab closed), the `.then` continuation is precisely the code that is not guaranteed to run during teardown — the finding concedes this — so adding an else-branch there does not close the window; the flush is explicitly best-effort (\"best-effort immediate cloud save\", 2495) and when it fails the user is exactly where they would be with no flush at all: the last <500ms edit before closing is lost. That is the pre-existing, inherent limit of a 500ms debounce, not a regression introduced by the flush handler \"dropping\" anything. (3) The remaining fix — an optimistic synchronous backup before every flush — changes the documented meaning of BACKUP_KEY (\"written ONLY when a cloud save fails, so it always holds work the cloud never received\", 2270-2272) on the hydrate path that once ate 47 days of shifts; it is a small hardening idea, not a high-severity integrity bug, and not something to schedule on the strength of a narrowed-down last-half-second-offline-then-discarded scenario. At most a P3 note for a dedicated sync session, if ever."
+  ]
+ },
+ {
+  "title": "Manual sign-out doesn't mirror the SIGNED_OUT cleanup it claims to, leaking the previous user's iCal credential into the next sign-in",
+  "severity": "high",
+  "where": "index.html:2528-2538 (handleSignOut) vs index.html:2409-2419 (onAuthStateChange SIGNED_OUT branch)",
+  "detail": "onAuthStateChange's else-branch (2409-2419) resets several things on sign-out including, per its own comment 'Drop the signed-in user's calendar subscription from memory (never leak it to anon state)': setHydratedUserId(null), setIcalSub(null), setIcalUrl(''), icalSyncedForUser.current=null. handleSignOut (the only call site is the account-menu Sign out button, wired at line 3450) is commented 'Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires)' and exists specifically because signOut() can deadlock on iOS WebKit so onAuthStateChange may never fire (same bug the getSession 4s-race guards, per the comment at 2518-2521). But its own reset block (2533-2536) only touches hydratedForUser.current/lastSeenAt.current/prevUserId.current/setSyncError/setSession/setUser/resetToDefaults() — it omits all four iCal statements. In the exact WebKit-deadlock case this function was written for, onAuthStateChange never runs, so nothing clears hydratedUserId/icalSub/icalUrl/icalSyncedForUser.current. resetToDefaults() itself (2335-2340) also doesn't touch them; that state lives only in the two places above, and the Settings sheet's calendar-sync input is bound directly to icalUrl (index.html:4790) plus icalSub.lastSynced (4800-4801).",
+  "failure": "Two nurses share one phone (the app's own documented sharing model — a QR handed over 'off Courtney's screen'). Nurse A signs out on iOS Safari during a WebKit signOut() deadlock (handleSignOut times out via withTimeout, purges the auth token, but onAuthStateChange's cleanup never fires). React state still holds A's icalUrl/icalSub/hydratedUserId. Nurse B then signs in on the same phone. onAuthStateChange sets user=B immediately, so Settings' `{user && <CALENDAR SYNC>}` block (index.html:4781-4802) renders right away — showing A's still-resident icalUrl (a bearer credential per Invariant 13, 'treat the link like a password') in B's Settings until the async loadIcalSub(B.id) resolves and overwrites it a network round-trip later.",
+  "fix": "Add the same four lines handleSignOut is missing — setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; — to handleSignOut's reset block, or factor both cleanup blocks into one shared function so they can't diverge again.",
+  "wageCore": false,
+  "slices": [
+   "boot",
+   "telemetry-auth"
+  ],
+  "id": "code-quality-00",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "ficaWithholdingType is passed through sanitizeData with no allowlist, so an unrecognized value silently zeroes FICA in computeNet",
+  "severity": "high",
+  "where": "index.html:963 (sanitizeData) and index.html:1237-1239 (computeNet)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": true,
+  "slices": [
+   "wage-core"
+  ],
+  "id": "code-quality-01",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Sign-out resets onboarding data but not onboarding step, so a stale obStep can reopen the wizard mid-flow with defaulted data and silently commit it",
+  "severity": "high",
+  "where": "resetToDefaults() index.html:2335-2340 (called from the auth-state-change SIGNED_OUT branch at 2414 and from handleSignOut at 2536); obStep state at 2192-2201; finish() at 3408-3414; Onboarding done screen at 5812-5834",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "code-quality-11",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": [
+   "The cited path isn't reachable as described. On SIGNED_OUT, resetToDefaults() sets setupComplete=false, and in the very same handler a setTimeout(0) immediately re-applies the previous anonymous localStorage blob via applyData(...,{landCurrent:true}), which sets setupComplete back from that data (true for any anon user who'd used the app before signing in). So any onboarding flash is confined to a single JS tick between the synchronous reset and the deferred restore — there's no user-interactable window to reach obStep's stale value. Even in the degenerate case where it did render, obStep being stale (e.g. left at 4, the 'done' screen) does not \"silently commit\" anything: finish() only fires on an explicit tap of 'Go to my planner', and the done screen shows a computed sample net-pay figure from freshly-reset defaults (baseRate 65.15, no shifts) rather than committing arbitrary stale data. Nothing writes state until that explicit click, so 'silently commit' mischaracterizes the mechanism. This does not restate any known backlog item, but it does not hold up as an actionable, reachable defect either."
+  ]
+ },
+ {
+  "title": "pagehide/visibility flush silently drops a failed cloud save (no backup, no error surfaced)",
+  "severity": "high",
+  "where": "index.html:2489-2505 (the `flush` effect), contrast with the debounced-save effect at 2470-2479",
+  "detail": "The main debounced save path (2470-2479) treats `saveToSupabase`'s return value as significant on both branches: on success it updates `lastSeenAt` and clears the backup key, on failure (`ts` falsy) it calls `writeBackup(user.id, dataToSave)` and `setSyncError(true)`. The `flush()` handler, which exists specifically to catch the last edit before the tab is backgrounded or closed ('the 500ms debounce would otherwise drop it', comment at 2489), only wires up the success case: `saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; ...removeItem... } })` (line 2496). There is no `else` and no `.catch()` — if `ts` is null (RLS error, dropped network request, Supabase 5xx), nothing happens: `writeBackup` is never called and `syncError` is never set.",
+  "failure": "A nurse edits a shift, then immediately backgrounds the app (switches apps / locks the phone) — exactly the moment this handler is designed for. If that cloud write happens to fail (a very plausible time for a mobile network hiccup), the edit is not persisted to Supabase, not written to the per-user failed-save backup (`nursingWagePlannerData::<uid>`), and no sync-error indicator is shown. If the tab is actually killed (not just backgrounded) rather than resumed, that edit is gone with no trace and no recovery path, even though Invariant 4's whole 'per-user failed-save backup... wins when newer than the cloud row' mechanism exists precisely to prevent this class of loss.",
+  "fix": "Give the flush handler the same failure branch as the debounced-save effect: on `ts` falsy, call `writeBackup(snap.user.id, snap.data)` (and ideally `setSyncError(true)`, though a state update racing tab teardown is less critical than the local backup write).",
+  "wageCore": false,
+  "slices": [
+   "data-sync"
+  ],
+  "id": "code-quality-18",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Hero's \"Taxes & deductions\" chip can show a bigger deduction than the gross next to it, and disagrees with the Breakdown a tap away",
+  "severity": "high",
+  "where": "index.html:3487 (hero chip renders calc.ded) and index.html:1244-1250 (computeNet)",
+  "detail": "computeNet() computes `ded = pretax+fica+fed+st+posttax+cw` uncapped (line 1244) and returns it as `ded`, but then deliberately caps the *displayed* pre/post fields (`dispPre`/`dispPost`, lines 1246-1249) specifically 'so Breakdown rows still sum' when a period's gross can't absorb the full flat pretax/posttax deductions. The hero's chip at line 3487 (`Taxes & deductions –{fmt(calc.ded)}`) is the one and only other consumer of `.ded` in the whole file (confirmed by grep) and uses the raw uncapped value, so it never got the same treatment.",
+  "failure": "Any signed-in nurse who has entered a per-period Pre-tax or Post-tax deduction in Settings (a completely normal, first-class field, not an edge feature) and views a pay period where she hasn't logged shifts yet -- the default state at the start of every new two-week period, or right after finishing Settings before adding a single shift -- sees a hero that reads e.g. 'Projected take-home $0' with chips 'Gross $0' next to 'Taxes & deductions –$260' (reproduced exactly: pretaxDeductions=200, posttaxDeductions=60, gross=0 -> ded=260, net=0). Tapping 'See the full breakdown' immediately shows every row at $0, summing correctly to gross. The two on-screen surfaces for the identical pay period visibly disagree about how much was withheld, which reads as a broken calculator on the app's single core promise -- know what a shift is worth, no surprises -- and is reachable through completely ordinary use, not a contrived input.",
+  "fix": "Render the hero's deduction chip as `calc.gross-calc.net` (or equivalently the sum of the already-capped fields computeNet returns: fica+fed+st+cw+pre+post) instead of the raw `calc.ded`, so it is definitionally reconciled with the net figure right next to it and with the Breakdown view. This is a one-line change at the App component's JSX call site (line 3487) and does not require touching computeNet's return shape since `.ded` has no other reader.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "product-design-00",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "\"Take-home per paycheck\" is a cycle-average, shown with full confidence, for the exact rotations where real paychecks diverge from it",
+  "severity": "high",
+  "where": "patternMetrics index.html:1257-1299 (comment at 1253-1256); displayed unqualified in PatternLab at index.html:4428 (compare table), 4447 (pattern card), 4540-4542 (edit-mode money block)",
+  "detail": "patternMetrics averages gross/net over lcm(cycle,14) days and divides by (span/14) periods to get periodGross/periodNet/periodHours (1294-1298). The average of a real 14-day paycheck window over a periodic on/off sequence is invariant to which phase of the cycle a given real paycheck lands on ONLY when the cycle length divides 14 evenly (i.e. cycle ∈ {2,7,14} within the allowed 2..42 range) — because only then does every non-overlapping 14-day window contain the same whole number of full cycles. For every other cycle length — which includes the built-in 'weekend'-adjacent choice of 28 days in PATTERN_CYCLE_CHOICES (1146) and, most visibly, the shipped preset '4 on, 4 off nights' (id 4on4off, cycle:8, index.html:1163-1164) — consecutive real 14-day paychecks contain a DIFFERENT number of actual shifts depending on where the cycle's phase falls, so the true paychecks alternate above and below the displayed average rather than matching it. Concretely, for the 4on4off preset with the app's own default baseRate 65.15 and night differential +10 (index.html:2204, 688), a 12h night shift grosses 75.15*12=$901.80 (shiftGross, 1125-1133). Over the lcm(8,14)=56-day span (4 periods) the real per-period shift counts are 8,8,6,6 (28 total, matching 7 cycles * 4 shifts/cycle) — i.e. real paychecks alternate between ≈$7,214 and ≈$5,411 gross (a ~$1,800 swing), while the lab shows one flat number: the average of those, ≈$6,313. Every actual paycheck a nurse who applies this pattern receives will be either noticeably higher or noticeably lower than the number she was shown before committing to the rotation — exactly the kind of surprise the app's whole premise (\"know what a shift is worth before it's worked\") exists to prevent. The code's own comment at 1254-1256 calls this averaging 'an honest per-paycheck figure,' but nothing in the UI tells the user it's an average: the yearly figure is explicitly hedged with '≈' (line 4542, '≈ {fmt(metrics.yearNet)} a year') while the much more decision-relevant per-paycheck figure right next to it, and in the pattern list card and side-by-side comparison table, carries no such hedge anywhere.",
+  "failure": "A nurse opens Pattern lab, picks the built-in '4 on, 4 off nights' preset (or types a custom 28-day cycle), sees 'Take-home per paycheck: $X' with no qualifier, and applies it to her calendar planning around that number. Her first real paycheck comes in ~$900-1,800 different (net) from what she was shown, with no warning that the number she budgeted against was ever anything but a fixed promise for every check.",
+  "fix": "Qualify periodNet/periodGross/periodHours the same way yearNet already is — at minimum prefix them with '≈' in all three surfaces (index.html:4428, 4447, 4540-4542) whenever metrics.drifts is true or, more precisely, whenever cycle length doesn't evenly divide 14, and add one line under the money block naming that real paychecks will alternate (e.g. 'averaged — cycles that don't line up with a 2-week pay period pay more some checks and less others'). This is a display-only change in PatternLab and doesn't require touching patternMetrics's math, though a stronger fix (surfacing the actual min/max per-period swing) would.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "product-design-04",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Welcome-screen sample take-home figure is hardcoded and doesn't match the app's own math for the identical schedule",
+  "severity": "high",
+  "where": "index.html:5721-5722 (welcome screen literal) vs sampleNet() at index.html:3416-3423, DIFF_DEFAULTS at index.html:686-697, default baseRate at index.html:2204",
+  "detail": "The obStep===0 welcome screen shows a static, non-computed figure: `<div className=\"lbl\">Sample · 72 hrs this period</div>` followed by `<div className=\"num\">$3,951</div>` (line 5721-5722) — literal strings, not derived from any function. The same '72 hrs / 6 shifts' scenario is independently defined a few hundred lines later in `sampleNet()` (3 night + 2 weekend-day + 1 base, 12h each = 72 hrs), which the 'done' screen (obStep 4) actually renders via `fmt(sample.net)`. Computing sampleNet() by hand with the app's current defaults (baseRate=65.15 at line 2204, DIFF_DEFAULTS night=+$10/hr and weekend-day=+$11.5/hr at line 686, federal 12%, state 2.5%, FICA standard 7.65%, no pretax/posttax) gives gross = 3*(75.15*12) + 2*(76.65*12) + 1*(65.15*12) = 5326.80, and net = 5326.80 - (5326.80*0.0765 + 5326.80*0.12 + 5326.80*0.025) = 5326.80 - 1180.04 = 4146.76, i.e. fmt() would show $4,147 — not $3,951. The two numbers disagree by about $196 (≈5%) for what is presented as the exact same 72-hour, 6-shift schedule.",
+  "failure": "A brand-new visitor sees '$3,951' on the very first screen (framed as 'we do the messy math so the number's never a surprise'). If she continues through the full setup path (steps 1-3) without touching any rate, the 'done' screen a few taps later — using the same default rate and the same 72-hour/6-shift assumption — shows $4,147 instead. The app contradicts its own headline number within a single onboarding session, which is precisely the kind of surprise the product claims to eliminate.",
+  "fix": "Either compute the welcome-screen figure the same way sampleNet() does (call the existing sampleNet-equivalent logic against current default state, which is already in scope at obStep 0) so the two screens can never drift apart again, or replace the literal '$3,951' with a value that is verified to match sampleNet()'s output under the current defaults. Do not hand-tune the string again without re-deriving it — that is how it went stale.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "product-design-05",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "\"Clear the sample\" removes the seeded shifts but leaves the placeholder $65.15/hr rate in place with no indication it isn't real, once the honesty banner is gone",
+  "severity": "high",
+  "where": "index.html:2991-3000 (clearSample), index.html:3408-3412 (finish('sample')), index.html:2231 and 969 (estimateMode is the only signal that the rate is fake)",
+  "detail": "finish('sample') (line 3408-3412) sets `baseRate` to the placeholder 65.15 and seeds sample shifts, marking the state as fake only via `estimateMode:'sample'`. The est-banner (line 3464-3475) offers two exits when estimateMode==='sample': 'Enter my rate' (opens Settings) and 'Clear the sample' (calls `clearSample`). `clearSample` (line 2991-3000) strips the SAMPLE_PATTERN_ID-tagged shifts and unconditionally does `setEstimateMode('')` — it never checks whether the user actually entered a real base rate first. There is no other field anywhere (grep confirms `estimateMode` is the sole indicator) distinguishing 'nurse's real $65.15/hr' from 'never-touched placeholder $65.15/hr'.",
+  "failure": "A nurse taps 'Show me an example' to see how the app works, then taps 'Clear the sample' directly (never 'Enter my rate'). The seeded shifts vanish and the banner disappears — but baseRate is still the fictitious 65.15. Every shift she now logs herself computes gross/take-home/hero figures against that fake rate with no banner, no warning, and nothing in the UI distinguishing it from a confirmed real rate. This state also serializes into the cloud blob and localStorage (serializeState includes baseRate and estimateMode='' ), so it persists across sessions and devices silently. The app's headline numbers are now systematically wrong for her actual pay, with the one mechanism designed to flag that (the est-banner) already dismissed.",
+  "fix": "Track whether the base rate was ever explicitly set by the user (independent of estimateMode), or make `clearSample` refuse/redirect to rate entry when `baseRate` still equals the untouched sample default, so clearing the sample can never silently promote a placeholder rate to authoritative status.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "product-design-06",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Editing a savings goal's target down to $0 in Settings makes the Add-Shift preview show \"Infinity%\"",
+  "severity": "high",
+  "where": "index.html:4248 (AddShiftSheet preview) / index.html:4686 & 4754 (Settings updGoalTarget + NumInput)",
+  "detail": "In Settings' SAVINGS GOALS list, each goal's target is edited with `<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} .../>` (index.html:4754), and `updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:parseFloat(v)||0} : g))` (index.html:4686) has no floor above 0. NumInput's own commit logic (index.html:4020-4028) sets the value to `min` (i.e. 0) whenever the field is cleared and blurred, or the user simply types 0. So a goal that already exists with a positive target can be driven to `target:0` entirely from the UI, live, in the same session — no reload and no pass through `sanitizeData` in between (Settings and AddShiftSheet share the exact same top-level `goals` state, wired at index.html:3617 and index.html:4677).\n\nThe forward per-shift preview at index.html:4247-4248 computes `const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet);` guarded only by `previewNet>0` — there is no `g.target>0` check here (unlike the Settings reverse-view at index.html:4748, which does guard with `per>0 && g.target>0`, and unlike `sanitizeData`'s goals filter at index.html:1069-1081, which explicitly drops any goal whose `target` isn't a finite positive number specifically \"so a malformed value can't yield NaN percentages in the shift preview\"). With `g.target===0`, `previewNet/g.target` is `Infinity` in JS (positive/0), so `pct` is `Infinity` and the template literal renders the literal string \"Infinity%\".",
+  "failure": "1) Open Settings → SAVINGS GOALS, tap into an existing goal's amount field, clear it (or type 0) and tap/tab away so it blurs — the goal's target silently becomes $0, with no error or warning. 2) Close Settings and open the Add-Shift sheet for any day with a shift that has nonzero take-home. The goal line at the bottom of the shift preview reads e.g. \"toward your goal: House down payment Infinity% (≈0 shifts)\" — a glaringly broken, alarming figure shown right next to the take-home dollar amount the app exists to make trustworthy.",
+  "fix": "Guard the AddShiftSheet goal line the same way the Settings reverse view already does — skip (or filter out) any goal whose `target` is not finite and > 0, e.g. change the `.map` at index.html:4248 to filter `goals.filter(g=>g.target>0)` before computing pct/n, or add `g.target>0 &&` inside the per-goal computation. Ideally also stop `updGoalTarget` from ever committing a non-positive target in the first place (e.g. clamp to the previous value, or require target>0 the same way `addGoal` already does at index.html:4684-4685), since that closes the root cause rather than just the one downstream symptom.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "product-design-07",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Swap board lets a nurse commit to a shift with zero indication of what it pays",
+  "severity": "high",
+  "where": "index.html:3643 (SwapsSheet call site), 4819 (SwapsSheet signature), 5505-5531 (SUGGESTED FOR YOU cards), 5079-5099 (doPropose), 4067-4072 (giveMetaLine)",
+  "detail": "SwapsSheet is invoked at index.html:3643 with `user, shifts, dayEvents, notes, saveDayShifts, differentials` — no `baseRate`, no `keepRatio`, no tax inputs. Compare the sibling sheets at the same call-site block: AddShiftSheet gets `baseRate={baseRate} keepRatio={keepRatio}` and PatternLab gets `baseRate={baseRate} taxes={taxInputs}`. SwapsSheet structurally cannot compute a dollar figure for anything it shows, because it was never given the numbers to do it with. Its own comment at giveMetaLine (4066: \"wage-free by construction — shift_meta never carries $\") makes this deliberate for the *data model* (correct: differing bonus/OT status shouldn't transfer between nurses), but it also blocks the client-side display, which has nothing to do with the anonymity model and could safely use the viewer's own baseRate/differentials the same way AddShiftSheet already does (previewGross/previewNet at 4104-4105).\nThe result: the 'SUGGESTED FOR YOU' cards (5505-5531) render PICK UP / TRADE / 3-WAY SHUFFLE suggestions as date + shift-type + hours only (`describeLeg`, 5509) and a bare 'Propose' button (5527) that calls doPropose (5079) straight into `proposeSwapMatch`, which freezes the posts. Nothing between seeing the suggestion and committing to it ever calls `shiftGross`/`computeNet` on the incoming shift.",
+  "failure": "A nurse opens Swaps, sees 'PICK UP · Fri Sep 19 · Night ×12h' and taps Propose. Once the other party accepts, the match is confirmed and effectively irreversible except through a Decline that the app itself frames as a social cost ('The others involved will see it fell through', 5155). Only after fully committing — accepting, revealing names, and tapping 'Add to my calendar' (doApplyPlan, 5260) — does she discover, via the Planner hero, what that shift actually pays. She had no way to compare this pickup against staying home, or against another posted shift, before agreeing to it. This directly contradicts the app's own stated promise, verbatim at the welcome screen ('Know your real take-home before you pick up the shift', line 5718) and the share blurb ('see what a shift is really worth before you pick it up', line 5667) — and it's inconsistent with the app's own established convention of surfacing $/hr specifically to 'compare pickups at a glance' (AddShiftSheet, line 4246), a convention the swap board's literal 'PICK UP' feature doesn't follow.",
+  "fix": "Pass `baseRate` and `keepRatio` (or the fuller `taxes`, matching PatternLab) into SwapsSheet, and render an estimated take-home (or at minimum ≈$/hr) on each suggestion card and open board post using the viewer's own rate — the same `shiftGross`/`computeNet` calls AddShiftSheet already makes, applied to `shift_meta` — before the Propose button, not after acceptance. This adds a new displayed dollar figure, so it should go through the wage-core protocol (baseline probes, a new assertion, the deployed-build equality check) even though it doesn't touch shiftGross/computeNet/calc themselves — flagging wageCore for that reason.",
+  "wageCore": true,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "product-design-08",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "privacy.html misdescribes sign-in as Google-only and claims no password is ever stored, but email/password is the app's primary, first-shown auth path",
+  "severity": "high",
+  "where": "privacy.html:89-91 (\"Your account\" section) vs index.html:4584-4671 (AuthModal), specifically handleEmailAuth at index.html:4591-4613",
+  "detail": "privacy.html says: \"Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores no password.\" But AuthModal (index.html:4584) renders an email+password form (the <form onSubmit={handleEmailAuth}> block, index.html:4638-4651) ABOVE the \"or\" divider, with \"Continue with Google\" as the secondary option below it (index.html:4658-4661). handleEmailAuth calls supabase.auth.signUp({email,password}) or supabase.auth.signInWithPassword({email,password}) (index.html:4600-4602) -- Supabase Auth stores a (hashed) password for every such account. `git log -S\"signInWithPassword\"` shows this path was added 2026-08-23 (PR #45), three weeks before privacy.html was written/last-updated 2026-09-07 (PR #78), so this isn't stale copy that predates the feature -- the notice was written after the feature existed and still doesn't mention it.",
+  "failure": "A nurse who reads privacy.html before signing up, sees 'stores no password', and then creates an account via the email+password form (the first, more prominent option in the modal) has just had a password stored by the service, contradicting what she was told. She also isn't told BadgeBudget/Supabase directly receives and stores the email address she typed (the notice frames email receipt as something that only happens 'from Google'). This is a factual misstatement about data handling on the one page whose job is to state that accurately, and the same page backs the Google OAuth consent screen the owner is trying to get brand-verified.",
+  "fix": "Update the \"Your account\" section of privacy.html to disclose both auth paths: e.g. \"Sign-in uses Google OAuth or email/password, your choice. With Google, BadgeBudget receives your email address and name and stores no password. With email/password, your password is stored (hashed) by the auth provider (Supabase) -- BadgeBudget's own code never sees or stores it in plain text.\" No app-code change needed; this is a documentation-accuracy fix, not a wage-core or telemetry-code change.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth",
+   "infra"
+  ],
+  "id": "privacy-telemetry-00",
+  "lens": "privacy-telemetry",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Add-Shift preview, calendar day cells, goal lines and the weekend-night card use a keep-ratio that omits percent custom withholdings, so they disagree with the hero and the pattern lab",
+  "severity": "high",
+  "where": "index.html:2819-2820 (keepRatio) -> consumers at 4104-4105 & 4245-4248 (AddShiftSheet preview + goal line), 3919 & 3933 (Calendar day cell), 4747 (Settings '≈ N typical 12h shifts'), 3434 & 3512 ('Pick up a weekend night?' card)",
+  "detail": "The hero (calc, 2787-2810) and the pattern lab (patternMetrics 1298) both price take-home through computeNet(), which subtracts customWithholdings — including type:'percent' ones computed on incomeTaxBase (1243). Every other take-home figure in the app is previewGross*keepRatio, and keepRatio = 1 - (federalTaxRate+stateTaxRate+ficaForPreview)/100 knows nothing about customWithholdings. Omitting the flat per-period deductions from a per-shift marginal figure is defensible; omitting a percent withholding is not — it is a per-dollar rate that applies fully at the margin. Reproduced with the extracted functions: base $50, fed 12, state 2.5, standard FICA, one custom withholding {Pension, 5, percent}, one 12h base shift in the period -> hero net 437.10 (Keep 73%), lab periodNet 437.10, Add-Shift previewNet 467 (implied keep 78%), day cell ~$467. Settings' goal line even claims to be 'the same per-shift take-home the Add-Shift preview uses' (4745-4746) — it is, and both are off from the hero. Hero and lab agree with each other; the preview family is the wrong one. (A related but separately-scoped omission was also raised: keepRatio also ignores flat pretax/posttax deductions the hero subtracts per paycheck, which is more defensible as a marginal-pricing choice once the paycheck already covers those flat amounts — the percent-withholding gap above has no such defense.)",
+  "failure": "A nurse whose Settings carry a percent 'Other withholding' (e.g. a 5% 403b) logs one 12h day shift: the hero says $437 take-home this period and the lab says $437 / paycheck for a one-shift fortnight, but the Add-Shift sheet for that exact shift says 'about +$467 take-home', the calendar cell shows ~$467, and a $5,000 goal reads '≈ 11 typical 12h shifts' in Settings and in the preview when the hero's rate needs 12. Every pickup she evaluates is overstated by the withholding percentage.",
+  "fix": "Fold the percent withholdings into keepRatio at 2820: const pctCW = (customWithholdings||[]).reduce((a,w)=> a + (w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0); const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+pctCW)/100). All five consumers then agree with computeNet at the margin. Add a harness assertion that, with a percent withholding set, Math.round(previewGross*keepRatio) === Math.round(computeNet(previewGross, taxInputs).net) when pretax/posttax are 0. Not an Invariant-3 function, but it changes displayed dollars, so run the wage-math probes and the deployed-build equality check.",
+  "wageCore": false,
+  "slices": [
+   "wage-core",
+   "money-surfaces",
+   "pattern-lab"
+  ],
+  "id": "cross-surface-00",
+  "lens": "cross-surface",
+  "status": "confirmed",
+  "dissent": [
+   "The arithmetic is accurate but the failure path is not reachable through the shipped UI. `keepRatio` (index.html:2820) does omit `customWithholdings`, and `computeNet` (:1243) does subtract percent ones on `incomeTaxBase` — so IF state held a percent custom withholding, the Add-Shift preview (:4105), day cells (:3919/:3933), Settings goal line (:4747) and weekend-night card (:3434) would diverge from the hero/lab. But nothing in the app can put one there. `setCW` is invoked in exactly two places: `applyData` on load (:2318) and the clear-all reset to `[]` (:2338). It is passed into `SettingsSheet` as a prop (:3633/:4676) and never called — the Settings region (:4676–4800) contains no custom-withholding editor; the only \"withholding\" control is the FICA type/percent pair (:4731–4733). The paystub extractor (:3330–3400) maps a 403(b) line to `pretaxDeductions` (a flat dollar amount, which the finding itself concedes is defensibly excluded at the margin) and FICA to `ficaRate`; it never emits `customWithholdings`. Onboarding and the Add-Shift sheet don't touch it either. So the finding's scenario — \"a nurse whose Settings carry a percent 'Other withholding' (e.g. a 5% 403b)\" — names a control that does not exist; a real 403b lands in pretax dollars, not a percent withholding. The only routes to a non-empty `customWithholdings` are Import JSON (:4772 → `importData` :3074 → `applyData`) of a hand-edited file (the app's own export always carries `[]`), a direct localStorage/DB edit, or a legacy blob from a hypothetical earlier editor (pickaxe on the shallow 55-commit history finds none, and the 3 `user_data` rows are all builders). The finding's own repro was \"with the extracted functions\", i.e. synthetic state fed straight to the math, not the UI. Net: the whole `customWithholdings` feature is dormant (sanitized, priced by `computeNet`, shown as the $0 \"Other withholdings\" breakdown row at :3987, but with no input), so hero, lab and the preview family agree for every state the app can produce. At most a low note to fold percent withholdings into `keepRatio` if an editor ever ships — not a [high] displayed-dollar disagreement."
+  ]
+ }
+]

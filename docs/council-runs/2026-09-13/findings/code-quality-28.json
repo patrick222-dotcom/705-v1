@@ -1,0 +1,13 @@
+{
+ "title": "The build gate's own 'never silently omitted' promise is broken for Invariants 7 and 13",
+ "severity": "medium",
+ "where": "scripts/check_build.mjs:12-14 and :143",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "code-quality-28"
+}

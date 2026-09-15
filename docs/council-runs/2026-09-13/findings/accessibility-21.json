@@ -1,0 +1,13 @@
+{
+ "title": "Settings modal has no dialog semantics and its close button has no accessible name",
+ "severity": "high",
+ "where": "index.html:4694-4697 (Settings)",
+ "detail": "Settings renders as `<div className=\"scrim\"><div className=\"modal\">...<button className=\"back\" onClick={onClose}>{Ic.x}</button>` with no role=\"dialog\", no aria-modal, no aria-label/aria-labelledby on the modal, and the close button wraps only the bare Ic.x SVG (index.html:603, a <path> with no <title>, no aria-hidden) with zero text or aria-label. Every sibling sheet in the same file gets this right at the same call-site shape: FeedbackSheet (index.html:2057, 2059) has role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\" plus aria-label=\"Close\" on its X button; SwapsSheet (index.html:5311, 5305) and the ICS import sheets (index.html:3820,3822 / 3848,3850) do the same. Settings is the one modal in this slice missing all of it.",
+ "failure": "A screen-reader user (VoiceOver/NVDA/TalkBack) opens Settings from the account menu (the only route to Settings on a phone per the top-bar note in CLAUDE.md). Nothing announces that a dialog opened - no 'dialog' role, no name - so the user has no orientation cue and, because there's no aria-modal, can swipe/Tab straight past the sheet into the calendar/hero content still sitting behind the scrim. When they do reach the X button in the header, it announces only 'button' with no label, so they cannot tell it closes Settings; the only other way out is the 'Done' button at the very bottom of a long, multi-section scrolling sheet (goals, differentials, taxes, calendar sync), which they may never discover.",
+ "fix": "Add role=\"dialog\" aria-modal=\"true\" and aria-labelledby pointing at the \"Settings\" title div (or aria-label=\"Settings\") to the .modal div at 4696, and add aria-label=\"Close\" to the back button at 4697 - matching the pattern already used by FeedbackSheet/SwapsSheet/the ICS sheets in this same file.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "accessibility-21"
+}

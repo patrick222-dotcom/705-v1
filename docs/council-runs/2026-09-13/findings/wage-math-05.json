@@ -1,0 +1,14 @@
+{
+ "title": "Year view prints gross as a bare '$' figure while the month cells it opens into print estimated take-home",
+ "severity": "low",
+ "where": "/home/user/705-v1/index.html:3970-3971 (YearList: fmt(mm.g), no qualifier); 2769-2780 (yearMonths sums shiftGross + PTO gross); 3933 and 3580 (month cells print '~'+fmt(t.g*keepRatio) under the disclaimer 'Day amounts are estimated take-home')",
+ "detail": "The month view carries a disclaimer that day amounts are take-home; the Year list has no equivalent and shows gross with the same `$` formatting. Tapping a year row drops the user into that month, so the two figures are seen back to back for the same days.",
+ "failure": "Year view shows 'September · 72 hrs · $5,327 · 6 shifts'. Tap it: the six day cells inside read ~$702, ~$702, ~$702, ~$716, ~$716, ~$609 — about $4,147 total, 22% less than the row she just tapped, with nothing on either screen explaining that one is gross and the other is take-home. (With six 12h nights at $75.15/hr the same gap shows as $5,411 vs ~$4,212.)",
+ "fix": "Display-only: either label the year row ('$5,327 gross') or print `'~'+fmt(mm.g*keepRatio)` to match the cells and reuse the same disclaimer. No math change.",
+ "wageCore": false,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "wage-math-05"
+}

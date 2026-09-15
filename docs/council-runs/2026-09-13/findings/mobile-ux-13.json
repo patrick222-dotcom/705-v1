@@ -1,0 +1,13 @@
+{
+ "title": "Display-name step autoFocuses its input, raising the keyboard before the question is readable — the same anti-pattern already removed from FeedbackSheet",
+ "severity": "low",
+ "where": "index.html:5356 (autoFocus on the display-name input), c.f. index.html:2026 (comment) / FeedbackSheet 2006-2032",
+ "detail": "The one-time 'What should colleagues call you when a swap is confirmed?' screen's input has `autoFocus` (line 5356), so the keyboard opens the instant this screen mounts. Two hundred lines earlier, FeedbackSheet explicitly does NOT autoFocus its textarea, with an inline comment explaining exactly this failure mode was found and fixed: \"Focusing is also what raises the keyboard, which is why the textarea no longer autoFocuses: on a phone that put the keyboard over the tiles before she could read them\" (2026-2027). SwapsSheet's display-name step reintroduces the same pattern the team removed elsewhere.",
+ "failure": "A nurse opening 'Shift swaps' for the first time gets the keyboard shoved up before she's read the title/subtitle explaining why she's being asked to name herself and that it's anonymous until a swap confirms — the same disorienting mid-shift, one-handed moment the FeedbackSheet fix was written to avoid. (Submitting itself still works via the input's own Enter handler, so this is a first-impression/readability papercut rather than something that blocks her.)",
+ "fix": "Drop `autoFocus` from the 5356 input, same as FeedbackSheet's textarea, so the question is visible before the keyboard appears.",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "mobile-ux-13"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "SwapsSheet's six screen-states are gated by six hand-copied boolean prefixes instead of one switch",
+ "severity": "medium",
+ "where": "index.html:5351, 5365, 5375, 5384, 5404, 5607 (each an independent `{!loading && !loadError && !tablesMissing && ... && <jsx/>}` block)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "code-quality-17"
+}

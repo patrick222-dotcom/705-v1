@@ -1,0 +1,13 @@
+{
+ "title": "Pay-period boundary chip inside the scrolling grid is a ~19px-tall tap target with no hit-area expansion",
+ "severity": "medium",
+ "where": "index.html:200-202 (.cal-pp-div, .pp-chip), rendered at index.html:3899-3902",
+ "detail": "`.pp-chip{font-size:10.5px;padding:3px 9px;...}` inside `.cal-pp-div{margin:3px 0 7px}` yields a button roughly 18-19px tall (padding 3px+3px plus a ~10.5px line), sitting directly between rows of 42-44px day cells in the same 7-column grid, only 3px above and 7px below the neighboring cell rows. Elsewhere in this exact file, small buttons of similar visual size are deliberately padded out to the 44px minimum with a pseudo-element: `.calnav button` is 36x36 but gets `::after{inset:-5px}` (index.html:161-162) for an effective ~46x46 hit area, and `.period button` is 24x24 but gets `::after{inset:-10px}` (index.html:104-105) for an effective 44x44. The pp-chip has no equivalent — it is the one small interactive control in the calendar left at its bare visual size.",
+ "failure": "A nurse scrolling one-handed through the month list to jump to a different pay period (the chip's whole purpose — it calls `onBoundaryPick`) has to land a thumb on an ~19px strip wedged between day-cell rows that are the primary tap target on the same screen. She is likely to either miss the chip (nothing happens) or overshoot onto the adjacent day cell, which opens the Add-Shift sheet for the wrong date instead of switching pay periods.",
+ "fix": "Give `.pp-chip` the same `::after{content:'';position:absolute;inset:-Npx}` hit-area expansion already used by `.calnav button` and `.period button` in this file, sized to bring it to at least 44px tall, or increase its own padding/margin to reach that height directly.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "mobile-ux-03"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "MAX_BLOB_BYTES guard is only enforced on one of three save call sites",
+ "severity": "medium",
+ "where": "index.html:2464-2469 (the only size check) vs. flush() at 2489-2505 and retrySync() at 2508-2516",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "code-quality-19"
+}

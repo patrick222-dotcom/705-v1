@@ -1,0 +1,52 @@
+[
+ {
+  "slice": "calendar-sync",
+  "findings": []
+ },
+ {
+  "slice": "telemetry-auth",
+  "findings": [
+   {
+    "title": "privacy.html says sign-in is Google-only and 'stores no password' — the app's primary auth flow is email+password",
+    "severity": "high",
+    "where": "privacy.html:89-91 vs index.html:4584-4646 (AuthModal.handleEmailAuth, supabase.auth.signUp/signInWithPassword)",
+    "detail": "privacy.html's 'Your account' section reads in full: \"Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores no password.\" That is the entire disclosure for authentication. But AuthModal (index.html:4584) puts an email + password form (with a real <input type=\"password\" minLength={6}>, line 4645) FIRST, above an 'or Continue with Google' divider — mode 'signin' calls supabase.auth.signInWithPassword({email,password}) and mode 'signup' calls supabase.auth.signUp({email,password}) (lines 4600-4602). This is not a fallback or hidden path: it's the default form a visitor sees, and CLAUDE.md's own Auth section documents it plainly ('Supabase email/password + Google OAuth'). track('sign_in_attempted', {method:'email'|'email_signup'}) at line 4599 further confirms this path is live and instrumented.",
+    "failure": "A nurse who reads privacy.html, sees 'stores no password', and then creates an account by typing an email and a password into the very first fields of the sign-in modal (never touching the Google button) has just had Supabase Auth create and store a password credential for her — directly contradicted by the notice she just read. If she reused a work password, she now believes something false about where that credential lives.",
+    "fix": "Either disclose the email/password path explicitly in privacy.html (name both methods, and describe that a chosen password is stored by Supabase Auth, not by BadgeBudget code, if that distinction is what was meant), or if email/password sign-in is meant to be removed, remove the UI path — don't leave a live, default credential-collecting form under a notice that flatly denies it exists.",
+    "wageCore": false
+   },
+   {
+    "title": "privacy.html claims the anon_id device identifier 'is not linked to your name' — track() writes it into the same row as user_id for every signed-in action",
+    "severity": "medium",
+    "where": "privacy.html:104-107 vs index.html:1385-1397 (track()), exercised by ~25 call sites passing user?.id (e.g. 2859 shift_saved, 2912 template_applied, 3392 paystub_imported, 5063 swap_posted)",
+    "detail": "privacy.html's Usage analytics section says events carry 'the page path, your browser's user-agent string, and a random device identifier generated in your browser. That identifier is not linked to your name and is not shared with anyone.' But track(name, props, userId) (index.html:1385-1397) always sets both anon_id:anonId() and user_id:userId in the SAME row, and the overwhelming majority of call sites pass userId=user?.id whenever the visitor is signed in (shift_saved, template_saved, swap_posted, pattern_saved, etc.). auth.users (which user_id foreign-keys into) holds the signed-in person's email and, for Google sign-in, name. CLAUDE.md's own dashboard spec confirms this join is actually performed operationally: the 'segment' classification tags a device 'insider' by matching 'any anon_id ever seen signed in as' the owner's or Courtney's account — i.e. the anon_id-to-identity join privacy.html says doesn't happen is precisely what the project's own ops tooling does.",
+    "failure": "Once a signed-in nurse does anything tracked (saves a shift, applies a template, posts a swap), her per-device anon_id sits in the same events row as her user_id. Anyone with database access (the owner, who already runs 'select ... from events' per the documented Owner-read queries) can trivially resolve that user_id to her email/name via auth.users — the exact linkage the privacy notice tells her doesn't happen.",
+    "fix": "Rewrite the disclosure to state accurately that once signed in, the device identifier can be associated with the account (matching actual, intentional behavior used for the insider/public segment split), rather than asserting it is never linked to identity.",
+    "wageCore": false
+   },
+   {
+    "title": "privacy.html's Feedback section omits that a signed-in submitter's account id is always attached, regardless of the optional contact field",
+    "severity": "medium",
+    "where": "privacy.html:117-119 vs index.html:2006-2045 (FeedbackSheet submit) and 1354-1371 (submitFeedback)",
+    "detail": "privacy.html says: 'If you use the feedback button, your message is stored along with the page you were on and your browser's user-agent string. An email address is optional — supply one only if you want a reply.' This frames identification as opt-in via the 'contact' field. But FeedbackSheet's submit (index.html:2043) calls submitFeedback({..., userId:(user&&user.id)||null}), and submitFeedback (1354-1371) writes that straight into feedback.user_id whenever the person is signed in — independent of whether 'contact' is filled in.",
+    "failure": "A signed-in nurse who deliberately leaves the optional contact field blank, believing (per the notice's framing) that doing so keeps her feedback unattributed, has her account id stored on the row anyway — the row is linkable to her account from the moment it's inserted, contact field or not.",
+    "fix": "State plainly that feedback submitted while signed in carries your account id on the row in addition to whatever you put in the optional contact field, so 'optional... only if you want a reply' isn't read as 'optional... only way to be identified'.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "infra",
+  "findings": [
+   {
+    "title": "privacy.html misdescribes sign-in as Google-only and claims no password is ever stored, but email/password is the app's primary, first-shown auth path",
+    "severity": "high",
+    "where": "privacy.html:89-91 (\"Your account\" section) vs index.html:4584-4671 (AuthModal), specifically handleEmailAuth at index.html:4591-4613",
+    "detail": "privacy.html says: \"Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores no password.\" But AuthModal (index.html:4584) renders an email+password form (the <form onSubmit={handleEmailAuth}> block, index.html:4638-4651) ABOVE the \"or\" divider, with \"Continue with Google\" as the secondary option below it (index.html:4658-4661). handleEmailAuth calls supabase.auth.signUp({email,password}) or supabase.auth.signInWithPassword({email,password}) (index.html:4600-4602) -- Supabase Auth stores a (hashed) password for every such account. `git log -S\"signInWithPassword\"` shows this path was added 2026-08-23 (PR #45), three weeks before privacy.html was written/last-updated 2026-09-07 (PR #78), so this isn't stale copy that predates the feature -- the notice was written after the feature existed and still doesn't mention it.",
+    "failure": "A nurse who reads privacy.html before signing up, sees 'stores no password', and then creates an account via the email+password form (the first, more prominent option in the modal) has just had a password stored by the service, contradicting what she was told. She also isn't told BadgeBudget/Supabase directly receives and stores the email address she typed (the notice frames email receipt as something that only happens 'from Google'). This is a factual misstatement about data handling on the one page whose job is to state that accurately, and the same page backs the Google OAuth consent screen the owner is trying to get brand-verified.",
+    "fix": "Update the \"Your account\" section of privacy.html to disclose both auth paths: e.g. \"Sign-in uses Google OAuth or email/password, your choice. With Google, BadgeBudget receives your email address and name and stores no password. With email/password, your password is stored (hashed) by the auth provider (Supabase) -- BadgeBudget's own code never sees or stores it in plain text.\" No app-code change needed; this is a documentation-accuracy fix, not a wage-core or telemetry-code change.",
+    "wageCore": false
+   }
+  ]
+ }
+]

@@ -1,0 +1,13 @@
+{
+ "title": "Google sign-in has no try/catch around signInWithOAuth, unlike the sibling email path a few lines above",
+ "severity": "medium",
+ "where": "index.html:4615-4628 (handleGoogleAuth)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "code-quality-25"
+}

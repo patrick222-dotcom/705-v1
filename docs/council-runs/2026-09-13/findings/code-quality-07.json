@@ -1,0 +1,13 @@
+{
+ "title": "\"Save as template\" can silently capture the wrong shift type/hours when the last entry came from a template quick-tap",
+ "severity": "medium",
+ "where": "index.html:4135-4139 (applyTemplateTap), :4140-4160 (doSaveTemplate), :4094 (configDirtySinceAdd ref)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "code-quality-07"
+}

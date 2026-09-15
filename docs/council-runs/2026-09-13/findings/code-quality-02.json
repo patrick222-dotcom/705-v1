@@ -1,0 +1,14 @@
+{
+ "title": "Per-day/period money rollup (shifts + PTO) hand-duplicated in 3 places instead of calling statOf/ptoStatOf",
+ "severity": "medium",
+ "where": "index.html:2636-2650 (ptoStatOf/statOf) vs 2775-2777 (yearMonths) vs 2793-2805 (calc)",
+ "detail": "ptoStatOf+statOf is the one place that is supposed to define 'a day's money': shiftGross summed over shifts[k], plus PTO at `e.hours*baseRate` for dayEvents[k]. yearMonths (year-view totals) and calc (the hero figure, via taxInputs/computeNet) don't call statOf/ptoStatOf — each re-implements the identical two loops (`shifts[k].forEach(s=>{g+=shiftGross(...);h+=s.hours})` and `if(e.kind==='pto'&&e.hours>0){g+=e.hours*baseRate;h+=e.hours}`) inline. The comment at 2776 ('PTO adds to gross/hours like every other rollup (statOf/calc)') itself acknowledges the parallel implementations exist rather than being shared.",
+ "failure": "A future change to how PTO is priced (e.g. paying PTO at a shift's differential rate instead of flat baseRate, or capping PTO hours) is a plausible ask and touches statOf/ptoStatOf, whose output feeds the calendar day cells. If the dev updates statOf/ptoStatOf only (they're the named, documented rollup) and the harness's calendar assertions pass, the hero figure (calc, 2793-2805) and the Year view totals (yearMonths, 2768-2780) keep computing PTO the old way — a nurse would see the calendar day cell disagree with the hero total for the same pay period, with nothing in the diff or the existing tests catching it because there is no single function all three call.",
+ "fix": "Have calc() and yearMonths() call statOf(k)/ptoStatOf(k) (or a shared pure helper both can use outside the per-day closure) instead of re-summing shifts/dayEvents inline, so PTO/shift pricing has exactly one implementation.",
+ "wageCore": true,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "code-quality-02"
+}

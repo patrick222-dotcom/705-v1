@@ -1,0 +1,14 @@
+{
+ "title": "Add-Shift and Pattern Lab live money readouts have no aria-live region",
+ "severity": "medium",
+ "where": "index.html:4243-4249 (AddShiftSheet .preview block) and index.html:4539-4544 (.pl-money readout in Pattern Lab)",
+ "detail": "previewGross/previewNet (computed at 4104-4105) and metrics.periodNet/periodGross (patternMetrics) re-render live as the user toggles shift type, hours, OT, bonus, or paints pattern cells, but the containing divs carry no aria-live attribute. Elsewhere in the same file the team does wire this up correctly — the toaster (`role=\"status\" aria-live=\"polite\"`, line 2118) and the pay-period label (`aria-live=\"polite\"`, line 3457) — so the omission here is inconsistent, not a deliberate choice. (Independently confirmed by the add-shift slice for the AddShiftSheet .preview block specifically, same call site ~4243-4248, same missing-attribute root cause.)",
+ "failure": "A screen reader user changes the hours or toggles the OT switch in the Add-Shift sheet and hears nothing — the updated '+$X gross · about +$Y take-home' text only gets read if they manually re-navigate to that div after every edit, defeating the point of a live preview for judging whether a pickup is worth it.",
+ "fix": "Wrap the `.preview` value line (and the `.pl-money` .v/.s lines) in `aria-live=\"polite\"` (a single region per sheet is enough — no need to make every keystroke chatty at the character level, just the settled preview text).",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces",
+  "add-shift"
+ ],
+ "id": "accessibility-03"
+}

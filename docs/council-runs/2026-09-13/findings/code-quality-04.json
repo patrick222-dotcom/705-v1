@@ -1,0 +1,13 @@
+{
+ "title": "Day-key stringification is independently reimplemented three times over the same shifts/dayEvents object",
+ "severity": "medium",
+ "where": "index.html:658 (keyOfDate), index.html:837 (keyOfYMD), index.html:2623 (App's local keyOf)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "code-quality-04"
+}

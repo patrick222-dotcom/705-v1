@@ -1,0 +1,13 @@
+{
+ "title": "privacy.html claims the anon_id device identifier 'is not linked to your name' — track() writes it into the same row as user_id for every signed-in action",
+ "severity": "medium",
+ "where": "privacy.html:104-107 vs index.html:1385-1397 (track()), exercised by ~25 call sites passing user?.id (e.g. 2859 shift_saved, 2912 template_applied, 3392 paystub_imported, 5063 swap_posted)",
+ "detail": "privacy.html's Usage analytics section says events carry 'the page path, your browser's user-agent string, and a random device identifier generated in your browser. That identifier is not linked to your name and is not shared with anyone.' But track(name, props, userId) (index.html:1385-1397) always sets both anon_id:anonId() and user_id:userId in the SAME row, and the overwhelming majority of call sites pass userId=user?.id whenever the visitor is signed in (shift_saved, template_saved, swap_posted, pattern_saved, etc.). auth.users (which user_id foreign-keys into) holds the signed-in person's email and, for Google sign-in, name. CLAUDE.md's own dashboard spec confirms this join is actually performed operationally: the 'segment' classification tags a device 'insider' by matching 'any anon_id ever seen signed in as' the owner's or Courtney's account — i.e. the anon_id-to-identity join privacy.html says doesn't happen is precisely what the project's own ops tooling does.",
+ "failure": "Once a signed-in nurse does anything tracked (saves a shift, applies a template, posts a swap), her per-device anon_id sits in the same events row as her user_id. Anyone with database access (the owner, who already runs 'select ... from events' per the documented Owner-read queries) can trivially resolve that user_id to her email/name via auth.users — the exact linkage the privacy notice tells her doesn't happen.",
+ "fix": "Rewrite the disclosure to state accurately that once signed in, the device identifier can be associated with the account (matching actual, intentional behavior used for the insider/public segment split), rather than asserting it is never linked to identity.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "privacy-telemetry-01"
+}

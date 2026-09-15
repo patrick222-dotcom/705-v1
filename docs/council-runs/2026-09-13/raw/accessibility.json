@@ -1,0 +1,298 @@
+[
+ {
+  "slice": "money-surfaces",
+  "findings": [
+   {
+    "title": "Overtime tag text fails AA contrast in the Add-Shift live preview and shift list",
+    "severity": "high",
+    "where": "index.html:4197 and index.html:4245 (color '#11A86B' inline overrides; also the decorative badge at 3923 and legend swatch text-adjacent use at 4218 share the same token)",
+    "detail": "The 'OT ×1.5' annotation is rendered with inline color:'#11A86B' (var(--money)). At line 4197 it sits on the 'ON THIS DAY' row list's white background (.row-item{background:#fff}, line 421) — measured contrast 3.07:1. At line 4245 it sits on the live preview's mint-tinted panel (.preview{background:var(--money-soft)}, line 418) — measured contrast 2.75:1. Both are far under the 4.5:1 WCAG AA minimum for normal-weight text this size (12-12.5px, not 'large text' under WCAG's 14pt-bold/18pt threshold). The base take-home figures next to it use var(--money-ink) (#0B5D3C), which passes easily (7.1:1+) — only the OT accent color is broken.",
+    "failure": "A low-vision nurse comparing 'is this shift worth picking up because of the OT multiplier' sees a washed-out, hard-to-read 'OT ×1.5' tag right next to the dollar amount that explains why the number is higher than a normal shift — exactly the moment this app is built to make legible.",
+    "fix": "Swap the inline color:'#11A86B' for var(--money-ink) (#0B5D3C) in the OT tag at both call sites (and the calendar badge/legend for consistency) — it already passes AA against every background in use and matches the color already used for the adjacent dollar figures.",
+    "wageCore": false
+   },
+   {
+    "title": "Danger-red money text narrowly fails AA on the app's translucent glass panels",
+    "severity": "medium",
+    "where": "index.html:3999 (Breakdown deduction rows, rendered inside the modal at 3620-3628), index.html:4571 (Pattern Lab 'will be replaced' warning inside .preview), index.html:4716/4755 (.danger-link 'Del' buttons in the Settings modal)",
+    "detail": "var(--danger) (#C84B3C) is used at 12-13px/600 weight for deduction values, warnings and 'Del' links. Computed against the literal token values: on the near-opaque .card background used when Breakdown is embedded inline (rgba(255,255,255,.93), line 111, call site 3586) it's ~4.64:1 — passes. But the same red text rendered inside .modal (rgba(246,245,241,.88) over the dark .scrim, lines 394/399) or .preview (var(--money-soft) #E3F7EE, line 418) computes to ~4.15-4.25:1 — under the 4.5:1 AA minimum for normal text. That's the Breakdown popup (line 3625 'See the full breakdown'), the Settings goal/differential Del buttons, and the Pattern Lab apply-preview warning — three of the named money surfaces.",
+    "failure": "The same federal-tax/FICA/state-tax deduction figures are legible when shown inline on the dashboard but slip just under the AA contrast floor when the user taps 'See the full breakdown ›' to view them in the popup, because that surface's glass panel is measurably less opaque than the plain white card.",
+    "fix": "Either drop the .modal/.preview backdrop-filter tint under var(--danger) text specifically, or darken var(--danger) by a few percent so it clears 4.5:1 against #E3F7EE and the translucent panel's effective color, not just against pure white.",
+    "wageCore": false
+   },
+   {
+    "title": "Breakdown and Settings close buttons have no accessible name",
+    "severity": "high",
+    "where": "index.html:3623 (Breakdown modal) and index.html:4697 (Settings modal)",
+    "detail": "Both render `<button className=\"back\" onClick={...}>{Ic.x}</button>` — Ic.x (line 603) is a bare `<svg>` with no `<title>` and no text content. Every other close button using the same Ic.x glyph in this file sets `aria-label=\"Close\"` (lines 2059, 3822, 3850, 4170, 4419, 4493, 5305, 5687) or an equivalent specific label — these two are the only ones that don't.",
+    "failure": "A screen reader user opening 'Your paycheck math' (Breakdown) or Settings (where the savings-goal lines live) tabs to the dismiss button and hears only 'button' with no name, so they can't tell it's the close control without trial-and-error activation.",
+    "fix": "Add aria-label=\"Close\" to both buttons, matching every sibling close button in the file.",
+    "wageCore": false
+   },
+   {
+    "title": "Add-Shift and Pattern Lab live money readouts have no aria-live region",
+    "severity": "medium",
+    "where": "index.html:4243-4249 (AddShiftSheet .preview block) and index.html:4539-4544 (.pl-money readout in Pattern Lab)",
+    "detail": "previewGross/previewNet (computed at 4104-4105) and metrics.periodNet/periodGross (patternMetrics) re-render live as the user toggles shift type, hours, OT, bonus, or paints pattern cells, but the containing divs carry no aria-live attribute. Elsewhere in the same file the team does wire this up correctly — the toaster (`role=\"status\" aria-live=\"polite\"`, line 2118) and the pay-period label (`aria-live=\"polite\"`, line 3457) — so the omission here is inconsistent, not a deliberate choice.",
+    "failure": "A screen reader user changes the hours or toggles the OT switch in the Add-Shift sheet and hears nothing — the updated '+$X gross · about +$Y take-home' text only gets read if they manually re-navigate to that div after every edit, defeating the point of a live preview for judging whether a pickup is worth it.",
+    "fix": "Wrap the `.preview` value line (and the `.pl-money` .v/.s lines) in `aria-live=\"polite\"` (a single region per sheet is enough — no need to make every keystroke chatty at the character level, just the settled preview text).",
+    "wageCore": false
+   },
+   {
+    "title": "Calendar grid has no grid semantics or row-based navigation for screen reader / keyboard users",
+    "severity": "medium",
+    "where": "index.html:3938 (`<div className=\"grid\">`) and the day-cell buttons built at 3915-3936",
+    "detail": "Each day is an independent `<button>` with a rich aria-label (dt.toDateString() + shift/take-home/OT/note info, lines 3916-3922) — that part is done well. But the container has no `role=\"grid\"`/`role=\"row\"`/`role=\"gridcell\"` and there is no roving-tabindex or arrow-key handling; the weekday header row is `aria-hidden=\"true\"` (line 3952) with no equivalent exposed elsewhere. Every day in the visible month(s) is one flat Tab stop in a single sequential order.",
+    "failure": "A keyboard or screen-reader user who wants to check the take-home for a date three weeks out must Tab through every single day between today and then one at a time — there is no 'next week' / row-jump the way a native `role=\"grid\"` (arrow keys) would give them, and nothing announces that this region is even a calendar grid rather than an arbitrary list of buttons.",
+    "fix": "Wrap each week row in `role=\"row\"`, mark cells `role=\"gridcell\"` inside a `role=\"grid\"` container (or, more simply, add a `role=\"grid\"`/roving-tabindex layer per WAI-ARIA APG's grid pattern) so assistive tech can navigate by week/row instead of one cell at a time.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "calendar",
+  "findings": [
+   {
+    "title": "Pay-period stepper's scroll animation ignores prefers-reduced-motion",
+    "severity": "high",
+    "where": "animateScrollTop (index.html:674-683), used by scrollFocusToDate (index.html:2751-2766) via movePeriod (index.html:2826-2831)",
+    "detail": "The ‹/› pay-period stepper in the greet row calls movePeriod, which calls scrollFocusToDate, which drives the calendar's scroll position with animateScrollTop — a hand-rolled requestAnimationFrame loop that eases el.scrollTop over 380ms. This is plain JS, not a CSS transition/animation. The file's own reduced-motion rule (index.html:469-471, `@media (prefers-reduced-motion: reduce){ *{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important} }`) only collapses CSS-driven durations and `scroll-behavior` (native smooth-scroll); it has no effect on a loop that sets `el.scrollTop` directly on every rAF frame. There is no `matchMedia('(prefers-reduced-motion: reduce)')` check anywhere in the file (confirmed via grep).",
+    "failure": "A user with 'reduce motion' enabled at the OS level taps › next to the pay-period label while in Month view. The entire calendar viewport still animates a smooth 380ms scroll to the new period's position — exactly the kind of scrolling motion the reduced-motion setting exists to suppress, and exactly the kind of thing this same file is careful to suppress for boot timers/CSS transitions elsewhere.",
+    "fix": "Check `matchMedia('(prefers-reduced-motion: reduce)').matches` at the top of animateScrollTop (or in scrollFocusToDate before calling it) and jump `el.scrollTop = clamped` synchronously instead of animating when the user has that preference set.",
+    "wageCore": false
+   },
+   {
+    "title": "Month/Year view control uses role=\"tablist\"/\"tab\" without the tab keyboard pattern",
+    "severity": "medium",
+    "where": "index.html:3547-3550 (the .viewseg buttons)",
+    "detail": "The Month/Year toggle is marked up as `<div className=\"viewseg\" role=\"tablist\" aria-label=\"Calendar view\">` wrapping two `role=\"tab\" aria-selected={...}` buttons. Per the ARIA tab pattern this markup promises to a screen-reader/keyboard user: Left/Right arrow keys move selection between tabs, and each tab is wired to its panel via aria-controls (with a matching role=\"tabpanel\"). Neither exists: there is no onKeyDown handler anywhere on these buttons or their container (confirmed — the only onKeyDown handlers in the whole file are on unrelated text inputs at lines 4035, 4281, 5357, 5579, 5597), and `aria-controls`/`role=\"tabpanel\"` appear nowhere in the file.",
+    "failure": "A screen-reader user tabs to the control and hears \"Month, tab, 1 of 2, selected\" — the standard tab-pattern announcement — and, following that pattern, presses the Right arrow key expecting focus/selection to move to \"Year\". Nothing happens; they have to already know to abandon the arrow-key convention and Tab past it instead.",
+    "fix": "Either implement the real pattern (roving tabindex + arrow-key handler that calls setCalView, plus aria-controls pointing at a role=\"tabpanel\" wrapping the YearList/cal-vscroll region), or drop role=\"tablist\"/\"tab\"/aria-selected and let it be a plain labeled button group — a segmented control doesn't have to be ARIA tabs.",
+    "wageCore": false
+   },
+   {
+    "title": "Year-view prev/next buttons have a vague, ungrouped aria-label",
+    "severity": "low",
+    "where": "index.html:3553-3557 (.calnav div and its two buttons)",
+    "detail": "In Year view, the prior/next-year buttons are `aria-label=\"Previous\"` and `aria-label=\"Next\"` with no wrapping group label — contrast with the pay-period stepper right above it (index.html:3457), which wraps identical-looking ‹/› buttons in `role=\"group\" aria-label=\"Pay period\"` and gives the buttons themselves `aria-label=\"Previous pay period\"`/`\"Next pay period\"`. The Year-view .calnav div has no role or aria-label at all.",
+    "failure": "A screen-reader user tabbing through the calendar card in Year view reaches a button announced only as \"Previous, button\" — nothing says it steps by year (versus the pay-period stepper's control, one screen away, which does say what it steps). They have to explore surrounding content to guess what it does.",
+    "fix": "Label the buttons `aria-label=\"Previous year\"`/`\"Next year\"` (matching the pattern already used for the pay-period stepper), and/or add `role=\"group\" aria-label=\"Year\"` to the wrapping .calnav div.",
+    "wageCore": false
+   },
+   {
+    "title": "Day cell's \"today\" state is visual-only — dropped from the accessible name",
+    "severity": "medium",
+    "where": "index.html:3913-3922 (Calendar function: isToday computed at 3913, cell button's aria-label built at 3916-3922)",
+    "detail": "`isToday` is computed and used only to add a CSS class (`(isToday?' today':'')` at 3916), which produces a 2px indigo inset ring via `.cell.today{box-shadow:...}` (index.html:244). Because the button carries an explicit aria-label, that manually-built string is its entire accessible name — and it is built from hasShift/hasEvent/take-home/hasOT/no-shifts/hasNote (3917-3922) but never from isToday. Every other visual-only day state that the aria-label author clearly cared about (overtime badge, note dot) IS mirrored into the label; \"today\" is the one omitted.",
+    "failure": "A screen-reader user navigating the day-cell buttons in Month view has no way to tell which one is today — sighted users get an indigo ring around it, but the announced label for that cell is indistinguishable from any other day with the same shifts/hours, e.g. \"Fri Sep 12 2025, no shifts\" reads identically whether or not it's actually today.",
+    "fix": "Append `(isToday ? ', today' : '')` to the aria-label string built at index.html:3916-3922.",
+    "wageCore": false
+   },
+   {
+    "title": "The month-scroll container isn't keyboard-scrollable on its own",
+    "severity": "medium",
+    "where": "index.html:3561 (`<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll}>`)",
+    "detail": "`.cal-vscroll` is a nested `overflow-y:auto; max-height:60vh` scroll region (index.html:184) holding 16 months of day-cell buttons. It has no `tabIndex` and no keydown handler, so it is never itself a focus stop and never responds to arrow/Page keys. The outer page (`body`/document) is what actually scrolls when a keyboard-only user (no mouse/touch — e.g. a switch or keyboard-only sighted user, not necessarily a screen-reader user) presses Page Down/Space with focus elsewhere on the page; that scrolls the page around the calendar card, not the calendar's own internal 60vh viewport.",
+    "failure": "A sighted keyboard-only user wants to browse forward from the current month inside the calendar card without a pointer device. There is no key they can press with focus inside the calendar region to page the 60vh scroller itself — their only route is Tab-ing individually through every day-cell button in the current month (up to ~31 Tab presses) until focus-follows-into-view scrolls the next month into range, which works only as an incidental side effect of tabbing through unrelated buttons, not as an intentional \"scroll the calendar\" action.",
+    "fix": "Give `.cal-vscroll` `tabIndex={0}` (and ideally an `aria-label`, e.g. \"Calendar months\") so it becomes a standard scrollable region that responds to the browser's native arrow/Page/Home/End key scrolling once focused.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "add-shift",
+  "findings": [
+   {
+    "title": "OT tag color fails WCAG AA contrast against both backgrounds it appears on",
+    "severity": "medium",
+    "where": "index.html:4197 and index.html:4245 (AddShiftSheet)",
+    "detail": "Both the logged-shift row's 'OT ×1.5' tag (line 4197, on .row-item's #fff background) and the live preview's ' · incl. OT ×1.5' suffix (line 4245, on .preview's --money-soft #E3F7EE background) are colored with the literal '#11A86B' (the --money brand green), not the app's already-AA --money-ink (#0B5D3C) that every other dollar figure in the same sheet uses (e.g. .preview .v and .preview .k at CSS lines 419-420, and .cell .amt at 236). Computed contrast: #11A86B on #fff ≈ 3.07:1; #11A86B on #E3F7EE ≈ 2.75:1. Both text runs are 12-14px bold, well under the ≥18.66px-bold 'large text' exemption, so both need 4.5:1 and both fail.",
+    "failure": "A low-vision nurse (the app's stated audience) viewing a logged shift or the live preview for a shift she flagged as overtime can fail to read the 'OT ×1.5' qualifier at all, since it renders at roughly half the minimum required contrast right next to (and in the same weight as) the fully-legible dark-green take-home figures beside it.",
+    "fix": "Use var(--money-ink) (already proven AA-compliant at ~12:1+ on both backgrounds and used for every other dollar figure in this sheet) for the OT text instead of the literal '#11A86B'; keep '#11A86B' for non-text accents like the small dot indicators if desired.",
+    "wageCore": false
+   },
+   {
+    "title": "Add-Shift sheet has no dialog semantics, unlike every sibling sheet in the same file",
+    "severity": "high",
+    "where": "index.html:4164 (AddShiftSheet's outer <div className=\"sheet\">)",
+    "detail": "Every other modal sheet in the app declares role=\"dialog\" aria-modal=\"true\" aria-label=\"...\" on its .sheet element: the feedback sheet (line 2057, aria-label=\"Send feedback\"), the .ics import-confirm sheet (3820, \"Confirm schedule import\"), the classify-imported-shift sheet (3848, \"Classify imported shift\"), and both swap sheets (5311/5330, \"Shift swaps\"). AddShiftSheet's own <div className=\"sheet\"> at 4164 carries none of these. There is also no Escape-key handler anywhere for this sheet (the only keydown listener in the whole app is the account menu's, lines 1966-1968) or focus management on open/close.",
+    "failure": "A screen-reader user who opens 'Add a shift' from a calendar day gets no announcement that a dialog named 'Add a shift' just opened, and the assistive-tech virtual cursor is free to wander into the calendar/dashboard behind the scrim while it is nominally modal — the exact opposite of what happens one sheet over (Import/Classify/Feedback/Swaps) for the identical visual pattern. The same user also has no keyboard way to dismiss it (Escape does nothing here, though it works for the account menu).",
+    "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Add a shift\" to the .sheet div at line 4164, matching the existing pattern, and give it the same document keydown Escape->dismiss() handling already implemented for the account menu (1966-1968).",
+    "wageCore": false
+   },
+   {
+    "title": "Every 'Remove' button for a logged shift shares the identical accessible name",
+    "severity": "medium",
+    "where": "index.html:4200 (inside the list.map over `list` in AddShiftSheet)",
+    "detail": "`<button className=\"danger-link\" onClick={()=>remove(s.id)}>Remove</button>` renders once per entry in `list`, and the UI explicitly supports multiple shifts logged on one day (the whole 'ON THIS DAY' section exists for that). Every one of those buttons has the literal accessible name 'Remove', with no reference to which shift. The same component already knows how to disambiguate an equivalent case: the template-delete button a few dozen lines earlier is `aria-label={'Delete template '+t.name}`.",
+    "failure": "A screen-reader user who has logged two shifts on the same day (e.g. a regular shift plus a picked-up OT shift) hears 'Remove, button' twice with nothing to tell them apart, and can only guess which one their focus is currently on.",
+    "fix": "Give each Remove button a distinguishing aria-label, e.g. aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}, mirroring the 'Delete template '+t.name pattern already used in the same file.",
+    "wageCore": false
+   },
+   {
+    "title": "The live take-home preview has no aria-live region, unlike other frequently-updating numbers in the app",
+    "severity": "medium",
+    "where": "index.html:4243-4248 (the .preview block in AddShiftSheet)",
+    "detail": "The .preview div recomputes previewGross/previewNet/goal-progress on every change to shiftType, hours, bonusType, customBonus and isOvertime, and per CLAUDE.md this preview is the sheet's whole point ('a live preview... so a nurse can judge whether picking up an extra shift is worth it before working it'). It has no role or aria-live attribute at all. The app does apply aria-live elsewhere for smaller-stakes numbers: the toaster (line 2118, role=\"status\" aria-live=\"polite\") and the pay-period label (line 3457, aria-live=\"polite\").",
+    "failure": "A screen-reader user adjusting hours or toggling Overtime while configuring a shift gets no spoken update when the take-home figure changes — they must manually re-navigate to the preview after every single control change to learn the new number, unlike a sighted user who sees it update instantly in place.",
+    "fix": "Add role=\"status\" aria-live=\"polite\" to the .preview div at line 4243 so its content updates are announced automatically, consistent with the toaster/pay-period pattern already in the codebase.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "pattern-lab",
+  "findings": [
+   {
+    "title": "Pattern Lab's dialog has no dialog role, no aria-modal, and no accessible name — unlike every sibling sheet",
+    "severity": "high",
+    "where": "index.html:4417-4419 (list mode) and index.html:4486-4488 (edit mode), function PatternLab",
+    "detail": "PatternLab's outer markup is `<div className=\"scrim\" onClick={dismiss}><div className=\"modal\" onClick={e=>e.stopPropagation()}>...`. Neither the scrim nor the modal div carries `role=\"dialog\"`, `aria-modal=\"true\"`, or an `aria-label`/`aria-labelledby`. Every other overlay in the app that plays the same role does carry this: FeedbackSheet (`role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\"`, line 2057), the confirm dialog (`role=\"alertdialog\" aria-modal=\"true\"`, line 2138), the ICS import confirm (line 3820) and classify-shift (line 3848) sheets, and SwapsSheet (lines 5311, 5330) all declare it. PatternLab is the odd one out even though it visually looks and behaves like the same kind of sheet.",
+    "failure": "A VoiceOver/NVDA/TalkBack user taps 'Patterns' in the topnav (openPatternLab, line 2933). No 'dialog' role is announced and no name is given for what just opened — the screen reader has no signal that a new modal context replaced the page, and (because there is no aria-modal) it does not treat the rest of the page as hidden, so rotor/browse-mode navigation can wander into the calendar and topnav that are still present in the accessibility tree underneath.",
+    "fix": "Add `role=\"dialog\" aria-modal=\"true\"` and an `aria-label` (e.g. \"Pattern lab\" / \"Edit pattern\") to the `.modal` div in both the list-mode and edit-mode returns, matching the convention already used by FeedbackSheet/SwapsSheet/the ICS sheets.",
+    "wageCore": false
+   },
+   {
+    "title": "Pattern Lab has no focus trap and no Escape-to-close, so keyboard focus leaks into the obscured app behind it",
+    "severity": "high",
+    "where": "index.html:4300-4581 (function PatternLab, no keydown handling or focus management anywhere in the component); index.html:2596-2600 (body-scroll lock is the only 'modal open' side effect); index.html:1966-1968 (Escape-to-close exists for the account menu, for contrast)",
+    "detail": "There is no `useEffect`/`addEventListener('keydown', ...)` and no ref-based focus trap anywhere in PatternLab (confirmed by reading lines 4300-4420 and grepping the whole component body). The app never uses `ReactDOM.createPortal` (grep returns nothing) and never sets `inert` or toggles `aria-hidden` on background content when a sheet opens — the only 'a modal is open' side effect anywhere in the app is `document.body.style.overflow='hidden'` at line 2598, which blocks page scroll but does nothing to the DOM's tab order or accessibility tree. Meanwhile the account menu two thousand lines earlier (lines 1966-1968) does register a document keydown listener that closes on Escape, showing the app knows how to do this and simply didn't do it here.",
+    "failure": "A keyboard user opens Pattern Lab, then presses Shift+Tab from the '×' Close button (aria-label=\"Close\", line 4419) — focus moves backward into whatever topnav/calendar control precedes PatternLab in the DOM (e.g. the 'Patterns'/'Swaps'/'Settings' topnav links or a calendar day cell), all of which are still fully interactive but visually hidden under the `.scrim` overlay (`rgba(18,18,26,.55)` + blur, line 394). The user sees no focus indicator at all (it's under the overlay) and can activate a background control — e.g. re-triggering `openPatternLab` or opening Settings underneath the already-open Pattern Lab — while apparently still 'inside' Pattern Lab. Separately, pressing Escape while Pattern Lab is open does nothing at all; the only ways to close it are clicking the × button or clicking the scrim backdrop.",
+    "fix": "Give the modal a focus trap (cycle Tab/Shift+Tab within its own focusable elements) and move focus onto it when it opens (e.g. the close button or heading), restoring focus to the invoking control on close; add a `keydown` listener for `Escape` that calls `dismiss()`, matching the pattern already used for the account menu at line 1966.",
+    "wageCore": false
+   },
+   {
+    "title": "The 'Put it on the calendar' apply preview updates silently for screen-reader users",
+    "severity": "medium",
+    "where": "index.html:4566-4572 (the `.preview` div inside PatternLab's apply flow); contrast with index.html:3457 (`aria-live=\"polite\"` on the analogous pay-period label)",
+    "detail": "`applyPlan` (a `useMemo` over `applyStart`, `applyWeeks`, `applyReplace`, defined at lines 4312-4314) drives a plain `<div className=\"preview\">` at lines 4566-4572 that reports 'This adds N shift(s) · <dates>', how many days were skipped, and how many will be replaced. Changing the Starting date input, the 'FOR' week-count buttons, or the Replace toggle recomputes this text, but the div carries no `aria-live` region. Elsewhere in the same file the app already uses `aria-live=\"polite\"` for exactly this kind of 'a control changed and this readout updated' case (the pay-period `<span className=\"num\" aria-live=\"polite\">{periodLabel}</span>` at line 3457).",
+    "failure": "A screen-reader user changes 'FOR' from 6 weeks to 12 weeks, or flips 'Replace shifts already on those days' on, expecting to hear the updated add/skip/replace counts the sighted preview shows immediately. Nothing is announced — they have to manually re-navigate to the preview div after every change to learn whether their pattern will now replace shifts or add fewer than expected, which is exactly the kind of consequential, silent state change AA's programmatic-status guidance (and the app's own precedent at line 3457) exists to prevent.",
+    "fix": "Add `aria-live=\"polite\"` (and ideally `aria-atomic=\"true\"`) to the `.preview` div at line 4567 so the recomputed adds/skipped/replaced counts are announced whenever `applyStart`, `applyWeeks`, or `applyReplace` change.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "onboarding",
+  "findings": [
+   {
+    "title": "Onboarding step transitions never move focus and use no heading markup",
+    "severity": "high",
+    "where": "index.html:5704-5835 (all 5 obStep branches), goObStep index.html:2198-2201, exit-to-app at index.html:3081/3391/3412",
+    "detail": "Every step change in the wizard (welcome -> base-rate -> differentials -> taxes -> done, the back button, and the final exit into the main dashboard when setupComplete flips to true) is a full React remount of a different JSX subtree in the same container. None of the five branches use an <h1>-<h6> for its question/heading text (\"What's your base hourly rate?\", \"How does your pay change by shift?\", etc. are all plain <div className=\"q\">), there is no ref.focus()/autoFocus placed on any heading or first control after a transition, and no aria-live region wraps the step content. grep -n \"<h1\\|<h2\\|<h3\\|<h4\" confirms zero headings anywhere inside Onboarding().",
+    "failure": "A VoiceOver or NVDA user taps 'Get my estimate' (index.html:5729). The button they were focused on is unmounted and replaced by the base-rate step; the browser silently drops focus to <body> (or leaves it nowhere useful), and nothing is announced. The user hears nothing happen and has no heading to jump to with the AT's heading-navigation shortcut (H in NVDA/JAWS, rotor in VoiceOver) -- they must re-explore the whole page from the top to discover the new question exists. This repeats at every one of the 5 steps and again on the transition out of onboarding into the live app.",
+    "fix": "Give each step's question a real heading (e.g. <h1 className=\"q\">), and on obStep change move focus to that heading (or the step's first control) via a ref + useEffect keyed on obStep. Same treatment for the setupComplete flip into the main app.",
+    "wageCore": false
+   },
+   {
+    "title": "'ESTIMATED' tax-rate tag fails WCAG AA contrast",
+    "severity": "high",
+    "where": "index.html:328 (.tag.est rule), rendered at index.html:5796 and index.html:5798",
+    "detail": ".tag.est{color:#C2820A;background:#FDF3DD} at 10.5px/600-weight. Computed contrast of #C2820A on #FDF3DD is 2.93:1 -- well under the 4.5:1 AA minimum for normal text (it doesn't even clear the 3:1 large-text bar, and 10.5px isn't large text anyway). This is the badge sitting directly on 'Federal income tax' and 'State tax' in the onboarding taxes step (obStep 3), the two rates that feed the projected take-home figure shown one step later.",
+    "failure": "A low-vision nurse using the taxes step at obStep 3 cannot read the word 'ESTIMATED' next to Federal/State tax -- it visually all but disappears against its own pill background, so she can't tell which of the pre-filled numbers are guesses she should check versus fixed values (FICA's .tag.auto pill, by contrast, passes at 4.75:1).",
+    "fix": "Darken #C2820A (or lighten the pill background) until contrast clears 4.5:1 -- e.g. swap to the same indigo-on-indigo-soft treatment already used for .tag.auto, or darken to roughly #8A5A05 on the existing #FDF3DD.",
+    "wageCore": false
+   },
+   {
+    "title": "Gross-pay summary line on the 'done' screen falls just under AA contrast",
+    "severity": "medium",
+    "where": "index.html:5823",
+    "detail": "<div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div> sits inside the card whose background is var(--ink-2) = #21242F (index.html:5820). Computed contrast of #7E8290 on #21242F is 4.04:1, below the 4.5:1 AA requirement for 13px/500 (normal) text. This is the one line on the onboarding completion screen that literally states the gross-pay figure.",
+    "failure": "A low-vision user finishing onboarding sees the projected take-home number clearly (mint on ink-2, 8:1) but the supporting 'X hrs · 6 shifts · gross $Y' line next to it is noticeably harder to read -- it's the exact figure a nurse would want to sanity-check against her own math, and it's the weakest-contrast text on the screen.",
+    "fix": "Lighten #7E8290 (e.g. to something around #9A9DAB, already used one line above for 'Projected take-home' at 5.7:1 against the same background) so the money-adjacent line clears 4.5:1.",
+    "wageCore": false
+   },
+   {
+    "title": "Onboarding back button has no accessible name",
+    "severity": "medium",
+    "where": "index.html:5739",
+    "detail": "<button className=\"back\" onClick={()=>setObStep(obStep-1)}>‹</button> -- the only content is the raw '‹' glyph; no aria-label, no title, no visually-hidden text. The visually identical arrow glyphs used for pay-period navigation in the main dashboard do carry one: aria-label=\"Previous pay period\" / \"Next pay period\" (index.html:3457).",
+    "failure": "A screen-reader user on the base-rate, differentials, or taxes step reaches the top-left button and hears only 'button' or an unhelpful glyph reading ('single left-pointing angle quotation mark, button') with no indication it goes back a step, unlike every other chevron button in the app.",
+    "fix": "Add aria-label=\"Back\" (or a dynamic 'Back to <previous step>') to the Head component's back button, matching the pattern already used for the pay-period nav arrows.",
+    "wageCore": false
+   },
+   {
+    "title": "Dismissing the est-banner removes the focused control with no focus handoff",
+    "severity": "medium",
+    "where": "index.html:3471-3474 (banner buttons), index.html:2991-3001 (clearSample)",
+    "detail": "Both dismiss paths -- 'Got it' (setEstimateMode('')) and 'Clear the sample' (clearSample(), which also ends in setEstimateMode('')) -- cause the entire `{estimateMode && <div className=\"est-banner\">...}` block, including the very button just activated, to unmount. Neither path moves focus anywhere afterward (clearSample's confirmAsync dialog autoFocuses its own Confirm button while open, per index.html:2143, but once confirmed and the dialog+banner both unmount, nothing receives focus).",
+    "failure": "A keyboard or screen-reader user who presses 'Got it' (or confirms 'Clear the sample') has focus silently dropped to <body> with no announcement that the banner is gone or where to go next -- they lose their place on a page that just changed shape under them.",
+    "fix": "After clearing estimateMode, move focus to a stable nearby landmark (e.g. the hero take-home heading) with a ref + effect, so focus lands somewhere meaningful rather than being dropped.",
+    "wageCore": false
+   },
+   {
+    "title": "Name field on the 'done' step has no label, only a placeholder",
+    "severity": "low",
+    "where": "index.html:5826-5828",
+    "detail": "<div className=\"field\" style={{margin:0,textAlign:'left'}}><div className=\"inp\"><input placeholder=\"What should we call you?\" value={...} onChange={...} .../></div></div> -- unlike every other text field in the app (e.g. the base-rate field in Settings, index.html:4707, which wraps its input in <label className=\"field\"><span className=\"lab\">Base hourly rate</span>...), this one supplies no <label>, <span className=\"lab\">, or aria-label -- only a placeholder, which disappears the moment text is typed.",
+    "failure": "A user who fills in her name and then, minutes later, revisits the field (e.g. via 'Edit my setup') sees a populated text box with no visible or reliably-announced label reminding her what it's for; it's also the one field in the app that doesn't follow the app's own established labeling convention.",
+    "fix": "Wrap it in the same <label className=\"field\"><span className=\"lab\">What should we call you?</span>...</label> pattern used everywhere else, keeping the placeholder as a secondary hint if desired.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "settings-etc",
+  "findings": [
+   {
+    "title": "Settings modal has no dialog semantics and its close button has no accessible name",
+    "severity": "high",
+    "where": "index.html:4694-4697 (Settings)",
+    "detail": "Settings renders as `<div className=\"scrim\"><div className=\"modal\">...<button className=\"back\" onClick={onClose}>{Ic.x}</button>` with no role=\"dialog\", no aria-modal, no aria-label/aria-labelledby on the modal, and the close button wraps only the bare Ic.x SVG (index.html:603, a <path> with no <title>, no aria-hidden) with zero text or aria-label. Every sibling sheet in the same file gets this right at the same call-site shape: FeedbackSheet (index.html:2057, 2059) has role=\"dialog\" aria-modal=\"true\" aria-label=\"Send feedback\" plus aria-label=\"Close\" on its X button; SwapsSheet (index.html:5311, 5305) and the ICS import sheets (index.html:3820,3822 / 3848,3850) do the same. Settings is the one modal in this slice missing all of it.",
+    "failure": "A screen-reader user (VoiceOver/NVDA/TalkBack) opens Settings from the account menu (the only route to Settings on a phone per the top-bar note in CLAUDE.md). Nothing announces that a dialog opened - no 'dialog' role, no name - so the user has no orientation cue and, because there's no aria-modal, can swipe/Tab straight past the sheet into the calendar/hero content still sitting behind the scrim. When they do reach the X button in the header, it announces only 'button' with no label, so they cannot tell it closes Settings; the only other way out is the 'Done' button at the very bottom of a long, multi-section scrolling sheet (goals, differentials, taxes, calendar sync), which they may never discover.",
+    "fix": "Add role=\"dialog\" aria-modal=\"true\" and aria-labelledby pointing at the \"Settings\" title div (or aria-label=\"Settings\") to the .modal div at 4696, and add aria-label=\"Close\" to the back button at 4697 - matching the pattern already used by FeedbackSheet/SwapsSheet/the ICS sheets in this same file.",
+    "wageCore": false
+   },
+   {
+    "title": "ShareSheet has no dialog role or accessible name for the region",
+    "severity": "medium",
+    "where": "index.html:5682-5688 (ShareSheet)",
+    "detail": "ShareSheet's outer sheet div (`<div className=\"sheet\" onClick={e=>e.stopPropagation()}>`) carries none of role=\"dialog\", aria-modal, or aria-label/aria-labelledby, even though its own close button (line 5687) does have aria-label=\"Close\" and the visible title 'Share BadgeBudget' (line 5686) exists as plain text. This is the same gap as Settings but only on the region-level semantics, not the button.",
+    "failure": "A screen-reader user tapping the Settings 'Show a QR code or send a link' button gets no announcement that a modal/dialog opened, and can navigate (swipe/Tab) into the app content behind the scrim since aria-modal is absent - the same background-leak problem as Settings, just without the extra unlabeled-button issue.",
+    "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Share BadgeBudget\" to the sheet div at line 5683, consistent with FeedbackSheet/SwapsSheet in the same file.",
+    "wageCore": false
+   },
+   {
+    "title": "Differential name-edit input has no accessible name",
+    "severity": "medium",
+    "where": "index.html:4714 (Settings differentials row)",
+    "detail": "`<input className=\"nm\" value={d.name} disabled={k==='base'} onChange={...} style={{...}}/>` has no wrapping <label>, no aria-label, no placeholder, and no id/htmlFor pairing. Every other input in this same Settings screen (name, base rate, tax fields, new-differential/new-goal inputs) carries either an aria-label or at minimum a placeholder; this one field - the only in-place editor for an existing differential's name - has neither.",
+    "failure": "A screen-reader user tabs to this field while editing a custom differential (e.g. one named 'Charge') and hears only 'edit text, Charge' with no field name, so on a row where they haven't just heard the adjacent toggle (which does carry aria-label={d.name}) they cannot tell this control is the differential's name versus any other text field on the page.",
+    "fix": "Add aria-label={d.name + ' name'} (or similar) to the input at index.html:4714.",
+    "wageCore": false
+   },
+   {
+    "title": "Duplicate, context-free \"Del\" button labels in differentials and savings-goals lists",
+    "severity": "medium",
+    "where": "index.html:4716 and 4755 (Settings)",
+    "detail": "Every per-row delete control in both the differentials list and the savings-goals list renders `<button className=\"danger-link\" onClick={...}>Del</button>` with no aria-label distinguishing rows. A user with 4 differentials and 3 goals ends up with 7 buttons that all have the identical accessible name 'Del'. Differential deletion is gated by confirmAsync (index.html:4691, names the differential in the confirmation copy), but delGoal (index.html:4687) deletes immediately with zero confirmation.",
+    "failure": "A screen-reader user navigating Settings via the rotor's 'buttons' list (which strips surrounding row context) cannot tell which 'Del' belongs to which goal or differential. For goals specifically, since there is no confirmation step, activating the wrong one in that list permanently deletes the wrong savings goal with no undo.",
+    "fix": "Give each delete button a distinguishing aria-label, e.g. aria-label={'Delete '+d.name+' differential'} at 4716 and aria-label={'Delete '+g.name+' goal'} at 4755; consider also gating delGoal behind confirmAsync to match the differential-delete pattern.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "swap-board",
+  "findings": [
+   {
+    "title": "SwapsSheet dialog claims aria-modal but has no focus trap, no initial focus, and no Escape handler",
+    "severity": "high",
+    "where": "index.html:5330 (and :5311 signed-out variant) — SwapsSheet's role=\"dialog\" aria-modal=\"true\" wrapper",
+    "detail": "SwapsSheet renders `<div className=\"sheet\" ... role=\"dialog\" aria-modal=\"true\" aria-label=\"Shift swaps\">` (index.html:5330; signed-out gate identical at :5311) but nothing in the component manages keyboard focus: no ref/useEffect moves focus into the dialog on open (grep of the whole 4819-5659 body finds only one unrelated `autoFocus`, on the display-name input at :5356, and the single `useRef` in the file, :4873, is for a stale-reveal timestamp, not focus), no keydown handler traps Tab inside the sheet, and no Escape handler exists anywhere in SwapsSheet (the only 'Escape' handler in the whole file is AccountMenu's, index.html:1966-1969, scoped to that component's own `open` state). Because `showSwaps` is rendered mid-tree inside App's JSX (index.html:3642-3647), after the main calendar content and the `+ Log a shift` FAB (index.html:3608-3609) which precede it in DOM order, the live page behind the scrim is never removed from the tab sequence.",
+    "failure": "A keyboard user (or screen-reader user driving via Tab) opens Shift swaps (topnav 'Swaps' or the Home card button at index.html:3596), lands on the sheet's Close button (index.html:5305, the first focusable element in the dialog) and presses Shift+Tab once: focus jumps out of the dialog entirely and onto the `+ Log a shift` FAB (index.html:3608), a fully live, visibly-covered-by-the-scrim button. Pressing Enter there opens the Add-Shift sheet stacked on top of the swap board, even though `aria-modal=\"true\"` asserts the rest of the page is inert. Symmetrically, Tab forward past the sheet's last control (e.g. the composer's 'Post to the board' button at :5653, or '+ Join another board' at :5587) leaves the dialog instead of wrapping back to Close — a keyboard user loses their place with no way back except tabbing all the way through the hidden background page. There is also no way to dismiss the sheet from the keyboard except tabbing all the way to the Close button and activating it, since Escape is not wired up here.",
+    "fix": "Add a mount-time effect that moves focus to the dialog (or its first control) and a keydown handler on the sheet that (a) calls onClose on Escape and (b) cycles Tab/Shift+Tab between the sheet's first and last focusable elements (a small focus-trap utility, reused by the other `role=\"dialog\"` sheets at :2057, :3820, :3848 which have the identical gap).",
+    "wageCore": false
+   },
+   {
+    "title": "Withdraw/Decline confirm dialog (used by the reveal-flow actions) has no Escape handler and lets Tab escape the dialog",
+    "severity": "medium",
+    "where": "index.html:2127-2148 (ConfirmHost), invoked from SwapsSheet's doWithdraw (:5069) and doDecline (:5155)",
+    "detail": "`confirmAsync(...)` — the confirmation shown for 'Withdraw this post?' (index.html:5069) and 'Decline this proposed swap?' (index.html:5155) inside the matching/reveal flow — renders `role=\"alertdialog\" aria-modal=\"true\"` (index.html:2138) with only two buttons: Cancel then Confirm (`autoFocus`, index.html:2143). autoFocus correctly seeds initial focus on Confirm, but there is no keydown handler anywhere in ConfirmHost, so Escape does not dismiss it, and Tab forward from the auto-focused Confirm button (the last element inside the dialog) is not intercepted, so focus leaves the dialog into whatever follows ConfirmHost in the document instead of cycling back to Cancel.",
+    "failure": "A nurse using the keyboard to decline a proposed swap (index.html:5155) reaches the confirm dialog, and either presses Escape expecting it to cancel (it does nothing — the destructive choice stays on screen with no keyboard-conventional way to back out) or tabs forward from the focused Confirm button and lands outside the alertdialog entirely, again with the modal claim unmet.",
+    "fix": "Give ConfirmHost the same Escape-to-cancel keydown handler AccountMenu already has (index.html:1966-1969), and trap Tab between Cancel and Confirm.",
+    "wageCore": false
+   }
+  ]
+ }
+]

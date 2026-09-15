@@ -1,0 +1,13 @@
+{
+ "title": "saveToSupabase's returned-error branch bypasses the console.error mirror the same commit introduced for exactly this case",
+ "severity": "low",
+ "where": "index.html:1337 (saveToSupabase) vs the console.error override at index.html:517-532",
+ "detail": "The 2026-08-23 fix (Invariant 4 companion rule 'console.error is mirrored into the error ring buffer') added a global override so any console.error(...) call also lands in the ring buffer, specifically because 'PostgREST reports failures by RETURNING an error object, so the save path's console.error never reached the ring buffer' (comment at 512-516). Every other error site in the file (loadCloudRow, submitFeedback x2, hydrateFromCloud's catch, the auth-session catch, signOut's catch, the paystub catch, ErrorBoundary) calls console.error(...) and gets both the devtools line and the ring-buffer entry for free. saveToSupabase's own returned-error branch — the one the fix narrative is literally about — instead calls logClientError('Supabase save failed: '+...) directly, bypassing console.error entirely.",
+ "failure": "When a cloud save fails with a returned (not thrown) Postgres/PostgREST error — RLS, a constraint violation, a transient 5xx — nothing prints in the browser devtools console. A developer watching the console live, including the project's own 'dev-build console diagnostic' in tests/harness.mjs (which drives real flows and captures console warning/error messages specifically to catch failures that never surface as a pageerror), would see no signal for this exact failure class, even though the whole point of the console.error mirror was to make console.error safe to rely on everywhere.",
+ "fix": "Change line 1337 to console.error('Supabase save failed:', error.message||error.code||'unknown') so it goes through the same mirrored path as every other error site.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "code-quality-26"
+}

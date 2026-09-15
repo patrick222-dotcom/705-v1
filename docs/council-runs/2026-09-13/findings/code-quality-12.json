@@ -1,0 +1,13 @@
+{
+ "title": "Differential edit/toggle logic is duplicated verbatim between Settings and Onboarding and can drift",
+ "severity": "low",
+ "where": "index.html:4689-4690 (Settings) and index.html:5709-5710 (Onboarding, step 2 differentials)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "code-quality-12"
+}

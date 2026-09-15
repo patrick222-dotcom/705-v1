@@ -1,0 +1,13 @@
+{
+ "title": "Differential name-edit input has no accessible name",
+ "severity": "medium",
+ "where": "index.html:4714 (Settings differentials row)",
+ "detail": "`<input className=\"nm\" value={d.name} disabled={k==='base'} onChange={...} style={{...}}/>` has no wrapping <label>, no aria-label, no placeholder, and no id/htmlFor pairing. Every other input in this same Settings screen (name, base rate, tax fields, new-differential/new-goal inputs) carries either an aria-label or at minimum a placeholder; this one field - the only in-place editor for an existing differential's name - has neither.",
+ "failure": "A screen-reader user tabs to this field while editing a custom differential (e.g. one named 'Charge') and hears only 'edit text, Charge' with no field name, so on a row where they haven't just heard the adjacent toggle (which does carry aria-label={d.name}) they cannot tell this control is the differential's name versus any other text field on the page.",
+ "fix": "Add aria-label={d.name + ' name'} (or similar) to the input at index.html:4714.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "accessibility-23"
+}

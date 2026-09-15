@@ -1,0 +1,13 @@
+{
+ "title": "Previous account's secret feed URL survives a stalled sign-out and is shown/saved for the next account on the same device",
+ "severity": "medium",
+ "where": "index.html:2529-2540 handleSignOut (does not clear icalSub/icalUrl/hydratedUserId/icalSyncedForUser); index.html:2335-2340 resetToDefaults (same omission); index.html:2441 hydration effect `catch(_){ return; }`",
+ "detail": "The only place `icalSub`/`icalUrl` are cleared on sign-out is the SIGNED_OUT branch of onAuthStateChange (index.html:2417). `handleSignOut` exists precisely because that event \"won't fire if signOut stalled\" (its own comment) and it mirrors the branch for every field except the four iCal ones; `resetToDefaults` (which it calls) also skips them. So after a stalled sign-out (the WebKit lock deadlock this codebase already documents) user A's bearer credential stays in React state. When user B signs in on the same tab, hydrateFromCloud sets hydratedUserId, the effect at index.html:2431-2450 calls loadIcalSub(B); if that throws (network blip) it `return`s before the `setIcalSub(sub); setIcalUrl(...)` line, leaving A's URL and subscription object in place. Settings renders the CALENDAR SYNC block for any truthy `user` (index.html:4785) with `value={icalUrl}` (4790), 'Sync now' calls runIcalSync which resolves `url` from `icalSub.icalUrl` (3254), and 'Update link' calls saveIcalSub(user.id=B, url=A's) (3300). Even on the success path there is a render window between setHydratedUserId(B) and loadIcalSub resolving where B's Settings shows A's URL.",
+ "failure": "On a shared unit iPad: nurse A signs out (sign-out stalls, 3s timeout), nurse B signs in on flaky Wi-Fi so loadIcalSub fails. B opens Settings and sees A's secret Google Calendar address in the input; tapping 'Sync now' pulls A's shifts into B's questionnaire; tapping 'Update link' stores A's feed under B's account permanently, so B's app re-fetches A's private calendar on every open from then on.",
+ "fix": "Add `setIcalSub(null); setIcalUrl(''); setHydratedUserId(null); icalSyncedForUser.current = null;` to handleSignOut (or into resetToDefaults, which both sign-out paths call). In the hydration effect, make the catch clear state too (`setIcalSub(null); setIcalUrl('');`) instead of returning with whatever was there, and key the effect so a stale subscription from a different uid can never be reused: in runIcalSync/onSaveIcalUrl, refuse when `icalSub.userId !== user.id` (store the uid on the icalSub object). Harness: seed state as A, simulate a rejected signOut and a rejected loadIcalSub for B, assert the input is empty.",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "security-09"
+}

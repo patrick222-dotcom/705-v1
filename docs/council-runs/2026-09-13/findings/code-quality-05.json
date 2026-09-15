@@ -1,0 +1,13 @@
+{
+ "title": "Month-section ref map never clears entries on unmount, so the pay-period stepper can silently stop scrolling the calendar",
+ "severity": "medium",
+ "where": "index.html:3568 (secRef callback), consequence at index.html:2762-2765 (scrollFocusToDate) and index.html:2720 (focusRowDates), comment at index.html:2707-2713",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "code-quality-05"
+}

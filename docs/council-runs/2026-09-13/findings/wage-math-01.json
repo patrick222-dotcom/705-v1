@@ -1,0 +1,13 @@
+{
+ "title": "A blanked or garbage multiplier differential is coerced to 0×, silently pricing every shift of that type at $0",
+ "severity": "medium",
+ "where": "/home/user/705-v1/index.html:1046-1047 (sanitizeData: `amount: isFinite(amt) ? amt : 0` regardless of type); 4715 (Settings multiplier NumInput with min={0}); 4016-4023 (NumInput commits `min` on an empty field); 1121 (hourlyRate: `base * diff.amount`)",
+ "detail": "For a dollar-type differential, 0 is the neutral value. For a multiplier-type differential (Holiday 1.5×, Overtime 1.5×), 0 zeroes the entire hourly rate — `hourlyRate` returns base*0 and shiftGross returns only the per-hour/flat bonus. Two paths produce it: NumInput's blank→min contract commits 0 when the user clears the '×' field and blurs, and sanitizeData maps any non-finite blob value to 0 rather than to 1. Once written, 0 is a finite number so sanitizeData keeps it on every subsequent load; nothing ever repairs it.",
+ "failure": "In Settings, tap the Holiday '1.5 ×' field, select-all/delete to retype, then tap elsewhere before typing (common on a phone). Holiday becomes 0×. Her Christmas 12h shift now shows '~$0' on the calendar and the hero's projected take-home drops by roughly $913 (65.15×1.5×12×0.78) with no warning; the Settings row still reads '0 ×' and looks like a value she chose.",
+ "fix": "In sanitizeData's differential branch, when `type==='multiplier'` coerce non-finite or ≤0 amounts to 1 (not 0). In the Settings row, give multiplier NumInputs `min={0.1}` (or make NumInput's empty-commit revert to the last good value when a `revertOnBlank` prop is set). Add a probe: sanitizeData({differentials:{holiday:{type:'multiplier',amount:''}}}).differentials.holiday.amount === 1 and hourlyRate(50,{type:'multiplier',amount:0}) is never reached from a sanitized blob.",
+ "wageCore": true,
+ "slices": [
+  "wage-core"
+ ],
+ "id": "wage-math-01"
+}

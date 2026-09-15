@@ -1,0 +1,13 @@
+{
+ "title": "Day cell's \"today\" state is visual-only — dropped from the accessible name",
+ "severity": "medium",
+ "where": "index.html:3913-3922 (Calendar function: isToday computed at 3913, cell button's aria-label built at 3916-3922)",
+ "detail": "`isToday` is computed and used only to add a CSS class (`(isToday?' today':'')` at 3916), which produces a 2px indigo inset ring via `.cell.today{box-shadow:...}` (index.html:244). Because the button carries an explicit aria-label, that manually-built string is its entire accessible name — and it is built from hasShift/hasEvent/take-home/hasOT/no-shifts/hasNote (3917-3922) but never from isToday. Every other visual-only day state that the aria-label author clearly cared about (overtime badge, note dot) IS mirrored into the label; \"today\" is the one omitted.",
+ "failure": "A screen-reader user navigating the day-cell buttons in Month view has no way to tell which one is today — sighted users get an indigo ring around it, but the announced label for that cell is indistinguishable from any other day with the same shifts/hours, e.g. \"Fri Sep 12 2025, no shifts\" reads identically whether or not it's actually today.",
+ "fix": "Append `(isToday ? ', today' : '')` to the aria-label string built at index.html:3916-3922.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "accessibility-08"
+}

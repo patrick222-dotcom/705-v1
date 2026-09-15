@@ -1,0 +1,15 @@
+{
+ "title": "Every '~take-home' preview ignores percent custom withholdings that computeNet deducts (and sampleNet re-implements the tax model without them)",
+ "severity": "low",
+ "where": "/home/user/705-v1/index.html:2818-2820 (keepRatio = 1 − (federal+state+FICA)/100 only); computeNet 1243 (percent customWithholdings taken from every marginal dollar); consumers: 4105/4245-4248 (Add-Shift preview, ≈$/hr, goal %), 3919/3933 (calendar cells), 3434/3512 (weekend-night nudge), 4747 (Settings goal reverse); sampleNet 3416-3424",
+ "detail": "A percent-typed custom withholding is a marginal deduction exactly like state tax, so a preview built from keepRatio overstates the marginal take-home of a shift by that percentage relative to the hero it is meant to foreshadow. sampleNet (onboarding step 4) is a second hand-rolled copy of computeNet that also omits customWithholdings. Exposure is limited: there is no Settings editor for customWithholdings today (only the Breakdown row reads them, and the only writers are applyData via Import JSON and the sanitizer), so they only arrive via Import JSON or a legacy blob — which is why this is low, not medium. The #65 harness deliberately covered percent+dollar withholdings, so the owner treats them as live data. Every consumer of keepRatio is affected identically: the Add-Shift sheet preview and its ≈$/hr line, calendar day amounts, the goal '(≈N shifts)' text and Settings' 'typical 12h shifts' count all overstate take-home by the same percentage relative to the hero/Breakdown.",
+ "failure": "Blob carries customWithholdings:[{name:'401k',amount:6,type:'percent'}]. The Add-Shift preview for a 12h night at $65.15 says 'about +$702 take-home' and '≈$58.50/hr'; saving it moves the hero by $648 (≈$54/hr). Every calendar cell, the goal shift-count, and the 'Pick up a weekend night? about +$X' card overstate by the same 6%.",
+ "fix": "Add the sum of percent-typed customWithholdings amounts to the keepRatio subtraction (one line at 2820: `const cwPct = (customWithholdings||[]).reduce((a,w)=> a + (w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0); const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+cwPct)/100);`) and make sampleNet call computeNet(gross, taxInputs) instead of its own copy. Both change displayed dollars on multiple surfaces, so run the equality assertion with a percent withholding seeded (and with none, expecting byte-identical output) and name the intended difference.",
+ "wageCore": false,
+ "slices": [
+  "wage-core",
+  "money-surfaces",
+  "add-shift"
+ ],
+ "id": "wage-math-04"
+}

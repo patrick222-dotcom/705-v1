@@ -1,0 +1,14 @@
+{
+ "title": "Hero 'Taxes & deductions' chip shows the uncapped total, so when flat deductions exceed gross it contradicts both the $0 take-home beside it and the Breakdown rows",
+ "severity": "low",
+ "where": "index.html:3487 (chip renders calc.ded) vs 1246-1251 (computeNet caps pre/post for display) and 3980-3987 + 4003-4006 (Breakdown rows use calc.pre/calc.post)",
+ "detail": "computeNet returns ded = pretax+fica+fed+st+posttax+cw uncapped and net = max(0, gross-ded), then separately computes display-capped pre/post so the Breakdown rows sum to gross. The hero chip prints calc.ded, the Breakdown prints the capped rows. Reproduced: gross 600, pretax 800, fed 12, state 2.5, standard FICA -> hero shows 'Gross $600', 'Taxes & deductions –$846', take-home '$0'; the Breakdown for the same period shows Pre-tax –$554, FICA –$46, take-home $0 (rows sum to –$600). A second reproduction with a shorter period (one 4h base shift, $300 pretax / $50 posttax) gives hero 'Gross $261 · Taxes & deductions –$370 · Keep 0%', take-home $0, while Breakdown shows Pre-tax $241 + FICA $20 = $261 (post-tax row hidden) — the same three-way mismatch.",
+ "failure": "Early in a pay period a nurse with a $300/period 401k+health pre-tax deduction has logged one 4h shift ($200-ish gross). The hero reads Gross / Taxes & deductions figures that do not reconcile with the $0 take-home right next to them — while 'See the full breakdown' shows a different, smaller deductions total. Same paycheck, three different numbers on adjacent screens.",
+ "fix": "Render the chip from the reconciled figure: –{fmt(calc.gross - calc.net)} at 3487 (equals the capped rows' sum; identical to calc.ded whenever gross covers the deductions, so no other surface changes), leaving computeNet untouched. One harness assertion: with pretax > gross, the chip's number equals both the sum of the Breakdown rows and gross-minus-net.",
+ "wageCore": false,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "cross-surface-03"
+}

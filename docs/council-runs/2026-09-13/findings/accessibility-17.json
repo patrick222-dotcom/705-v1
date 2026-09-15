@@ -1,0 +1,13 @@
+{
+ "title": "Gross-pay summary line on the 'done' screen falls just under AA contrast",
+ "severity": "medium",
+ "where": "index.html:5823",
+ "detail": "<div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div> sits inside the card whose background is var(--ink-2) = #21242F (index.html:5820). Computed contrast of #7E8290 on #21242F is 4.04:1, below the 4.5:1 AA requirement for 13px/500 (normal) text. This is the one line on the onboarding completion screen that literally states the gross-pay figure.",
+ "failure": "A low-vision user finishing onboarding sees the projected take-home number clearly (mint on ink-2, 8:1) but the supporting 'X hrs · 6 shifts · gross $Y' line next to it is noticeably harder to read -- it's the exact figure a nurse would want to sanity-check against her own math, and it's the weakest-contrast text on the screen.",
+ "fix": "Lighten #7E8290 (e.g. to something around #9A9DAB, already used one line above for 'Projected take-home' at 5.7:1 against the same background) so the money-adjacent line clears 4.5:1.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "accessibility-17"
+}

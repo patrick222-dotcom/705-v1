@@ -1,0 +1,13 @@
+{
+ "title": "The ISO date-validity check is copy-pasted three times with no shared helper",
+ "severity": "low",
+ "where": "index.html:1088 (validISO in sanitizeData), 4385 (setAnchor), 4557 (Starting date onChange)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "code-quality-10"
+}

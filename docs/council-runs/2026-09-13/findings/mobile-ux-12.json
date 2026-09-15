@@ -1,0 +1,13 @@
+{
+ "title": "First-run join/create inputs miss the Enter-to-submit handler their duplicate 'another board' inputs have",
+ "severity": "medium",
+ "where": "index.html:5388-5391 (create-board input) and 5396-5400 (join-code input), vs. the near-identical 5576-5579 and 5592-5597",
+ "detail": "The zero-groups screen's 'Create your unit's board' name input (5388-5391) and 'Join with a code' input (5396-5400) have no `onKeyDown` handler. The visually and behaviorally identical inputs shown later once a nurse already has ≥1 group — 'Create another board' (5578-5579) and 'Join another board' (5595-5597) — both carry `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` / `doJoinGroup()`. Same field, same button, same purpose; only the first-run copy lacks the keyboard submit path.",
+ "failure": "A nurse joining her unit's board for the very first time (the most common swap-board entry point: a colleague texted her a 6-char code rather than tapping a link) types the code one-handed with the iOS keyboard up, then has no keyboard-native way to submit — Return/Go does nothing here — so she has to dismiss or work around the keyboard to find and tap 'Join board' below. The exact same action a returning user takes to join a SECOND board works fine with Return, so the app is inconsistent about which keyboard behavior she gets on identical UI.",
+ "fix": "Add the same `onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}` to the 5396-5400 input and `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` to the 5388-5391 input, matching 5579/5597.",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "mobile-ux-12"
+}

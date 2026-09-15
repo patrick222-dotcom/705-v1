@@ -1,0 +1,13 @@
+{
+ "title": "Render-blocking boot scripts prevent any paint (even the splash) until 5 cross-origin CDN fetches resolve",
+ "severity": "medium",
+ "where": "index.html:17-21 (script tags), index.html:487 (#splash), index.html:490-592 (boot watchdog)",
+ "detail": "The 5 CDN scripts (React, ReactDOM, Babel standalone, pdf.js, supabase-js) are classic <script src> tags in <head> with no async/defer, spanning 3 third-party origins (unpkg.com x2, cdnjs.cloudflare.com, cdn.jsdelivr.net). Per HTML parsing rules the browser must fetch+execute all 5 sequentially before continuing to parse the rest of <head> (the ~460-line <style> block) and reach <body> — so neither the #splash placeholder nor the boot watchdog script (which starts the 8s timer) can run until all 5 have loaded or errored.",
+ "failure": "On a slow or filtered connection (e.g. locked-down hospital Wi-Fi) where one of these 3rd-party origins stalls, the user sees a fully blank white tab with zero feedback — no spinner, no watchdog message — for as long as that network fetch hangs, because the watchdog's own 8s clock cannot start counting until the parser reaches the boot <script> tag, which requires all 5 earlier blocking scripts to have already resolved.",
+ "fix": "Add a minimal inline watchdog/fallback at the very top of <head>, before the 5 CDN script tags, so a loading/stalled-connection fallback can appear independent of whether those specific network fetches ever complete; alternatively investigate defer + Babel-standalone's DOMContentLoaded auto-transform to unblock initial parsing.",
+ "wageCore": false,
+ "slices": [
+  "boot"
+ ],
+ "id": "performance-00"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "Calendar grid has no grid semantics or row-based navigation for screen reader / keyboard users",
+ "severity": "medium",
+ "where": "index.html:3938 (`<div className=\"grid\">`) and the day-cell buttons built at 3915-3936",
+ "detail": "Each day is an independent `<button>` with a rich aria-label (dt.toDateString() + shift/take-home/OT/note info, lines 3916-3922) — that part is done well. But the container has no `role=\"grid\"`/`role=\"row\"`/`role=\"gridcell\"` and there is no roving-tabindex or arrow-key handling; the weekday header row is `aria-hidden=\"true\"` (line 3952) with no equivalent exposed elsewhere. Every day in the visible month(s) is one flat Tab stop in a single sequential order.",
+ "failure": "A keyboard or screen-reader user who wants to check the take-home for a date three weeks out must Tab through every single day between today and then one at a time — there is no 'next week' / row-jump the way a native `role=\"grid\"` (arrow keys) would give them, and nothing announces that this region is even a calendar grid rather than an arbitrary list of buttons.",
+ "fix": "Wrap each week row in `role=\"row\"`, mark cells `role=\"gridcell\"` inside a `role=\"grid\"` container (or, more simply, add a `role=\"grid\"`/roving-tabindex layer per WAI-ARIA APG's grid pattern) so assistive tech can navigate by week/row instead of one cell at a time.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "accessibility-04"
+}

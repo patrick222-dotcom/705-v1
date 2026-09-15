@@ -1,0 +1,13 @@
+{
+ "title": "differentials is the one user-growable collection in sanitizeData with no cap, so it alone can push the blob past MAX_BLOB_BYTES and freeze cloud sync with no cross-device recovery",
+ "severity": "medium",
+ "where": "sanitizeData differentials branch index.html:1041-1050 (no slice/cap, contrast with goals at 1072-1082 and MAX_GOALS at 634); addDiff() index.html:4692 (unconditional push, no length check unlike the goals-add path at 4685)",
+ "detail": "Every other user-appendable collection is capped both in the UI and in sanitizeData: goals (MAX_GOALS=12, enforced at index.html:4685 and sliced at 1076), templates (MAX_TEMPLATES, sliced at 1058), patterns (MAX_PATTERNS=8, sliced at 1093), dayEvents (MAX_DAY_EVENTS per day, sliced at 1006). `differentials` has neither: `addDiff()` at 4692 unconditionally adds a new `custom-<timestamp>` key with no length check, and sanitizeData's differentials block (1041-1050) validates each entry's shape but never slices or caps the count.",
+ "failure": "A user who keeps adding custom differentials (e.g. one per unit/role variant she works) eventually pushes the serialized blob past MAX_BLOB_BYTES (512KB). At that point the save effect's guard at index.html:2464-2469 returns BEFORE calling saveToSupabase at all — the cloud row freezes at whatever it held before the last differential that tipped it over, and the toast fires once (`oversizeWarned.current`) and is easy to dismiss/miss. If she then signs in on a second device, hydrateFromCloud pulls that frozen, now-stale cloud row: the differentials she added after crossing the cap are missing there, with the only copy sitting in the first device's `writeBackup()` local mirror.",
+ "fix": "Add a MAX_DIFFERENTIALS cap enforced both in addDiff() and as a `.slice(0, MAX_DIFFERENTIALS)` in sanitizeData's differentials branch, matching the pattern already used for goals/templates/patterns/dayEvents.",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "data-integrity-06"
+}
