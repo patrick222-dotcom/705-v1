@@ -114,6 +114,7 @@
   .hero{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 20px 46px rgba(16,14,24,.32)}
   .hero .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
   .hero .num{font-family:'Bricolage Grotesque';font-weight:800;color:var(--mint);font-size:clamp(46px,12vw,64px);line-height:1;letter-spacing:-.03em;margin:8px 0 14px}
+  .bd-note{font-size:11.5px;line-height:1.5;color:var(--muted);background:var(--glass);border:1px solid var(--glass-line);border-radius:10px;padding:8px 10px;margin:-2px 0 10px}
   .hero .chips{display:flex;flex-wrap:wrap;gap:8px}
   .hero .chip{background:rgba(255,255,255,.08);color:#D9DBE4;padding:7px 12px;border-radius:var(--r-pill);font-weight:600;font-size:12.5px}
   .hero .more{margin-top:14px;font-weight:600;font-size:12.5px;color:#8E92A0;display:inline-flex;align-items:center;gap:4px}
@@ -963,6 +964,11 @@ function sanitizeData(d){
   if(typeof d.ficaWithholdingType==='string') out.ficaWithholdingType = d.ficaWithholdingType;
   if(d.ficaWithholdingPercent!=null) setNum('ficaWithholdingPercent', d.ficaWithholdingPercent);
   if(typeof d.payPeriodStart==='string') out.payPeriodStart = d.payPeriodStart;
+  /* Employer pay policy. Whitelisted like estimateMode, so a corrupt or hostile blob can only
+     ever land on the safe default ('40' + the FLSA regular rate) rather than silently switching
+     a nurse onto an 8/80 schedule and inventing overtime she is not owed. */
+  if(WORK_PERIODS.indexOf(d.workPeriod)>=0) out.workPeriod = d.workPeriod;
+  if(OT_METHODS.indexOf(d.otMethod)>=0) out.otMethod = d.otMethod;
   /* estimateMode: '' (fully set up, or the banner was dismissed) | 'rough' (their own base rate,
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
@@ -1123,7 +1129,8 @@ function sanitizeData(d){
        the bug the job record fixes today, before any second employer exists — one global
        baseRate means changing status (per diem -> staff) silently repriced every past shift. */
     out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate,
-      differentials: out.differentials || null })];
+      differentials: out.differentials || null,
+      workPeriod: out.workPeriod, otMethod: out.otMethod })];
   }
   if(out.shifts){
     const known = {}; out.jobs.forEach(j=>{ known[j.id]=true; });
@@ -1197,6 +1204,81 @@ function makeJob(o){
 }
 /* jobs as a map for lookup by id; the blob stores an array so ordering survives a round trip. */
 const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.id]=j; }); return m; };
+
+/* ---------- overtime ------------------------------------------------------------------
+   Overtime is a property of a WORK PERIOD, not of a shift. Until now it was a checkbox the
+   nurse ticked per shift, which meant a 48-hour week with nothing ticked projected zero
+   overtime — the single largest thing the engine could not see.
+
+   This returns a PREMIUM that is added on top of the straight-time gross the shifts already
+   produce. That shape is deliberate: shiftGross keeps paying every logged hour at its own
+   rate, and 29 CFR 778.115 is satisfied by adding half the regular rate on the hours past the
+   threshold. It is also how Main Line Health's own stubs are laid out — straight time on
+   every line, then a separate overtime line whose rate the payroll system footnotes as
+   "from an FLSA calculation".
+
+   A shift the nurse flagged by hand is already paid 1.5x inside shiftGross. Its hours are
+   subtracted from the derived overtime rather than charged again, so turning this on cannot
+   silently double anybody's existing figure. */
+
+/* Straight-time cents for a shift: what it earns before any overtime premium. */
+const straightTimeCents = (baseCents, diff, s) =>
+  shiftGrossCents(baseCents, diff, {...s, isOvertime:false});
+
+/* Split date keys into the job's work periods. A 40-hour workweek is seven consecutive days
+   from the first key — biweekly pay periods here start on a Sunday, the same day MLH's do, so
+   the chunks line up with the employer's workweek. An 8/80 election is ONE fourteen-day
+   period, not two weeks, because its second threshold is 80 hours across the whole thing. */
+function workPeriodChunks(job, dateKeys){
+  const keys = (dateKeys||[]).slice().sort();
+  if(job && job.workPeriod==='8-80') return keys.length ? [keys] : [];
+  const out = [];
+  for(let i=0;i<keys.length;i+=7) out.push(keys.slice(i,i+7));
+  return out;
+}
+
+function overtimePremiumCents(job, shifts, dateKeys){
+  const baseCents = toCents(job && job.baseRate);
+  const diffs = (job && job.differentials) || {};
+  const method = (job && job.otMethod) || 'regular-rate';
+  const is880 = !!(job && job.workPeriod==='8-80');
+  const out = { otHours:0, premiumCents:0, flaggedHours:0, periods:[] };
+
+  workPeriodChunks(job, dateKeys).forEach(keys=>{
+    let hours=0, stCents=0, flaggedHours=0, dailyExcess=0;
+    keys.forEach(k=>{
+      let dayHours = 0;
+      ((shifts||{})[k]||[]).forEach(s=>{
+        if(job && job.id && typeof s.jobId==='string' && s.jobId!==job.id) return;
+        const h = Number(s.hours)||0;
+        hours += h; dayHours += h;
+        stCents += straightTimeCents(baseCents, diffs[s.shiftType], s);
+        if(s.isOvertime===true) flaggedHours += h;
+      });
+      if(dayHours > 8) dailyExcess += dayHours - 8;
+    });
+    if(!hours) return;
+    /* The regular rate: total straight-time remuneration divided by total hours worked.
+       Per-hour and flat bonuses are inside stCents on purpose — a non-discretionary bonus
+       belongs in the regular rate (DOL Fact Sheet #54), and leaving charge or preceptor pay
+       out is exactly how the common shortcut under-reports overtime. */
+    const regularRateCents = stCents / hours;
+    /* 8/80 carries two thresholds. An hour cannot be overtime twice, so take whichever
+       computation is larger rather than summing them — the reading that pays the higher of
+       the daily and period results. Employers differ here; the 40-hour default does not. */
+    const otHours = is880
+      ? Math.max(dailyExcess, Math.max(0, hours - 80))
+      : Math.max(0, hours - 40);
+    const unflagged = Math.max(0, otHours - flaggedHours);
+    const premiumBase = method==='base-plus-diff' ? baseCents : regularRateCents;
+    const premiumCents = roundCents(0.5 * premiumBase * unflagged);
+    out.otHours += unflagged;
+    out.flaggedHours += flaggedHours;
+    out.premiumCents += premiumCents;
+    out.periods.push({ hours, otHours:unflagged, flaggedHours, regularRateCents, premiumCents });
+  });
+  return out;
+}
 
 /* Hours, shift count and gross PER JOB across a set of date keys.
    The grouping is the entire point. An FLSA workweek belongs to one employer, so hours worked
@@ -2335,6 +2417,12 @@ class ErrorBoundary extends React.Component {
 function App(){
   const [ready,setReady] = useState(false);
   const [setupComplete,setSetupComplete] = useState(false);
+  /* Employer pay policy. These belong to a JOB, not to the nurse (see makeJob) — but the job
+     record is not the source of truth for the rate yet, so while there is exactly one job they
+     live here beside baseRate and the migration in sanitizeData mirrors them onto it. When the
+     multi-job UI lands, the direction flips and these read from the active job. */
+  const [workPeriod,setWorkPeriod] = useState('40');
+  const [otMethod,setOtMethod] = useState('regular-rate');
   const [obStep,setObStep] = useState(0); // 0 welcome..4 done
   /* Onboarding funnel. app_open -> setup_completed was a 132-device to 9-device cliff with no
      event in between, so there was no way to tell a bounce off the welcome screen from one off
@@ -2437,7 +2525,8 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,
+    workPeriod,otMethod
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -2474,6 +2563,8 @@ function App(){
     if(d.goals) setGoals(d.goals);
     if(d.patterns) setPatterns(d.patterns);
     setEstimateMode(d.estimateMode || '');
+    if(WORK_PERIODS.indexOf(d.workPeriod)>=0) setWorkPeriod(d.workPeriod);
+    if(OT_METHODS.indexOf(d.otMethod)>=0) setOtMethod(d.otMethod);
     setSetupComplete(d.setupComplete!==false);
   };
 
@@ -2483,6 +2574,7 @@ function App(){
     setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
+    setWorkPeriod('40'); setOtMethod('regular-rate');
   };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
@@ -2630,7 +2722,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -2918,6 +3010,12 @@ function App(){
     });
   },[calView,calFocus,shifts,dayEvents,baseRate,differentials]);
 
+  /* The employer whose pay rules price this period. One job for now, assembled from the state
+     above rather than from the blob's `jobs` array so there is exactly one source of truth for
+     the rate; the array is the migration target the multi-job UI will switch to. */
+  const activeJob = useMemo(()=> makeJob({ id:DEFAULT_JOB_ID, baseRate, differentials, workPeriod, otMethod }),
+    [baseRate,differentials,workPeriod,otMethod]);
+
   /* the per-paycheck tax inputs, as one stable object — read by calc() and the pattern lab */
   const taxInputs = useMemo(()=>({pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings}),
     [pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
@@ -2943,10 +3041,17 @@ function App(){
         if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
       });
     });
+    /* Overtime. Until now this was a per-shift checkbox, so a 48-hour week with nothing ticked
+       projected zero overtime. It is a property of the work period: shiftGross has already paid
+       every hour at its own rate, and this adds half the FLSA regular rate on the hours past the
+       threshold. Hours the nurse flagged by hand are excluded inside overtimePremiumCents, so a
+       figure she is already seeing cannot double. */
+    const ot = overtimePremiumCents(activeJob, shifts, days.map(keyOf));
+    gross += fromCents(ot.premiumCents);
     // The tax model itself lives in computeNet() (module level) so the pattern lab prices a
     // rotation with exactly this math. Same inputs, same output shape as before.
-    return {...computeNet(gross, taxInputs), hours};
-  },[shifts,dayEvents,days,baseRate,differentials,taxInputs]);
+    return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:activeJob.workPeriod};
+  },[shifts,dayEvents,days,baseRate,differentials,taxInputs,activeJob]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
   const periodShiftCount = useMemo(()=>{
@@ -3768,6 +3873,7 @@ function App(){
 
       {showSettings &&
         <Settings onClose={()=>setShowSettings(false)}
+          workPeriod={workPeriod} setWorkPeriod={setWorkPeriod} otMethod={otMethod} setOtMethod={setOtMethod}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
             goals,setGoals,keepRatio,
@@ -4117,6 +4223,8 @@ function YearList({months,onPick}){
 /* ---------- Breakdown ---------- */
 function Breakdown({calc,embedded}){
   const g=calc.gross||0;
+  const ot = calc.ot;
+  const otLabel = calc.otWorkPeriod==='8-80' ? '8 in a day or 80 in the period' : '40 in a week';
   const rows=[
     ['Pre-tax · 401k, health', calc.pre],
     ['Federal income tax', calc.fed],
@@ -4133,6 +4241,18 @@ function Breakdown({calc,embedded}){
         <div className="lh"><span className="nm g">Gross pay<span style={{display:'block',fontSize:11,fontWeight:400,color:'var(--muted-2)',marginTop:2}}>before taxes &amp; take-outs</span></span><span className="vv g num">{fmt(g)}</span></div>
         <div className="bar gross"></div>
       </div>
+      {/* A projection that goes UP has to say why, and which rule produced it. Naming the rate
+          and the threshold is also what makes a gap against her real stub diagnosable instead of
+          just wrong — employers differ on this, and ours is a setting, not a verdict. */}
+      {ot && ot.premiumCents>0 &&
+        <div className="bd-note">
+          Includes <b>{fmt2(ot.premiumCents/100)}</b> of overtime — {ot.otHours} hrs past{' '}
+          {otLabel}, paid at half your {fmt2((ot.periods[0]||{}).regularRateCents/100 || 0)}/hr
+          regular rate on top of straight time.
+          <span style={{display:'block',marginTop:3,color:'var(--muted-2)'}}>
+            Employers calculate this differently — check it against your stub, and change the rule in Settings if it doesn't match.
+          </span>
+        </div>}
       {rows.map(([nm,v])=>(
         <div className="bd-row" key={nm}>
           <div className="lh"><span className="nm">{nm}</span><span className="vv num">–{fmt(v)}</span></div>
@@ -4815,7 +4935,8 @@ function Settings(props){
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
-    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
+    workPeriod,setWorkPeriod,otMethod,setOtMethod}=props;
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -4859,6 +4980,34 @@ function Settings(props){
           <div className="inp" style={{flex:1}}><input value={newName} placeholder="New differential" onChange={e=>setNewName(e.target.value)}/></div>
           <div className="inp pre" style={{width:120}}><span className="pfx">$</span><NumInput value={newAmt} onCommit={setNewAmt} min={0} ariaLabel="New differential amount"/></div>
           <button className="btn btn-soft btn-sm" onClick={addDiff}>Add</button>
+        </div>
+
+        {/* Nested on purpose: a nurse does not know whether her employer elected a section 7(j)
+            work period, and asking during onboarding would cost more than it earns. The defaults
+            are what a paystub check proved for a real hospital, and the Breakdown names the rule
+            it used, so the setting is discoverable at the moment the number looks wrong. */}
+        <div className="sec-lab" style={{marginTop:18}}>OVERTIME</div>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>
+          Only change these if your paystub disagrees with the overtime line in your breakdown.
+        </div>
+        <div className="field"><span className="lab">Overtime starts after</span>
+          <div className="inp"><select value={workPeriod} onChange={e=>setWorkPeriod(e.target.value)} aria-label="Overtime work period">
+            <option value="40">40 hours in a week</option>
+            <option value="8-80">8 in a day or 80 in two weeks (hospital 8/80)</option>
+          </select></div>
+          <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>
+            On 8/80 every 12-hour shift earns 4 overtime hours, even in a 36-hour week.
+          </div>
+        </div>
+        <div className="field" style={{marginTop:12}}><span className="lab">Overtime is paid on</span>
+          <div className="inp"><select value={otMethod} onChange={e=>setOtMethod(e.target.value)} aria-label="Overtime calculation method">
+            <option value="regular-rate">My blended rate, differentials included</option>
+            <option value="base-plus-diff">My base rate only</option>
+          </select></div>
+          <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>
+            The first is what federal law requires. Some employers use the second, which pays less — if
+            your stub shows the smaller number, set it here so your projection matches your real check.
+          </div>
         </div>
 
         <div className="sec-lab" style={{marginTop:18}}>TAXES</div>

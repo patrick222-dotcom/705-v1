@@ -53,7 +53,7 @@ const newPage = async (browser, url, { seed = true } = {}) => {
   if (seed) {
     await page.addInitScript(([k, v]) => {
       try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
-    }, [STORAGE_KEY, SEEDED_STATE]);
+    }, [STORAGE_KEY, seed === true ? SEEDED_STATE : seed]);
   }
   return { ctx, page, errors, failures, url };
 };
@@ -171,6 +171,63 @@ const run = async () => {
       Math.round((spine.withhold.pre + spine.withhold.fed + spine.withhold.fica + spine.withhold.st
         + spine.withhold.post + spine.withhold.cw) * 100) === Math.round(spine.withhold.ded * 100),
       `rows=${(spine.withhold.pre+spine.withhold.fed+spine.withhold.fica+spine.withhold.st+spine.withhold.post+spine.withhold.cw).toFixed(2)} ded=${spine.withhold.ded.toFixed(2)}`);
+    /* ---- overtime derived from the work period ------------------------------------
+       Fixture is the Main Line Health workweek reconstructed to the cent from the
+       2023-09-30 stub: 24.50h at $65.15 + 16.75h at $69.79 = 41.25h, a printed FLSA
+       regular rate of $67.034424, and 1.25h of overtime. MLH pays straight time on all
+       hours plus a half-time premium on the regular rate, which is 29 CFR 778.115. */
+    const ot = await page.evaluate(() => {
+      const J = (o) => makeJob({ id: 'job-1', baseRate: 65.15, ...o });
+      const diffs = { base: { type: 'dollar', amount: 0 }, eve: { type: 'dollar', amount: 4.64 } };
+      const mk = (o) => ({ shiftType: 'base', bonusType: 'none', customBonus: 0, isOvertime: false, jobId: 'job-1', ...o });
+      const days = (n) => Array.from({ length: n }, (_, i) => `2025-12-${String(7 + i).padStart(2, '0')}`);
+      const week = days(7), fortnight = days(14);
+      return {
+        /* MLH: 41.25h over a 40-hour workweek */
+        mlh: overtimePremiumCents(J({ differentials: diffs }), {
+          '2025-12-07': [mk({ shiftType: 'base', hours: 12 }), mk({ shiftType: 'eve', hours: 4.75 })],
+          '2025-12-08': [mk({ shiftType: 'base', hours: 12 }), mk({ shiftType: 'eve', hours: 12 })],
+          '2025-12-09': [mk({ shiftType: 'base', hours: 0.5 })],
+        }, week),
+        /* TP-001 as it should have been written: $30 base + $5 diff, 48-hour week */
+        tp001: overtimePremiumCents(
+          J({ baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } } }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ shiftType: 'night', hours: 12 })]])), week),
+        tp001Straight: days(4).reduce((a, d) => a + shiftGrossCents(3000, { type: 'dollar', amount: 5 }, { hours: 12, bonusType: 'none' }), 0),
+        /* three 12s = 36h: no overtime on a 40-hour week... */
+        under40: overtimePremiumCents(J({ differentials: diffs }),
+          Object.fromEntries(days(3).map((d) => [d, [mk({ hours: 12 })]])), week),
+        /* ...but 4 hours a shift under the section 7(j) daily-8 rule */
+        under40on880: overtimePremiumCents(J({ workPeriod: '8-80', differentials: diffs }),
+          Object.fromEntries(days(3).map((d) => [d, [mk({ hours: 12 })]])), fortnight),
+        /* a hand-flagged shift is already paid 1.5x by shiftGross; never charge it twice */
+        flagged: overtimePremiumCents(J({ differentials: diffs }),
+          Object.fromEntries(days(4).map((d, i) => [d, [mk({ hours: 12, isOvertime: i === 3 })]])), week),
+        /* the employer that uses the common shortcut: half of BASE, not of the regular rate */
+        shortcut: overtimePremiumCents(
+          J({ baseRate: 30, otMethod: 'base-plus-diff', differentials: { night: { type: 'dollar', amount: 5 } } }),
+          Object.fromEntries(days(4).map((d) => [d, [mk({ shiftType: 'night', hours: 12 })]])), week),
+      };
+    });
+    ok('ot: the FLSA regular rate is straight-time remuneration over hours worked',
+      Math.round(ot.mlh.periods[0].regularRateCents * 100) === 670342,
+      `MLH printed $67.034424/hr; we compute $${(ot.mlh.periods[0].regularRateCents / 100).toFixed(6)}`);
+    ok('ot: hours past 40 in the workweek are the overtime hours',
+      ot.mlh.otHours === 1.25, `got ${ot.mlh.otHours}`);
+    ok('ot: the premium is half the regular rate, straight time already paid',
+      ot.mlh.premiumCents === 4190, `expected 4190 (0.5 x 67.0342 x 1.25), got ${ot.mlh.premiumCents}`);
+    ok('ot: TP-001 corrected — $30 + $5 over 48h is $1,820, not the $1,830 in the findings file',
+      ot.tp001.periods[0].regularRateCents === 3500 && ot.tp001Straight + ot.tp001.premiumCents === 182000,
+      `rate=${ot.tp001.periods[0].regularRateCents} total=${ot.tp001Straight + ot.tp001.premiumCents}`);
+    ok('ot: three 12s are not overtime on a 40-hour workweek',
+      ot.under40.otHours === 0 && ot.under40.premiumCents === 0);
+    ok('ot: but 8/80 makes every 12-hour shift throw 4 daily overtime hours',
+      ot.under40on880.otHours === 12, `got ${ot.under40on880.otHours}`);
+    ok('ot: a hand-flagged shift is never paid the premium twice',
+      ot.flagged.otHours === 0, `8h over 40 all sit inside the flagged shift; got ${ot.flagged.otHours}`);
+    ok('ot: base-plus-diff pays half of BASE, not half the regular rate',
+      ot.shortcut.premiumCents === 12000, `expected 12000 (0.5 x $30 x 8h), got ${ot.shortcut.premiumCents}`);
+
     ok('jobs: hours group per job and never combine across employers',
       spine.grouped && spine.grouped.A && spine.grouped.B
         && spine.grouped.A.hours === 30 && spine.grouped.B.hours === 30,
@@ -480,6 +537,43 @@ const run = async () => {
     const body = await page.locator('body').innerText();
     ok('ops: the gate leaks no row content', !/Reply to:/.test(body));
     ok('ops: gate raises no page error', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 8. overtime reaches the screen, and the screen explains it --------------------- */
+  if (want(8)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    /* Four 12s inside one workweek: 48 hours at $30 + $5, the corrected TP-001 case. Straight
+       time is $1,680 and the FLSA premium is $140, so gross must read $1,820. */
+    const shifts = {};
+    [0, 1, 2, 3].forEach((n) => { shifts[day(n)] = [{ id: n, shiftType: 'night', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false }]; });
+    const seed = {
+      setupComplete: true, baseRate: 30, payPeriodStart: day(0),
+      federalTaxRate: 0, stateTaxRate: 0, ficaType: 'percent', ficaWithholdingPercent: 0,
+      pretaxDeductions: 0, posttaxDeductions: 0,
+      differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+      shifts,
+    };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+    const g = await page.evaluate(() => {
+      const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+      return {
+        gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
+        note: txt(document.querySelector('.bd-note')),
+      };
+    });
+    ok('ot: a 48-hour week now projects overtime instead of nothing',
+      g.gross === 'Gross $1,820', `got "${g.gross}" (straight time alone is $1,680)`);
+    ok('ot: the breakdown says how much, over what threshold, at what rate',
+      /overtime/i.test(g.note) && /8 hrs past 40 in a week/.test(g.note) && /\$35\.00\/hr/.test(g.note), g.note);
+    ok('ot: and tells her employers differ, rather than asserting she is owed it',
+      /check it against your stub/i.test(g.note), g.note);
+    ok('ot: no page errors driving it', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
   }

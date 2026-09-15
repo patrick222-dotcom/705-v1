@@ -62,39 +62,67 @@ const INTENDED = [{
     const a = money(localLine), b = money(deployedLine);
     return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1;
   },
+}, {
+  since: '2026-09-15',
+  only: 'overtime derived from a 48-hour week',
+  what: 'overtime is derived from the work period instead of a per-shift checkbox',
+  why: 'The deployed build only pays overtime on shifts the nurse ticked by hand, so a 48-hour '
+     + 'week with nothing ticked projects zero. This adds half the FLSA regular rate on the hours '
+     + 'past the threshold. The projection therefore goes UP, and the Breakdown gained a line '
+     + 'naming the premium, the threshold and the rate it used.',
+  matches: (localLine, deployedLine) => {
+    const money = (l) => { const m = String(l).match(/\$([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
+    const a = money(localLine), b = money(deployedLine);
+    /* Direction matters: deriving overtime can only ever raise a figure. A local value BELOW
+       the deployed one would mean we lost money somewhere, and must not be waved through. */
+    return Number.isFinite(a) && Number.isFinite(b) && a >= b;
+  },
 }];
 
 /* The cases the #65 harness covered, plus awkward real-world rates that expose float dust. */
+/* NB: these are blob keys, not React state names. The app persists FICA as
+   ficaWithholdingType/ficaWithholdingPercent; seeding `ficaType` looks right, is silently
+   ignored by sanitizeData, and leaves every case running the 7.65% default — which is how a
+   "custom FICA percent" case can pass while testing nothing. */
 const CASES = {
   'pre+post-tax deductions': {
-    baseRate: 50, federalTaxRate: 12, stateTaxRate: 5, ficaType: 'standard',
+    baseRate: 50, federalTaxRate: 12, stateTaxRate: 5, ficaWithholdingType: 'standard',
     pretaxDeductions: 180, posttaxDeductions: 65,
     shifts: { [day(0)]: [sh({ shiftType: 'base', hours: 12 })], [day(2)]: [sh({ shiftType: 'night', hours: 12 })] },
   },
   'custom FICA percent': {
-    baseRate: 47.35, federalTaxRate: 14.5, stateTaxRate: 3.07, ficaType: 'percent', ficaWithholdingPercent: 6.2,
+    baseRate: 47.35, federalTaxRate: 14.5, stateTaxRate: 3.07, ficaWithholdingType: 'percent', ficaWithholdingPercent: 6.2,
     pretaxDeductions: 0, posttaxDeductions: 0,
     shifts: { [day(1)]: [sh({ shiftType: 'weekend-eve', hours: 12.5 })] },
   },
   'percent + dollar custom withholdings': {
-    baseRate: 61.19, federalTaxRate: 11, stateTaxRate: 4.25, ficaType: 'standard',
+    baseRate: 61.19, federalTaxRate: 11, stateTaxRate: 4.25, ficaWithholdingType: 'standard',
     pretaxDeductions: 95.5, posttaxDeductions: 12.75,
     customWithholdings: [{ name: 'Union dues', amount: 2.5, type: 'percent' }, { name: 'Parking', amount: 33.33, type: 'dollar' }],
     shifts: { [day(0)]: [sh({ shiftType: 'base', hours: 8 })], [day(3)]: [sh({ shiftType: 'holiday', hours: 12 })] },
   },
   'overtime shift': {
-    baseRate: 50, federalTaxRate: 12, stateTaxRate: 5, ficaType: 'standard',
+    baseRate: 50, federalTaxRate: 12, stateTaxRate: 5, ficaWithholdingType: 'standard',
     pretaxDeductions: 0, posttaxDeductions: 0,
     shifts: { [day(0)]: [sh({ shiftType: 'night', hours: 12, isOvertime: true })] },
   },
   'PTO day at base rate': {
-    baseRate: 70.81, federalTaxRate: 12, stateTaxRate: 3.07, ficaType: 'standard',
+    baseRate: 70.81, federalTaxRate: 12, stateTaxRate: 3.07, ficaWithholdingType: 'standard',
     pretaxDeductions: 80.16, posttaxDeductions: 40.08,
     shifts: { [day(0)]: [sh({ shiftType: 'base', hours: 12 })] },
     dayEvents: { [day(4)]: [{ id: 1, kind: 'pto', hours: 11.5 }] },
   },
+  /* Four 12s in one workweek with nothing hand-flagged: the case the engine could not see.
+     Straight time is $1,680; the FLSA premium on the 8 hours past 40 is $140. Taxes are zeroed
+     so the diff isolates the overtime, not the withholding. */
+  'overtime derived from a 48-hour week': {
+    baseRate: 30, federalTaxRate: 0, stateTaxRate: 0, ficaWithholdingType: 'percent', ficaWithholdingPercent: 0,
+    pretaxDeductions: 0, posttaxDeductions: 0,
+    differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+    shifts: Object.fromEntries([0, 1, 2, 3].map((n) => [day(n), [sh({ shiftType: 'night', hours: 12 })]])),
+  },
   'awkward rates + bonuses (float dust)': {
-    baseRate: 70.81, federalTaxRate: 13.33, stateTaxRate: 3.07, ficaType: 'standard',
+    baseRate: 70.81, federalTaxRate: 13.33, stateTaxRate: 3.07, ficaWithholdingType: 'standard',
     pretaxDeductions: 254.24, posttaxDeductions: 12.41,
     customWithholdings: [{ name: 'Corestream', amount: 1.37, type: 'percent' }],
     shifts: {
@@ -163,7 +191,7 @@ async function surfaces(browser, url, seed) {
       const lines = []; let allIntended = true;
       for (let i = 0; i < Math.max(la.length, lb.length); i++) {
         if (la[i] === lb[i]) continue;
-        const rule = INTENDED.find((r) => r.matches(la[i], lb[i]));
+        const rule = INTENDED.find((r) => (!r.only || r.only === name) && r.matches(la[i], lb[i]));
         if (!rule) allIntended = false;
         lines.push(`      local    ${la[i] ?? '<none>'}\n      deployed ${lb[i] ?? '<none>'}`
           + (rule ? `\n      -> intended (${rule.since}): ${rule.what}` : '\n      -> UNEXPECTED'));
