@@ -451,6 +451,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-15 (nightly) — **`<noscript>` fallback on the home page.** Closes the long-standing open item
+  (Google brand verification flagged "home page behind a login page", and a crawler saw one word of body
+  text — the whole app is JS-rendered). Added a self-contained `<noscript>` right after `<body>`: heading +
+  the app description (mirrors the owner-approved `<meta name="description">`), a "needs JavaScript" note,
+  and a relative link to `/privacy.html` — no external resources, CSP-safe. Verified with **JavaScript
+  disabled** in the harness: the page now renders 341 chars of real content (heading, description, JS note)
+  instead of one word. Inert when JS is on (splash still covers it). Head/body only — no JSX/boot/SRI/
+  wage-core/storage changes. Gate 9/9, groom 33/33, smoke 65/65. Owner-side half (a Search Console DNS TXT
+  record) still required to fully pass brand verification.
 - 2026-09-14 (owner-directed, interactive) — **Two Courtney/owner feedback fixes: hero stops following
   scroll + a "Propose a swap" action on colleagues' posts.** Owner authorized building both deferred items.
   **(Calendar)** `onMonthScroll` neutered — the hero take-home now stays on the period set by open
