@@ -64,7 +64,7 @@
   <div class="brand"><span class="dot"></span>badgebudget</div>
 
   <h1>Privacy</h1>
-  <p class="updated">Last updated 7 September 2026</p>
+  <p class="updated">Last updated 16 September 2026</p>
 
   <div class="lede">
     <p>BadgeBudget is a take-home pay planner for nurses. It was built for one nurse and her unit,
@@ -87,8 +87,11 @@
     the database enforces this per-row, not just in the app.</p>
 
   <h3>Your account</h3>
-  <p>Sign-in uses Google. BadgeBudget receives your email address and name from Google and stores
-    no password. Nothing is posted to your Google account and no other Google data is requested.</p>
+  <p>You can sign in with an email address and password, or with Google. With email and password,
+    the password is stored only by the sign-in provider (Supabase Auth), hashed — BadgeBudget's own
+    code never sees or stores it. With Google, BadgeBudget receives your email address and name from
+    Google and stores no password; nothing is posted to your Google account and no other Google data
+    is requested.</p>
 
   <h2>What is never collected</h2>
   <ul>
@@ -104,7 +107,9 @@
   <p>To know which parts of the app get used, BadgeBudget records coarse events — for example
     <code>shift_saved</code>, <code>setup_completed</code>, <code>swap_posted</code>. Each carries
     the page path, your browser's user-agent string, and a random device identifier generated in
-    your browser. That identifier is not linked to your name and is not shared with anyone.</p>
+    your browser. While you are signed in, events also carry your account id, so the device
+    identifier can be associated with your account from that point on; it is used to tell the
+    app's own builders apart from everyone else, and it is not shared with anyone.</p>
   <p>There are no advertising trackers, no analytics SDKs, no cookies for tracking, and no data
     brokers. Nothing is sold or licensed.</p>
 
@@ -118,8 +123,9 @@
   <p>If you use the feedback button, your message is stored along with the page you were on, your
     browser's user-agent string, and the same random device identifier described under Usage
     analytics — so that a report about something being wrong can be matched to what the app was
-    actually doing on that device. An email address is optional — supply one only if you want a
-    reply.</p>
+    actually doing on that device. If you are signed in when you send it, the report also carries
+    your account id, whether or not you fill in a contact. An email address is optional — supply one
+    only if you want a reply.</p>
 
   <h2>Calendar sync</h2>
   <p>If you connect a calendar, its secret address is stored in a separate table readable only by

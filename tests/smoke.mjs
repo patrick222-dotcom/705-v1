@@ -528,6 +528,20 @@ const run = async () => {
       ok('council: sign-out returns onboarding to the welcome screen, not the last step reached', welcome === 1 && rateStep === 0, `welcome=${welcome} rateStep=${rateStep}`);
       await ctx.close();
     }
+
+    /* privacy-telemetry-00/-01/-02 (#37): privacy.html is static and in the publish set, so it is
+       pinned at the source. Each check names a fact the notice used to get wrong. */
+    {
+      const pv = readFileSync(join(ROOT, 'privacy.html'), 'utf8');
+      const account = pv.slice(pv.indexOf('<h3>Your account</h3>'), pv.indexOf('<h2>What is never collected</h2>'));
+      ok('council: privacy notice discloses the email/password sign-in path', /email address and password/i.test(account) && /hashed/.test(account));
+      const analytics = pv.slice(pv.indexOf('<h2>Usage analytics</h2>'), pv.indexOf('<h2>Error reports</h2>'));
+      ok('council: privacy notice no longer claims the device id is never linked to you',
+        !/not linked to your name/.test(analytics) && /account id/.test(analytics) && /associated with your account/.test(analytics));
+      const feedback = pv.slice(pv.indexOf('<h2>Feedback</h2>'), pv.indexOf('<h2>Calendar sync</h2>'));
+      ok('council: privacy notice says signed-in feedback carries the account id regardless of contact',
+        /carries\s+your account id/.test(feedback) && /whether or not you fill in a contact/.test(feedback));
+    }
   }
 
   await browser.close();
