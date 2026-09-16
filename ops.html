@@ -92,6 +92,31 @@
   .gate a { color: var(--accent); }
   .empty { color: var(--dim); padding: 24px 2px; }
   .err { color: var(--warn); }
+
+  /* ---- phase 3b: devices + trail ---- */
+  .tabs { display: flex; gap: 6px; margin: 12px 0 14px; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .dev { width: 100%; text-align: left; border-radius: 12px; padding: 12px 13px; margin-bottom: 8px;
+         min-height: 0; display: block; }
+  .dev .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+  .dev b { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+  .dev .line { font-size: 12.5px; color: var(--dim); }
+  .dev .line em { font-style: normal; color: var(--ink); }
+  .sess { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 11px 13px; margin-bottom: 9px; }
+  .sess h3 { font-size: 13px; margin: 0 0 7px; letter-spacing: 0.01em; }
+  .sess h3 span { font-weight: 400; color: var(--dim); }
+  .ev { display: flex; gap: 9px; font-size: 13px; padding: 2px 0; align-items: baseline; }
+  .ev .t { color: var(--dim); font-variant-numeric: tabular-nums; flex: 0 0 auto; font-size: 12px; }
+  .ev .n { font-weight: 600; overflow-wrap: anywhere; }
+  .ev .p { color: var(--dim); overflow-wrap: anywhere; font-size: 12px; }
+  .ev.end .n { color: var(--accent); }
+  .ev.bad .n { color: var(--warn); }
+  .errline { font-size: 11.5px; color: var(--warn); margin: 1px 0 1px 16px; overflow-wrap: anywhere; }
+  .note { font-size: 12px; color: var(--dim); margin: 0 2px 12px; }
+  .trace { margin-top: 9px; }
+  .trace button { font-size: 13px; padding: 6px 12px; min-height: 36px; }
+  .trace .none { font-size: 12px; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -111,6 +136,7 @@
   var SUPABASE_URL = 'https://mnnlgcxnvodjwlhhiphq.supabase.co';
   var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA';
   var PAGE = 50;
+  var DEVICE_PAGE = 100;
   var POLL_MS = 30000;
 
   /* The tile labels, verbatim from the app so the inbox reads in the nurse's words rather than in
@@ -156,6 +182,13 @@
     return new Date(iso).toLocaleDateString();
   }
 
+  function dur(secs) {
+    if (secs == null) return '';
+    if (secs < 60) return secs + 's';
+    if (secs < 3600) return Math.round(secs / 60) + 'm';
+    return (secs / 3600).toFixed(1) + 'h';
+  }
+
   function gate(title, body, linkText, linkHref) {
     main.replaceChildren();
     var box = el('div', 'gate');
@@ -168,6 +201,15 @@
     }
     main.appendChild(box);
     sub.textContent = '';
+  }
+
+  /* 42501 is the allow-list saying no. Anything else is a real fault worth showing raw. */
+  function showError(e) {
+    if (e && (e.code === '42501' || /not authorized/i.test(e.message || ''))) {
+      gate('Not an ops account', 'You are signed in, but this account is not on the ops list.');
+    } else {
+      gate('Could not load', String((e && e.message) || e));
+    }
   }
 
   function row(r) {
@@ -198,24 +240,66 @@
       }
       node.appendChild(c);
     }
+
+    /* The whole point of migration 005 + 007: get from what she SAID to what she DID. `page` can
+       never supply this (single-page app, always '/') and `user_id` is null when she is not signed
+       in, so anon_id is the only join there is — and it only works forward. A row from before
+       2026-09-14 has no id to point at, and says so in words rather than offering a dead button. */
+    var trace = el('div', 'trace');
+    if (r.anon_id) {
+      var b = el('button', null, 'See what this device did →');
+      b.addEventListener('click', function () {
+        loadTrail({ anon_id: r.anon_id, device: r.device, segment: r.segment }, 'inbox');
+      });
+      trace.appendChild(b);
+    } else {
+      trace.appendChild(el('span', 'none', 'No device id — submitted before the join key shipped (2026-09-14).'));
+    }
+    node.appendChild(trace);
     return node;
   }
 
-  var state = { rows: [], done: false, loading: false };
-  var lastSummary = null;
+  /* ------------------------------------------------------------------------------------
+     STATE. `view` is 'inbox' | 'devices' | 'trail'. The poll only ever refreshes the view
+     that is actually on screen, so an open trail is never yanked out from under a thumb. */
+  var state = {
+    view: 'inbox',
+    rows: [], done: false, loading: false, summary: null,
+    devices: [], synthetic: false,
+    trail: null, trailFor: null, trailMeta: null, trailFrom: 'devices'
+  };
 
-  function render(summary) {
-    main.replaceChildren();
+  function tabs() {
+    var bar = el('div', 'tabs');
+    [['inbox', 'Feedback'], ['devices', 'Devices']].forEach(function (pair) {
+      var b = el('button', null, pair[1]);
+      b.setAttribute('aria-selected', state.view === pair[0] || (pair[0] === 'devices' && state.view === 'trail') ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        if (pair[0] === 'inbox') { state.view = 'inbox'; loadInbox({ reset: true }); }
+        else { state.view = 'devices'; loadDevices(); }
+      });
+      bar.appendChild(b);
+    });
+    return bar;
+  }
 
+  function refreshButton(fn) {
     var bar = el('div', 'bar');
-    var refresh = el('button', null, 'Refresh');
-    refresh.addEventListener('click', function () { load({ reset: true }); });
-    bar.appendChild(refresh);
-    main.appendChild(bar);
+    var b = el('button', null, 'Refresh');
+    b.addEventListener('click', fn);
+    bar.appendChild(b);
+    return bar;
+  }
 
-    if (summary) {
+  /* ---- inbox ------------------------------------------------------------------------- */
+  function renderInbox() {
+    main.replaceChildren();
+    main.appendChild(tabs());
+    main.appendChild(refreshButton(function () { loadInbox({ reset: true }); }));
+
+    if (state.summary) {
       var chips = el('div', 'chips');
-      [['total', summary.total], ['7 days', summary.last_7d], ['24 hours', summary.last_24h]]
+      [['total', state.summary.total], ['7 days', state.summary.last_7d], ['24 hours', state.summary.last_24h]]
         .forEach(function (pair) {
           var chip = el('div', 'chip');
           chip.appendChild(el('b', null, String(pair[1] == null ? '—' : pair[1])));
@@ -225,21 +309,18 @@
       main.appendChild(chips);
     }
 
-    if (!state.rows.length) {
-      main.appendChild(el('p', 'empty', 'No feedback yet.'));
-      return;
-    }
+    if (!state.rows.length) { main.appendChild(el('p', 'empty', 'No feedback yet.')); return; }
     state.rows.forEach(function (r) { main.appendChild(row(r)); });
 
     if (!state.done) {
       var more = el('button', null, state.loading ? 'Loading…' : 'Load older');
       more.disabled = state.loading;
-      more.addEventListener('click', function () { load({ reset: false }); });
+      more.addEventListener('click', function () { loadInbox({ reset: false }); });
       main.appendChild(more);
     }
   }
 
-  function load(opts) {
+  function loadInbox(opts) {
     if (!supabase || state.loading) return;
     state.loading = true;
 
@@ -253,29 +334,184 @@
     withTimeout(Promise.all([inbox, summaryCall]), 10000, 'ops query').then(function (res) {
       state.loading = false;
       var got = res[0], sum = res[1];
-
-      if (got.error) {
-        /* 42501 is the allow-list saying no. Anything else is a real fault worth showing raw. */
-        if (got.error.code === '42501' || /not authorized/i.test(got.error.message || '')) {
-          gate('Not an ops account',
-               'You are signed in, but this account is not on the ops list.');
-        } else {
-          gate('Could not load', String(got.error.message || got.error));
-        }
-        return;
-      }
+      if (got.error) { showError(got.error); return; }
 
       var rows = got.data || [];
       state.rows = opts.reset ? rows : state.rows.concat(rows);
       state.done = rows.length < PAGE;
-      if (opts.reset) lastSummary = (sum && sum.data) || null;
-      render(lastSummary);
-      sub.textContent = 'updated ' + new Date().toLocaleTimeString();
-    }).catch(function (e) {
-      state.loading = false;
-      gate('Could not load', String((e && e.message) || e));
+      if (opts.reset) state.summary = (sum && sum.data) || null;
+      state.view = 'inbox';
+      renderInbox();
+      stamp();
+    }).catch(function (e) { state.loading = false; showError(e); });
+  }
+
+  /* ---- devices ------------------------------------------------------------------------
+     One card per anon_id. The two numbers that carry the weight are `visits` and `days`:
+     a device with days > 1 is the only kind of evidence this app has that somebody came
+     back, since there are no accounts for most visitors. */
+  function deviceCard(d) {
+    var b = el('button', 'dev');
+    var top = el('div', 'top');
+    top.appendChild(el('b', null, d.device + (d.visits > 1 ? ' · ' + d.visits + ' visits' : ' · 1 visit')));
+    if (d.days > 1) top.appendChild(el('span', 'tag insider', 'returned · ' + d.days + ' days'));
+    if (d.segment === 'insider') top.appendChild(el('span', 'tag insider', 'insider'));
+    if (d.synthetic) top.appendChild(el('span', 'tag', 'test traffic'));
+    if (d.signed_in) top.appendChild(el('span', 'tag', 'signed in'));
+    if (d.feedback_n > 0) top.appendChild(el('span', 'tag', d.feedback_n + ' feedback'));
+    if (d.errors > 0) top.appendChild(el('span', 'tag', d.errors + ' errors'));
+    b.appendChild(top);
+
+    var l1 = el('div', 'line');
+    l1.appendChild(el('span', null, 'stopped at '));
+    l1.appendChild(el('em', null, d.stalled_at || '—'));
+    l1.appendChild(el('span', null, '  ·  ' + d.events + ' events  ·  '));
+    l1.appendChild(el('span', null, d.setup ? 'finished setup' : (d.ob == null ? 'never saw onboarding' : 'onboarding step ' + d.ob)));
+    b.appendChild(l1);
+
+    b.appendChild(el('div', 'line', 'last seen ' + ago(d.last_seen) + '  ·  first seen ' + new Date(d.first_seen).toLocaleDateString()));
+    b.addEventListener('click', function () { loadTrail(d); });
+    return b;
+  }
+
+  function renderDevices() {
+    main.replaceChildren();
+    main.appendChild(tabs());
+
+    var bar = el('div', 'bar');
+    var r = el('button', null, 'Refresh');
+    r.addEventListener('click', function () { loadDevices(); });
+    bar.appendChild(r);
+    var t = el('button', null, state.synthetic ? 'Hide test traffic' : 'Show test traffic');
+    t.addEventListener('click', function () { state.synthetic = !state.synthetic; loadDevices(); });
+    bar.appendChild(t);
+    main.appendChild(bar);
+
+    main.appendChild(el('p', 'note',
+      'One card per device. "Returned" means it came back on a later day — with no account, that is '
+      + 'the only evidence of a second visit there is. Tap a card for the whole trail.'));
+
+    if (!state.devices.length) { main.appendChild(el('p', 'empty', 'No devices yet.')); return; }
+    state.devices.forEach(function (d) { main.appendChild(deviceCard(d)); });
+  }
+
+  function loadDevices() {
+    if (!supabase || state.loading) return;
+    state.loading = true;
+    withTimeout(supabase.rpc('ops_device_list', { p_limit: DEVICE_PAGE, p_include_synthetic: state.synthetic }), 10000, 'ops query')
+      .then(function (got) {
+        state.loading = false;
+        if (got.error) { showError(got.error); return; }
+        state.devices = got.data || [];
+        state.view = 'devices';
+        renderDevices();
+        stamp();
+      }).catch(function (e) { state.loading = false; showError(e); });
+  }
+
+  /* ---- one device's trail --------------------------------------------------------------
+     Grouped by session_no, which the SQL derives from a 30-minute gap. The grouping is the
+     answer to "did she come back and give up again?" — each block is one visit and the last
+     line of each block is where that visit ended. */
+  function propsLine(name, props) {
+    if (!props) return '';
+    var parts = [];
+    Object.keys(props).forEach(function (k) {
+      if (k === 'errors') return;                       // rendered as its own lines below
+      var v = props[k];
+      if (v == null || typeof v === 'object') return;
+      parts.push(k + '=' + String(v));
+    });
+    return parts.join('  ');
+  }
+
+  function eventLine(e) {
+    var line = el('div', 'ev' + (e.name === 'session_end' ? ' end' : '') + (e.name === 'client_error' ? ' bad' : ''));
+    line.appendChild(el('span', 't', new Date(e.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })));
+    line.appendChild(el('span', 'n', e.name));
+    var p = propsLine(e.name, e.props);
+    if (p) line.appendChild(el('span', 'p', p));
+    return line;
+  }
+
+  function renderTrail() {
+    main.replaceChildren();
+
+    var bar = el('div', 'bar');
+    var fromInbox = state.trailFrom === 'inbox';
+    var back = el('button', null, fromInbox ? '← Feedback' : '← Devices');
+    back.addEventListener('click', function () {
+      if (fromInbox) { state.view = 'inbox'; renderInbox(); }
+      else { state.view = 'devices'; renderDevices(); }
+    });
+    bar.appendChild(back);
+    main.appendChild(bar);
+
+    /* A card from the Devices tab carries the full roll-up; a feedback row carries only what the
+       inbox returns. Print what is actually known rather than "undefined visits". */
+    var d = state.trailMeta;
+    if (d) {
+      var bits = [d.device || 'unknown device'];
+      if (typeof d.visits === 'number') {
+        bits.push(d.visits + ' visit' + (d.visits === 1 ? '' : 's') + ' over ' + d.days + ' day' + (d.days === 1 ? '' : 's'));
+      }
+      bits.push(d.segment === 'insider' ? 'insider' : 'public');
+      if (d.setup) bits.push('finished setup');
+      if (typeof d.signed_in === 'boolean') bits.push(d.signed_in ? 'signed in' : 'never signed in');
+      main.appendChild(el('p', 'note', bits.join(' · ')));
+    }
+
+    var evs = state.trail || [];
+    if (!evs.length) { main.appendChild(el('p', 'empty', 'No events for this device.')); return; }
+
+    var sessions = [];
+    evs.forEach(function (e) {
+      var s = sessions[sessions.length - 1];
+      if (!s || s.no !== e.session_no) { s = { no: e.session_no, items: [] }; sessions.push(s); }
+      s.items.push(e);
+    });
+
+    sessions.forEach(function (s) {
+      var box = el('div', 'sess');
+      var first = s.items[0], last = s.items[s.items.length - 1];
+      var secs = Math.round((new Date(last.created_at) - new Date(first.created_at)) / 1000);
+      var h = el('h3', null, 'Visit ' + s.no + ' ');
+      h.appendChild(el('span', null, new Date(first.created_at).toLocaleString() + '  ·  '
+        + s.items.length + ' event' + (s.items.length === 1 ? '' : 's')
+        + (secs > 0 ? '  ·  ' + dur(secs) : '')));
+      box.appendChild(h);
+      s.items.forEach(function (e) {
+        box.appendChild(eventLine(e));
+        /* client_error payloads are already money-redacted on the device; render them as the
+           plain text they are so a support question does not need a SQL session. */
+        if (e.name === 'client_error' && e.props && Array.isArray(e.props.errors)) {
+          e.props.errors.forEach(function (x) {
+            box.appendChild(el('div', 'errline', String((x && x.msg) || '')));
+          });
+        }
+      });
+      main.appendChild(box);
     });
   }
+
+  function loadTrail(d, from) {
+    if (!supabase || state.loading) return;
+    state.loading = true;
+    state.trailFor = d.anon_id;
+    state.trailMeta = d;
+    state.trailFrom = from || 'devices';
+    withTimeout(supabase.rpc('ops_device', { p_anon_id: d.anon_id, p_limit: 500 }), 10000, 'ops query')
+      .then(function (got) {
+        state.loading = false;
+        if (got.error) { showError(got.error); return; }
+        state.trail = got.data || [];
+        state.view = 'trail';
+        renderTrail();
+        stamp();
+      }).catch(function (e) { state.loading = false; showError(e); });
+  }
+
+  function stamp() { sub.textContent = 'updated ' + new Date().toLocaleTimeString(); }
 
   function start() {
     if (!supabase) {
@@ -291,7 +527,7 @@
                'Open badgebudget.com', 'https://badgebudget.com/');
           return;
         }
-        load({ reset: true });
+        loadInbox({ reset: true });
       })
       .catch(function () {
         gate('Sign in first',
@@ -301,11 +537,12 @@
   }
 
   /* Poll only while the tab is actually being looked at — same discipline as the app's sync poll,
-     and the reason a console left open on a phone overnight costs nothing. */
+     and the reason a console left open on a phone overnight costs nothing. An open trail is left
+     alone: refreshing it under a thumb mid-read would be worse than being 30 seconds stale. */
   setInterval(function () {
-    if (document.visibilityState === 'visible' && state.rows.length && !state.loading) {
-      load({ reset: true });
-    }
+    if (document.visibilityState !== 'visible' || state.loading) return;
+    if (state.view === 'inbox' && state.rows.length) loadInbox({ reset: true });
+    else if (state.view === 'devices' && state.devices.length) loadDevices();
   }, POLL_MS);
 
   start();

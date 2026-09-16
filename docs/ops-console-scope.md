@@ -1,8 +1,9 @@
 # The ops console — a live support and monitoring surface
 
 **Status:** phase 1 (the feedback inbox) is **built, applied and verified** — migration 004 is live
-on `mnnlgcxnvodjwlhhiphq` and all ten gate probes pass (results below). Phases 2–4 are scoped, not
-built. **Date:** 2026-09-13.
+on `mnnlgcxnvodjwlhhiphq` and all ten gate probes pass (results below). **Phase 3a shipped
+2026-09-14 (migration 005) and phase 3b shipped 2026-09-16 (migration 006) — see *Phase 3b, as
+built* below.** Phases 2 and 4 are scoped, not built. **Date:** 2026-09-13, amended 2026-09-16.
 
 This is the design record for `/ops.html`, a page Patrick and Courtney can open on a phone to see
 what the app's users are actually experiencing — and, later, to answer "what's wrong with *this*
@@ -141,10 +142,7 @@ funnel with its cohort and insider splits, and swap-board health as **counts onl
 members per group, posts, matches by state, age of open posts). The hard part is already written
 and iterated on; this is mostly a wrapper.
 
-**Phase 3b: the support drill-down.** `ops_device(anon_id)` returning one device's event trail,
-which `ob_step` it stalled at, its `client_error` rows, first and last seen. **Unblocked as of
-2026-09-14** — 3a shipped the join key. `ops_feedback_inbox()` does not return `anon_id` yet; that
-belongs with 3b, when there is a drill-down worth linking to.
+**Phase 3b: the support drill-down.** — **SHIPPED 2026-09-16, migration 006. See below.**
 
 > **Phase 3a — DONE 2026-09-14 (migration 005).** `feedback` had no `anon_id` column: it carried
 > `user_id`, `page` and `user_agent`, nothing identifying the device, and `page` can't help because
@@ -164,9 +162,80 @@ belongs with 3b, when there is a drill-down worth linking to.
 > nothing queries this column yet — phase 3b's lookup goes the other way (a row's own `anon_id`,
 > then `idx_events_anon`). It comes with 3b, when "every report from this device" is a real query.
 
+> **Phase 3b addendum — the inbox link, migration 007 (2026-09-16).** The open item this document
+> recorded — "`ops_feedback_inbox()` does not return `anon_id` yet; that belongs with 3b, when there
+> is a drill-down worth linking to" — is closed. The inbox now returns `anon_id` as a ninth column
+> and each row carries a control into `ops_device()`. It required a DROP and recreate rather than a
+> CREATE OR REPLACE, because Postgres cannot add an OUT parameter to an existing function; the body
+> is otherwise identical to 004's, and the grants plus the `anon` denial were re-probed afterwards
+> (42501 over the real REST API with the public anon key). No new class of data reaches the console:
+> `anon_id` was already returned by `ops_device_list()`, and `signed_in` stays a boolean. **It only
+> works forward** — all 11 rows in the table today predate 2026-09-14 and have no id to point at, so
+> on the day it shipped the link was live with nothing to link to. The console says that in words
+> instead of rendering a control that goes nowhere.
+
 **Phase 4: triage state.** An inbox becomes a tool when rows can be marked handled. That needs a
 write path and a column, and a write path into `feedback` is a bigger decision than a read one —
 so it is deliberately last.
+
+## Phase 3b, as built (2026-09-16)
+
+**What it answers that nothing could before:** every touch point for one device, where that device
+stopped, and whether the same device came back and stopped again — for visitors who never signed
+up, which is all of them but four.
+
+`supabase/migrations/006_ops_device_trail.sql` adds two functions, same pattern as 004
+(`security definer`, `is_ops_admin()` as the first statement, `search_path` pinned empty,
+`authenticated` only, never `anon`):
+
+- **`ops_device_list(limit, include_synthetic)`** — one row per `anon_id`, newest activity first.
+  `visits` (app_open count) and `days` (distinct calendar days) are the two that carry the weight:
+  with no account for most visitors, `days > 1` is the *only* evidence a second visit exists.
+  Also `stalled_at` (the last event name recorded — with `session_end` shipping alongside, that is
+  the abandonment point), `ob`, `setup`, `signed_in`, `feedback_n`, `errors`, `segment`, `device`.
+- **`ops_device(anon_id, limit)`** — that device's trail, with a `session_no` derived from a
+  30-minute gap. The grouping *is* the answer to "did she come back and give up again": each block
+  is one visit and the last line of each block is how that visit ended. Sessionisation is inference,
+  not recorded fact — there is no session id on the row, and a gap rule buys nearly all of it.
+
+`ops.html` gains a **Devices** tab beside Feedback, and a trail view behind each card. The page
+stayed plain — no framework, no innerHTML, every value still reaching the DOM through `textContent`.
+`client_error` payloads render inline in the trail (already money-redacted on the device), so a
+support question no longer needs a SQL session.
+
+**`synthetic`, and why history was not deleted.** `tests/harness.mjs` rewrote the five CDN script
+tags but never `SUPABASE_URL`, so every CI smoke run on a GitHub runner inserted real rows into
+production `events` under a fresh `anon_id` — **291 rows across 251 devices, 232 of them a single
+event, first seen 2026-09-07**, the day `ci.yml` was added and CI became a required check. They are
+identified by the internally inconsistent pair `iPhone OS 15_0` + `Version/18.0` that Playwright's
+pinned iPhone 13 profile emits and no real iPhone does; matching a WebKit build number instead is a
+mistake this file made in its first draft, because `AppleWebKit/605.1.15` is on every genuine iPhone
+in the table and the build number I first reached for appears in zero rows, so the flag classified
+nothing at all. The harness is contained in the same change; `ops_device_list()` flags those rows rather
+than removing them, and hides them unless the console's "Show test traffic" toggle asks. Deleting
+would have destroyed the evidence of how long it ran.
+
+**`props` is returned verbatim, and that is the one judgement call in 006.** It is safe because
+`track()` has never been allowed to carry a wage or goal figure, `client_error` goes through
+`redactMoney()` on the device, and `session_end` carries a shift COUNT rather than an amount. If
+that ever stops being true, `ops_device()` is the function that leaks it.
+
+**No new indexes.** 004 justified each of its four by naming a query that already ran.
+`idx_events_anon` backs the trail lookup; the device roll-up is a full scan over ~900 rows.
+
+**Gate probes (2026-09-16), all six pass:**
+
+| # | Probe | Expected | Result |
+|---|---|---|---|
+| 1 | `ops_device_list()` as a signed-in non-admin | 42501 | **ERROR 42501: not authorized** |
+| 2 | `ops_device()` as a signed-in non-admin | 42501 | **ERROR 42501: not authorized** |
+| 3 | `ops_device_list()` as `anon` | denied at EXECUTE | **permission denied for function** |
+| 4 | `ops_device()` as `anon` | denied at EXECUTE | **permission denied for function** |
+| 5 | both over the real REST API with the **public anon key** | 42501 | **42501 both** |
+| 6 | `events` / `feedback` still unreadable with that key | 42501 | **42501 both** |
+
+Probes 5 and 6 were run over the deployed network with the exact key `index.html` ships, not
+simulated with `set local role` — the same discipline 004 used, and for the same reason.
 
 ## The gate, as actually verified (2026-09-13)
 

@@ -11,7 +11,7 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmSync, existsSync, readFileSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1394,6 +1394,207 @@ const run = async () => {
         errors.filter((e) => !isExpectedNetwork(e))[0] || '');
       await ctx.close();
     }
+  }
+
+  /* ---- 12. session_end: the exit row, and the funnel stage that never fired -------------
+     The gap this closes: every other event says something HAPPENED; none said what happened
+     last, or how long she stayed. On 2026-09-16, 416 of 424 public devices had a lifetime
+     trail of exactly one app_open — one step, no ending — so "where did she give up?" had no
+     answer in the data at all. These assertions are about the row existing, carrying the join
+     key, and carrying nothing it must not. */
+  if (want(12)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    const posted = [];
+    await page.route('**/rest/v1/events*', async (route) => {
+      try { posted.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { posted.push(null); }
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    /* pagehide is the real unload signal on iOS WebKit, and it is the listener the app binds. */
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(400);
+
+    const flat = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean);
+    const end = flat.find((r) => r && r.name === 'session_end');
+    ok('session_end: an exit row is written when the tab goes away', !!end,
+      end ? '' : `saw: ${flat.map((r) => r && r.name).join(',') || 'nothing'}`);
+
+    const devId = await page.evaluate(() => localStorage.getItem('scrubpay_anon_id'));
+    ok('session_end: the exit row carries this device\'s anon_id', !!end && end.anon_id === devId,
+      devId ? `${String(devId).slice(0, 8)}…` : 'no device id');
+
+    /* The shape is the contract the ops trail reads. A missing `last` turns every abandonment
+       back into "somewhere after app_open", which is the hole this whole change exists to fill. */
+    ok('session_end: it says how long and what happened last',
+      !!end && typeof end.props === 'object' && typeof end.props.secs === 'number' && typeof end.props.last === 'string',
+      end ? JSON.stringify(end.props) : '');
+
+    /* Invariant: `events` carries coarse names and counts, never a wage or goal figure.
+       `shifts` is a COUNT and must stay one. */
+    const allowed = ['secs', 'last', 'n', 'setup', 'shifts', 'ob', 'via'];
+    const extra = end ? Object.keys(end.props || {}).filter((k) => !allowed.includes(k)) : ['(no row)'];
+    ok('session_end: no prop outside the declared, money-free whitelist', extra.length === 0, extra.join(','));
+    /* Scoped to props, which is what this change introduces. `user_agent` is a long-standing
+       column and carries version numbers like AppleWebKit/605.1.15 that look money-shaped to any
+       honest regex — widening this to the whole row tests the wrong thing and fails on a string
+       nobody chose. */
+    ok('session_end: its props contain no money-shaped figure',
+      !!end && !/\$\s?\d|\d+\.\d{2}\b/.test(JSON.stringify(end.props || {})), end ? JSON.stringify(end.props) : '(no row)');
+
+    /* An app-switching phone must not bill the free tier one row per switch. */
+    const before = flat.filter((r) => r && r.name === 'session_end').length;
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(300);
+    const after = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean)
+      .filter((r) => r && r.name === 'session_end').length;
+    ok('session_end: a second hide with nothing new does not write a duplicate', after === before,
+      `${before} -> ${after}`);
+
+    ok('session_end: no page error across the unload path', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 13. ob_step 0, and the harness's own containment ---------------------------------- */
+  if (want(13)) {
+    /* Stage 0 — "saw the welcome screen, left" — was unreachable twice over: obMax started at 0
+       so `n > obMax` rejected step 0, and nothing calls goObStep(0) on arrival anyway. Every
+       ob_step row ever recorded starts at 1, which is why the welcome-screen bounce was
+       indistinguishable from a rate-input bounce in the funnel. */
+    const { ctx, page } = await newPage(browser, url, { seed: false });
+    const steps = [];
+    await page.route('**/rest/v1/events*', async (route) => {
+      try {
+        const body = JSON.parse(route.request().postData() || 'null');
+        (Array.isArray(body) ? body : [body]).forEach((r) => { if (r && r.name === 'ob_step') steps.push(r.props && r.props.step); });
+      } catch (_) {}
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    /* The app also tracks through supabase-js, which the harness cannot reach; this assertion
+       reads the intercepted wire either way, so it fails loudly if the event stops firing. */
+    const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('ob_step: the welcome stage is reachable at all (obMax starts below 0)',
+      /const obMax = useRef\(-1\);/.test(src));
+    ok('ob_step: something marks stage 0 when onboarding becomes visible',
+      /if\(ready && !setupComplete\) markObStep\(0\);/.test(src));
+    ok('ob_step: stage 0 actually fires for a fresh visitor', steps.includes(0),
+      `saw steps: ${steps.join(',') || 'none'}`);
+    await ctx.close();
+
+    /* The harness was the app's largest "user" by two orders of magnitude: buildScratch rewrote
+       the five CDN tags but not the Supabase URL, so every CI run wrote real rows into
+       production `events`. This asserts the scratch copy cannot reach the project at all. */
+    const scratchApp = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    const scratchOps = readFileSync(join(SCRATCH, 'ops.html'), 'utf8');
+    ok('harness: the scratch app cannot reach the production Supabase project',
+      !scratchApp.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+    ok('harness: the scratch ops console cannot reach it either',
+      !scratchOps.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+    ok('harness: index.html itself is untouched (the rewrite is scratch-only)',
+      src.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+
+    /* Migration 006 flags the rows the harness already wrote so they stay out of the console.
+       Its predicate is a guess about a string the SQL cannot see, and the first draft guessed a
+       WebKit build number that appears in ZERO rows — a flag that silently classified nothing and
+       looked exactly like a flag that worked. Tie it to the real thing: the user agent this
+       harness's own pinned Playwright actually emits for the iPhone 13 profile. If a Playwright
+       bump changes it, this fails here rather than quietly un-flagging 251 devices. */
+    const harnessUA = devices['iPhone 13'].userAgent;
+    const mig = readFileSync(join(ROOT, 'supabase/migrations/006_ops_device_trail.sql'), 'utf8');
+    const likes = [...mig.matchAll(/e\.user_agent like '%([^']+)%'/g)].map((m) => m[1].replace(/\\_/g, '_'));
+    ok('synthetic: migration 006 has a predicate to check at all', likes.length > 0, likes.join(' + '));
+    ok('synthetic: every LIKE in it matches the harness user agent this suite really sends',
+      likes.length > 0 && likes.every((l) => harnessUA.includes(l)),
+      `${JSON.stringify(harnessUA)} vs ${JSON.stringify(likes)}`);
+    /* And the other half: it must not match a genuine iPhone. iOS 15.0 paired with Safari 18 is
+       the impossible combination; either half alone is on real devices in the table. */
+    const realUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1';
+    ok('synthetic: it does not match a real iPhone user agent from the events table',
+      !likes.every((l) => realUA.includes(l)));
+  }
+
+  /* ---- 14. the feedback row links to that device's trail (migration 007) ----------------
+     005 put anon_id on `feedback`, 006 built the trail, and the inbox sat between them without
+     the join key — the console could show what a nurse SAID and, separately, what some device
+     DID, with no way across. This drives the real render logic against a stubbed client: the
+     signed-out gate (§7) means the page never reaches row() otherwise, and an assertion that
+     can never fire is not an assertion. The stub lives in a THIRD scratch copy; ops.html in the
+     working tree is never touched. */
+  if (want(14)) {
+    const opsSrc = readFileSync(join(SCRATCH, 'ops.html'), 'utf8');
+    const CREATE = /var supabase = \(window\.supabase && window\.supabase\.createClient\)[\s\S]*?: null;/;
+    if (!CREATE.test(opsSrc)) throw new Error('ops.html client construction moved — the §14 stub is stale');
+
+    const ROWS = [
+      { id: 'aaaaaaaa-0000-4000-8000-000000000001', created_at: new Date().toISOString(), kind: 'broken',
+        message: 'nothing to click', contact: null, signed_in: false, segment: 'public',
+        device: 'iPhone', anon_id: 'dev-with-a-trail' },
+      { id: 'aaaaaaaa-0000-4000-8000-000000000002', created_at: new Date().toISOString(), kind: null,
+        message: 'an older report', contact: null, signed_in: true, segment: 'public',
+        device: 'iPhone', anon_id: null },
+    ];
+    const TRAIL = [
+      { session_no: 1, created_at: '2026-09-15T10:00:00Z', name: 'app_open', props: null, signed_in: false },
+      { session_no: 1, created_at: '2026-09-15T10:00:20Z', name: 'session_end',
+        props: { secs: 20, last: 'app_open', n: 1, setup: false, shifts: 0, ob: 0 }, signed_in: false },
+      { session_no: 2, created_at: '2026-09-16T09:00:00Z', name: 'app_open', props: null, signed_in: false },
+    ];
+    const stub = opsSrc.replace(CREATE, `var supabase = {
+      auth: { getSession: function () { return Promise.resolve({ data: { session: { user: { id: 'x' } } } }); } },
+      rpc: function (name, args) {
+        if (name === 'ops_feedback_summary') return Promise.resolve({ data: { total: 2, last_7d: 2, last_24h: 1 } });
+        if (name === 'ops_feedback_inbox') return Promise.resolve({ data: ${JSON.stringify(ROWS)} });
+        if (name === 'ops_device') return Promise.resolve({ data: ${JSON.stringify(TRAIL)}, args: args });
+        if (name === 'ops_device_list') return Promise.resolve({ data: [] });
+        return Promise.resolve({ data: [] });
+      }
+    };`);
+    writeFileSync(join(SCRATCH, 'ops-stub.html'), stub);
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(url + '/ops-stub.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.row', { timeout: 15000 });
+
+    ok('inbox: a report with a device id offers the trail link',
+      (await page.locator('.row .trace button').count()) === 1,
+      `${await page.locator('.row .trace button').count()} buttons for 2 rows`);
+    const none = await page.locator('.row .trace .none').first().innerText();
+    ok('inbox: a pre-2026-09-14 report says why it has no link, rather than showing a dead one',
+      /before the join key shipped/i.test(none), JSON.stringify(none));
+
+    await page.locator('.row .trace button').first().click();
+    await page.waitForSelector('.sess', { timeout: 15000 });
+    ok('trail: tapping through renders the visits for that device',
+      (await page.locator('.sess').count()) === 2, `${await page.locator('.sess').count()} visits`);
+    /* The header must not print "undefined visits": an inbox row carries thinner metadata than a
+       Devices card, and this is the exact seam where that shows up. */
+    const head = await page.locator('.note').first().innerText();
+    ok('trail: the header prints only what the inbox row actually knows',
+      !/undefined|NaN/.test(head), JSON.stringify(head));
+    ok('trail: session_end renders with its exit props', /secs=20/.test(await page.locator('.sess').first().innerText()));
+
+    /* Back must return to where you came from, not always to Devices. Wait for ANY destination to
+       paint, not for `.row` specifically: a hard waitForSelector on the right answer turns a wrong
+       destination into a thrown timeout that kills the run, and an aborted run is not a failed
+       assertion — it just stops printing. Confirmed by negative test: with back wired to Devices,
+       this reports FAIL instead of taking the rest of the section down with it. */
+    await page.locator('.bar button').first().click();
+    await page.waitForFunction(
+      () => !!document.querySelector('.row, .dev, .empty'), null, { timeout: 15000 }
+    ).catch(() => {});
+    const backRows = await page.locator('.row').count();
+    ok('trail: back from a feedback-sourced trail returns to the inbox', backRows === 2,
+      `${backRows} feedback rows after back`);
+
+    ok('ops: the trail path raises no page error', errors.length === 0, errors[0] || '');
+    await ctx.close();
   }
 
   await browser.close();

@@ -33,7 +33,7 @@ hosts an anonymous shift-swap board.
 | `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
 | `.github/workflows/deploy.yml` | the deploy workflow: 5-file publish to GitHub Pages. (`ci.yml` is the PR gate — see Deployment) |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
-| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
+| `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
@@ -245,7 +245,9 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 41: `app_open` `{via}` (present only when the URL
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 41 through `track()` plus one
+  (`session_end`) that is sent only by the unload path below and so never appears in that grep —
+  42 in the table. `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
   `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
@@ -257,13 +259,34 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   `swap_match_proposed/accepted/declined/confirmed`, `swap_plan_applied`,
   `share_opened`, `share_sent` `{via:'share'|'copy'}`, `estimate_sharpened` `{mode}`,
   `estimate_dismissed`, `sample_cleared`, `ob_step` `{step}`, `client_error` `{n,errors}`,
-  `sign_in_attempted` `{method:'google'|'email'|'email_signup'}`.
+  `sign_in_attempted` `{method:'google'|'email'|'email_signup'}`,
+  `session_end` `{secs,last,n,setup,shifts,ob,via?}` — see below.
+  **`session_end` is the exit row, and the reason abandonment was unanswerable until 2026-09-16.**
+  Every other event says something *happened*; none said what happened **last** or how long she
+  stayed, so a device whose entire lifetime was one `app_open` — **416 of 424 public devices on
+  2026-09-16** — had a trail with one step and no ending. It fires from `pagehide` /
+  `visibilitychange`, which is why it cannot go through `track()`: supabase-js issues an ordinary
+  fetch and an ordinary fetch in flight at unload is cancelled by the browser (that is exactly the
+  `AbortError: … browsing context is going away` already in `client_error` rows). `beaconInsert()`
+  uses `fetch(..., {keepalive:true})` instead, posting the same `eventRow()` shape straight to
+  `/rest/v1/events`. Re-fires on a later hide only if the event count moved or a minute passed,
+  capped at `SESSION_END_MAX` = 4 per load, so an app-switching phone cannot bill the free tier;
+  **read the LAST row for a load, not the first.** `shifts` is a COUNT — the no-wage-figures rule
+  is unchanged, and `tests/smoke.mjs` §12 asserts the prop whitelist and negative-tests it.
   (`health_check` rows in the table are owner probes.) Owner read: `select name, count(*) from
   public.events group by name order by 2 desc;`
   **`ob_step` is the onboarding funnel.** `app_open`→`setup_completed` was a 132-device to 9-device
   cliff with no event in between, so a bounce off the welcome screen was indistinguishable from one
   off the rate input. It fires once per *furthest* step reached (0 welcome … 4 done), so
-  back-navigation and "Edit my setup" don't double count. Read it as a funnel:
+  back-navigation and "Edit my setup" don't double count. **Stage 0 never actually fired until
+  2026-09-16** and every historical `ob_step` row therefore starts at 1: `obMax` was seeded at `0`
+  so `n > obMax.current` rejected step 0, *and* nothing called `goObStep(0)` on arrival — Onboarding
+  only reports a step when the nurse moves. So the welcome-screen bounce, the most common outcome
+  in the data, was the one stage the funnel existed to measure and could not see. Fixed by seeding
+  `obMax` at `-1` and marking stage 0 from an effect that waits for `ready && !setupComplete` (not
+  mount — `setupComplete` is false while the saved blob loads, which would count every returning
+  nurse as a fresh bounce). Read stage 0 as live from 2026-09-16, the same way `ob_step` itself is
+  live only from 2026-09-07. Read it as a funnel:
   `select props->>'step' as step, count(distinct anon_id) from public.events where name='ob_step'
   group by 1 order by 1;`
   **`client_error` is last load's captured errors**, flushed once per app open from the boot
@@ -400,7 +423,13 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
 ## Ops dashboard
 
 **Two surfaces, deliberately.** `/ops.html` is the **live** one (phase 1 shipped 2026-09-13: the
-feedback inbox). The nightly artifact below is the **batched** one. The split is not a preference,
+feedback inbox; **phase 3b shipped 2026-09-16: the Devices tab** — one card per `anon_id` with
+visits/returns/where-it-stopped, tapping through to that device's whole trail split into numbered
+visits by a 30-minute gap. That is the surface that answers "did the same person come back and
+give up again", which nothing in this repo could answer before. **Migration 007 closes the loop
+between the two tabs:** every feedback row that carries an `anon_id` gets a *See what this device
+did* control straight into that trail, and a row from before 2026-09-14 says why it has none rather
+than showing a dead button. Back returns to whichever tab you came from). The nightly artifact below is the **batched** one. The split is not a preference,
 it is a constraint: a claude.ai artifact cannot fetch Supabase — its CSP blocks all outbound
 fetch/XHR/WebSocket — so an artifact can only ever show what something else pushed into it, and its
 freshness ceiling is the push cadence. Anything that has to answer "what just happened" has to live
@@ -432,6 +461,29 @@ stays current without being asked. This is dashboard upkeep, separate from the o
 or `public`. The **`anon_funnel`** block is the payoff: activation over public, mobile devices only —
 where genuine anonymous visitors abandon as invite links go out, builders excluded (its welcome-screen
 stage reads `ob_step`, live only since 2026-09-07, so it undercounts earlier visitors).
+
+**The device cohorts are wrong as written, and the dashboard overstates the audience (found
+2026-09-16).** `dashboard_snapshot.sql:52` reads `case when is_mobile then 'mobile'` — an iPhone
+user agent short-circuits the engagement check entirely, so anything *claiming* to be a phone is
+counted as, in the file's own comment, "The real users." Two things broke that: bots now spoof
+mobile user agents, and **the project's own test harness was writing to production analytics** —
+`tests/harness.mjs` rewrote the five CDN `<script>` tags but never `SUPABASE_URL`, so on a GitHub
+runner (open network, `ci.yml` runs `smoke` on every push and PR) each run inserted real rows under
+a fresh `anon_id`. Fingerprint: `app_open` rows 2–3 seconds apart in bursts, all carrying
+Playwright's iPhone 13 profile, identified by the internally inconsistent pair **`iPhone OS 15_0`
++ `Version/18.0`** (no real iPhone reports Safari 18 on iOS 15.0; match the pair, never a WebKit
+build number — `AppleWebKit/605.1.15` is on every genuine iPhone in the table). **291 rows across
+251 devices, 232 of them a single event, first seen 2026-09-07 — the day `ci.yml` was added and
+`gate` + `smoke` became required checks — and the only seven event names present are exactly the
+ones `tests/smoke.mjs` drives.** For scale: of 304 iPhone-UA devices on 2026-09-16, 266 had fired
+exactly one event.
+The harness is contained as of 2026-09-16 (scratch copies point at an RFC 2606 `.invalid` host,
+gated in `check_build.mjs` and negative-tested); `ops_device_list()` flags those rows `synthetic`
+and hides them by default rather than deleting history. **The classifier itself is not yet fixed
+and every activation figure computed since 2026-09-07 is inflated — re-baseline before quoting
+one.** The honest cut, insiders removed: 425 public devices ever, 4 completed setup, 5 saved a
+shift, 1 signed in, 26 ever fired anything past `app_open`, and **all 26 have `days = 1`** — zero
+second-day returns, lifetime.
 
 **The crawler split is the load-bearing part.** badgebudget.com was registered 2026-09-02 and
 immediately drew crawler traffic: of 135 devices, **83 are non-mobile and never fired anything but
@@ -577,10 +629,20 @@ surface as a `pageerror`. Make a second scratch copy pointing at `react.developm
 `warning`/`error` console messages. A clean run shows only the Babel in-browser transformer notice
 and the sandbox `ERR_CONNECTION_RESET`s. Last run 2026-08-23: clean.
 
+**The scratch copy cannot reach the real project (2026-09-16).** `buildScratch` now also rewrites
+`SUPABASE_URL` to `https://harness-must-never-write.invalid` and widens the scratch copy's
+`connect-src` by exactly that one unresolvable host — without the CSP half every telemetry request
+dies before Playwright can intercept it, so an assertion on what the app *sends* could never fire.
+`index.html` itself is untouched, asserted both ways in `tests/smoke.mjs` §13 and gated by
+`check_build.mjs` → `[events] Harness cannot write to production`.
+
 **The harness is in git as of 2026-09-07** — `tests/harness.mjs` (vendors the pinned packages,
 builds the scratch copy with local script paths, serves it) and `tests/smoke.mjs` (65 assertions:
 boot renders, no non-network page errors, the wage-math probes, money redaction, the error-buffer
 drain, the onboarding funnel, the account menu, the feedback tiles, both failure modes, the ops console's signed-out gate, and that a submitted feedback row really carries this device's `anon_id` — asserted by intercepting the insert, not by trusting the code).
+§12 covers the `session_end` exit row (it exists, carries this device's `anon_id`, says how long
+and what happened last, keeps to a money-free prop whitelist, and does not duplicate on a second
+hide) and §13 covers `ob_step` stage 0 plus the harness containment above — all negative-tested.
 `node tests/smoke.mjs` runs it; it resolves
 the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Playwright's own
 registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
@@ -599,8 +661,12 @@ per load, never one per error, so an error loop can't hammer the free tier. Mone
 redacted by `redactMoney()` (the paystub path `console.error`s a raw parse error that can embed PDF
 text — a real leak vector, not a ceremonial scrub); Postgres codes and line numbers survive. Stacks
 are not sent — `src` + `line` names the site, and the watchdog screen's "Copy error log" still hands
-a user the full stack. Errors from the current session flush on the *next* load, by design: a crash
-cannot report itself. Owner read: `select created_at, props from public.events where
+a user the full stack. Errors from the current session also flush on `pagehide` via the same keepalive
+sender as `session_end` (`flushClientErrors(uid, true)`) — **added 2026-09-16, and it is the
+change that makes the channel exist at all for the public.** Flushing only on the next load meant
+a device that never came back never reported anything, and every public device to date is a
+one-visit device: all 13 `client_error` rows ever recorded came from 4 *insider* devices. A crash
+that kills the page still cannot report itself; an ordinary abandonment now can. Owner read: `select created_at, props from public.events where
 name='client_error' order by created_at desc;`
 
 ## Open items (state as of 2026-09-05 — the work queue itself is `BACKLOG.md`)
