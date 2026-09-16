@@ -597,6 +597,79 @@ const run = async () => {
         errors.filter((e) => !isExpectedNetwork(e))[0] || '');
       await ctx.close();
     }
+
+    /* mobile-ux-00/-01/-02/-03/-05/-06/-08/-10 (#30): the tap-target pass. The app's own convention
+       is 44px (33 explicit minHeight:44 sites, .iconbtn's ::after hit-slop); these were the controls
+       under it. Hit-slop is proven with elementFromPoint just outside the visible box, not by
+       reading the stylesheet. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE, estimateMode: 'rough' }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      /* The boot splash (#splash, fixed, z-index 9999) fades for 350ms after the app paints and
+         intercepts elementFromPoint until it is gone -- wait it out before any hit test. */
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(150);
+
+      const av = await page.evaluate(() => {
+        const a = document.querySelector('.avatar'); const r = a.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.right + 1, r.top + r.height / 2);
+        return { w: Math.round(r.width), outside: !!(hit && hit.closest('.avatar')) };
+      });
+      ok('council: avatar hit area extends past its 40px circle', av.outside, JSON.stringify(av));
+
+      const eb = await page.evaluate(() => [...document.querySelectorAll('.est-banner button')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      ok('council: est-banner buttons are 44px tap targets', eb.length >= 2 && eb.every((h) => h >= 44), JSON.stringify(eb));
+
+      const pp = await page.evaluate(() => {
+        const c = document.querySelector('.pp-chip'); if (!c) return { count: 0 };
+        c.scrollIntoView({ block: 'center' }); const r = c.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.bottom + 4);
+        return { count: 1, h: Math.round(r.height), below: !!(hit && hit.closest('.pp-chip')) };
+      });
+      ok('council: pay-period chip reaches a 44px hit area', pp.count === 1 && pp.h + 12 >= 44 && pp.below, JSON.stringify(pp));
+
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForTimeout(300);
+      const vs = await page.evaluate(() => Math.round(document.querySelector('.cal-vscroll').getBoundingClientRect().height));
+      ok('council: calendar scroll box fits a landscape viewport', vs <= 240, `${vs}px tall at a 390px viewport`);
+      await page.setViewportSize({ width: 360, height: 780 });
+      await page.waitForTimeout(300);
+
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.drow .amt input', { timeout: 5000 });
+      const st = await page.evaluate(() => ({
+        amt: [...document.querySelectorAll('.drow .amt input')].map((i) => Math.round(i.getBoundingClientRect().height)),
+        del: [...document.querySelectorAll('.drow .danger-link')].map((b) => Math.round(b.getBoundingClientRect().height)) }));
+      ok('council: Settings amount inputs are 44px tap targets', st.amt.length >= 1 && st.amt.every((h) => h >= 44), JSON.stringify(st.amt));
+      ok('council: Settings Del links are 44px tap targets', st.del.length >= 1 && st.del.every((h) => h >= 44), JSON.stringify(st.del));
+      await page.locator('.sheet-h button.back').first().click();
+      await page.waitForSelector('.drow', { state: 'detached', timeout: 4000 }).catch(() => {});
+
+      await page.locator('.fab').click();
+      await page.waitForSelector('.chip-sel', { timeout: 5000 });
+      const cs = await page.evaluate(() => [...document.querySelectorAll('.chip-sel')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      ok('council: shift-type chips are 44px tap targets', cs.length >= 1 && cs.every((h) => h >= 44), JSON.stringify(cs));
+      await page.mouse.click(8, 8);   // the scrim closes the sheet
+      await page.waitForSelector('.chip-sel', { state: 'detached', timeout: 4000 }).catch(() => {});
+
+      /* The fixed "+ Log a shift" button overlaps the card's Open button when the card sits at the
+         bottom of a 360px viewport; centre it first so the click lands on the button, not the fab. */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main').first().click();   // the lab opens on its preset list; a preset draws the grid
+      await page.waitForSelector('.pl-cell', { timeout: 8000 });
+      const pl = await page.evaluate(() => [...document.querySelectorAll('.pl-cell')].slice(0, 7).map((c) => Math.round(c.getBoundingClientRect().width)));
+      ok('council: pattern-grid cells clear 44px at 360px wide', pl.length === 7 && pl.every((w) => w >= 44), JSON.stringify(pl));
+
+      ok('council: no page errors across the tap-target sweep', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
   }
 
   await browser.close();

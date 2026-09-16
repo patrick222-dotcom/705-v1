@@ -83,7 +83,8 @@
      real button now, never decorative -- below 920px .topnav is display:none, so this is the only
      route to Settings and Sign out on a phone. z-index clears .topbar (40) and .fab (45) but stays
      under .scrim (80), so an open sheet always covers the menu. */
-  .avatar{width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .avatar{position:relative;width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .avatar::after{content:'';position:absolute;inset:-2px;border-radius:50%}  /* same hit-slop as .iconbtn — it is the only phone route to Settings (council 2026-09-13) */
   .acct{position:relative;display:flex;flex:0 0 auto}
   /* Outside-tap closes through this transparent fixed backdrop rather than a document listener:
      on iOS WebKit a document-level click handler misses taps on non-interactive elements unless a
@@ -139,8 +140,8 @@
   .est-banner{background:#FFF6E6;border:1px solid #F3DCAE;border-radius:17px;padding:14px 16px;margin-bottom:14px}
   .est-banner .t{font-weight:700;font-size:13.5px;color:#7A5A12}
   .est-banner .s{font-size:12.5px;line-height:1.5;color:#8A6A22;margin-top:3px}
-  .est-banner .row{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
-  .est-banner button{background:#7A5A12;color:#fff;padding:9px 13px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .est-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
+  .est-banner button{background:#7A5A12;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .est-banner button.ghost{background:transparent;color:#8A6A22;border:1px solid #E4C98F}
 
   /* quick-fill banner (shift templates applied across multiple calendar days) */
@@ -181,7 +182,7 @@
      clipped, which is why the section can be wider than the card's other rows without looking
      like a separate box floating outside it. */
   .cal-vscroll-wrap{position:relative;margin:0 -18px}
-  .cal-vscroll{max-height:60vh;min-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
+  .cal-vscroll{max-height:60dvh;min-height:min(420px,60dvh);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
   .cal-vscroll::-webkit-scrollbar{display:none}
   .cal-vscroll-fade{position:absolute;left:0;right:0;bottom:20px;height:34px;background:linear-gradient(to bottom, transparent, var(--card));pointer-events:none}
   .cal-month-sec{margin-bottom:20px}
@@ -199,7 +200,8 @@
      so the 7-column day alignment is never disturbed. */
   .cal-pp-div{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:3px 0 7px}
   .cal-pp-div::before,.cal-pp-div::after{content:'';flex:1;height:1px;background:var(--line)}
-  .cal-pp-div .pp-chip{flex:0 0 auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--muted-2);background:var(--card);padding:3px 9px;border-radius:20px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  .cal-pp-div .pp-chip{position:relative;flex:0 0 auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--muted-2);background:var(--card);padding:0 11px;min-height:32px;display:inline-flex;align-items:center;border-radius:20px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  .cal-pp-div .pp-chip::after{content:'';position:absolute;inset:-6px 0}  /* 32 + 6 + 6 = 44px hit area, within the divider row's own margins */
   .cal-pp-div .pp-chip:hover{background:var(--indigo-soft);color:var(--indigo-ink)}
   /* mobile: let the grid bleed past the card's AND the page's own padding so it fills
      the phone screen almost edge-to-edge, with a slim padding of its own and a tighter gap. */
@@ -309,13 +311,13 @@
   .drow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:9px}
   .drow.off{opacity:.55}
   .drow .nm{font-weight:600;font-size:14px;flex:1;min-width:0;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
-  .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:5px 10px;border-radius:var(--r-pill);white-space:nowrap}
-  .drow .amt input{width:54px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
+  .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:0 10px;min-height:44px;display:inline-flex;align-items:center;border-radius:var(--r-pill);white-space:nowrap}
+  .drow .amt input{width:54px;min-height:44px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
   .ddash{border:1.5px dashed #D8D5CC;border-radius:13px;padding:12px;text-align:center;font-weight:600;font-size:13px;color:#7A766C;width:100%}
 
   /* chips */
   .chips-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:11px 12px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
+  .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:11px 12px;min-height:44px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
   .chip-sel i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
   .chip-sel.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
   .chip-sel.on i{background:#fff!important}
@@ -345,6 +347,7 @@
   .pl-brushes{display:flex;flex-wrap:wrap;gap:8px}
   .pl-brushes .chip-sel{width:auto;min-height:44px}
   .pl-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  @media (max-width:400px){ .pl-grid{gap:3px;margin:0 -6px} }  /* 7 cells clear 44px down to 360px wide (council 2026-09-13, mobile-ux-06) */
   .pl-cell{aspect-ratio:1/1;min-height:0;border-radius:9px;background:#fbfaf7;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;transition:transform .08s,box-shadow .12s}
   .pl-cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .pl-cell.wk{background:#F3F2EC}
@@ -420,7 +423,7 @@
   .preview .v{font-weight:700;font-size:14px;color:var(--money-ink);margin-top:2px}
   .row-item{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin-bottom:9px}
   .link{color:var(--indigo);font-weight:600;font-size:13px}
-  .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:10px 8px;margin:-10px -8px}
+  .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:14px 8px;margin:-14px -8px;min-height:44px;display:inline-flex;align-items:center}
 
   /* swap matching: count badge on entry points + suggestion/plan cards */
   .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:700;line-height:1;margin-left:6px;vertical-align:middle}
