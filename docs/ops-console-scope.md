@@ -162,6 +162,18 @@ and iterated on; this is mostly a wrapper.
 > nothing queries this column yet — phase 3b's lookup goes the other way (a row's own `anon_id`,
 > then `idx_events_anon`). It comes with 3b, when "every report from this device" is a real query.
 
+> **Phase 3b addendum — the inbox link, migration 007 (2026-09-16).** The open item this document
+> recorded — "`ops_feedback_inbox()` does not return `anon_id` yet; that belongs with 3b, when there
+> is a drill-down worth linking to" — is closed. The inbox now returns `anon_id` as a ninth column
+> and each row carries a control into `ops_device()`. It required a DROP and recreate rather than a
+> CREATE OR REPLACE, because Postgres cannot add an OUT parameter to an existing function; the body
+> is otherwise identical to 004's, and the grants plus the `anon` denial were re-probed afterwards
+> (42501 over the real REST API with the public anon key). No new class of data reaches the console:
+> `anon_id` was already returned by `ops_device_list()`, and `signed_in` stays a boolean. **It only
+> works forward** — all 11 rows in the table today predate 2026-09-14 and have no id to point at, so
+> on the day it shipped the link was live with nothing to link to. The console says that in words
+> instead of rendering a control that goes nowhere.
+
 **Phase 4: triage state.** An inbox becomes a tool when rows can be marked handled. That needs a
 write path and a column, and a write path into `feedback` is a bigger decision than a read one —
 so it is deliberately last.

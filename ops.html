@@ -114,6 +114,9 @@
   .ev.bad .n { color: var(--warn); }
   .errline { font-size: 11.5px; color: var(--warn); margin: 1px 0 1px 16px; overflow-wrap: anywhere; }
   .note { font-size: 12px; color: var(--dim); margin: 0 2px 12px; }
+  .trace { margin-top: 9px; }
+  .trace button { font-size: 13px; padding: 6px 12px; min-height: 36px; }
+  .trace .none { font-size: 12px; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -237,6 +240,22 @@
       }
       node.appendChild(c);
     }
+
+    /* The whole point of migration 005 + 007: get from what she SAID to what she DID. `page` can
+       never supply this (single-page app, always '/') and `user_id` is null when she is not signed
+       in, so anon_id is the only join there is — and it only works forward. A row from before
+       2026-09-14 has no id to point at, and says so in words rather than offering a dead button. */
+    var trace = el('div', 'trace');
+    if (r.anon_id) {
+      var b = el('button', null, 'See what this device did →');
+      b.addEventListener('click', function () {
+        loadTrail({ anon_id: r.anon_id, device: r.device, segment: r.segment }, 'inbox');
+      });
+      trace.appendChild(b);
+    } else {
+      trace.appendChild(el('span', 'none', 'No device id — submitted before the join key shipped (2026-09-14).'));
+    }
+    node.appendChild(trace);
     return node;
   }
 
@@ -247,7 +266,7 @@
     view: 'inbox',
     rows: [], done: false, loading: false, summary: null,
     devices: [], synthetic: false,
-    trail: null, trailFor: null, trailMeta: null
+    trail: null, trailFor: null, trailMeta: null, trailFrom: 'devices'
   };
 
   function tabs() {
@@ -419,17 +438,27 @@
     main.replaceChildren();
 
     var bar = el('div', 'bar');
-    var back = el('button', null, '← Devices');
-    back.addEventListener('click', function () { state.view = 'devices'; renderDevices(); });
+    var fromInbox = state.trailFrom === 'inbox';
+    var back = el('button', null, fromInbox ? '← Feedback' : '← Devices');
+    back.addEventListener('click', function () {
+      if (fromInbox) { state.view = 'inbox'; renderInbox(); }
+      else { state.view = 'devices'; renderDevices(); }
+    });
     bar.appendChild(back);
     main.appendChild(bar);
 
+    /* A card from the Devices tab carries the full roll-up; a feedback row carries only what the
+       inbox returns. Print what is actually known rather than "undefined visits". */
     var d = state.trailMeta;
     if (d) {
-      main.appendChild(el('p', 'note',
-        d.device + ' · ' + d.visits + ' visit' + (d.visits === 1 ? '' : 's') + ' over ' + d.days + ' day'
-        + (d.days === 1 ? '' : 's') + ' · ' + (d.segment === 'insider' ? 'insider' : 'public')
-        + (d.setup ? ' · finished setup' : '') + (d.signed_in ? ' · signed in' : ' · never signed in')));
+      var bits = [d.device || 'unknown device'];
+      if (typeof d.visits === 'number') {
+        bits.push(d.visits + ' visit' + (d.visits === 1 ? '' : 's') + ' over ' + d.days + ' day' + (d.days === 1 ? '' : 's'));
+      }
+      bits.push(d.segment === 'insider' ? 'insider' : 'public');
+      if (d.setup) bits.push('finished setup');
+      if (typeof d.signed_in === 'boolean') bits.push(d.signed_in ? 'signed in' : 'never signed in');
+      main.appendChild(el('p', 'note', bits.join(' · ')));
     }
 
     var evs = state.trail || [];
@@ -465,11 +494,12 @@
     });
   }
 
-  function loadTrail(d) {
+  function loadTrail(d, from) {
     if (!supabase || state.loading) return;
     state.loading = true;
     state.trailFor = d.anon_id;
     state.trailMeta = d;
+    state.trailFrom = from || 'devices';
     withTimeout(supabase.rpc('ops_device', { p_anon_id: d.anon_id, p_limit: 500 }), 10000, 'ops query')
       .then(function (got) {
         state.loading = false;

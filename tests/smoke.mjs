@@ -11,7 +11,7 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmSync, existsSync, readFileSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1515,6 +1515,86 @@ const run = async () => {
     const realUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1';
     ok('synthetic: it does not match a real iPhone user agent from the events table',
       !likes.every((l) => realUA.includes(l)));
+  }
+
+  /* ---- 14. the feedback row links to that device's trail (migration 007) ----------------
+     005 put anon_id on `feedback`, 006 built the trail, and the inbox sat between them without
+     the join key — the console could show what a nurse SAID and, separately, what some device
+     DID, with no way across. This drives the real render logic against a stubbed client: the
+     signed-out gate (§7) means the page never reaches row() otherwise, and an assertion that
+     can never fire is not an assertion. The stub lives in a THIRD scratch copy; ops.html in the
+     working tree is never touched. */
+  if (want(14)) {
+    const opsSrc = readFileSync(join(SCRATCH, 'ops.html'), 'utf8');
+    const CREATE = /var supabase = \(window\.supabase && window\.supabase\.createClient\)[\s\S]*?: null;/;
+    if (!CREATE.test(opsSrc)) throw new Error('ops.html client construction moved — the §14 stub is stale');
+
+    const ROWS = [
+      { id: 'aaaaaaaa-0000-4000-8000-000000000001', created_at: new Date().toISOString(), kind: 'broken',
+        message: 'nothing to click', contact: null, signed_in: false, segment: 'public',
+        device: 'iPhone', anon_id: 'dev-with-a-trail' },
+      { id: 'aaaaaaaa-0000-4000-8000-000000000002', created_at: new Date().toISOString(), kind: null,
+        message: 'an older report', contact: null, signed_in: true, segment: 'public',
+        device: 'iPhone', anon_id: null },
+    ];
+    const TRAIL = [
+      { session_no: 1, created_at: '2026-09-15T10:00:00Z', name: 'app_open', props: null, signed_in: false },
+      { session_no: 1, created_at: '2026-09-15T10:00:20Z', name: 'session_end',
+        props: { secs: 20, last: 'app_open', n: 1, setup: false, shifts: 0, ob: 0 }, signed_in: false },
+      { session_no: 2, created_at: '2026-09-16T09:00:00Z', name: 'app_open', props: null, signed_in: false },
+    ];
+    const stub = opsSrc.replace(CREATE, `var supabase = {
+      auth: { getSession: function () { return Promise.resolve({ data: { session: { user: { id: 'x' } } } }); } },
+      rpc: function (name, args) {
+        if (name === 'ops_feedback_summary') return Promise.resolve({ data: { total: 2, last_7d: 2, last_24h: 1 } });
+        if (name === 'ops_feedback_inbox') return Promise.resolve({ data: ${JSON.stringify(ROWS)} });
+        if (name === 'ops_device') return Promise.resolve({ data: ${JSON.stringify(TRAIL)}, args: args });
+        if (name === 'ops_device_list') return Promise.resolve({ data: [] });
+        return Promise.resolve({ data: [] });
+      }
+    };`);
+    writeFileSync(join(SCRATCH, 'ops-stub.html'), stub);
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(url + '/ops-stub.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.row', { timeout: 15000 });
+
+    ok('inbox: a report with a device id offers the trail link',
+      (await page.locator('.row .trace button').count()) === 1,
+      `${await page.locator('.row .trace button').count()} buttons for 2 rows`);
+    const none = await page.locator('.row .trace .none').first().innerText();
+    ok('inbox: a pre-2026-09-14 report says why it has no link, rather than showing a dead one',
+      /before the join key shipped/i.test(none), JSON.stringify(none));
+
+    await page.locator('.row .trace button').first().click();
+    await page.waitForSelector('.sess', { timeout: 15000 });
+    ok('trail: tapping through renders the visits for that device',
+      (await page.locator('.sess').count()) === 2, `${await page.locator('.sess').count()} visits`);
+    /* The header must not print "undefined visits": an inbox row carries thinner metadata than a
+       Devices card, and this is the exact seam where that shows up. */
+    const head = await page.locator('.note').first().innerText();
+    ok('trail: the header prints only what the inbox row actually knows',
+      !/undefined|NaN/.test(head), JSON.stringify(head));
+    ok('trail: session_end renders with its exit props', /secs=20/.test(await page.locator('.sess').first().innerText()));
+
+    /* Back must return to where you came from, not always to Devices. Wait for ANY destination to
+       paint, not for `.row` specifically: a hard waitForSelector on the right answer turns a wrong
+       destination into a thrown timeout that kills the run, and an aborted run is not a failed
+       assertion — it just stops printing. Confirmed by negative test: with back wired to Devices,
+       this reports FAIL instead of taking the rest of the section down with it. */
+    await page.locator('.bar button').first().click();
+    await page.waitForFunction(
+      () => !!document.querySelector('.row, .dev, .empty'), null, { timeout: 15000 }
+    ).catch(() => {});
+    const backRows = await page.locator('.row').count();
+    ok('trail: back from a feedback-sourced trail returns to the inbox', backRows === 2,
+      `${backRows} feedback rows after back`);
+
+    ok('ops: the trail path raises no page error', errors.length === 0, errors[0] || '');
+    await ctx.close();
   }
 
   await browser.close();

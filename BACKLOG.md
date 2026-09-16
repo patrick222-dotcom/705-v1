@@ -588,6 +588,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-16 (dedicated session, same PR #111) — **the feedback inbox links to the device trail**
+  (migration 007). 005 put `anon_id` on `feedback` and 006 built the trail; the inbox sat between
+  them returning eight columns, none of them the join key, so the console could show what a nurse
+  SAID and separately what some device DID with no way across. `ops_feedback_inbox()` now returns
+  `anon_id` and each row carries a *See what this device did* control; a row from before 2026-09-14
+  says why it has none rather than offering a dead button, and Back returns to whichever tab you
+  came from. Needed a DROP and recreate — Postgres cannot add an OUT column with CREATE OR REPLACE
+  — with the grants and the `anon` denial re-probed after (42501 over the real REST API with the
+  public anon key). 7 new negative-tested assertions in `tests/smoke.mjs` §14, driven against a
+  stubbed client in a third scratch copy because the signed-out gate means the page never reaches
+  `row()` otherwise. One of those assertions was hardened mid-review: its first form used a hard
+  `waitForSelector` on the right answer, so a wrong destination threw a timeout and killed the
+  section instead of reporting FAIL — an aborted run is not a failed assertion.
 - 2026-09-16 (dedicated session — live-dashboard insight, PR pending) — **the ops console can now
   show every touch point for one device, where it stopped, and whether it came back and stopped
   again.** Four parts. (1) **`session_end`**, the exit row: every other event says something
