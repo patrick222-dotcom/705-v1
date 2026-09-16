@@ -23,14 +23,14 @@ documented last-writer-wins design.
 |---|---|---|---|---|
 | wage-math | 6 | 0 | 9 | 4 |
 | security | 9 | 0 | 6 | 2 |
-| mobile-ux | 11 | 0 | 3 | 4 |
+| mobile-ux | 11 | 0 | 3 | 3 |
 | accessibility | 25 | 0 | 2 | 2 |
-| performance | 2 | 2 | 1 | 5 |
+| performance | 2 | 2 | 1 | 4 |
 | data-integrity | 1 | 6 | 0 | 5 |
-| code-quality | 17 | 6 | 8 | 3 |
+| code-quality | 17 | 6 | 8 | 4 |
 | product-design | 8 | 0 | 1 | 3 |
 | privacy-telemetry | 3 | 0 | 0 | 4 |
-| cross-surface | 3 | 0 | 4 | 3 |
+| cross-surface | 3 | 0 | 4 | 4 |
 
 Every lens is below the 8 bar. Read the scores as "how much verified work is queued", not as a
 verdict on the wage math: no confirmed finding shows `shiftGross` or `computeNet` producing a
