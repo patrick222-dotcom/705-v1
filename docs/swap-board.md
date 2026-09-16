@@ -49,6 +49,18 @@ revoking EXECUTE.
 
 ## Audit log
 
+**2026-09-16 — correction, from the 2026-09-13 council (`security-00`, critical).** The 07-30 audit below
+proved `author` can't be selected; it never tried rebuilding `poster_key`, and it can be rebuilt.
+`authenticated` holds SELECT on `swap_members(user_id)` and `swap_groups(created_by)` (001:59-69),
+the salt is a constant in a public repo, and md5 is a one-liner: one REST select over a board's
+members plus one loop yields a complete `poster_key → user_id` table, and `created_by` names the
+board's creator outright. The migration comment at 001:157 ("Not reversible") is wrong. Two more
+verified holes: `propose_swap` never checks the caller is a party (`security-01`) and the raw
+"parties decline matches" UPDATE policy bypasses `decline_swap_match` (`security-02`). The fix and
+its order are in `BACKLOG.md` → "Swap-board + infra hardening session"; the two new audit probes
+(member selects `user_id` / `created_by` → denied) belong in the ported `rls_audit.js`. Until then,
+read every "anonymous" below as "pseudonymous to a lazy colleague".
+
 **2026-07-30 — adversarial RLS/anonymity audit, 29/29.** Script `rls_audit.js` (session scratchpad,
 never committed) minted throwaway confirmed users via the admin API and exercised the live DB with
 real user JWTs. Verified: `author` ungrantable; `swap_board` leaks no author, correct `is_mine`,

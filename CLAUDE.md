@@ -19,7 +19,8 @@ hosts an anonymous shift-swap board.
   automated, **fixes are still applied serially by the orchestrator** (workflow scripts have no
   filesystem access, and parallel edits to one 5,800-line file would conflict anyway), so the
   "automated fix→re-review" half of this goal is genuinely unmet.
-  Council history lives in `docs/history.md`.
+  Council history lives in `docs/history.md`; the latest full run (2026-09-13 → 16: 56 cells, 85
+  confirmed, three doc claims disproved) is in `docs/council-runs/2026-09-13/`.
 
 ## Where things are
 
@@ -116,12 +117,22 @@ the 47-day outage it exists to catch.
    wage figure downstream of them. **Verify** `check_build.mjs` asserts both halves; there is no
    round-trip test — a known gap.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
-   function. It is the swap board's anonymity model, not a string.
+   function. It is the swap board's anonymity model, not a string — **and, as of 2026-09-13, a
+   known-broken one** (`security-00`, critical): the hash's other inputs are readable by any
+   `authenticated` member (`swap_members.user_id`, `swap_groups.created_by`) and the salt is a
+   constant in a public repo, so one select plus md5 maps every key on a board to a uuid. The
+   invariant still holds — rotating the salt breaks the reveal linkage without fixing the leak; the
+   fix is the hardening session in `BACKLOG.md` (revoke the grants, then a per-group secret read
+   inside `swap_board()`).
    ↳ **Detect** none, and nothing in this repo *can* see it — the salt lives in the deployed Postgres
-   function, not in `index.html`, so `check_build.mjs` is blind to it by construction. **Blast**
+   function, not in `index.html`, so `check_build.mjs` is blind to it by construction; the
+   reversibility was found by a council lens reading the grants, not by any probe. **Blast**
    rotating it re-derives every `poster_key`, silently breaking the identity linkage the reveal step
-   depends on and changing the anonymity model with no visible error. **Verify** the swap-UI standard
-   in `docs/swap-board.md`; `rls_audit.js` — **not in git**, so currently unreproducible.
+   depends on and changing the anonymity model with no visible error; leaving it as is leaves every
+   board pseudonymous to a lazy colleague and transparent to a curious one. **Verify** the swap-UI
+   standard in `docs/swap-board.md`; `rls_audit.js` — **not in git**, so currently unreproducible —
+   and when it is ported, two new probes: as a member, selecting `user_id` from `swap_members` and
+   `created_by` from `swap_groups` must both be denied.
 8. **The publish set is load-bearing** (`cp … _site/` in `deploy.yml`): `index.html`,
    `pdf.worker.min.js`, `privacy.html`, `ops.html`, `CNAME`. Pages reads the custom domain from `CNAME` in the
    deployed artifact, so a deploy without it knocks the site off badgebudget.com. `privacy.html`
@@ -266,8 +277,12 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   The email path has no navigation and tracks inline. Read the wall:
   `select props->>'method' m, count(*) attempts from public.events where name='sign_in_attempted'
   group by 1;` against `signed_in`.
-- **Auth.** Supabase email/password + Google OAuth (PKCE; `redirectTo` = `origin + pathname`, so the
-  domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
+- **Auth.** Supabase email/password + Google OAuth (**implicit flow, not PKCE** — this file said PKCE
+  until 2026-09-16; the council proved otherwise (`security-11`): `createClient(url,key)` takes
+  supabase-js 2.45.4's default `flowType:'implicit'`, so tokens land in the URL fragment and the
+  post-load `hash=''` leaves that URL one Back-press away. Switching is one line plus a real-phone
+  verification with a never-signed-in account — `BACKLOG.md` → Needs a dedicated session.
+  `redirectTo` = `origin + pathname`, so the domain move needed no code change). Site URL `https://badgebudget.com/`; the allow list also keeps
   `www.` and the github.io URL so in-flight links resolve. Google's consent screen still shows
   `mnnlgcxnvodjwlhhiphq.supabase.co` — unfixable without a paid Supabase custom domain. **Branding
   and publishing were done 2026-09-07:** app name `BadgeBudget`, homepage and privacy-policy links to
@@ -289,8 +304,12 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   proves nothing — it was already on the test-user list and would have worked before publishing.
 - **Swap board.** Invite-code unit groups, anonymous posts, client-computed
   pickup/handoff/trade/3-cycle suggestions, names revealed only after every leg accepts. Anonymity is
-  enforced in Postgres (column grants + security-definer RPCs) and was audited adversarially
-  (29/29 + 5/5, 2026-07-30). Invite links `https://badgebudget.com/?join=CODE` go through the native
+  *meant* to be enforced in Postgres (column grants + security-definer RPCs); the 2026-07-30 audit
+  (29/29 + 5/5) proved `author` can't be selected but never tried rebuilding the key, and it can be
+  rebuilt — see Invariant 7 and `security-00` (2026-09-13). Two more verified holes sit beside it:
+  `propose_swap` never checks the caller is a party to the match (`security-01`) and a raw UPDATE
+  policy lets a decline bypass `decline_swap_match` (`security-02`). All three wait on the hardening
+  session in `BACKLOG.md`; until then the in-app "anonymously" copy overstates the board. Invite links `https://badgebudget.com/?join=CODE` go through the native
   share sheet; the recipient always confirms; the code survives the OAuth redirect via a 1h
   localStorage stash. The 🛠️ "not set up yet" screen (`tablesMissing`) is a defensive fallback,
   unreachable in normal operation and not doc-sized to remove. Known gap by design: `poster_key` is
@@ -502,7 +521,10 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   invisible through the API and readable only by `is_ops_admin()` as owner), `ical_subscriptions` (migration 002, applied
   2026-09-02; 4 per-command policies, `anon` unlisted), `swap_profiles`, `swap_groups`, `swap_members`,
   `swap_posts`, `swap_matches`, `swap_match_legs`. One Edge Function: `ical-proxy` (ACTIVE, `verify_jwt`
-  on — an unauthenticated POST is 401, so it is not an open proxy).
+  on — a POST with no token is 401, **but the public anon key from `index.html` passes `verify_jwt`
+  and runs the handler** — live-probed 2026-09-13, `security-08`: 422, not 401 — and `www.google.com`
+  is allowlisted with no path constraint, so until the handler checks `role === 'authenticated'` it
+  is an anonymous relay against free-tier egress; `BACKLOG.md` → hardening session).
 - **MCP.** `.mcp.json` runs `@supabase/mcp-server-supabase` over stdio with `SUPABASE_ACCESS_TOKEN`
   from the environment (uppercase; set in the cloud environment settings, never committed). Network
   policy must allow `api.supabase.com`. Prefer the typed tools (`execute_sql`, `get_advisors`,
