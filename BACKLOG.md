@@ -48,6 +48,23 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Pin the GitHub Actions to SHAs + bump the deprecated Node 20 runtime** (supply-chain hardening;
+  from CLAUDE.md → Open items). `ci.yml` and `deploy.yml` reference actions by floating major tag
+  (`actions/checkout@v4`, `actions/setup-node@v4`, the Pages actions) and `.mcp.json` runs the Supabase
+  server off `@latest` — a compromised tag could run arbitrary code with `SUPABASE_ACCESS_TOKEN` in reach
+  or inject into the deploy. **Why NOT the nightly:** `ci.yml` changes are caught by the PR's own gate, but
+  **`deploy.yml` only runs post-merge, so a bad pin there breaks all future deploys with nothing to catch
+  it in the PR** (Invariant 9-adjacent: deploys stop silently while pushes succeed). Do it in a dedicated
+  session: fetch each action tag's *exact current commit SHA* via the GitHub API, verify each SHA resolves,
+  pin to those (behavior-identical), and treat the `v4→v5` Node-runtime bump as a *separate* step (it's a
+  real behavior change — test the workflows after). Also drop `.mcp.json` off `@latest` to a pinned version.
+- [ ] **Retire the nightly dashboard-artifact republish in favor of `/ops.html`** (owner call). The
+  nightly auto-refresh (owner-approved 2026-09-12) republishes a 2.4MB artifact each run, but `/ops.html`
+  now ships as the *live* ops surface (phase 1, 2026-09-13) and CLAUDE.md → Ops dashboard already raises the
+  open question that the artifact's only remaining edge is "readable without signing in." The manual
+  republish has been deferred several nights running because the batched data barely moves and the round-trip
+  is disproportionate. Decide: keep it (and actually run it), fold "readable without login" into ops.html, or
+  formally drop the nightly artifact step from CLAUDE.md so it stops reading as skipped upkeep.
 - [x] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero**~~
   — **SHIPPED 2026-09-14** (owner authorized Courtney's request; see Done log). `onMonthScroll` neutered so
   the hero stays on the period set by open/‹›/chip/Today; open-to-current already worked via `landCurrent`.
@@ -451,6 +468,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-16 (nightly, groom-only) — **No app ship — nothing low-risk + drivable left in the queue.**
+  Quiet 48h: 0 new feedback, 0 signups, 0 setups, 0 swap events, **0 client_errors** (the recent
+  calendar/swap/`<noscript>` ships introduced no errors). The remaining open work is either design/owner-
+  input (swap critical mass, agent gateway, feedback→email blocked), a bigger test-port (te_swap/rls_audit),
+  or CI supply-chain hardening (pin actions to SHAs) — the last touches `deploy.yml`, which only runs
+  post-merge and so can't be PR-verified, crossing the "never gamble the live deploy pipeline" line for an
+  autonomous run. Filed both the action-pinning and the artifact-vs-ops.html question under Needs a dedicated
+  session rather than forcing a risky build. Groom ran; `groom_seed --apply` clean; gate untouched.
 - 2026-09-15 (nightly) — **`<noscript>` fallback on the home page.** Closes the long-standing open item
   (Google brand verification flagged "home page behind a login page", and a crawler saw one word of body
   text — the whole app is JS-rendered). Added a self-contained `<noscript>` right after `<body>`: heading +
