@@ -48,6 +48,25 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- **CLAUDE.md's "Open PRs" line is stale, and Invariant 11 depends on it** `harness:drivable` — it names
+  only #46. Four are open as of 2026-09-16, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
+  **#70** `claude/siri-inbox`, **#72** `claude/siri-session-b`, **#82** `claude/rust-app-consideration-q78j8b`.
+  Invariant 11 says never delete an open PR head — deleting one closes the PR and loses the work — and
+  its verification is "cross-check `git branch -r` against open PRs". Anyone doing the branch cleanup
+  from CLAUDE.md alone would read three of those four heads as fair game. Fix the line, and while there
+  refresh the "Merged branches to delete" list: 22 remote branches exist, of which the deploy branch and
+  those four heads are protected; the listed eight are a subset of what is actually stale
+  (`ci-ruleset-probe`, `ci-ruleset-probe-revert`, `claude/app-usage-inquiry-iqjzeq`,
+  `claude/badgebudget-architecture-review-fz3hlp`, `claude/brand-bb-lettermark`,
+  `claude/brand-favicon-black`, `claude/capture-core-schema`, `claude/claud-md-cleanup-xn61wa`,
+  `claude/commercialization-scaling-strategy-i1t1du`, `claude/creative-app-brainstorm-u7495n` are not on it).
+  **The branches themselves are harmless** — `deploy.yml` fires only on `main`/`master`/the deploy branch,
+  so a stale branch can never ship, and `ci.yml` pushes only on two named branches, so no Actions minutes
+  burn. The cost is Invariant 10: with no `main` and the deploy branch sitting in a list of 22 near-identical
+  `claude/*` names, branching from the wrong ref gets likelier, and that failure is silent (14 commits
+  reverted once). Note `claude/live-dashboard-insights-r31se3` auto-deleted on merge, so the backlog
+  stops growing from here. Dedicated because it is a doc-accuracy fix whose whole value is being right.
+
 - **Re-baseline the cohorts after the harness contamination** `harness:drivable` — `scripts/dashboard_snapshot.sql:52`
   reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
   "The real users" without any engagement check. Between UA-spoofing bots and the test harness that
