@@ -653,11 +653,13 @@ const Ic = {
 
 /* ---------- supabase ---------- */
 /* Guarded: if the CDN script failed to load, run in localStorage-only mode instead of crashing. */
+/* Named rather than inline since 2026-09-16: the unload telemetry sender below posts to
+   /rest/v1/events with a raw keepalive fetch, and a second copy of the URL or the key is a
+   second thing to get wrong. Same public anon key the page has always shipped. */
+const SUPABASE_URL = 'https://mnnlgcxnvodjwlhhiphq.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA';
 const supabase = (window.supabase && window.supabase.createClient)
-  ? window.supabase.createClient(
-      'https://mnnlgcxnvodjwlhhiphq.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubmxnY3hudm9kandsaGhpcGhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2OTYxMjUsImV4cCI6MjA5ODI3MjEyNX0.U5XtRZTBvicRqeA0Q02wIbJD5-BLOkQplQF11ynklFA'
-    )
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
 /* Bridge to the boot script's ring buffer for failures that are RETURNED rather than thrown
@@ -1795,20 +1797,93 @@ function anonId(){
     return id;
   }catch(_){ return null; }
 }
+/* One row shape, two senders. The unload sender below cannot go through supabase-js, so this
+   exists to stop the two from drifting — a column added to one and not the other breaks the
+   join silently, which is exactly how `feedback` spent two months unjoinable to `events`. */
+function eventRow(name, props, userId){
+  return {
+    name: String(name).slice(0,64),
+    props: props || null,
+    user_id: userId || null,
+    anon_id: anonId(),
+    page: String(location.pathname||'').slice(0,120),
+    user_agent: String(navigator.userAgent||'').slice(0,400)
+  };
+}
+
 /* Fire-and-forget: logs a named event (+ small props). Never blocks the UI or throws.
    Only event names/coarse props are sent — never wage figures or other sensitive data. */
 function track(name, props, userId){
+  /* Before the null-guard, not after: the session shape has to stay truthful even on a device
+     where the supabase CDN never loaded, because that device is one we have never once heard
+     from and the unload sender below does not need supabase-js to report it. */
+  try{ sessionMeta.last = String(name).slice(0,64); sessionMeta.n++; }catch(_){}
   if(!supabase) return;
   try{
-    supabase.from('events').insert({
-      name: String(name).slice(0,64),
-      props: props || null,
-      user_id: userId || null,
-      anon_id: anonId(),
-      page: String(location.pathname||'').slice(0,120),
-      user_agent: String(navigator.userAgent||'').slice(0,400)
-    }).then(({error})=>{ if(error) console.debug('track:', error.message); }, ()=>{});
+    supabase.from('events').insert(eventRow(name, props, userId))
+      .then(({error})=>{ if(error) console.debug('track:', error.message); }, ()=>{});
   }catch(_){}
+}
+
+/* ---------- unload telemetry: the only sender that survives the tab going away ----------
+   supabase-js issues an ordinary fetch, and an ordinary fetch still in flight when the page
+   unloads is cancelled by the browser. That is not a theory — `AbortError: Promise was
+   rejected because the browsing context is going away` is already sitting in production
+   client_error rows. `keepalive` is the documented fix: the request outlives the document.
+
+   Two payloads ride it, and both were previously unreportable for the population that matters:
+
+   · session_end — how the visit actually ENDED. Every other event says something happened;
+     none says what happened last or how long she stayed. For a device whose entire lifetime
+     is one app_open (416 of 424 public devices on 2026-09-16) the trail has one step and no
+     exit, so "where did she give up?" had no answer in the data at all.
+   · client_error — the ring buffer used to flush only on the NEXT load, which meant a device
+     that never came back never reported anything. Every public device to date is a one-visit
+     device, so the error channel was, in practice, dead for everyone but us.
+
+   Both are best-effort by construction. A dropped beacon loses one row; nothing user-facing
+   depends on it, and it must never be allowed to throw inside an unload handler. */
+function beaconInsert(rows){
+  try{
+    if(!rows || !rows.length || typeof fetch !== 'function') return false;
+    fetch(SUPABASE_URL + '/rest/v1/events', {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal'
+      },
+      body: JSON.stringify(rows)
+    }).catch(()=>{});
+    return true;
+  }catch(_){ return false; }
+}
+
+/* What this page load has done so far. Module scope, not React state: the unload handler must
+   be able to read it without a render having happened. */
+const sessionMeta = { t0: Date.now(), last: 'app_open', n: 0, sent: 0, sentN: -1, sentAt: 0 };
+const SESSION_END_MAX = 4;   // hard cap per load — an app-switching phone must not bill the free tier
+
+function endSession(userId, extra){
+  try{
+    if(sessionMeta.sent >= SESSION_END_MAX) return;
+    const now = Date.now();
+    /* Re-fire only when the session actually moved. A phone backgrounded and reopened five
+       times must not write five identical rows; but a nurse who comes back and finally saves
+       a shift must not stay on record as having left before she did, so a changed event count
+       (or a full minute of further use) re-arms it. Read the LAST row for a load, not the first. */
+    if(sessionMeta.sent && sessionMeta.n === sessionMeta.sentN && now - sessionMeta.sentAt < 60000) return;
+    const props = Object.assign({
+      secs: Math.min(Math.max(Math.round((now - sessionMeta.t0)/1000), 0), 86400),
+      last: sessionMeta.last,
+      n: sessionMeta.n
+    }, extra || {});
+    if(ARRIVED_VIA) props.via = ARRIVED_VIA;
+    sessionMeta.sent++; sessionMeta.sentN = sessionMeta.n; sessionMeta.sentAt = now;
+    beaconInsert([eventRow('session_end', props, userId)]);
+  }catch(_){ /* diagnostics must never break the app they diagnose */ }
 }
 
 /* Client errors used to die on the device. The boot script's ring buffer was readable only by
@@ -1860,7 +1935,10 @@ function redactMoney(v){
     .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
     .replace(/\b\d[\d,]*\.\d{2}\b/g, '#.##');
 }
-function flushClientErrors(userId){
+/* `viaBeacon` is the unload path: same batch, same redaction, same read-and-clear discipline,
+   but sent with keepalive so it survives the tab closing. Without it the buffer only ever
+   flushed on the NEXT load, and no public device has ever had a next load. */
+function flushClientErrors(userId, viaBeacon){
   try{
     if(typeof window.__takeErrorLog !== 'function') return;
     const buf = window.__takeErrorLog();
@@ -1873,7 +1951,8 @@ function flushClientErrors(userId){
     }));
     const props = {n: buf.length, errors};
     while(errors.length > 1 && JSON.stringify(props).length > ERR_FLUSH_TEXT_BUDGET) errors.shift();
-    track('client_error', props, userId);
+    if(viaBeacon) beaconInsert([eventRow('client_error', props, userId)]);
+    else track('client_error', props, userId);
   }catch(_){ /* diagnostics must never break the app they diagnose */ }
 }
 
@@ -2623,11 +2702,21 @@ function App(){
      event in between, so there was no way to tell a bounce off the welcome screen from one off
      the rate input. Fires once per furthest step reached: back-navigation and "Edit my setup"
      don't double count, so the numbers read as a funnel rather than as clicks. */
-  const obMax = useRef(0);
-  const goObStep = (n)=>{
+  /* -1, not 0: goObStep(0) compares n > obMax.current, so an initial 0 made the WELCOME step —
+     stage 0 of the funnel this event exists to measure — the one stage that could never fire.
+     Every ob_step row ever recorded starts at 1. Fixed 2026-09-16; step 0 counts from here. */
+  const obMax = useRef(-1);
+  const markObStep = (n)=>{
     if(typeof n === 'number' && n > obMax.current){ obMax.current = n; track('ob_step', {step:n}, null); }
-    setObStep(n);
   };
+  const goObStep = (n)=>{ markObStep(n); setObStep(n); };
+  /* Stage 0 is "she opened it, saw the welcome screen, and left" — the single most common
+     outcome in the data and the one stage the funnel could never see. Nothing calls goObStep(0)
+     on arrival (Onboarding only reports a step when the nurse MOVES), so stage 0 was missing for
+     two independent reasons. Fire it once, when onboarding actually becomes visible — not on
+     mount, because `setupComplete` is still false while the saved blob is loading and a returning
+     nurse would otherwise be counted as a fresh welcome-screen bounce every time she opened it. */
+  useEffect(()=>{ if(ready && !setupComplete) markObStep(0); },[ready,setupComplete]);
 
   const [name,setName] = useState('there');
   const [baseRate,setBaseRate] = useState(65.15);
@@ -2940,6 +3029,20 @@ function App(){
   useEffect(()=>{
     const flush = ()=>{
       const snap = snapshotRef.current;
+      /* The exit row rides the same hide as the data flush — one listener pair, and the only
+         moment at which "how far did she get" is finally knowable. Deliberately BEFORE the
+         `if(!snap) return`: a device that leaves before the app ever hydrates is precisely the
+         abandonment this event exists to catch, and it is the most common one we have. */
+      try{
+        const d = snap && snap.data;
+        const nShifts = (d && d.shifts && typeof d.shifts === 'object')
+          ? Object.keys(d.shifts).reduce((a,k)=>a + ((d.shifts[k]||[]).length||0), 0) : 0;
+        const uid = (snap && snap.user) ? snap.user.id : null;
+        /* A count, never a figure — Invariant: `events` carries no wage or goal amounts. */
+        endSession(uid, { setup: !!(d && d.setupComplete), shifts: nShifts,
+                          ob: obMax.current >= 0 ? obMax.current : null });
+        flushClientErrors(uid, true);
+      }catch(_){}
       if(!snap) return;
       if(snap.user){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key

@@ -31,6 +31,42 @@ const MAP = [
   ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js', '@supabase/supabase-js/dist/umd/supabase.js'],
 ];
 
+/* THE SCRATCH COPY MUST NOT REACH THE REAL PROJECT.
+ *
+ * Only the five CDN <script> tags were ever rewritten, which left `createClient(SUPABASE_URL, …)`
+ * pointing at the production Supabase project. In the sandbox that failed silently — there is no
+ * route out — so it read as harmless for months. On a GitHub Actions runner the network is open,
+ * and `ci.yml` runs this suite on every push and pull_request, so every CI run inserted real
+ * `app_open` / `setup_completed` / `shift_saved` rows into production `events`, each one under a
+ * fresh anon_id because each browser context starts with empty localStorage.
+ *
+ * The damage is measurable: of 304 iPhone-user-agent devices on 2026-09-16, 266 had fired exactly
+ * one event and 213 first appeared in the previous four days — all of them carrying Playwright's
+ * iPhone 13 profile string. A test suite was the app's largest "user" by two orders of magnitude.
+ *
+ * `.invalid` is reserved by RFC 2606 and can never resolve. Requests still carry the same
+ * /rest/v1/... paths, so `page.route('**\/rest/v1/feedback*')` interception — which is how the
+ * anon_id assertion actually works — is unaffected. */
+const REAL_SUPABASE_HOST = 'https://mnnlgcxnvodjwlhhiphq.supabase.co';
+const NEUTRAL_SUPABASE_HOST = 'https://harness-must-never-write.invalid';
+
+function neutralizeSupabase(html, what) {
+  if (!html.includes(REAL_SUPABASE_HOST)) {
+    throw new Error(`${what}: Supabase host not found — the harness can no longer prove it is offline`);
+  }
+  if (!/connect-src /.test(html)) {
+    throw new Error(`${what}: no connect-src in the meta CSP — the rewrite below would silently no-op`);
+  }
+  /* The meta CSP names *.supabase.co, so swapping the host alone gets every telemetry request
+     killed by CSP before it reaches the network — which also means before Playwright can
+     intercept it, so an assertion on what the app SENDS can never fire. Widen connect-src by
+     exactly this one unresolvable host, in the scratch copy only. Every real origin the CSP
+     allows is left exactly as it ships. */
+  return html
+    .split(REAL_SUPABASE_HOST).join(NEUTRAL_SUPABASE_HOST)
+    .split('connect-src ').join(`connect-src ${NEUTRAL_SUPABASE_HOST} `);
+}
+
 /* Dev React surfaces warnings production silences — missing keys, controlled/uncontrolled flips,
    setState on unmounted. Those are real defects that never raise a pageerror. */
 const DEV_SWAP = [
@@ -59,6 +95,8 @@ export function buildScratch(root, outDir, { dev = false } = {}) {
   const n = (html.match(/\/node_modules\//g) || []).length;
   if (n < MAP.length) throw new Error(`expected ${MAP.length} rewritten scripts, got ${n}`);
 
+  html = neutralizeSupabase(html, 'index.html');
+
   writeFileSync(join(outDir, 'index.html'), html);
   /* The app loads the pdf.js worker same-origin from the publish set. Without it here the
      paystub path silently degrades and every import test fails for the wrong reason. */
@@ -77,6 +115,7 @@ export function buildOpsScratch(root, outDir) {
   html = html.replace(cdn, `/node_modules/${local}`)
     .replace(/\s+integrity="sha384-[^"]*"/g, '')
     .replace(/\s+crossorigin="[^"]*"/g, '');
+  html = neutralizeSupabase(html, 'ops.html');
   /* The meta CSP names the real CDN host; the local path is same-origin, which 'self' already
      covers, so nothing else needs rewriting for the page to run under the harness. */
   writeFileSync(join(outDir, 'ops.html'), html);
@@ -108,7 +147,10 @@ export function serve(root, scratchDir) {
 /* The sandbox has no route to Supabase or the fonts CDN. Those failures are expected and must not
    be counted as defects; anything else is a real finding. */
 export const EXPECTED_NETWORK = [
-  'supabase.co', 'fonts.googleapis.com', 'fonts.gstatic.com', 'ERR_CONNECTION_RESET',
+  /* 'supabase.co' stays for a scratch copy built before the neutralisation above; the .invalid
+     host is what a current build actually fails against. */
+  'supabase.co', 'harness-must-never-write.invalid',
+  'fonts.googleapis.com', 'fonts.gstatic.com', 'ERR_CONNECTION_RESET',
   'ERR_NAME_NOT_RESOLVED', 'ERR_INTERNET_DISCONNECTED', 'ERR_CONNECTION_REFUSED', 'ERR_BLOCKED_BY_CLIENT',
 ];
 export const isExpectedNetwork = (s) => EXPECTED_NETWORK.some((x) => String(s).includes(x));

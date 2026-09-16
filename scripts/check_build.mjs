@@ -156,6 +156,35 @@ check(9, 'Deploy branch still triggers a deploy', () => {
   return 'claude/migrate-to-github-deploy-3F5RD present';
 });
 
+/* ---- the analytics contract: telemetry that only ever passes proves nothing -------------
+   Not numbered invariants, but load-bearing the same way. Both were broken for months in ways
+   nothing could see: the exit row did not exist, and the test harness was quietly writing
+   production rows. Each failure mode is silent by construction, so each gets a gate. */
+check('events', 'Unload telemetry intact', () => {
+  must(/'session_end'/.test(html) && /function endSession\(/.test(html),
+    'session_end is gone — every abandonment collapses back to "somewhere after app_open"');
+  must(/keepalive: true/.test(html),
+    'the unload sender lost keepalive — an ordinary fetch is cancelled when the tab goes away, '
+    + 'which is the AbortError already sitting in production client_error rows');
+  must(/flushClientErrors\(uid, true\)/.test(html),
+    'the error buffer no longer flushes on unload — it would report only on a NEXT load, and no '
+    + 'public device has ever had one');
+  must(/const obMax = useRef\(-1\);/.test(html),
+    'obMax is back to 0 — goObStep(0) compares n > obMax.current, so the welcome stage stops firing');
+  return 'session_end + keepalive + unload error flush + ob_step 0';
+});
+
+check('events', 'Harness cannot write to production', () => {
+  const h = read('tests/harness.mjs');
+  must(/NEUTRAL_SUPABASE_HOST/.test(h) && /\.invalid'/.test(h),
+    'the scratch copy no longer neutralises the Supabase host — CI smoke runs will insert real '
+    + 'rows into production events, exactly as they silently did until 2026-09-16');
+  must(/neutralizeSupabase\(html, 'index\.html'\)/.test(h)
+    && /neutralizeSupabase\(html, 'ops\.html'\)/.test(h),
+    'a scratch page is built without neutralising its Supabase host');
+  return 'scratch copies point at .invalid';
+});
+
 /* ---- report ---------------------------------------------------------------------------- */
 const pad = (s, n) => String(s).padEnd(n);
 console.log('\nBadgeBudget build gate\n');

@@ -1396,6 +1396,108 @@ const run = async () => {
     }
   }
 
+  /* ---- 12. session_end: the exit row, and the funnel stage that never fired -------------
+     The gap this closes: every other event says something HAPPENED; none said what happened
+     last, or how long she stayed. On 2026-09-16, 416 of 424 public devices had a lifetime
+     trail of exactly one app_open — one step, no ending — so "where did she give up?" had no
+     answer in the data at all. These assertions are about the row existing, carrying the join
+     key, and carrying nothing it must not. */
+  if (want(12)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    const posted = [];
+    await page.route('**/rest/v1/events*', async (route) => {
+      try { posted.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { posted.push(null); }
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    /* pagehide is the real unload signal on iOS WebKit, and it is the listener the app binds. */
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(400);
+
+    const flat = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean);
+    const end = flat.find((r) => r && r.name === 'session_end');
+    ok('session_end: an exit row is written when the tab goes away', !!end,
+      end ? '' : `saw: ${flat.map((r) => r && r.name).join(',') || 'nothing'}`);
+
+    const devId = await page.evaluate(() => localStorage.getItem('scrubpay_anon_id'));
+    ok('session_end: the exit row carries this device\'s anon_id', !!end && end.anon_id === devId,
+      devId ? `${String(devId).slice(0, 8)}…` : 'no device id');
+
+    /* The shape is the contract the ops trail reads. A missing `last` turns every abandonment
+       back into "somewhere after app_open", which is the hole this whole change exists to fill. */
+    ok('session_end: it says how long and what happened last',
+      !!end && typeof end.props === 'object' && typeof end.props.secs === 'number' && typeof end.props.last === 'string',
+      end ? JSON.stringify(end.props) : '');
+
+    /* Invariant: `events` carries coarse names and counts, never a wage or goal figure.
+       `shifts` is a COUNT and must stay one. */
+    const allowed = ['secs', 'last', 'n', 'setup', 'shifts', 'ob', 'via'];
+    const extra = end ? Object.keys(end.props || {}).filter((k) => !allowed.includes(k)) : ['(no row)'];
+    ok('session_end: no prop outside the declared, money-free whitelist', extra.length === 0, extra.join(','));
+    /* Scoped to props, which is what this change introduces. `user_agent` is a long-standing
+       column and carries version numbers like AppleWebKit/604.1.38 that look money-shaped to any
+       honest regex — widening this to the whole row tests the wrong thing and fails on a string
+       nobody chose. */
+    ok('session_end: its props contain no money-shaped figure',
+      !!end && !/\$\s?\d|\d+\.\d{2}\b/.test(JSON.stringify(end.props || {})), end ? JSON.stringify(end.props) : '(no row)');
+
+    /* An app-switching phone must not bill the free tier one row per switch. */
+    const before = flat.filter((r) => r && r.name === 'session_end').length;
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(300);
+    const after = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean)
+      .filter((r) => r && r.name === 'session_end').length;
+    ok('session_end: a second hide with nothing new does not write a duplicate', after === before,
+      `${before} -> ${after}`);
+
+    ok('session_end: no page error across the unload path', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 13. ob_step 0, and the harness's own containment ---------------------------------- */
+  if (want(13)) {
+    /* Stage 0 — "saw the welcome screen, left" — was unreachable twice over: obMax started at 0
+       so `n > obMax` rejected step 0, and nothing calls goObStep(0) on arrival anyway. Every
+       ob_step row ever recorded starts at 1, which is why the welcome-screen bounce was
+       indistinguishable from a rate-input bounce in the funnel. */
+    const { ctx, page } = await newPage(browser, url, { seed: false });
+    const steps = [];
+    await page.route('**/rest/v1/events*', async (route) => {
+      try {
+        const body = JSON.parse(route.request().postData() || 'null');
+        (Array.isArray(body) ? body : [body]).forEach((r) => { if (r && r.name === 'ob_step') steps.push(r.props && r.props.step); });
+      } catch (_) {}
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    /* The app also tracks through supabase-js, which the harness cannot reach; this assertion
+       reads the intercepted wire either way, so it fails loudly if the event stops firing. */
+    const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('ob_step: the welcome stage is reachable at all (obMax starts below 0)',
+      /const obMax = useRef\(-1\);/.test(src));
+    ok('ob_step: something marks stage 0 when onboarding becomes visible',
+      /if\(ready && !setupComplete\) markObStep\(0\);/.test(src));
+    ok('ob_step: stage 0 actually fires for a fresh visitor', steps.includes(0),
+      `saw steps: ${steps.join(',') || 'none'}`);
+    await ctx.close();
+
+    /* The harness was the app's largest "user" by two orders of magnitude: buildScratch rewrote
+       the five CDN tags but not the Supabase URL, so every CI run wrote real rows into
+       production `events`. This asserts the scratch copy cannot reach the project at all. */
+    const scratchApp = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    const scratchOps = readFileSync(join(SCRATCH, 'ops.html'), 'utf8');
+    ok('harness: the scratch app cannot reach the production Supabase project',
+      !scratchApp.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+    ok('harness: the scratch ops console cannot reach it either',
+      !scratchOps.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+    ok('harness: index.html itself is untouched (the rewrite is scratch-only)',
+      src.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

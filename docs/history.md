@@ -4,6 +4,60 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-09-16 — the test harness was the app's largest user, and abandonment had no exit row
+
+Two findings from a review of the live console, both of the same kind: a measurement that had
+looked fine for months because the thing it was wrong about was invisible.
+
+**The harness was writing to production analytics.** `tests/harness.mjs` rewrote the five CDN
+`<script>` tags and stripped SRI in the scratch copy, but never touched `SUPABASE_URL`, so
+`createClient` still pointed at `mnnlgcxnvodjwlhhiphq`. In the sandbox that failed silently — there
+is no route out, and `supabase.co` was in the harness's own expected-failure list, which is exactly
+the assumption that made it invisible. On a GitHub Actions runner the network is open and `ci.yml`
+runs `smoke` on every push and pull_request, so each run inserted real `app_open` /
+`setup_completed` / `shift_saved` rows under a fresh `anon_id` (a new browser context starts with
+empty localStorage). The fingerprint is unmistakable once looked for: `app_open` rows 2–3 seconds
+apart in bursts of three, every one carrying Playwright's iPhone 13 profile string
+`AppleWebKit/604.1.38`. Of 304 iPhone-UA devices, **266 had fired exactly one event and 213 first
+appeared in the previous four days** — the council run and its PR churn.
+
+It compounded with a second defect. `scripts/dashboard_snapshot.sql:52` reads
+`case when is_mobile then 'mobile'`, so a user agent *claiming* to be a phone is classified as, in
+the file's own comment, "The real users" — the engagement check is short-circuited entirely. A test
+suite therefore appeared in the dashboard as the audience. Contained by pointing the scratch copies
+at an RFC 2606 `.invalid` host (and widening the scratch CSP by that one host, or the requests die
+before Playwright can intercept them, which would have made the new assertions unfireable).
+Historical rows are flagged `synthetic`, not deleted. **The classifier is not yet fixed and every
+activation figure computed since 2026-09-07 is inflated** — re-baselining is queued.
+
+The honest cut, insiders removed via `ops_admins`: **425 public devices ever, 4 completed setup, 5
+saved a shift, 1 signed in, 26 ever fired anything past `app_open` — and all 26 have `days = 1`.**
+Zero second-day returns, lifetime.
+
+**Abandonment had no exit row.** Every event said something *happened*; none said what happened
+**last**, or how long she stayed. For a device whose entire lifetime was one `app_open` — 416 of
+424 public devices — the trail had one step and no ending, so "where did she give up?" was not a
+hard question, it was an unanswerable one. `session_end` is that exit, fired from
+`pagehide`/`visibilitychange` through `fetch(..., {keepalive:true})` because supabase-js issues an
+ordinary fetch and an ordinary fetch at unload is cancelled — the `AbortError: … browsing context
+is going away` already in `client_error` rows was the evidence sitting in plain sight. The same
+sender now flushes the error ring buffer on unload, which is what makes that channel exist for the
+public at all: it previously flushed only on the *next* load, and every public device is a
+one-visit device, so all 13 `client_error` rows ever recorded came from 4 insider devices.
+
+**And the funnel's first stage had never fired.** `obMax` was seeded at `0` and `goObStep` compares
+`n > obMax.current`, so step 0 was rejected; and nothing called `goObStep(0)` on arrival anyway,
+because Onboarding only reports a step when the nurse *moves*. Two independent reasons, both
+silent. Every historical `ob_step` row starts at 1. The welcome-screen bounce — the most common
+outcome in the data — was the one stage the event existed to measure and the only one it could not
+see.
+
+Shipped alongside: migration 006 (`ops_device_list()`, `ops_device()`) and the ops console's
+**Devices** tab, which is the surface that finally answers the original question — every touch
+point for one device, where it stopped, and whether the same device came back and stopped again,
+split into numbered visits by a 30-minute gap. Design record: `docs/ops-console-scope.md` → *Phase
+3b, as built*.
+
 ## 2026-09-16 — the council ran, in batches: 85 confirmed, 14 rejected, every lens below 8
 
 The first full development council since 2026-07-30, and the first run of the committed workflow.

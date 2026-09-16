@@ -48,6 +48,14 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- **Re-baseline the cohorts after the harness contamination** `harness:drivable` — `scripts/dashboard_snapshot.sql:52`
+  reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
+  "The real users" without any engagement check. Between UA-spoofing bots and the test harness that
+  wrote to production `events` until 2026-09-16, that inflated every activation figure computed since
+  2026-09-07. Fix the classifier (require engagement, exclude `AppleWebKit/604.1.38`), then restate the
+  numbers in CLAUDE.md and `docs/history.md` rather than leaving two sets in circulation. Dedicated
+  because it rewrites published figures and wants a human to agree the new ones are the honest ones.
+
 - [ ] **Wage-core session — council 2026-09-13 bucket 3 (NEVER auto-applies; `/wage-core` protocol)** —
   `harness:drivable`. Every item here changes a displayed dollar figure or an Invariant-3 coercion; none
   is nightly work however small the diff. One session: baseline probes, one new assertion per change, then
@@ -579,6 +587,31 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-16 (dedicated session — live-dashboard insight, PR pending) — **the ops console can now
+  show every touch point for one device, where it stopped, and whether it came back and stopped
+  again.** Four parts. (1) **`session_end`**, the exit row: every other event says something
+  happened, none said what happened *last* or how long she stayed, so a device whose whole lifetime
+  was one `app_open` — 416 of 424 public devices — had a trail with one step and no ending. Fired
+  from `pagehide`/`visibilitychange` through `fetch(...,{keepalive:true})`, because supabase-js
+  issues a plain fetch and a plain fetch at unload is cancelled (that is the `AbortError` already in
+  `client_error` rows). Props `{secs,last,n,setup,shifts,ob,via?}`, a COUNT never an amount, capped
+  at 4 rows per load. The same sender now flushes the **error ring buffer on unload** — it only ever
+  flushed on the *next* load, and no public device has ever had one, which is why all 13
+  `client_error` rows to date came from 4 insider devices. (2) **migration 006** —
+  `ops_device_list()` and `ops_device()`, admin-gated exactly as 004, probed 6/6 including over the
+  real REST API with the public anon key; `events`/`feedback` keep zero select policies. Trails are
+  split into numbered visits by a 30-minute gap. (3) **`ops.html` Devices tab** + trail view, still
+  no framework and no `innerHTML`. (4) **`ob_step` stage 0 fixed** — `obMax` was seeded at `0` so
+  `n > obMax.current` rejected step 0, *and* nothing called `goObStep(0)` on arrival, so the
+  welcome-screen bounce was the one stage the funnel existed to measure and could not see; every
+  historical row starts at 1. **Also contained the harness**: `buildScratch` rewrote the five CDN
+  tags but never `SUPABASE_URL`, so every CI run on a GitHub runner wrote real rows into production
+  `events` — 266 of 304 iPhone-UA devices were one-event harness runs, 213 from four days. Scratch
+  copies now point at an RFC 2606 `.invalid` host (with the scratch CSP widened to match, or the
+  requests die before Playwright can intercept them). Gates: 2 new `check_build.mjs` checks, 13 new
+  `tests/smoke.mjs` assertions (§12–13), **every one negative-tested**. Still open, deliberately:
+  `dashboard_snapshot.sql:52` still classifies any iPhone UA as a real user, so activation figures
+  since 2026-09-07 remain inflated — re-baseline is its own item.
 - 2026-09-16 (dedicated session — the council's bucket 1, PR #101) — **43 confirmed findings applied in
   seven groups, 78 new negative-tested assertions in `tests/smoke.mjs` §11.** (1) `.hero` class leak on the
   two footer links, ShareSheet in the scroll lock, Enter on the first-run board inputs. (2) one
