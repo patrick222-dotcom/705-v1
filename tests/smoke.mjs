@@ -670,6 +670,164 @@ const run = async () => {
         errors.filter((e) => !isExpectedNetwork(e))[0] || '');
       await ctx.close();
     }
+
+    /* accessibility-00/-02/-03/-05/-06/-08/-09/-10/-11/-12/-14/-16/-18/-19/-21/-22/-23/-24 and the
+       Escape halves of -13/-25/-26 (#32-#34, #36 partial): the a11y pass. Dialog semantics and
+       Escape are asserted by opening each sheet for real; the one Escape handler is a stack, so a
+       confirm dialog on top of Settings is closed by Escape while Settings stays -- proven, not
+       assumed. Colours are read back from the stylesheet with getComputedStyle. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+      const today = new Date(); const tk = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE, estimateMode: 'rough',
+          shifts: { [tk]: [{ id: 'ot1', shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: true, start: '07:00' }] } }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      const gone = (sel) => page.waitForSelector(sel, { state: 'detached', timeout: 4000 }).then(() => true).catch(() => false);
+      const has = (sel) => page.evaluate((q) => !!document.querySelector(q), sel);
+
+      /* share sheet */
+      await page.locator('button[aria-label="Share BadgeBudget"]').click();
+      await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { timeout: 4000 });
+      ok('a11y: share sheet is a labelled dialog', await has('.sheet[role="dialog"][aria-modal="true"][aria-label="Share BadgeBudget"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the share sheet', await gone('.sheet[aria-label="Share BadgeBudget"]'));
+
+      /* breakdown */
+      await page.locator('.hero button:has-text("See the full breakdown")').click();
+      await page.waitForSelector('.sheet-h .t:text-is("Your paycheck math")', { timeout: 4000 });
+      ok('a11y: breakdown is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Your paycheck math"] .sheet-h button.back[aria-label="Close"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the breakdown', await gone('.modal[aria-label="Your paycheck math"]'));
+
+      /* settings, and the Escape stack under a confirm dialog */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.drow .danger-link', { timeout: 5000 });
+      ok('a11y: Settings is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Settings"] .sheet-h button.back[aria-label="Close"]'));
+      const dels = await page.evaluate(() => [...document.querySelectorAll('.drow .danger-link')].map((b) => b.getAttribute('aria-label') || ''));
+      ok('a11y: every Settings Del button names what it deletes', dels.length >= 2 && dels.every((l) => /^Delete .+ differential$|^Delete .+ goal$/.test(l)) && new Set(dels).size === dels.length, JSON.stringify(dels));
+      ok('a11y: differential name inputs carry an accessible name', await has('.drow input.nm[aria-label="Differential name"]'));
+      const dangerRgb = await page.evaluate(() => getComputedStyle(document.querySelector('.drow .danger-link')).color);
+      ok('a11y: danger red is the darker AA-safe token', dangerRgb === 'rgb(176, 61, 46)', dangerRgb);
+      await page.locator('.drow .danger-link').first().click();
+      await page.waitForSelector('.cdlg', { timeout: 4000 });
+      await page.keyboard.press('Escape');
+      const confirmGone = await gone('.cdlg');
+      const settingsStill = await has('.modal[aria-label="Settings"]');
+      ok('a11y: Escape closes only the confirm dialog on top, Settings stays open', confirmGone && settingsStill, `confirmGone=${confirmGone} settingsStill=${settingsStill}`);
+      await page.keyboard.press('Escape');
+      ok('a11y: a second Escape closes Settings', await gone('.modal[aria-label="Settings"]'));
+
+      /* add-shift sheet: dialog, live region, OT tag colour, Remove names */
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet .preview', { timeout: 5000 });
+      ok('a11y: add-shift sheet is a labelled dialog', await has('.sheet[role="dialog"][aria-modal="true"][aria-label="Add a shift"]'));
+      ok('a11y: add-shift preview is a polite live region', await has('.sheet .preview[aria-live="polite"]'));
+      const ot = await page.evaluate(() => { const t = document.querySelector('.sheet .ot-tag'); return t ? getComputedStyle(t).color : '(no tag)'; });
+      ok('a11y: OT tag uses the AA-safe money-ink colour', ot === 'rgb(11, 93, 60)', ot);
+      const rm = await page.evaluate(() => [...document.querySelectorAll('.sheet .danger-link')].map((b) => b.getAttribute('aria-label') || ''));
+      ok('a11y: Remove buttons name the shift they remove', rm.length >= 1 && rm.every((l) => /^Remove .+ ×\d+h shift$/.test(l)), JSON.stringify(rm));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the add-shift sheet', await gone('.sheet[aria-label="Add a shift"]'));
+
+      /* calendar: view control, today, scroll box */
+      const cal = await page.evaluate(() => ({
+        tablist: !!document.querySelector('.viewseg[role="tablist"], .viewseg [role="tab"]'),
+        pressed: [...document.querySelectorAll('.viewseg button')].map((b) => b.getAttribute('aria-pressed')),
+        today: (document.querySelector('.cell.today') || {}).getAttribute ? document.querySelector('.cell.today').getAttribute('aria-label') : '(no today cell)',
+        tab: (document.querySelector('.cal-vscroll') || {}).getAttribute ? document.querySelector('.cal-vscroll').getAttribute('tabindex') : null }));
+      ok('a11y: the Month/Year control no longer claims a tablist it never implemented', !cal.tablist && cal.pressed.includes('true') && cal.pressed.includes('false'), JSON.stringify(cal.pressed));
+      ok("a11y: today's cell says so in its accessible name", /, today$/.test(cal.today), cal.today);
+      ok('a11y: the month scroll box is keyboard-focusable', cal.tab === '0', `tabindex=${cal.tab}`);
+
+      /* est-banner dismiss hands focus to the hero */
+      await page.locator('.est-banner button:has-text("Got it")').click();
+      await page.waitForSelector('.est-banner', { state: 'detached', timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(80);
+      const focused = await page.evaluate(() => (document.activeElement && document.activeElement.className) || '(body)');
+      ok('a11y: dismissing the estimate banner moves focus to the hero', /\bhero\b/.test(focused), focused);
+
+      /* pattern lab */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.waitForSelector('.sheet-h .t:text-is("Pattern lab")', { timeout: 5000 });
+      ok('a11y: pattern lab is a labelled dialog', await has('.modal[role="dialog"][aria-modal="true"][aria-label="Pattern lab"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the pattern lab from its list', await gone('.modal[aria-label="Pattern lab"]'));
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main').first().click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      ok('a11y: the pattern readout is a polite live region', await has('.modal[aria-label="New pattern"] .pl-money[aria-live="polite"]'));
+      /* A dirty draft must not vanish on a keypress: Escape goes through the same discard confirm
+         the backdrop tap uses, and Escape on that confirm cancels it, leaving the draft intact. */
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.cdlg', { timeout: 4000 }).catch(() => {});
+      const asked = await has('.cdlg');
+      await page.keyboard.press('Escape');
+      const kept = (await gone('.cdlg')) && (await has('.modal[aria-label="New pattern"]'));
+      ok('a11y: Escape on a dirty pattern asks before discarding, and Escape on the ask keeps the draft', asked && kept, `asked=${asked} kept=${kept}`);
+      await page.keyboard.press('Escape');
+      await page.locator('.cdlg .btn-danger').click();
+      ok('a11y: confirming the discard closes the pattern lab', await gone('.modal[role="dialog"]'));
+
+      /* auth modal (signed out) */
+      await page.locator('.topbar button:has-text("Sign in")').first().click();
+      await page.waitForSelector('.sheet-h .t:text-is("Sign in")', { timeout: 5000 });
+      ok('a11y: the sign-in modal is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Sign in"] .sheet-h button.back[aria-label="Close"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the sign-in modal', await gone('.modal[aria-label="Sign in"]'));
+
+      /* feedback: Escape never eats typed words */
+      await page.locator('button[aria-label="Send feedback"]').click();
+      await page.waitForSelector('.sheet[aria-label="Send feedback"] textarea', { timeout: 5000 });
+      await page.locator('.sheet[aria-label="Send feedback"] textarea').fill('my own words');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(120);
+      ok('a11y: Escape leaves a feedback sheet with typed words open', await has('.sheet[aria-label="Send feedback"]'));
+      await page.locator('.sheet[aria-label="Send feedback"] textarea').fill('');
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes an empty feedback sheet', await gone('.sheet[aria-label="Send feedback"]'));
+
+      /* the ESTIMATED tag token, read off the stylesheet */
+      const est = await page.evaluate(() => { const t = document.createElement('span'); t.className = 'tag est'; document.body.appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; });
+      ok('a11y: the ESTIMATED tag colour clears AA on its pill', est === 'rgb(138, 90, 5)', est);
+
+      /* reduced motion: the stepper's scroll animation jumps instead of animating */
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      const rm1 = await page.evaluate(() => { const d = document.createElement('div'); d.style.cssText = 'height:100px;overflow:auto'; d.innerHTML = '<div style="height:1000px"></div>'; document.body.appendChild(d); animateScrollTop(d, 100); const v = d.scrollTop; d.remove(); return v; });
+      ok('a11y: animateScrollTop jumps synchronously under prefers-reduced-motion', rm1 === 100, `scrollTop=${rm1}`);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const rm0 = await page.evaluate(() => { const d = document.createElement('div'); d.style.cssText = 'height:100px;overflow:auto'; d.innerHTML = '<div style="height:1000px"></div>'; document.body.appendChild(d); animateScrollTop(d, 100); const v = d.scrollTop; d.remove(); return v; });
+      ok('a11y: ...and still animates when no preference is set (control)', rm0 === 0, `scrollTop=${rm0}`);
+
+      ok('a11y: no page errors across the a11y sweep', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+    {
+      /* onboarding: real headings and a named back button */
+      const { ctx, page } = await newPage(browser, url, { seed: false });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 20000 });
+      ok('a11y: the welcome title is a heading', await page.evaluate(() => !!document.querySelector('.ob h1.display')));
+      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.waitForSelector('.ob .q', { timeout: 5000 });
+      const ob = await page.evaluate(() => ({ h1: !!document.querySelector('.ob h1.q'), back: (document.querySelector('.ob button.back') || {}).getAttribute ? document.querySelector('.ob button.back').getAttribute('aria-label') : null,
+        m: getComputedStyle(document.querySelector('.ob .q')).marginTop }));
+      ok('a11y: each onboarding question is an h1 with no stray margin', ob.h1 && ob.m === '0px', JSON.stringify(ob));
+      ok('a11y: the onboarding back button has an accessible name', ob.back === 'Back', JSON.stringify(ob.back));
+      const doneLine = src.slice(src.indexOf('hrs · 6 shifts · gross') - 120, src.indexOf('hrs · 6 shifts · gross'));
+      ok("a11y: the done screen's gross line uses the 5.7:1 grey", /#9A9DAB/.test(doneLine) && !/#7E8290/.test(doneLine));
+      await ctx.close();
+    }
   }
 
   await browser.close();

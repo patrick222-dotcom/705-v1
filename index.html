@@ -27,7 +27,7 @@
     --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
     --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
     --muted:#6B665C; --muted-2:#726D62; --line:#EEEDE8; --line-2:#E7E5DE;
-    --danger:#C84B3C; --danger-soft:#F3D6D1;
+    --danger:#B03D2E; --danger-soft:#F3D6D1;   /* 5.3:1 on the glass panels and money-soft, not just on white */
 
     /* Liquid Glass tokens */
     --glass:rgba(255,255,255,.55); --glass-strong:rgba(255,255,255,.74);
@@ -113,6 +113,8 @@
   .card h3{margin:0 0 14px;font-size:14px;font-weight:700}
 
   .hero{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 20px 46px rgba(16,14,24,.32)}
+  .hero:focus{outline:none}
+  .hero:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
   .hero .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
   .hero .num{font-family:'Bricolage Grotesque';font-weight:800;color:var(--mint);font-size:clamp(46px,12vw,64px);line-height:1;letter-spacing:-.03em;margin:8px 0 14px}
   .hero .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -182,6 +184,8 @@
      clipped, which is why the section can be wider than the card's other rows without looking
      like a separate box floating outside it. */
   .cal-vscroll-wrap{position:relative;margin:0 -18px}
+  .cal-vscroll:focus{outline:none}
+  .cal-vscroll:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
   .cal-vscroll{max-height:60dvh;min-height:min(420px,60dvh);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
   .cal-vscroll::-webkit-scrollbar{display:none}
   .cal-vscroll-fade{position:absolute;left:0;right:0;bottom:20px;height:34px;background:linear-gradient(to bottom, transparent, var(--card));pointer-events:none}
@@ -327,7 +331,7 @@
 
   /* tags */
   .tag{display:inline-block;font-weight:600;font-size:10.5px;padding:3px 8px;border-radius:var(--r-pill);margin-top:5px}
-  .tag.est{color:#C2820A;background:#FDF3DD}
+  .tag.est{color:#8A5A05;background:#FDF3DD}
   .tag.auto{color:var(--indigo);background:var(--indigo-soft)}
 
   /* pattern lab */
@@ -374,6 +378,7 @@
   /* onboarding */
   .ob{min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding:22px 24px calc(24px + env(safe-area-inset-bottom))}
   .ob .eyebrow{font-weight:600;font-size:12.5px;color:var(--indigo);margin-bottom:10px;letter-spacing:.02em}
+  .ob h1{margin:0;font-size:inherit}
   .ob .q{font-family:'Bricolage Grotesque';font-weight:700;font-size:25px;line-height:1.18}
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
   .ob .spacer{flex:1;min-height:18px}
@@ -609,6 +614,25 @@
 <script type="text/babel" data-presets="react">
 const { useState, useMemo, useEffect, useLayoutEffect, useRef } = React;
 
+/* Escape closes whichever sheet is on top. One hook, every dialog (council 2026-09-13, a11y):
+   each open sheet pushes a handler ref; a single document listener calls only the top one, so
+   Escape on a confirm dialog never also dismisses the sheet under it. The ref is refreshed every
+   render, so the handler always sees current state without re-registering. */
+const _escStack = [];
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape' || !_escStack.length) return;
+  const top = _escStack[_escStack.length-1];
+  if(top.current) top.current(e);
+});
+function useEscape(handler, active=true){
+  const ref = useRef(handler); ref.current = handler;
+  useEffect(()=>{
+    if(!active) return;
+    _escStack.push(ref);
+    return ()=>{ const i = _escStack.lastIndexOf(ref); if(i>=0) _escStack.splice(i,1); };
+  },[active]);
+}
+
 /* ---------- icons ---------- */
 const Ic = {
   share: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V3"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>,
@@ -693,6 +717,7 @@ const periodRangeLabel = (startISO) => {
 const animateScrollTop = (el, target, duration=380) => {
   const start = el.scrollTop, max = Math.max(0, el.scrollHeight - el.clientHeight);
   const clamped = Math.max(0, Math.min(target, max)), delta = clamped - start, t0 = performance.now();
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches){ el.scrollTop = clamped; return; }
   const ease = p => p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
   const step = now => {
     const p = Math.min(1, (now-t0)/duration);
@@ -1994,12 +2019,7 @@ async function revealSwapMatch(matchId){
 function AccountMenu({user, name, onSettings, onSignOut}){
   const [open,setOpen] = useState(false);
   const initial = (user ? (user.email||'') : (name||'')).trim().charAt(0).toUpperCase();
-  useEffect(()=>{
-    if(!open) return;
-    const onKey = e => { if(e.key==='Escape') setOpen(false); };
-    document.addEventListener('keydown', onKey);
-    return ()=>document.removeEventListener('keydown', onKey);
-  },[open]);
+  useEscape(()=>setOpen(false), open);
   const pick = fn => ()=>{ setOpen(false); fn(); };
   return (
     <div className="acct">
@@ -2046,6 +2066,9 @@ function FeedbackSheet({user, surface, onClose}){
      holds an untouched scaffold (or nothing): once she has typed her own words, changing the tile
      re-tags the report without eating them. */
   const lastScaffold = useRef('');
+  /* Escape closes the sheet only while the box is empty or still an untouched scaffold -- the
+     same "never eat her words" rule the tiles follow. */
+  useEscape(()=>{ if(!msg.trim() || msg===lastScaffold.current) onClose(); });
   const where = surface || 'Planner';
 
   const pickTile = (t)=>{
@@ -2163,8 +2186,9 @@ function ConfirmHost(){
     _ui.confirmFn=(msg,opts)=>new Promise(res=>setSt({msg,opts:opts||{},resolve:res}));
     return ()=>{ _ui.confirmFn=null; };
   },[]);
+  const done=(v)=>{ if(st) st.resolve(v); setSt(null); };
+  useEscape(()=>done(false), !!st);
   if(!st) return null;
-  const done=(v)=>{ st.resolve(v); setSt(null); };
   const o=st.opts;
   return (
     <div className="scrim" style={{zIndex:210}} onClick={()=>done(false)}>
@@ -2256,6 +2280,10 @@ function App(){
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
   const [showSettings,setShowSettings] = useState(false);
   const [showBreakdown,setShowBreakdown] = useState(false);
+  /* Dismissing the estimate banner unmounts the button that had focus; hand it to the hero figure
+     the banner was qualifying instead of letting it drop to <body>. */
+  const heroRef = useRef(null);
+  const focusHero = ()=>setTimeout(()=>{ const h = heroRef.current; if(h) h.focus({preventScroll:true}); }, 0);
   const [showAuth,setShowAuth] = useState(false);  // auth modal
   const [authMode,setAuthMode] = useState('signin'); // 'signin' or 'signup'
   const [showShare,setShowShare] = useState(false);  // QR/link sheet — the app's only distribution surface
@@ -2642,6 +2670,7 @@ function App(){
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
   },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare]);
+  useEscape(()=>setShowBreakdown(false), showBreakdown);   // the one sheet rendered inline in App
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -3033,6 +3062,7 @@ function App(){
       return next;
     });
     setEstimateMode('');
+    focusHero();
     toast('Sample cleared — the planner is yours now.','success');
     track('sample_cleared', null, user?.id);
   };
@@ -3508,7 +3538,7 @@ function App(){
               <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>
               {estimateMode==='sample'
                 ? <button className="ghost" onClick={clearSample}>Clear the sample</button>
-                : <button className="ghost" onClick={()=>{ setEstimateMode(''); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
+                : <button className="ghost" onClick={()=>{ setEstimateMode(''); focusHero(); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
             </div>
           </div>
         )}
@@ -3516,7 +3546,7 @@ function App(){
         <div className="dash">
           {/* LEFT */}
           <div className="col">
-            <div className="hero">
+            <div className="hero" ref={heroRef} tabIndex={-1}>
               <div className="lbl">Projected take-home</div>
               <div className="num num">{fmt(calc.net)}</div>
               <div className="chips">
@@ -3581,21 +3611,23 @@ function App(){
                     <button className="btn btn-primary btn-sm" style={{minHeight:44,flex:'0 0 auto'}} onClick={endQuickFill}>Done</button>
                   </div>}
                 </div>}
-              <div className="viewseg" role="tablist" aria-label="Calendar view">
+              {/* A plain labelled button group, not a tablist: it never had the arrow-key tab
+                  pattern the role promises, and a segmented control doesn't need one. */}
+              <div className="viewseg" role="group" aria-label="Calendar view">
                 {[['month','Month'],['year','Year']].map(([v,l])=>
-                  <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
+                  <button key={v} aria-pressed={calView===v} className={calView===v?'on':''}
                     onClick={()=>{ if(v!==calView) track('view_changed', {view:v}, user?.id); setCalView(v); }}>{l}</button>)}
               </div>
               {calView==='year' &&
                 <div className="calnav">
-                  <button onClick={()=>navCal(-1)} aria-label="Previous">‹</button>
+                  <button onClick={()=>navCal(-1)} aria-label="Previous year">‹</button>
                   <span className="calnav-t">{viewTitle}</span>
-                  <button onClick={()=>navCal(1)} aria-label="Next">›</button>
+                  <button onClick={()=>navCal(1)} aria-label="Next year">›</button>
                 </div>}
               {calView==='year'
                 ? <YearList months={yearMonths} onPick={(m)=>{ setCalFocus(`${parseISO(calFocus).getFullYear()}-${String(m+1).padStart(2,'0')}-01`); setCalView('month'); }} />
                 : <div className="cal-vscroll-wrap">
-                    <div className="cal-vscroll" ref={monthScrollRef} onScroll={onMonthScroll}>
+                    <div className="cal-vscroll" ref={monthScrollRef} onScroll={onMonthScroll} tabIndex={0} aria-label="Calendar months">
                       {monthWindow.map(mo=>
                         <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
                           differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
@@ -3656,8 +3688,8 @@ function App(){
 
       {showBreakdown &&
         <div className="scrim" onClick={()=>setShowBreakdown(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="sheet-h"><div className="t">Your paycheck math</div><button className="back" onClick={()=>setShowBreakdown(false)}>{Ic.x}</button></div>
+          <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Your paycheck math">
+            <div className="sheet-h"><div className="t">Your paycheck math</div><button className="back" onClick={()=>setShowBreakdown(false)} aria-label="Close">{Ic.x}</button></div>
             <div className="sub" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>{periodLabel} · here's where it goes</div>
             <Breakdown calc={calc} />
             <div className="disclaimer">Estimates for planning. Always verify against your real paystub.</div>
@@ -3718,12 +3750,13 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
   const [pre,setPre]=useState(p.pretaxDeductions!=null?String(p.pretaxDeductions):'');
   const [fica,setFica]=useState(p.ficaRate!=null?String(Math.round(p.ficaRate*100)/100):'');
   const [st,setSt]=useState(p.stateTaxRate!=null?String(Math.round(p.stateTaxRate*100)/100):'');
+  useEscape(onCancel);
 
   if(empty){
     return (
       <div className="scrim" onClick={onCancel}>
-        <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
-          <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
+        <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}} role="dialog" aria-modal="true" aria-label="Couldn't read that paystub">
+          <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
           <div className="help">We couldn't find any pay details in this PDF. It works best with the <b>detailed</b> paystub from your payroll portal (Workday, UKG, Kronos…) that lists your pay rate and hours — a photo, a screenshot, or a one-page summary usually won't parse. Your file never left your device. You can set things up manually below.</div>
           <div className="spacer" style={{height:18}}></div>
           <button className="btn btn-primary" onClick={onCancel}>Set it up manually</button>
@@ -3747,8 +3780,8 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
 
   return (
     <div className="scrim" onClick={onCancel}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="sheet-h"><div className="t">Review your paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Review your paystub">
+        <div className="sheet-h"><div className="t">Review your paystub</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
         <div className="sub" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>We read these from your PDF. Fix anything that looks off, then apply.</div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>Base hourly rate</div>
@@ -3817,6 +3850,7 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
   const toRemove = state.toRemove || [];
   const toUpdateEvents = state.toUpdateEvents || [];
   const toRemoveEvents = state.toRemoveEvents || [];
+  useEscape(onCancel);
   const total = groups.length;
   const isFinal = stepIdx >= total;
   /* 'event' and 'skip' are both "this isn't a shift" answers, and BOTH are remembered by uid so the
@@ -3956,8 +3990,9 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
           + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
           + (hasOT ? ', includes overtime' : '')
           + (!has ? ', no shifts' : '')
-          + (hasNote ? ', has a note' : '')}>
-        <div className="d">{dt.getDate()}{hasOT && <span aria-hidden="true" style={{fontSize:8,fontWeight:800,color:'#11A86B',marginLeft:2,verticalAlign:'top',letterSpacing:'.5px'}}>OT</span>}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
+          + (hasNote ? ', has a note' : '')
+          + (isToday ? ', today' : '')}>
+        <div className="d">{dt.getDate()}{hasOT && <span aria-hidden="true" style={{fontSize:8,fontWeight:800,color:'var(--money-ink)',marginLeft:2,verticalAlign:'top',letterSpacing:'.5px'}}>OT</span>}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
           ? <div style={{marginTop:'auto'}}>
               {/* Shift glyphs and event rings share one marker row (capped to 4 combined) so a day
@@ -4167,6 +4202,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const save = ()=> onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), events, note.trim());
   // Scrim dismiss: never silently drop rows/events/note the user already set; a clean sheet just closes.
   const dismiss = ()=> dirty ? onSave(list, events, note.trim()) : onClose();
+  useEscape(dismiss);
 
   // One-tap template apply: adds that template's shift to this day instantly.
   const applyTemplateTap = (t)=>{
@@ -4198,7 +4234,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
   return (
     <div className="scrim" onClick={dismiss}>
-      <div className="sheet" onClick={e=>e.stopPropagation()}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add a shift">
         <div className="grab"></div>
         <div className="sheet-h">
           <div className="t">Add a shift</div>
@@ -4231,10 +4267,10 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
-                  {s.isOvertime && <span style={{fontSize:12,fontWeight:700,color:'#11A86B'}}>OT ×1.5</span>}
+                  {s.isOvertime && <span className="ot-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>OT ×1.5</span>}
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
-                <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
+                <button className="danger-link" onClick={()=>remove(s.id)} aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}>Remove</button>
               </div>
             ))}
           </div>}
@@ -4277,9 +4313,9 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         {bonusType==='custom' &&
           <div className="inp pre" style={{marginBottom:16}}><span className="pfx">$</span><NumInput value={customBonus} onCommit={v=>{ setCustomBonus(v); configDirtySinceAdd.current=true; }} min={0} ariaLabel="Custom bonus per shift" placeholder="0.00"/></div>}
 
-        <div className="preview">
+        <div className="preview" aria-live="polite" aria-atomic="true">
           <div className="k">This shift adds</div>
-          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span className="ot-tag" style={{fontWeight:700,color:'var(--money-ink)'}}> · incl. OT ×1.5</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
           {goals && goals.length>0 && previewNet>0 &&
             <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
@@ -4315,7 +4351,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
               <div className="inp" style={{flex:1}}>
                 <input value={tplName} onChange={e=>setTplName(e.target.value)} placeholder="Template name (e.g. Nights)" maxLength={40} autoFocus
                   aria-label="Template name"
-                  onKeyDown={e=>{ if(e.key==='Enter') doSaveTemplate(); if(e.key==='Escape') setSavingTpl(false); }}/>
+                  onKeyDown={e=>{ if(e.key==='Enter') doSaveTemplate(); if(e.key==='Escape'){ e.stopPropagation(); setSavingTpl(false); } }}/>
               </div>
               <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={doSaveTemplate}>Save</button>
               <button className="back" aria-label="Cancel save template" onClick={()=>setSavingTpl(false)}>{Ic.x}</button>
@@ -4440,6 +4476,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
     if(draft && dirty && metrics && metrics.shifts && !(await confirmAsync('Close without saving this pattern?',{title:'Discard changes?',confirm:'Discard',danger:true}))) return;
     onClose();
   };
+  useEscape(dismiss);
   const del = async ()=>{ if(await onDelete(draft)){ setDraft(null); setApplyOpen(false); setDirty(false); } };
   const confirmApply = ()=>{
     if(!applyPlan || !applyPlan.adds.length) return;
@@ -4452,7 +4489,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   if(!draft){
     return (
       <div className="scrim" onClick={dismiss}>
-        <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Pattern lab">
           <div className="sheet-h"><div className="t">Pattern lab</div><button className="back" onClick={dismiss} aria-label="Close">{Ic.x}</button></div>
           <div className="hint" style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Design a rotation and see two things before you commit to it: the paycheck it makes, and the life it makes — longest stretch, longest break, which days stay yours.</div>
 
@@ -4521,7 +4558,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
 
   return (
     <div className="scrim" onClick={dismiss}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label={isSaved?'Edit pattern':'New pattern'}>
         <div className="sheet-h">
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <button className="back" onClick={back} aria-label="Back to your patterns">‹</button>
@@ -4573,7 +4610,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
             : 'Tap a day to paint the selected shift; tap again to clear it. Weekend days pick up your weekend differentials automatically.'}
         </div>
 
-        <div className="pl-money">
+        <div className="pl-money" aria-live="polite" aria-atomic="true">
           <div className="k">Take-home per paycheck</div>
           <div className="v num">{fmt(metrics.periodNet)}</div>
           <div className="s">{fmt(metrics.periodGross)} gross · {fmtHrs(metrics.periodHours)} hrs · ≈ <span className="num">{fmt(metrics.yearNet)}</span> a year</div>
@@ -4601,7 +4638,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
             <span className="nm" style={{whiteSpace:'normal'}} onClick={()=>setApplyReplace(v=>!v)}>Replace shifts already on those days</span>
           </div>
           {applyPlan &&
-            <div className="preview" style={{margin:'0 0 14px'}}>
+            <div className="preview" style={{margin:'0 0 14px'}} aria-live="polite" aria-atomic="true">
               <div className="k">This adds</div>
               <div className="v">{applyPlan.adds.length} shift{applyPlan.adds.length===1?'':'s'} · {fmtDateShort(applyPlan.startKey)} – {fmtDateShort(applyPlan.endKey)}</div>
               {applyPlan.skipped>0 && <div className="k" style={{marginTop:6}}>{applyPlan.skipped} day{applyPlan.skipped===1?'':'s'} already scheduled — left alone</div>}
@@ -4620,6 +4657,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
 /* ---------- Auth Modal ---------- */
 function AuthModal({mode:initialMode,onClose}){
   const [mode,setMode] = useState(initialMode||'signin');
+  useEscape(onClose);
   const [email,setEmail] = useState('');
   const [password,setPassword] = useState('');
   const [loading,setLoading] = useState(false);
@@ -4666,10 +4704,10 @@ function AuthModal({mode:initialMode,onClose}){
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}} role="dialog" aria-modal="true" aria-label={mode==='signup'?'Create account':'Sign in'}>
         <div className="sheet-h">
           <div className="t">{mode==='signup'?'Create account':'Sign in'}</div>
-          <button className="back" onClick={onClose}>{Ic.x}</button>
+          <button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button>
         </div>
 
         <form onSubmit={handleEmailAuth}>
@@ -4714,6 +4752,7 @@ function Settings(props){
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal}=props;
+  useEscape(onClose);
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
@@ -4730,8 +4769,8 @@ function Settings(props){
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose}>{Ic.x}</button></div>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Settings">
+        <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button></div>
 
         {/* First row on purpose: word of mouth on a unit is the only distribution this app has,
             and the mobile top bar has no room left for a fifth icon (it measures exactly to the
@@ -4748,9 +4787,9 @@ function Settings(props){
           <div className={'drow'+(d.active?'':' off')} key={k}>
             <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
             <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
-            <input className="nm" value={d.name} disabled={k==='base'} onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
+            <input className="nm" value={d.name} disabled={k==='base'} aria-label="Differential name" onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
             <span className="amt">{d.type==='multiplier'?<><NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' multiplier'} style={{width:34}}/>×</>:<>+$<NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' amount'}/></>}</span>
-            {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}}>Del</button>}
+            {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}} aria-label={'Delete '+d.name+' differential'}>Del</button>}
           </div>
         ))}
         <div style={{display:'flex',gap:8,marginTop:4}}>
@@ -4789,7 +4828,7 @@ function Settings(props){
               <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
               <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
               <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
-              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}} aria-label={'Delete '+g.name+' goal'}>Del</button>
             </div>
             {n!=null && <div className="k" style={{margin:'-4px 0 8px 22px',fontSize:11,color:'var(--muted-2)'}}>≈ {n.toLocaleString('en-US')} typical 12h shift{n===1?'':'s'} to reach this</div>}
           </div>
@@ -4857,6 +4896,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   const [loading,setLoading] = useState(true);
   const [loadError,setLoadError] = useState(false);
   const [tablesMissing,setTablesMissing] = useState(false);
+  useEscape(onClose);
   const [profile,setProfile] = useState(null);
   const [dnDraft,setDnDraft] = useState('');
   const [savingProfile,setSavingProfile] = useState(false);
@@ -5722,6 +5762,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
    mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
    into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
 function ShareSheet({onClose, userId, surface}){
+  useEscape(onClose);
   const blurb = 'BadgeBudget — see what a shift is really worth before you pick it up.';
   const sendLink = async ()=>{
     if(navigator.share){
@@ -5738,7 +5779,7 @@ function ShareSheet({onClose, userId, surface}){
   };
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="sheet" onClick={e=>e.stopPropagation()}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Share BadgeBudget">
         <div className="grab"></div>
         <div className="sheet-h">
           <div className="t">Share BadgeBudget</div>
@@ -5773,7 +5814,7 @@ function Onboarding(props){
       <div className="brand">badgebudget<span className="b-dot"></span></div>
       <div className="spacer"></div>
       <span className="pill" style={{marginBottom:16}}>For bedside nurses</span>
-      <div className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</div>
+      <h1 className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</h1>
       <div className="help">Nights, weekends, holidays, that charge bonus — we do the messy math so the number's never a surprise.</div>
       <div className="hero" style={{marginTop:22}}>
         <div className="lbl">Sample · 72 hrs this period</div>
@@ -5794,7 +5835,7 @@ function Onboarding(props){
 
   const Head = ({step,label})=>(
     <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
-      <button className="back" onClick={()=>setObStep(obStep-1)}>‹</button>
+      <button className="back" onClick={()=>setObStep(obStep-1)} aria-label="Back">‹</button>
       <div className="prog"><i style={{width:(step*25)+'%'}}></i></div>
     </div>
   );
@@ -5804,7 +5845,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={1}/>
       <div className="eyebrow">YOUR PAY</div>
-      <div className="q">What's your base hourly rate?</div>
+      <h1 className="q">What's your base hourly rate?</h1>
       <div className="help">The rate before any differentials or bonuses — on your paystub it's usually listed as "Pay Rate." Close is good enough to start; a paystub sharpens it later. <b>The amount below is just an example — enter your own rate.</b></div>
       <div className="inp pre" style={{marginTop:28}}>
         <span className="pfx" style={{fontSize:22}}>$</span>
@@ -5826,7 +5867,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={2}/>
       <div className="eyebrow">OPTIONAL · DIFFERENTIALS</div>
-      <div className="q">How does your pay change by shift?</div>
+      <h1 className="q">How does your pay change by shift?</h1>
       <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
@@ -5848,7 +5889,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={3}/>
       <div className="eyebrow">STEP 3 OF 4 · TAXES & DEDUCTIONS</div>
-      <div className="q">Last thing — taxes & take-outs.</div>
+      <h1 className="q">Last thing — taxes & take-outs.</h1>
       <div className="help">We estimated these from typical nurse withholdings. Adjust anything you know.</div>
       <div style={{marginTop:18,display:'flex',flexDirection:'column',gap:10}}>
         <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Federal income tax</div><span className="tag est">ESTIMATED</span></div>
@@ -5873,16 +5914,16 @@ function Onboarding(props){
     <div className="ob dark" style={{alignItems:'center',textAlign:'center'}}>
       <div className="spacer"></div>
       <div style={{width:74,height:74,borderRadius:'50%',background:'var(--mint)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 12px rgba(52,211,153,.14)'}}>{Ic.check}</div>
-      <div className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</div>
+      <h1 className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</h1>
       <div className="help" style={{color:'#9A9DAB'}}>Based on a typical two-week schedule, here's what you'd take home:</div>
       <div style={{width:'100%',background:'var(--ink-2)',borderRadius:22,padding:24,marginTop:24}}>
         <div style={{fontSize:12,fontWeight:600,color:'#9A9DAB'}}>Projected take-home</div>
         <div className="num" style={{fontFamily:"'Bricolage Grotesque'",fontWeight:800,fontSize:54,color:'var(--mint)',letterSpacing:'-.03em',margin:'8px 0',lineHeight:1}}>{fmt(sample.net)}</div>
-        <div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
+        <div style={{fontSize:13,color:'#9A9DAB',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
       </div>
       <div style={{width:'100%',marginTop:14}}>
         <div className="field" style={{margin:0,textAlign:'left'}}>
-          <div className="inp"><input placeholder="What should we call you?" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
+          <div className="inp"><input placeholder="What should we call you?" aria-label="Your name" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
         </div>
       </div>
       <div className="spacer"></div>
