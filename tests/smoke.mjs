@@ -828,6 +828,117 @@ const run = async () => {
       ok("a11y: the done screen's gross line uses the 5.7:1 grey", /#9A9DAB/.test(doneLine) && !/#7E8290/.test(doneLine));
       await ctx.close();
     }
+
+    /* #7, #9, #10, #11, #12, #18, #27, #28 (product-design-02/-04/-07, wage-math-10, code-quality-05/
+       -07/-09/-13/-22/-24, security-03): the last bucket-1 group. Driven where the surface exists;
+       validShiftMeta and the templates sanitizer are unit-tested as the globals they are; the two
+       one-line catch/filter edits and the ref cleanup are pinned at the source. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE,
+          templates: [{ id: 't1', name: 'Charge day', shiftType: 'base', hours: 8, bonusType: 'none', customBonus: 0, isOvertime: true }],
+          goals: [{ id: 'g1', name: 'House', target: 1000 }, { id: 'g2', name: 'Trip', target: 500 }] }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      const gone = (sel) => page.waitForSelector(sel, { state: 'detached', timeout: 4000 }).then(() => true).catch(() => false);
+      const has = (sel) => page.evaluate((q) => !!document.querySelector(q), sel);
+
+      const san = await page.evaluate(() => sanitizeData({ templates: [
+        { id: 'x', name: 'OT', shiftType: 'night', hours: 12, bonusType: 'none', isOvertime: true },
+        { id: 'y', name: 'No', shiftType: 'night', hours: 12, bonusType: 'none' } ] }).templates.map((t) => t.isOvertime));
+      ok('council: the templates sanitizer keeps the OT flag (#9)', JSON.stringify(san) === '[true,false]', JSON.stringify(san));
+
+      const vm = await page.evaluate(() => [
+        validShiftMeta({ shiftType: 'base', hours: '12' }), validShiftMeta({ shiftType: 'night', hours: 12, start: '19:00' }),
+        validShiftMeta({ shiftType: 'base', hours: 'abc' }), validShiftMeta({ shiftType: 7, hours: 12 }), validShiftMeta({ shiftType: 'base', hours: 0 }),
+        validShiftMeta({ shiftType: 'base', hours: 25 }), validShiftMeta({ shiftType: 'base', hours: 12, start: '99:99' }), validShiftMeta(['base']), validShiftMeta(null)]);
+      ok("council: another member's shift_meta is validated before it becomes her shift (#18)",
+        JSON.stringify(vm) === '[true,true,false,false,false,false,false,false,false]', JSON.stringify(vm));
+
+      /* #9 + #12: quick-tap an OT template, then "Save as template" must capture that shift */
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet[aria-label="Add a shift"]', { timeout: 5000 });
+      const tplBtn = page.locator('.sheet .chip-sel:has-text("Charge day")');
+      ok('council: a template row shows its OT flag (#9)', /· OT/.test(await tplBtn.innerText()));
+      await tplBtn.click();
+      await page.waitForSelector('.sheet .row-item .ot-tag', { timeout: 4000 }).catch(() => {});
+      ok('council: a quick-tapped OT template lands as an OT shift (#9)', await has('.sheet .row-item .ot-tag'));
+      await page.locator('.sheet button:has-text("Save as template")').click();
+      await page.locator('.sheet input[aria-label="Template name"]').fill('Copy of charge');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.sheet .chip-sel:has-text("Copy of charge")', { timeout: 4000 }).catch(() => {});
+      const copy = await page.locator('.sheet .chip-sel:has-text("Copy of charge")').innerText().catch(() => '(not saved)');
+      ok('council: "Save as template" right after a quick-tap captures the tapped shift, OT included (#12, #9)', /×8h · OT/.test(copy), JSON.stringify(copy));
+      await page.keyboard.press('Escape');
+      await gone('.sheet[aria-label="Add a shift"]');
+
+      /* #10: a goal edited to $0 leaves the preview, and Del asks first */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const house = page.locator('input[aria-label="House target amount"]');
+      await house.fill('0'); await house.press('Tab');
+      await page.keyboard.press('Escape');
+      await gone('.modal[aria-label="Settings"]');
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet .preview', { timeout: 5000 });
+      const goalLine = await page.evaluate(() => { const ks = [...document.querySelectorAll('.sheet .preview .k')].map((k) => k.textContent); return ks.find((t) => /toward your/.test(t)) || '(no goal line)'; });
+      ok('council: a $0 goal is left out of the shift preview instead of printing Infinity% (#10)', !/Infinity|NaN|House/.test(goalLine) && /Trip/.test(goalLine), goalLine);
+      await page.keyboard.press('Escape');
+      await gone('.sheet[aria-label="Add a shift"]');
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.locator('button[aria-label="Delete Trip goal"]').click();
+      const asked = await page.waitForSelector('.cdlg', { timeout: 4000 }).then(() => true).catch(() => false);
+      const stillThere = await has('button[aria-label="Delete Trip goal"]');
+      ok('council: deleting a goal asks first (#10)', asked && stillThere, `asked=${asked} stillThere=${stillThere}`);
+      if (asked) await page.locator('.cdlg .btn-danger').click();
+      ok('council: confirming removes the goal (#10)', await gone('button[aria-label="Delete Trip goal"]'));
+      await page.keyboard.press('Escape');
+      await gone('.modal[aria-label="Settings"]');
+
+      /* #7 / #11 / #28 in the pattern lab */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main:has-text("4 on, 4 off")').click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      const k8 = await page.locator('.pl-money .k').innerText();
+      ok('council: an 8-day cycle says its paycheck figure is an average (#7)', /avg\. over 4 paychecks/.test(k8), JSON.stringify(k8));
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.cdlg', { timeout: 4000 }).catch(() => {});
+      await page.locator('.cdlg .btn-danger').click().catch(() => {});
+      await gone('.modal[role="dialog"]');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main:has-text("Mon–Wed nights")').click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      const k7 = await page.locator('.pl-money .k').innerText();
+      ok('council: a 7-day cycle carries no average caption (#7 control)', !/avg\./.test(k7), JSON.stringify(k7));
+
+      await page.locator('.pl-brushes .chip-sel:has-text("Charge day")').click();
+      const hint = await page.evaluate(() => [...document.querySelectorAll('.modal .hint')].map((h) => h.textContent).find((t) => /Tap a day/.test(t)) || '(no hint)');
+      ok('council: the grid hint is honest about template cells (#11)', /Template cells/.test(hint) && !/pick up your weekend differentials automatically/.test(hint), JSON.stringify(hint));
+      await page.locator('.pl-cell').first().click();
+      const fx = await page.evaluate(() => { const c = document.querySelector('.pl-cell.on .fx'); return c ? c.closest('.pl-cell').getAttribute('aria-label') : '(no marker)'; });
+      ok('council: a template-painted cell is marked and says its pay type is fixed (#11)', /template/.test(fx), JSON.stringify(fx));
+
+      await page.locator('.modal button:has-text("Put it on the calendar")').click();
+      const startInput = page.locator('.pl-apply input[type="date"]');
+      await startInput.fill('2026-10-05');
+      await page.locator('input[aria-label="Cycle start date"]').fill('2026-09-21');
+      const startAfter = await startInput.inputValue();
+      ok('council: editing the cycle anchor leaves a customised apply-start alone (#28)', startAfter === '2026-10-05', JSON.stringify(startAfter));
+
+      ok('council: runIcalSync logs a failed background sync (#27)', /catch\(e\)\{\n\s*console\.error\('ical sync failed:'/.test(src));
+      ok('council: manual .ics re-import counts only changed matches (#27)', /setIcsImport\(\{ groups, toUpdate:plan\.toUpdate\.filter\(u=>u\.changed\)/.test(src));
+      ok('council: month section refs are dropped on unmount (#28)', /else delete monthSecRefs\.current\[mo\.key\]/.test(src));
+
+      ok('council: no page errors across the group-7 drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
   }
 
   await browser.close();
