@@ -8,7 +8,7 @@
  * Versions here are pinned to exactly what index.html loads. If you bump a CDN pin, bump it here
  * too or the harness stops testing the code that ships.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { join, extname } from 'node:path';
@@ -60,6 +60,9 @@ export function buildScratch(root, outDir, { dev = false } = {}) {
   if (n < MAP.length) throw new Error(`expected ${MAP.length} rewritten scripts, got ${n}`);
 
   writeFileSync(join(outDir, 'index.html'), html);
+  /* The app loads the pdf.js worker same-origin from the publish set. Without it here the
+     paystub path silently degrades and every import test fails for the wrong reason. */
+  copyFileSync(join(root, 'pdf.worker.min.js'), join(outDir, 'pdf.worker.min.js'));
   buildOpsScratch(root, outDir);
   return join(outDir, 'index.html');
 }
@@ -113,3 +116,36 @@ export const isExpectedNetwork = (s) => EXPECTED_NETWORK.some((x) => String(s).i
 /* Seeding this skips onboarding — most flows are unreachable otherwise. */
 export const SEEDED_STATE = { setupComplete: true, baseRate: 50 };
 export const STORAGE_KEY = 'nursingWagePlannerData';
+
+/* A structurally valid single-page PDF whose only content is `lines`, one Tj per line.
+ *
+ * The paystub importer is the one surface with no end-to-end coverage, because reaching it needs
+ * a real PDF for pdf.js to parse — a fixture string handed straight to the parser proves the
+ * parser works and says nothing about whether the import works. This builds the smallest file
+ * pdf.js will accept: uncompressed, one Helvetica font, a byte-accurate xref table.
+ *
+ * Note what pdf.js then does with it: getTextContent() returns one item per Tj, and the app joins
+ * them with a single space. So the text the parser actually sees has NO line breaks, which is the
+ * whole reason parseEarningsRows tokenises instead of matching line shapes. Building the fixture
+ * this way rather than as a pre-joined string is what makes that property testable.
+ */
+export function makeMinimalPdf(lines) {
+  const esc = (t) => String(t).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const stream = 'BT /F1 9 Tf 12 TL 24 760 Td\n'
+    + lines.map((l) => `(${esc(l)}) Tj T*`).join('\n') + '\nET';
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  objs.forEach((o, i) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`
+    + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
+    + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}

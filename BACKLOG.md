@@ -133,6 +133,49 @@ _(empty — promote from the candidate lists below with judgment)_
   duplicating ci.yml's install line), `performance-02`, `data-integrity-06` (`differentials` is the one
   uncapped collection — a two-line cap). `accessibility-07`/`-20` were taken in the 2026-09-16 a11y pass.
 
+- [ ] **Hours-in-window differentials** (`harness:drivable`; the largest remaining gap between a
+  projection and a real check). Courtney's current employer pays a differential against the HOURS that
+  fall in a window, not against the shift: her 2025 stub reads `3rd Shift Differential  7.000000 ×
+  20.00 hours` beside `Regular 70.810000 × 47.10 hours`. A shift carrying one `shiftType` cannot
+  express that — and her own shift is a 3a–3p straddle, 4 night hours and 8 day hours, so this is her
+  normal case, not an edge one. Needs a window model on the job record (start/end per differential),
+  a per-shift split, and a Breakdown that shows the split without turning the hero into a payroll
+  register. **Why NOT the nightly:** it is wage-core (Invariant 3), it changes every displayed figure
+  for anyone who uses it, and it needs a design call on how a split shift reads on a phone.
+- [ ] **`isWeekend` uses the start date only** (`index.html:915`), so a Friday 7p–Saturday 7a shift is
+  weekday though 7 of its 12 hours are Saturday. Same shape as the item above — the fix is hours in a
+  window, not a different date to test — so do them together rather than patching this one alone.
+- [ ] **Teach the importer the Aya travel layout** (`harness:drivable`). The 2022 Aya statement has no
+  `HOURS AND EARNINGS` block at all: `Hours/Units Rate Amount` columns, `$`-prefixed amounts, indented
+  earning names, and a `Reimbursements` section carrying the non-taxable per-diem and housing stipends.
+  `parseEarningsRows` handles the PeopleSoft shape only, so this file yields nothing. `computeNet`
+  already takes the `{taxable, nonTaxable}` split these stipends need (2026-09-15); the importer is the
+  missing half. **Why NOT the nightly:** a second format needs a second set of real fixtures and a
+  decision about how the review sheet presents non-taxable money, which is the whole TP-014 surface.
+- [ ] **The PA/Philadelphia tax model** (wage-core). State tax is computed on `gross − pretax`, but PA
+  taxes full gross less Section 125 only — 403(b) is *not* deductible for PA — and there is no concept
+  of a city tax, though her stub carries `PA PHILADELPHIA W/H` at roughly 3.75% and a flat `PA  LS Tax`.
+  The importer derives a single blended "state rate" that quietly absorbs all three, which is why the
+  number looks right on her stub and would be wrong for anyone outside Philadelphia. **Why NOT the
+  nightly:** it moves every take-home figure and needs a residence/work-state model to be worth doing.
+
+- [ ] **Pin the GitHub Actions to SHAs + bump the deprecated Node 20 runtime** (supply-chain hardening;
+  from CLAUDE.md → Open items). `ci.yml` and `deploy.yml` reference actions by floating major tag
+  (`actions/checkout@v4`, `actions/setup-node@v4`, the Pages actions) and `.mcp.json` runs the Supabase
+  server off `@latest` — a compromised tag could run arbitrary code with `SUPABASE_ACCESS_TOKEN` in reach
+  or inject into the deploy. **Why NOT the nightly:** `ci.yml` changes are caught by the PR's own gate, but
+  **`deploy.yml` only runs post-merge, so a bad pin there breaks all future deploys with nothing to catch
+  it in the PR** (Invariant 9-adjacent: deploys stop silently while pushes succeed). Do it in a dedicated
+  session: fetch each action tag's *exact current commit SHA* via the GitHub API, verify each SHA resolves,
+  pin to those (behavior-identical), and treat the `v4→v5` Node-runtime bump as a *separate* step (it's a
+  real behavior change — test the workflows after). Also drop `.mcp.json` off `@latest` to a pinned version.
+- [ ] **Retire the nightly dashboard-artifact republish in favor of `/ops.html`** (owner call). The
+  nightly auto-refresh (owner-approved 2026-09-12) republishes a 2.4MB artifact each run, but `/ops.html`
+  now ships as the *live* ops surface (phase 1, 2026-09-13) and CLAUDE.md → Ops dashboard already raises the
+  open question that the artifact's only remaining edge is "readable without signing in." The manual
+  republish has been deferred several nights running because the batched data barely moves and the round-trip
+  is disproportionate. Decide: keep it (and actually run it), fold "readable without login" into ops.html, or
+  formally drop the nightly artifact step from CLAUDE.md so it stops reading as skipped upkeep.
 - [x] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero**~~
   — **SHIPPED 2026-09-14** (owner authorized Courtney's request; see Done log). `onMonthScroll` neutered so
   the hero stays on the period set by open/‹›/chip/Today; open-to-current already worked via `landCurrent`.
@@ -537,7 +580,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 
 ## Done (log)
 - 2026-09-16 (dedicated session — the council's bucket 1, PR #101) — **43 confirmed findings applied in
-  seven groups, 78 new negative-tested assertions in `tests/smoke.mjs` §8.** (1) `.hero` class leak on the
+  seven groups, 78 new negative-tested assertions in `tests/smoke.mjs` §11.** (1) `.hero` class leak on the
   two footer links, ShareSheet in the scroll lock, Enter on the first-run board inputs. (2) one
   `clearSignedInState()` for the manual sign-out and the `SIGNED_OUT` branch — clears the iCal URL
   (Invariant 13) and the onboarding step. (3) `privacy.html` corrected: email/password sign-in, the
@@ -554,6 +597,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   filters unchanged matches; month refs deleted on unmount; anchor edits leave a customised apply-start.
   Everything wage-core and everything needing the production project is routed above, not applied. Run
   record: `docs/council-runs/2026-09-13/`, `docs/history.md` → 2026-09-16.
+- 2026-09-16 (nightly, groom-only) — **No app ship — nothing low-risk + drivable left in the queue.**
+  Quiet 48h: 0 new feedback, 0 signups, 0 setups, 0 swap events, **0 client_errors** (the recent
+  calendar/swap/`<noscript>` ships introduced no errors). The remaining open work is either design/owner-
+  input (swap critical mass, agent gateway, feedback→email blocked), a bigger test-port (te_swap/rls_audit),
+  or CI supply-chain hardening (pin actions to SHAs) — the last touches `deploy.yml`, which only runs
+  post-merge and so can't be PR-verified, crossing the "never gamble the live deploy pipeline" line for an
+  autonomous run. Filed both the action-pinning and the artifact-vs-ops.html question under Needs a dedicated
+  session rather than forcing a risky build. Groom ran; `groom_seed --apply` clean; gate untouched.
 - 2026-09-15 (nightly) — **`<noscript>` fallback on the home page.** Closes the long-standing open item
   (Google brand verification flagged "home page behind a login page", and a crawler saw one word of body
   text — the whole app is JS-rendered). Added a self-contained `<noscript>` right after `<body>`: heading +
