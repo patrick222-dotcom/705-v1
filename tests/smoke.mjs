@@ -452,6 +452,82 @@ const run = async () => {
     ok('council: no page errors in the bucket-1 section', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
+
+    /* code-quality-00 = security-09 (#24) and code-quality-11: the manual sign-out path claimed to
+       mirror the SIGNED_OUT branch but never cleared the calendar subscription (Invariant 13 -- the
+       feed URL is a bearer credential) or the onboarding step. The sandbox cannot mint a session, so
+       the client is stubbed the way section 5 stubs getSession(): A is signed in, signOut() resolves,
+       onAuthStateChange never fires SIGNED_OUT (the stalled case the manual path exists for), and
+       window.__fireAuth lets the test sign B in afterwards through the app's own callback. */
+    const fakeAuth = async (seed) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.addInitScript(() => {
+        const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' }, access_token: 'a', refresh_token: 'a' };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const orig = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = orig(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                  c.auth.onAuthStateChange = (cb) => { window.__fireAuth = (ev, sess) => cb(ev, sess); return { data: { subscription: { unsubscribe() {} } } }; };
+                  c.auth.signOut = async () => ({ error: null });
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      });
+      return { ctx, page, errors };
+    };
+    const signOutViaMenu = async (page) => {
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Sign out")').click();
+      await page.locator('.btn-primary:has-text("Sign out")').click();
+      await page.waitForSelector('button:has-text("Sign in")', { timeout: 6000 }).catch(() => {});
+    };
+    {
+      const { ctx, page, errors } = await fakeAuth(true);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const ical = page.locator('input[aria-label="Calendar iCal address"]');
+      await ical.fill('https://calendar.google.com/calendar/ical/SECRET-A/basic.ics');
+      await page.locator('.sheet-h button.back').first().click();
+      await signOutViaMenu(page);
+      await page.evaluate(() => window.__fireAuth('SIGNED_IN', { user: { id: '22222222-2222-4222-8222-222222222222', email: 'b@example.com' }, access_token: 'b', refresh_token: 'b' }));
+      await page.waitForSelector('.avatar:has-text("B")', { timeout: 6000 }).catch(() => {});
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const after = await ical.inputValue().catch(() => '(no input)');
+      ok("council: a manual sign-out clears the previous account's iCal URL before the next sign-in", after === '', JSON.stringify(after));
+      ok('council: no page errors across the sign-out drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+    {
+      /* A user who signed up without ever using the app anonymously finishes onboarding signed in;
+         signing out then re-rendered onboarding at the last step reached instead of the welcome. */
+      const { ctx, page } = await fakeAuth(false);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 20000 });
+      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.getByRole('button', { name: /see my estimate/i }).click();
+      await page.waitForSelector('.avatar', { timeout: 10000 });
+      await signOutViaMenu(page);
+      await page.waitForTimeout(600);
+      const welcome = await page.getByRole('button', { name: /get my estimate/i }).count();
+      const rateStep = await page.locator('.q:has-text("base hourly rate")').count();
+      ok('council: sign-out returns onboarding to the welcome screen, not the last step reached', welcome === 1 && rateStep === 0, `welcome=${welcome} rateStep=${rateStep}`);
+      await ctx.close();
+    }
   }
 
   await browser.close();

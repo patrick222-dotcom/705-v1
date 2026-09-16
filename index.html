@@ -2356,6 +2356,20 @@ function App(){
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
   };
+  /* Everything a signed-in session leaves in memory that must never survive into the next one:
+     the cloud-hydration marks, the sync bookkeeping, the calendar subscription (Invariant 13 —
+     the feed URL is a bearer credential, and on a shared phone the next account must not see
+     it), and the onboarding step. Called from BOTH the SIGNED_OUT branch and handleSignOut. The
+     two had drifted (council 2026-09-13: code-quality-00 = security-09, code-quality-11) — the
+     manual path claimed to mirror the branch but never cleared the iCal state, so a stalled
+     signOut left the previous account's secret feed URL in Settings for the next sign-in. */
+  const clearSignedInState = ()=>{
+    hydratedForUser.current = null; lastSeenAt.current = null;
+    setSyncError(false);
+    setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
+    resetToDefaults();
+    setObStep(0);
+  };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
   const hydrateFromCloud = async (userId, timeoutMs)=>{
@@ -2427,12 +2441,7 @@ function App(){
       }else{
         // Signed out: wipe in-memory state so the debounced save can't leak this user's
         // wage data into the shared anonymous localStorage key, then restore pre-login anon data.
-        hydratedForUser.current = null;
-        setSyncError(false);
-        resetToDefaults();
-        lastSeenAt.current = null;
-        // Drop the signed-in user's calendar subscription from memory (never leak it to anon state).
-        setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
+        clearSignedInState();
         setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
@@ -2457,7 +2466,8 @@ function App(){
     let cancelled=false;
     (async ()=>{
       let sub=null;
-      try{ sub = await loadIcalSub(uid); }catch(_){ return; }
+      try{ sub = await loadIcalSub(uid); }
+      catch(_){ if(!cancelled){ setIcalSub(null); setIcalUrl(''); } return; }   // never keep a previous account's URL on a failed load
       if(cancelled) return;
       setIcalSub(sub); setIcalUrl(sub ? sub.icalUrl : '');
       if(sub && sub.icalUrl && icalSyncedForUser.current!==uid){
@@ -2547,11 +2557,10 @@ function App(){
     if(!(await confirmAsync('You can sign back in anytime.',{title:'Sign out?',confirm:'Sign out'}))) return;
     await signOutClient();
     // Force signed-out state locally — never rely on onAuthStateChange, which won't fire if
-    // signOut stalled. Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires).
-    hydratedForUser.current = null; lastSeenAt.current = null; prevUserId.current = null;
-    setSyncError(false);
+    // signOut stalled. Same routine as the SIGNED_OUT branch (idempotent if that also fires).
+    prevUserId.current = null;
     setSession(null); setUser(null);
-    resetToDefaults();
+    clearSignedInState();
     setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
   };
 
