@@ -285,7 +285,7 @@
   "wageCore": false,
   "title": "Dollar-amount edit fields in Settings (differential rate, savings-goal target) have a 17px-tall tap target, versus 44px used everywhere else in the same sheet",
   "where": "index.html:4715 (differential amount NumInput) and 4754 (goal target NumInput); CSS: .drow .amt / .drow .amt input at 312-313, .danger-link at 423",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-02",
@@ -294,7 +294,7 @@
   "wageCore": false,
   "title": "Calendar scroll box has an absolute 420px height floor that exceeds the entire viewport in landscape",
   "where": "index.html:184 (.cal-vscroll), contrast with .sheet/.modal at index.html:396,399",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-03",
@@ -303,7 +303,7 @@
   "wageCore": false,
   "title": "Pay-period boundary chip inside the scrolling grid is a ~19px-tall tap target with no hit-area expansion",
   "where": "index.html:200-202 (.cal-pp-div, .pp-chip), rendered at index.html:3899-3902",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-04",
@@ -321,7 +321,7 @@
   "wageCore": false,
   "title": "SHIFT TYPE chips in Add-Shift sheet are 5px under the 44px tap-target minimum, unlike every sibling control in the same sheet",
   "where": "index.html:4205-4212 (JSX, the SHIFT TYPE .chips-grid) and index.html:317-321 (.chips-grid/.chip-sel CSS, no min-height set)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-06",
@@ -330,7 +330,7 @@
   "wageCore": false,
   "title": "Pattern-grid day cells drop below the 44px tap target on iPhone SE/mini-width phones",
   "where": "index.html:347-348 (.pl-grid/.pl-cell), rendered at index.html:4520-4531, inside .modal's fixed padding at index.html:399",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-07",
@@ -348,7 +348,7 @@
   "wageCore": false,
   "title": "est-banner action buttons are under the 44px tap-target minimum, unlike every other interactive control in this slice",
   "where": "index.html:143-144 (.est-banner button / .est-banner button.ghost CSS), rendered at index.html:3470-3475",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-09",
@@ -357,7 +357,7 @@
   "wageCore": false,
   "title": "Share sheet is the one sheet that doesn't lock background scroll",
   "where": "index.html:2596-2600 (body-scroll-lock effect) vs index.html:2228-2230/3657 (showShare state) and index.html:5666-5702 (ShareSheet)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-10",
@@ -366,7 +366,7 @@
   "wageCore": false,
   "title": "Avatar (sole mobile Settings/Sign-out entry point) is a 40px tap target with no hit-area bump, unlike its sibling icon button",
   "where": "index.html:86 (.avatar) vs index.html:75-76 (.iconbtn / .iconbtn::after) and index.html:1974-1975 (AccountMenu's avatar button)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-11",
@@ -375,7 +375,7 @@
   "wageCore": false,
   "title": "Savings-goal \"Del\" is a ~35x34px target sitting next to an editable field, with no confirmation (unlike the equivalent differential delete)",
   "where": "index.html:4687 (delGoal), 4755 (goal Del button), 4691 (del — differentials, has confirmAsync), index.html:423 (.danger-link CSS)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-12",
@@ -384,7 +384,7 @@
   "wageCore": false,
   "title": "First-run join/create inputs miss the Enter-to-submit handler their duplicate 'another board' inputs have",
   "where": "index.html:5388-5391 (create-board input) and 5396-5400 (join-code input), vs. the near-identical 5576-5579 and 5592-5597",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "mobile-ux-13",
@@ -411,7 +411,7 @@
   "wageCore": false,
   "title": "Danger-red money text narrowly fails AA on the app's translucent glass panels",
   "where": "index.html:3999 (Breakdown deduction rows, rendered inside the modal at 3620-3628), index.html:4571 (Pattern Lab 'will be replaced' warning inside .preview), index.html:4716/4755 (.danger-link 'Del' buttons in the Settings modal)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-02",
@@ -429,7 +429,7 @@
   "wageCore": false,
   "title": "Add-Shift and Pattern Lab live money readouts have no aria-live region",
   "where": "index.html:4243-4249 (AddShiftSheet .preview block) and index.html:4539-4544 (.pl-money readout in Pattern Lab)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-04",
@@ -438,7 +438,7 @@
   "wageCore": false,
   "title": "Calendar grid has no grid semantics or row-based navigation for screen reader / keyboard users",
   "where": "index.html:3938 (`<div className=\"grid\">`) and the day-cell buttons built at 3915-3936",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-05",
@@ -456,7 +456,7 @@
   "wageCore": false,
   "title": "Month/Year view control uses role=\"tablist\"/\"tab\" without the tab keyboard pattern",
   "where": "index.html:3547-3550 (the .viewseg buttons)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-07",
@@ -474,7 +474,7 @@
   "wageCore": false,
   "title": "Day cell's \"today\" state is visual-only — dropped from the accessible name",
   "where": "index.html:3913-3922 (Calendar function: isToday computed at 3913, cell button's aria-label built at 3916-3922)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-09",
@@ -483,7 +483,7 @@
   "wageCore": false,
   "title": "The month-scroll container isn't keyboard-scrollable on its own",
   "where": "index.html:3561 (`<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll}>`)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-10",
@@ -501,7 +501,7 @@
   "wageCore": false,
   "title": "Every 'Remove' button for a logged shift shares the identical accessible name",
   "where": "index.html:4200 (inside the list.map over `list` in AddShiftSheet)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-12",
@@ -528,7 +528,7 @@
   "wageCore": false,
   "title": "The 'Put it on the calendar' apply preview updates silently for screen-reader users",
   "where": "index.html:4566-4572 (the `.preview` div inside PatternLab's apply flow); contrast with index.html:3457 (`aria-live=\"polite\"` on the analogous pay-period label)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-15",
@@ -555,7 +555,7 @@
   "wageCore": false,
   "title": "Gross-pay summary line on the 'done' screen falls just under AA contrast",
   "where": "index.html:5823",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-18",
@@ -564,7 +564,7 @@
   "wageCore": false,
   "title": "Onboarding back button has no accessible name",
   "where": "index.html:5739",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-19",
@@ -573,7 +573,7 @@
   "wageCore": false,
   "title": "Dismissing the est-banner removes the focused control with no focus handoff",
   "where": "index.html:3471-3474 (banner buttons), index.html:2991-3001 (clearSample)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-20",
@@ -600,7 +600,7 @@
   "wageCore": false,
   "title": "ShareSheet has no dialog role or accessible name for the region",
   "where": "index.html:5682-5688 (ShareSheet)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-23",
@@ -609,7 +609,7 @@
   "wageCore": false,
   "title": "Differential name-edit input has no accessible name",
   "where": "index.html:4714 (Settings differentials row)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-24",
@@ -618,7 +618,7 @@
   "wageCore": false,
   "title": "Duplicate, context-free \"Del\" button labels in differentials and savings-goals lists",
   "where": "index.html:4716 and 4755 (Settings)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "accessibility-25",
@@ -636,7 +636,7 @@
   "wageCore": false,
   "title": "Withdraw/Decline confirm dialog (used by the reveal-flow actions) has no Escape handler and lets Tab escape the dialog",
   "where": "index.html:2127-2148 (ConfirmHost), invoked from SwapsSheet's doWithdraw (:5069) and doDecline (:5155)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "performance-00",
@@ -645,7 +645,7 @@
   "wageCore": false,
   "title": "Render-blocking boot scripts prevent any paint (even the splash) until 5 cross-origin CDN fetches resolve",
   "where": "index.html:17-21 (script tags), index.html:487 (#splash), index.html:490-592 (boot watchdog)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "performance-01",
@@ -654,7 +654,7 @@
   "wageCore": false,
   "title": "Calendar has zero memoization anywhere, so it fully reconciles on every unrelated Settings keystroke while still mounted behind the overlay",
   "where": "index.html:3883 (Calendar), :3942 (MonthSection), :4706 (Your-name input) & :4714 (differential-rename input), :3560-3571 & :3630-3631 (mount structure — Settings is a sibling overlay, calendar stays mounted underneath), :2189/:2203/:2214 (name/differentials useState in App), :4016-4036 (NumInput — the existing local-buffer fix pattern one field over, not applied to the name field)",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "performance-02",
@@ -672,7 +672,7 @@
   "wageCore": false,
   "title": "Scrolling the calendar past a pay-period boundary fires a real Supabase write",
   "where": "index.html:2735-2748 (onMonthScroll -> setPPS), 2291-2295 (serializeState includes payPeriodStart), 2453-2487 (debounced save effect, payPeriodStart is a dependency at line 2487, and the body at 2459-2479 saves unconditionally once hydrated with no check that anything besides the view state changed)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "performance-04",
@@ -681,7 +681,7 @@
   "wageCore": true,
   "title": "The cloud-sync 'syncing' flag forces two full unmemoized re-renders of the entire mounted calendar (~490 day cells) on every save",
   "where": "index.html:2234 (syncing state), 2470/2473 (setSyncing toggled by every debounced save), 2510/2513 (retrySync does the same), 2662-2670 (monthWindow mounts MONTH_BEFORE+MONTH_AFTER+1 = 16 months simultaneously, no windowing), 2644-2650 (statOf/ptoStatOf recomputed per cell), 3883-3939 (Calendar renders one cell per day calling statOf), 3941-3960 (MonthSection, not memoized) - confirmed zero React.memo/memo( usages anywhere in the file via grep",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "data-integrity-00",
@@ -744,7 +744,7 @@
   "wageCore": false,
   "title": "differentials is the one user-growable collection in sanitizeData with no cap, so it alone can push the blob past MAX_BLOB_BYTES and freeze cloud sync with no cross-device recovery",
   "where": "sanitizeData differentials branch index.html:1041-1050 (no slice/cap, contrast with goals at 1072-1082 and MAX_GOALS at 634); addDiff() index.html:4692 (unconditional push, no length check unlike the goals-add path at 4685)",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "code-quality-00",
@@ -771,7 +771,7 @@
   "wageCore": true,
   "title": "Per-day/period money rollup (shifts + PTO) hand-duplicated in 3 places instead of calling statOf/ptoStatOf",
   "where": "index.html:2636-2650 (ptoStatOf/statOf) vs 2775-2777 (yearMonths) vs 2793-2805 (calc)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-03",
@@ -780,7 +780,7 @@
   "wageCore": true,
   "title": "sampleNet() (onboarding's projected take-home) hand-rolls the same tax formula as computeNet() instead of calling it, and isn't part of the Invariant 3 function list",
   "where": "index.html:3416-3423 (sampleNet, inside applyPaystub's App scope) vs index.html:1231-1251 (computeNet)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-04",
@@ -789,7 +789,7 @@
   "wageCore": false,
   "title": "Day-key stringification is independently reimplemented three times over the same shifts/dayEvents object",
   "where": "index.html:658 (keyOfDate), index.html:837 (keyOfYMD), index.html:2623 (App's local keyOf)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-05",
@@ -798,7 +798,7 @@
   "wageCore": false,
   "title": "Month-section ref map never clears entries on unmount, so the pay-period stepper can silently stop scrolling the calendar",
   "where": "index.html:3568 (secRef callback), consequence at index.html:2762-2765 (scrollFocusToDate) and index.html:2720 (focusRowDates), comment at index.html:2707-2713",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-06",
@@ -816,7 +816,7 @@
   "wageCore": false,
   "title": "\"Save as template\" can silently capture the wrong shift type/hours when the last entry came from a template quick-tap",
   "where": "index.html:4135-4139 (applyTemplateTap), :4140-4160 (doSaveTemplate), :4094 (configDirtySinceAdd ref)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-08",
@@ -834,7 +834,7 @@
   "wageCore": false,
   "title": "Editing the cycle anchor silently discards a customized apply-start date",
   "where": "index.html:4384-4387 (setAnchor) interacting with 4552 and 4557 (applyStart)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-10",
@@ -870,7 +870,7 @@
   "wageCore": false,
   "title": "Goal preview divides by a goal target that can be zero, printing \"Infinity%\"",
   "where": "index.html:4247-4248 (AddShiftSheet preview) combined with index.html:4686 (Settings updGoalTarget) and index.html:4020-4028 (NumInput.commit)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-14",
@@ -879,7 +879,7 @@
   "wageCore": false,
   "title": "Body-scroll lock effect omits showShare, so the Share sheet lets the page scroll behind it",
   "where": "index.html:2596-2600 (body-overflow effect) vs index.html:2228 (showShare state) and index.html:5666-5702 (ShareSheet)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-15",
@@ -906,7 +906,7 @@
   "wageCore": false,
   "title": "SwapsSheet's six screen-states are gated by six hand-copied boolean prefixes instead of one switch",
   "where": "index.html:5351, 5365, 5375, 5384, 5404, 5607 (each an independent `{!loading && !loadError && !tablesMissing && ... && <jsx/>}` block)",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "code-quality-18",
@@ -924,7 +924,7 @@
   "wageCore": false,
   "title": "MAX_BLOB_BYTES guard is only enforced on one of three save call sites",
   "where": "index.html:2464-2469 (the only size check) vs. flush() at 2489-2505 and retrySync() at 2508-2516",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-20",
@@ -933,7 +933,7 @@
   "wageCore": false,
   "title": "Cross-device poll's content-equality check doesn't canonicalize key order, so it rarely matches even identical data",
   "where": "index.html:2550 (`normalize`) and 2560 (the comparison), under the comment block at 2540-2546",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "code-quality-21",
@@ -951,7 +951,7 @@
   "wageCore": false,
   "title": "runIcalSync's outer catch swallows every background-sync failure with no console.error or telemetry",
   "where": "index.html:3285-3288 (runIcalSync), index.html:2442 (loadIcalSub call in the app-open effect)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-23",
@@ -960,7 +960,7 @@
   "wageCore": false,
   "title": "Client-side calendar-host allowlist (providerOf) and the ical-proxy Edge Function's ALLOWLIST are independently maintained and already disagree",
   "where": "index.html:3245-3251 (providerOf) vs supabase/functions/ical-proxy/index.ts:20-26 (ALLOWLIST)",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "code-quality-24",
@@ -969,7 +969,7 @@
   "wageCore": false,
   "title": "Manual .ics file re-import mislabels unchanged icsUid matches as \"updated\", contradicting the code's own documented purpose of the `changed` flag",
   "where": "index.html:1507-1509 (comment defining `changed`), index.html:3125-3137 (onImportICS passes unfiltered plan.toUpdate), index.html:3269-3283 (runIcalSync filters to `changed` only), index.html:3811 (confirm-screen text: 'update N that changed')",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-25",
@@ -978,7 +978,7 @@
   "wageCore": false,
   "title": "Google sign-in has no try/catch around signInWithOAuth, unlike the sibling email path a few lines above",
   "where": "index.html:4615-4628 (handleGoogleAuth)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-26",
@@ -1005,7 +1005,7 @@
   "wageCore": false,
   "title": "The build gate's own 'never silently omitted' promise is broken for Invariants 7 and 13",
   "where": "scripts/check_build.mjs:12-14 and :143",
-  "status": "unverified"
+  "status": "rejected"
  },
  {
   "id": "code-quality-29",
@@ -1014,7 +1014,7 @@
   "wageCore": false,
   "title": "harness.mjs's vendor()/PKGS are dead code duplicating ci.yml's package list",
   "where": "tests/harness.mjs:16-23 (PKGS) and :41-44 (vendor)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "code-quality-30",
@@ -1050,7 +1050,7 @@
   "wageCore": false,
   "title": "Saved templates silently drop the Overtime flag, so reusing one understates the shift's value with no on-screen signal",
   "where": "index.html:4140-4160 (doSaveTemplate builds `tpl` without isOvertime), :4135-4139 (applyTemplateTap never sets isOvertime on the shift it inserts), :2915-2926 (toggleQuickFillDay same), :1051-1068 (templates sanitizeData branch has no isOvertime field at all)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "product-design-03",
@@ -1059,7 +1059,7 @@
   "wageCore": false,
   "title": "The 'live' shift-value preview doesn't update while typing custom Hours or a custom Bonus amount -- only on blur",
   "where": "index.html:4016-4035 (NumInput buffers keystrokes in local `raw` state and only calls onCommit on blur or Enter), consumed by Hours at :4226 and Custom bonus at :4241, feeding previewGross/previewNet at :4104-4105 and the preview block at :4243-4249",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "product-design-04",
@@ -1122,7 +1122,7 @@
   "wageCore": false,
   "title": "privacy.html claims the anon_id device identifier 'is not linked to your name' — track() writes it into the same row as user_id for every signed-in action",
   "where": "privacy.html:104-107 vs index.html:1385-1397 (track()), exercised by ~25 call sites passing user?.id (e.g. 2859 shift_saved, 2912 template_applied, 3392 paystub_imported, 5063 swap_posted)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "privacy-telemetry-02",
@@ -1131,7 +1131,7 @@
   "wageCore": false,
   "title": "privacy.html's Feedback section omits that a signed-in submitter's account id is always attached, regardless of the optional contact field",
   "where": "privacy.html:117-119 vs index.html:2006-2045 (FeedbackSheet submit) and 1354-1371 (submitFeedback)",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "cross-surface-00",
@@ -1149,7 +1149,7 @@
   "wageCore": false,
   "title": "Add-Shift sheet defaults to the Night type even when Night is switched off — sheet and hero pay a differential the lab prices at base",
   "where": "index.html:4077 (`useState('night')`), with 4099 (`active` chip filter), 4104-4105 (preview), 4108-4109 (`draftShift`/`add`), vs 1198-1207 `patternCellShiftType`",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "cross-surface-02",
@@ -1158,7 +1158,7 @@
   "wageCore": true,
   "title": "Pattern lab 'Take-home per paycheck' is a multi-paycheck average for cycles that don't divide 14, with no cue — no actual paycheck ever matches it",
   "where": "index.html:1282-1298 (patternMetrics span=lcm(n,14), periodGross=gross/periods), labels at 4540 ('Take-home per paycheck'), 4428 ('Take-home / paycheck'), 4447 ('/ paycheck ·')",
-  "status": "unverified"
+  "status": "confirmed"
  },
  {
   "id": "cross-surface-03",

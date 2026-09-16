@@ -322,6 +322,168 @@
   "dissent": []
  },
  {
+  "title": "Dollar-amount edit fields in Settings (differential rate, savings-goal target) have a 17px-tall tap target, versus 44px used everywhere else in the same sheet",
+  "severity": "medium",
+  "where": "index.html:4715 (differential amount NumInput) and 4754 (goal target NumInput); CSS: .drow .amt / .drow .amt input at 312-313, .danger-link at 423",
+  "detail": "`.drow .amt{padding:5px 10px}` wraps the number, but `.drow .amt input{width:54px;border:none;background:transparent;...}` sets no padding or min-height on the <input> itself, and the wrapper is a plain <span> (not a <label>), so tapping the padded pill around the number does nothing — only the number glyph itself is live. Measured live in the rendered Settings sheet on an iPhone-13 viewport: each goal-target and differential-rate NumInput is 54x17px (34x17 for a multiplier-type differential), and the adjacent 'Del' button on the same row is 35x39px — both well under the 44px minimum the codebase otherwise enforces (33 other spots in index.html explicitly set minHeight:44), and in visible contrast to the compliant ~42px-tall .inp input fields (line 292, padding:13px 14px) used for base rate, tax %, and bonus $ a few rows above in the same form.",
+  "failure": "Correcting a savings-goal target or a shift differential's dollar rate one-handed mid-shift means landing a tap inside a 17px-tall strip — under half the app's own stated minimum — and the larger padded pill around it looks tappable but isn't, so a mistap lands nowhere and she has to try again to get the cursor into the number field. The 'Del' button on the same row is likewise a few pixels short of 44px in each dimension.",
+  "fix": "Give .drow .amt input real padding or min-height:44px so the live hit-box matches the visible pill (or turn the .amt span into a <label> so tapping anywhere in the pill focuses the input), and bump .danger-link to a 44px box on these money-editing rows to match the convention used elsewhere in the file.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "mobile-ux-01",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Calendar scroll box has an absolute 420px height floor that exceeds the entire viewport in landscape",
+  "severity": "medium",
+  "where": "index.html:184 (.cal-vscroll), contrast with .sheet/.modal at index.html:396,399",
+  "detail": "`.cal-vscroll{max-height:60vh;min-height:420px;...}` sets a hard 420px minimum height on the Month-view scroll box, in plain (non-dynamic) `vh`. Elsewhere in this same file the sheet/modal containers were deliberately switched to `dvh` (`.sheet{max-height:92dvh}` line 396, `.modal{max-height:90dvh}` line 399) specifically because mobile browser chrome changes available height — the calendar container is the one scroll surface that was never brought in line with that pattern, and unlike them it also carries a bare pixel floor with no viewport-relative cap under it.",
+  "failure": "Rotate an iPhone 13 (the project's own test profile) to landscape while on Month view. Landscape viewport height for a phone is typically ~350-390px after Safari's toolbar, well under the 420px the calendar box is forced to occupy. The calendar's own scroll container alone now consumes more vertical space than the entire screen, pushing the greet-row/hero, the +Log a shift button and the bottom nav completely off-screen — a one-handed nurse who rotates her phone (even accidentally) has to scroll the whole page up and down just to see anything besides the calendar grid, including controls that were one glance away in portrait.",
+  "fix": "Cap `.cal-vscroll` against the real viewport instead of a fixed px floor — e.g. drop `min-height:420px` (or express it as `min(420px, 60dvh)`) and switch `60vh` to `60dvh` so the box shrinks with the actual available height in landscape the same way `.sheet`/`.modal` already do.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "mobile-ux-02",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": [
+   "The finding's own failure narrative undercuts it: .cal-vscroll (index.html:184) is an ordinary flow element with its own internal overflow-y:auto scroller nested inside a normally scrolling page — there's no position:fixed wrapper or overflow:hidden on the page/app root (checked around the render site at index.html:3560 and greped for overflow:hidden globally). So even granting the 420px floor exceeds landscape viewport height, the described outcome is just 'the user scrolls the whole page' — which is exactly how a page taller than the viewport is supposed to behave, not a trapped/unreachable UI. The finding literally says 'has to scroll the whole page up and down to see anything else,' which is normal page scrolling, not a broken failure mode. This is a real minor sizing nit (px floor should probably be dvh-relative like .sheet/.modal) but not a reachable UX failure where controls become inaccessible.\""
+  ]
+ },
+ {
+  "title": "Pay-period boundary chip inside the scrolling grid is a ~19px-tall tap target with no hit-area expansion",
+  "severity": "medium",
+  "where": "index.html:200-202 (.cal-pp-div, .pp-chip), rendered at index.html:3899-3902",
+  "detail": "`.pp-chip{font-size:10.5px;padding:3px 9px;...}` inside `.cal-pp-div{margin:3px 0 7px}` yields a button roughly 18-19px tall (padding 3px+3px plus a ~10.5px line), sitting directly between rows of 42-44px day cells in the same 7-column grid, only 3px above and 7px below the neighboring cell rows. Elsewhere in this exact file, small buttons of similar visual size are deliberately padded out to the 44px minimum with a pseudo-element: `.calnav button` is 36x36 but gets `::after{inset:-5px}` (index.html:161-162) for an effective ~46x46 hit area, and `.period button` is 24x24 but gets `::after{inset:-10px}` (index.html:104-105) for an effective 44x44. The pp-chip has no equivalent — it is the one small interactive control in the calendar left at its bare visual size.",
+  "failure": "A nurse scrolling one-handed through the month list to jump to a different pay period (the chip's whole purpose — it calls `onBoundaryPick`) has to land a thumb on an ~19px strip wedged between day-cell rows that are the primary tap target on the same screen. She is likely to either miss the chip (nothing happens) or overshoot onto the adjacent day cell, which opens the Add-Shift sheet for the wrong date instead of switching pay periods.",
+  "fix": "Give `.pp-chip` the same `::after{content:'';position:absolute;inset:-Npx}` hit-area expansion already used by `.calnav button` and `.period button` in this file, sized to bring it to at least 44px tall, or increase its own padding/margin to reach that height directly.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "mobile-ux-03",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "SHIFT TYPE chips in Add-Shift sheet are 5px under the 44px tap-target minimum, unlike every sibling control in the same sheet",
+  "severity": "medium",
+  "where": "index.html:4205-4212 (JSX, the SHIFT TYPE .chips-grid) and index.html:317-321 (.chips-grid/.chip-sel CSS, no min-height set)",
+  "detail": "The SHIFT TYPE picker is a 2-column grid of `.chip-sel` buttons with no inline min-height override: `<button key={k} className={'chip-sel'+...} onClick={...}><i .../>{d.name}</button>` (index.html:4208). `.chip-sel` itself only sets `padding:11px 12px` plus a 1.5px border (index.html:318), with no explicit height. Measured live on an iPhone 13 viewport (390x844) via the project's own Playwright harness, these buttons render at 39px tall. Every other interactive control in the exact same AddShiftSheet component was explicitly fixed to 44px: the OVERTIME toggle chip (`style={{...,minHeight:44}}`, index.html:4216), the QUICK ADD FROM TEMPLATE buttons (`style={{flex:1,minHeight:44}}`, index.html:4180), and the MARK THIS DAY / day-event chips (`style={{...,minHeight:44}}`, index.html:4255) - confirmed by the same measurement to render at exactly 44px. The calendar's own quick-fill template chips (index.html:3534, `style={{minHeight:44}}`) follow the same 44px convention. So within this one sheet, the single highest-frequency control - the one every logged shift requires tapping to set Day/Night/Weekend/Holiday/Bonus - is the one control the developer forgot to size, while every neighboring chip was deliberately fixed.",
+  "failure": "A nurse holding her phone one-handed mid-shift, thumb reaching across the sheet to tap 'Night' in the 2-column grid, gets a 39px-tall target with only 8px of vertical gap to the row below (row2 'Weekend day/night' starts at y=224.5 when row1 starts at y=177.5, per the measured boxes) - noticeably tighter than the 44px targets she gets for every other choice in the same flow (overtime toggle, template quick-add, PTO/education/appointment/off). The practical result is a higher mis-tap rate on exactly the control that determines the wage differential applied and previewed for that shift; she has to notice the wrong chip highlighted, undo, and retry.",
+  "fix": "Add the same `minHeight:44` (or equivalent CSS min-height) to the SHIFT TYPE `.chip-sel` buttons at index.html:4208, matching the inline style already applied to the OT toggle, template buttons, and event-kind chips a few lines below in the same component - or move `min-height:44px` into the shared `.chip-sel` CSS rule (index.html:318) so every current and future call site gets it for free instead of requiring each caller to remember the inline override.",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "mobile-ux-05",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Pattern-grid day cells drop below the 44px tap target on iPhone SE/mini-width phones",
+  "severity": "medium",
+  "where": "index.html:347-348 (.pl-grid/.pl-cell), rendered at index.html:4520-4531, inside .modal's fixed padding at index.html:399",
+  "detail": "`.pl-grid` is a 7-column CSS grid with a fixed `gap:5px`, sitting inside `.modal{padding:24px}` (line 399, no per-breakpoint reduction anywhere in the file's three @media blocks at lines 206, 440, 447). Cell side = ((viewportWidth-48)-30)/7. At 390px (iPhone 13, the harness's own device profile) that's 44.6px — just barely compliant — but at 375px (iPhone 13 mini / iPhone SE 2nd-3rd gen) it's 42.4px, at 360px (the width the app itself explicitly designs for at line 441's SE comment) it's 40.3px, and at 320px (older SE) it's 34.6px. Contrast with the main calendar grid the app already tuned for this: `.grid` uses `gap:3px` dropping to `gap:2px` under 520px (lines 174, 212) and its outer padding shrinks to 8px under 520px (line 211) — the pattern-lab grid never received the equivalent treatment even though it's the same 7-column layout squeezed into a much more heavily padded (24px) modal.",
+  "failure": "A nurse one-handed, mid-shift, painting a 14- or 28-day custom rotation (PATTERN_CYCLE_CHOICES includes 28, PATTERN_MAX_CYCLE is 42) on an iPhone SE/mini-class phone taps a ~40-42px square. A thumb mis-tap lands on the adjacent day and silently paints or clears the wrong cell — there's no per-tap confirmation, only the eventual 'Put it on the calendar' preview many taps later, by which point it's easy to have several wrong cells that look plausible and go unnoticed.",
+  "fix": "Give `.pl-grid`/`.pl-cell` the same narrow-viewport treatment already applied to the main calendar grid: shrink the gap and/or reduce the modal's side padding specifically around the pattern grid under ~400px, so each of the 7 columns clears 44px down to 360px width.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "mobile-ux-06",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "est-banner action buttons are under the 44px tap-target minimum, unlike every other interactive control in this slice",
+  "severity": "medium",
+  "where": "index.html:143-144 (.est-banner button / .est-banner button.ghost CSS), rendered at index.html:3470-3475",
+  "detail": "`.est-banner button{padding:9px 13px;...font-size:12.5px}` (line 143) has no explicit line-height or min-height, so its rendered height is roughly 9+9px padding plus a ~12.5px line box — about 33-35px tall. That's the button a nurse taps to react to a rough/sample estimate: 'Sharpen it'/'Enter my rate' and 'Clear the sample'/'Got it', 8px apart in a `.row{display:flex;gap:8px;...}` (line 142). I checked whether this app compensates for small controls the way it does elsewhere: `.back` (line 368) and `.tg` (line 281) both carry a `::after{position:absolute;...}` hit-slop overlay (lines 369 and 282) that pads their effective tap area out to ~44px, and `.acct-menu button` (line 94) and `.pl-brushes .chip-sel` (line 346) both set `min-height:44px` directly — so the codebase clearly already treats 44px as the bar elsewhere. `.est-banner button` has neither technique.",
+  "failure": "A nurse reading the est-banner after a rough/sample setup, one-handed, taps to fix her estimate. The two buttons are each ~34px tall with only 8px between them and no invisible hit-slop margin, so a fingertip (which is wider than either button) can land on the wrong one — e.g. tapping 'Got it' (which silently sets estimateMode to '' and dismisses the banner for good) when she meant to tap 'Sharpen it' (which opens Settings), or missing both buttons on the first tap and having to re-aim.",
+  "fix": "Give `.est-banner button` `min-height:44px` (matching `.acct-menu button` / `.pl-brushes .chip-sel`), or add a `::after{content:'';position:absolute;inset:-Npx}` hit-slop overlay the way `.back` and `.tg` already do, and widen the 8px gap between the two banner buttons.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "mobile-ux-08",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Share sheet is the one sheet that doesn't lock background scroll",
+  "severity": "medium",
+  "where": "index.html:2596-2600 (body-scroll-lock effect) vs index.html:2228-2230/3657 (showShare state) and index.html:5666-5702 (ShareSheet)",
+  "detail": "App's single scroll-lock effect sets `document.body.style.overflow='hidden'` only while `sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns` is true (index.html:2597). `showShare` (declared 2228, set by `openShare` at 2230, used to conditionally render `<ShareSheet>` at 3657) is not in that list, and ShareSheet itself (5666-5702) has no scroll-lock effect of its own — I checked its full body, there is none.",
+  "failure": "Tap SHARE in Settings (or wherever `openShare` is wired) to bring up the QR-code sheet, then, while holding the phone up for a coworker to scan (exactly what the sheet's own copy says to do: \"Hold this up and let them scan it with their camera\"), a stray touch or the phone shifting in a one-handed grip drags the calendar page underneath — the background is still scrollable/rubber-bands, unlike every other sheet in the app (Settings, Feedback, Breakdown, Auth, ics import, Swaps, Patterns all lock it). Closing the sheet afterward can leave the calendar scrolled to a different position than before it opened.",
+  "fix": "Add `showShare` to the OR condition in the effect at index.html:2597 (and its dependency array at 2600), matching the pattern already used for every other sheet.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "mobile-ux-09",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Avatar (sole mobile Settings/Sign-out entry point) is a 40px tap target with no hit-area bump, unlike its sibling icon button",
+  "severity": "medium",
+  "where": "index.html:86 (.avatar) vs index.html:75-76 (.iconbtn / .iconbtn::after) and index.html:1974-1975 (AccountMenu's avatar button)",
+  "detail": "`.iconbtn` (the topbar feedback 💬 button) is 40x40 visually but gets `.iconbtn::after{position:absolute;inset:-2px}` (line 76), which is hit-testable and bumps its real tap target to 44x44 — the app clearly knows and applies the 44px minimum. `.avatar` (line 86) is also 40x40 but gets no such pseudo-element or padding; `.acct` (87) adds no padding either. I rendered both in a real browser at 390px width and measured: iconbtn effectively 44x44 (via the -2px inset), avatar exactly 40x40 with no expansion. Per the file's own comment (index.html:80-85), since 2026-09-13 this avatar is \"the only route to Settings and Sign out on a phone\" below 920px — it absorbed the old separate gear/sign-out icon buttons.",
+  "failure": "A nurse reaching one-handed for the top-right corner to open Settings or sign out gets a target 4px narrower on each axis than Apple's 44pt minimum and than the feedback button right next to it — on the one control in the bar that has no fallback route if missed.",
+  "fix": "Give `.avatar` the same `::after{content:'';position:absolute;inset:-2px}` treatment `.iconbtn` already has (or increase its own width/height to 44px), so its real hit area matches its sibling.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "mobile-ux-10",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Savings-goal \"Del\" is a ~35x34px target sitting next to an editable field, with no confirmation (unlike the equivalent differential delete)",
+  "severity": "medium",
+  "where": "index.html:4687 (delGoal), 4755 (goal Del button), 4691 (del — differentials, has confirmAsync), index.html:423 (.danger-link CSS)",
+  "detail": "`delGoal=id=>setGoals((goals||[]).filter(g=>g.id!==id))` (4687) removes a savings goal immediately with no dialog. The structurally identical destructive action one section up, deleting a differential, is guarded: `del=async k=>{ if(!(await confirmAsync(...))) return; ... }` (4691) with an explicit warning. I rendered the actual `.danger-link` markup (color/font-weight/font-size/padding/margin from index.html:423) inside a `.drow` at 390px width and measured its real hit box: 35.45 x 34px — under the 44px minimum in both dimensions — placed directly beside the goal's `NumInput` (the thing a user is actually trying to tap to edit the target amount, line 4754).",
+  "failure": "Editing a goal's target amount one-handed, a thumb that lands a few px off the amount field hits \"Del\" instead and the goal — name, target, everything — is gone instantly with zero confirmation and no undo, unlike the differential row one section above which stops to ask first.",
+  "fix": "Route delGoal through the same confirmAsync(...) used for del(k) at 4691, and/or enlarge the Del hit area (bump .danger-link padding or add an ::after inset like .iconbtn) so it isn't both undersized and irreversible.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "mobile-ux-11",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "First-run join/create inputs miss the Enter-to-submit handler their duplicate 'another board' inputs have",
+  "severity": "medium",
+  "where": "index.html:5388-5391 (create-board input) and 5396-5400 (join-code input), vs. the near-identical 5576-5579 and 5592-5597",
+  "detail": "The zero-groups screen's 'Create your unit's board' name input (5388-5391) and 'Join with a code' input (5396-5400) have no `onKeyDown` handler. The visually and behaviorally identical inputs shown later once a nurse already has ≥1 group — 'Create another board' (5578-5579) and 'Join another board' (5595-5597) — both carry `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` / `doJoinGroup()`. Same field, same button, same purpose; only the first-run copy lacks the keyboard submit path.",
+  "failure": "A nurse joining her unit's board for the very first time (the most common swap-board entry point: a colleague texted her a 6-char code rather than tapping a link) types the code one-handed with the iOS keyboard up, then has no keyboard-native way to submit — Return/Go does nothing here — so she has to dismiss or work around the keyboard to find and tap 'Join board' below. The exact same action a returning user takes to join a SECOND board works fine with Return, so the app is inconsistent about which keyboard behavior she gets on identical UI.",
+  "fix": "Add the same `onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}` to the 5396-5400 input and `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` to the 5388-5391 input, matching 5579/5597.",
+  "wageCore": false,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "mobile-ux-12",
+  "lens": "mobile-ux",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "Overtime tag text fails AA contrast in the Add-Shift live preview and shift list",
   "severity": "high",
   "where": "index.html:4197 and index.html:4245 (color '#11A86B' inline overrides; also the decorative badge at 3923 and legend swatch text-adjacent use at 4218 share the same token)",
@@ -334,6 +496,22 @@
    "add-shift"
   ],
   "id": "accessibility-00",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Danger-red money text narrowly fails AA on the app's translucent glass panels",
+  "severity": "medium",
+  "where": "index.html:3999 (Breakdown deduction rows, rendered inside the modal at 3620-3628), index.html:4571 (Pattern Lab 'will be replaced' warning inside .preview), index.html:4716/4755 (.danger-link 'Del' buttons in the Settings modal)",
+  "detail": "var(--danger) (#C84B3C) is used at 12-13px/600 weight for deduction values, warnings and 'Del' links. Computed against the literal token values: on the near-opaque .card background used when Breakdown is embedded inline (rgba(255,255,255,.93), line 111, call site 3586) it's ~4.64:1 — passes. But the same red text rendered inside .modal (rgba(246,245,241,.88) over the dark .scrim, lines 394/399) or .preview (var(--money-soft) #E3F7EE, line 418) computes to ~4.15-4.25:1 — under the 4.5:1 AA minimum for normal text. That's the Breakdown popup (line 3625 'See the full breakdown'), the Settings goal/differential Del buttons, and the Pattern Lab apply-preview warning — three of the named money surfaces.",
+  "failure": "The same federal-tax/FICA/state-tax deduction figures are legible when shown inline on the dashboard but slip just under the AA contrast floor when the user taps 'See the full breakdown ›' to view them in the popup, because that surface's glass panel is measurably less opaque than the plain white card.",
+  "fix": "Either drop the .modal/.preview backdrop-filter tint under var(--danger) text specifically, or darken var(--danger) by a few percent so it clears 4.5:1 against #E3F7EE and the translucent panel's effective color, not just against pure white.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "accessibility-01",
   "lens": "accessibility",
   "status": "confirmed",
   "dissent": []
@@ -355,6 +533,39 @@
   "dissent": []
  },
  {
+  "title": "Add-Shift and Pattern Lab live money readouts have no aria-live region",
+  "severity": "medium",
+  "where": "index.html:4243-4249 (AddShiftSheet .preview block) and index.html:4539-4544 (.pl-money readout in Pattern Lab)",
+  "detail": "previewGross/previewNet (computed at 4104-4105) and metrics.periodNet/periodGross (patternMetrics) re-render live as the user toggles shift type, hours, OT, bonus, or paints pattern cells, but the containing divs carry no aria-live attribute. Elsewhere in the same file the team does wire this up correctly — the toaster (`role=\"status\" aria-live=\"polite\"`, line 2118) and the pay-period label (`aria-live=\"polite\"`, line 3457) — so the omission here is inconsistent, not a deliberate choice. (Independently confirmed by the add-shift slice for the AddShiftSheet .preview block specifically, same call site ~4243-4248, same missing-attribute root cause.)",
+  "failure": "A screen reader user changes the hours or toggles the OT switch in the Add-Shift sheet and hears nothing — the updated '+$X gross · about +$Y take-home' text only gets read if they manually re-navigate to that div after every edit, defeating the point of a live preview for judging whether a pickup is worth it.",
+  "fix": "Wrap the `.preview` value line (and the `.pl-money` .v/.s lines) in `aria-live=\"polite\"` (a single region per sheet is enough — no need to make every keystroke chatty at the character level, just the settled preview text).",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces",
+   "add-shift"
+  ],
+  "id": "accessibility-03",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Calendar grid has no grid semantics or row-based navigation for screen reader / keyboard users",
+  "severity": "medium",
+  "where": "index.html:3938 (`<div className=\"grid\">`) and the day-cell buttons built at 3915-3936",
+  "detail": "Each day is an independent `<button>` with a rich aria-label (dt.toDateString() + shift/take-home/OT/note info, lines 3916-3922) — that part is done well. But the container has no `role=\"grid\"`/`role=\"row\"`/`role=\"gridcell\"` and there is no roving-tabindex or arrow-key handling; the weekday header row is `aria-hidden=\"true\"` (line 3952) with no equivalent exposed elsewhere. Every day in the visible month(s) is one flat Tab stop in a single sequential order.",
+  "failure": "A keyboard or screen-reader user who wants to check the take-home for a date three weeks out must Tab through every single day between today and then one at a time — there is no 'next week' / row-jump the way a native `role=\"grid\"` (arrow keys) would give them, and nothing announces that this region is even a calendar grid rather than an arbitrary list of buttons.",
+  "fix": "Wrap each week row in `role=\"row\"`, mark cells `role=\"gridcell\"` inside a `role=\"grid\"` container (or, more simply, add a `role=\"grid\"`/roving-tabindex layer per WAI-ARIA APG's grid pattern) so assistive tech can navigate by week/row instead of one cell at a time.",
+  "wageCore": false,
+  "slices": [
+   "money-surfaces"
+  ],
+  "id": "accessibility-04",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "Pay-period stepper's scroll animation ignores prefers-reduced-motion",
   "severity": "high",
   "where": "animateScrollTop (index.html:674-683), used by scrollFocusToDate (index.html:2751-2766) via movePeriod (index.html:2826-2831)",
@@ -371,6 +582,56 @@
   "dissent": []
  },
  {
+  "title": "Month/Year view control uses role=\"tablist\"/\"tab\" without the tab keyboard pattern",
+  "severity": "medium",
+  "where": "index.html:3547-3550 (the .viewseg buttons)",
+  "detail": "The Month/Year toggle is marked up as `<div className=\"viewseg\" role=\"tablist\" aria-label=\"Calendar view\">` wrapping two `role=\"tab\" aria-selected={...}` buttons. Per the ARIA tab pattern this markup promises to a screen-reader/keyboard user: Left/Right arrow keys move selection between tabs, and each tab is wired to its panel via aria-controls (with a matching role=\"tabpanel\"). Neither exists: there is no onKeyDown handler anywhere on these buttons or their container (confirmed — the only onKeyDown handlers in the whole file are on unrelated text inputs at lines 4035, 4281, 5357, 5579, 5597), and `aria-controls`/`role=\"tabpanel\"` appear nowhere in the file.",
+  "failure": "A screen-reader user tabs to the control and hears \"Month, tab, 1 of 2, selected\" — the standard tab-pattern announcement — and, following that pattern, presses the Right arrow key expecting focus/selection to move to \"Year\". Nothing happens; they have to already know to abandon the arrow-key convention and Tab past it instead.",
+  "fix": "Either implement the real pattern (roving tabindex + arrow-key handler that calls setCalView, plus aria-controls pointing at a role=\"tabpanel\" wrapping the YearList/cal-vscroll region), or drop role=\"tablist\"/\"tab\"/aria-selected and let it be a plain labeled button group — a segmented control doesn't have to be ARIA tabs.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "accessibility-06",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Day cell's \"today\" state is visual-only — dropped from the accessible name",
+  "severity": "medium",
+  "where": "index.html:3913-3922 (Calendar function: isToday computed at 3913, cell button's aria-label built at 3916-3922)",
+  "detail": "`isToday` is computed and used only to add a CSS class (`(isToday?' today':'')` at 3916), which produces a 2px indigo inset ring via `.cell.today{box-shadow:...}` (index.html:244). Because the button carries an explicit aria-label, that manually-built string is its entire accessible name — and it is built from hasShift/hasEvent/take-home/hasOT/no-shifts/hasNote (3917-3922) but never from isToday. Every other visual-only day state that the aria-label author clearly cared about (overtime badge, note dot) IS mirrored into the label; \"today\" is the one omitted.",
+  "failure": "A screen-reader user navigating the day-cell buttons in Month view has no way to tell which one is today — sighted users get an indigo ring around it, but the announced label for that cell is indistinguishable from any other day with the same shifts/hours, e.g. \"Fri Sep 12 2025, no shifts\" reads identically whether or not it's actually today.",
+  "fix": "Append `(isToday ? ', today' : '')` to the aria-label string built at index.html:3916-3922.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "accessibility-08",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "The month-scroll container isn't keyboard-scrollable on its own",
+  "severity": "medium",
+  "where": "index.html:3561 (`<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll}>`)",
+  "detail": "`.cal-vscroll` is a nested `overflow-y:auto; max-height:60vh` scroll region (index.html:184) holding 16 months of day-cell buttons. It has no `tabIndex` and no keydown handler, so it is never itself a focus stop and never responds to arrow/Page keys. The outer page (`body`/document) is what actually scrolls when a keyboard-only user (no mouse/touch — e.g. a switch or keyboard-only sighted user, not necessarily a screen-reader user) presses Page Down/Space with focus elsewhere on the page; that scrolls the page around the calendar card, not the calendar's own internal 60vh viewport.",
+  "failure": "A sighted keyboard-only user wants to browse forward from the current month inside the calendar card without a pointer device. There is no key they can press with focus inside the calendar region to page the 60vh scroller itself — their only route is Tab-ing individually through every day-cell button in the current month (up to ~31 Tab presses) until focus-follows-into-view scrolls the next month into range, which works only as an incidental side effect of tabbing through unrelated buttons, not as an intentional \"scroll the calendar\" action.",
+  "fix": "Give `.cal-vscroll` `tabIndex={0}` (and ideally an `aria-label`, e.g. \"Calendar months\") so it becomes a standard scrollable region that responds to the browser's native arrow/Page/Home/End key scrolling once focused.",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "accessibility-09",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": [
+   "The cited code is accurate — .cal-vscroll (index.html:3561-3562) indeed has no tabIndex or keydown handler — but the \"failure\" doesn't actually block a keyboard user from reaching or browsing the calendar. Every day cell inside .cal-vscroll is itself a focusable <button> (rendered via MonthSection), so a keyboard-only user reaches every month exactly as WCAG 2.1.1 requires: by Tabbing through the day-cell buttons, with the browser auto-scrolling the nested .cal-vscroll region into view as focus moves — the same behavior any scrollable list of focusable controls exhibits (an inbox, a select menu, a virtualized list). An explicit tabIndex={0} scroll wrapper is the fix for a container whose content is NOT independently focusable (e.g. static images/paragraphs); here it is. The finding concedes as much (\"works... as an incidental side effect of tabbing through unrelated buttons\") but mischaracterizes ordinary focus-follows-scroll as a defect rather than the expected mechanism. Nothing is unreachable — worst case is it takes more Tab presses than a sighted mouse user's Page Down, which is a minor UX nit at most, not a WCAG failure, and isn't a new class of issue beyond the already-filed calendar-virtualization backlog item."
+  ]
+ },
+ {
   "title": "Add-Shift sheet has no dialog semantics, unlike every sibling sheet in the same file",
   "severity": "high",
   "where": "index.html:4164 (AddShiftSheet's outer <div className=\"sheet\">)",
@@ -382,6 +643,22 @@
    "add-shift"
   ],
   "id": "accessibility-10",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Every 'Remove' button for a logged shift shares the identical accessible name",
+  "severity": "medium",
+  "where": "index.html:4200 (inside the list.map over `list` in AddShiftSheet)",
+  "detail": "`<button className=\"danger-link\" onClick={()=>remove(s.id)}>Remove</button>` renders once per entry in `list`, and the UI explicitly supports multiple shifts logged on one day (the whole 'ON THIS DAY' section exists for that). Every one of those buttons has the literal accessible name 'Remove', with no reference to which shift. The same component already knows how to disambiguate an equivalent case: the template-delete button a few dozen lines earlier is `aria-label={'Delete template '+t.name}`.",
+  "failure": "A screen-reader user who has logged two shifts on the same day (e.g. a regular shift plus a picked-up OT shift) hears 'Remove, button' twice with nothing to tell them apart, and can only guess which one their focus is currently on.",
+  "fix": "Give each Remove button a distinguishing aria-label, e.g. aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}, mirroring the 'Delete template '+t.name pattern already used in the same file.",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "accessibility-11",
   "lens": "accessibility",
   "status": "confirmed",
   "dissent": []
@@ -414,6 +691,22 @@
    "pattern-lab"
   ],
   "id": "accessibility-13",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "The 'Put it on the calendar' apply preview updates silently for screen-reader users",
+  "severity": "medium",
+  "where": "index.html:4566-4572 (the `.preview` div inside PatternLab's apply flow); contrast with index.html:3457 (`aria-live=\"polite\"` on the analogous pay-period label)",
+  "detail": "`applyPlan` (a `useMemo` over `applyStart`, `applyWeeks`, `applyReplace`, defined at lines 4312-4314) drives a plain `<div className=\"preview\">` at lines 4566-4572 that reports 'This adds N shift(s) · <dates>', how many days were skipped, and how many will be replaced. Changing the Starting date input, the 'FOR' week-count buttons, or the Replace toggle recomputes this text, but the div carries no `aria-live` region. Elsewhere in the same file the app already uses `aria-live=\"polite\"` for exactly this kind of 'a control changed and this readout updated' case (the pay-period `<span className=\"num\" aria-live=\"polite\">{periodLabel}</span>` at line 3457).",
+  "failure": "A screen-reader user changes 'FOR' from 6 weeks to 12 weeks, or flips 'Replace shifts already on those days' on, expecting to hear the updated add/skip/replace counts the sighted preview shows immediately. Nothing is announced — they have to manually re-navigate to the preview div after every change to learn whether their pattern will now replace shifts or add fewer than expected, which is exactly the kind of consequential, silent state change AA's programmatic-status guidance (and the app's own precedent at line 3457) exists to prevent.",
+  "fix": "Add `aria-live=\"polite\"` (and ideally `aria-atomic=\"true\"`) to the `.preview` div at line 4567 so the recomputed adds/skipped/replaced counts are announced whenever `applyStart`, `applyWeeks`, or `applyReplace` change.",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "accessibility-14",
   "lens": "accessibility",
   "status": "confirmed",
   "dissent": []
@@ -453,6 +746,54 @@
   "dissent": []
  },
  {
+  "title": "Gross-pay summary line on the 'done' screen falls just under AA contrast",
+  "severity": "medium",
+  "where": "index.html:5823",
+  "detail": "<div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div> sits inside the card whose background is var(--ink-2) = #21242F (index.html:5820). Computed contrast of #7E8290 on #21242F is 4.04:1, below the 4.5:1 AA requirement for 13px/500 (normal) text. This is the one line on the onboarding completion screen that literally states the gross-pay figure.",
+  "failure": "A low-vision user finishing onboarding sees the projected take-home number clearly (mint on ink-2, 8:1) but the supporting 'X hrs · 6 shifts · gross $Y' line next to it is noticeably harder to read -- it's the exact figure a nurse would want to sanity-check against her own math, and it's the weakest-contrast text on the screen.",
+  "fix": "Lighten #7E8290 (e.g. to something around #9A9DAB, already used one line above for 'Projected take-home' at 5.7:1 against the same background) so the money-adjacent line clears 4.5:1.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "accessibility-17",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Onboarding back button has no accessible name",
+  "severity": "medium",
+  "where": "index.html:5739",
+  "detail": "<button className=\"back\" onClick={()=>setObStep(obStep-1)}>‹</button> -- the only content is the raw '‹' glyph; no aria-label, no title, no visually-hidden text. The visually identical arrow glyphs used for pay-period navigation in the main dashboard do carry one: aria-label=\"Previous pay period\" / \"Next pay period\" (index.html:3457).",
+  "failure": "A screen-reader user on the base-rate, differentials, or taxes step reaches the top-left button and hears only 'button' or an unhelpful glyph reading ('single left-pointing angle quotation mark, button') with no indication it goes back a step, unlike every other chevron button in the app.",
+  "fix": "Add aria-label=\"Back\" (or a dynamic 'Back to <previous step>') to the Head component's back button, matching the pattern already used for the pay-period nav arrows.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "accessibility-18",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Dismissing the est-banner removes the focused control with no focus handoff",
+  "severity": "medium",
+  "where": "index.html:3471-3474 (banner buttons), index.html:2991-3001 (clearSample)",
+  "detail": "Both dismiss paths -- 'Got it' (setEstimateMode('')) and 'Clear the sample' (clearSample(), which also ends in setEstimateMode('')) -- cause the entire `{estimateMode && <div className=\"est-banner\">...}` block, including the very button just activated, to unmount. Neither path moves focus anywhere afterward (clearSample's confirmAsync dialog autoFocuses its own Confirm button while open, per index.html:2143, but once confirmed and the dialog+banner both unmount, nothing receives focus).",
+  "failure": "A keyboard or screen-reader user who presses 'Got it' (or confirms 'Clear the sample') has focus silently dropped to <body> with no announcement that the banner is gone or where to go next -- they lose their place on a page that just changed shape under them.",
+  "fix": "After clearing estimateMode, move focus to a stable nearby landmark (e.g. the hero take-home heading) with a ref + effect, so focus lands somewhere meaningful rather than being dropped.",
+  "wageCore": false,
+  "slices": [
+   "onboarding"
+  ],
+  "id": "accessibility-19",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "Settings modal has no dialog semantics and its close button has no accessible name",
   "severity": "high",
   "where": "index.html:4694-4697 (Settings)",
@@ -464,6 +805,54 @@
    "settings-etc"
   ],
   "id": "accessibility-21",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "ShareSheet has no dialog role or accessible name for the region",
+  "severity": "medium",
+  "where": "index.html:5682-5688 (ShareSheet)",
+  "detail": "ShareSheet's outer sheet div (`<div className=\"sheet\" onClick={e=>e.stopPropagation()}>`) carries none of role=\"dialog\", aria-modal, or aria-label/aria-labelledby, even though its own close button (line 5687) does have aria-label=\"Close\" and the visible title 'Share BadgeBudget' (line 5686) exists as plain text. This is the same gap as Settings but only on the region-level semantics, not the button.",
+  "failure": "A screen-reader user tapping the Settings 'Show a QR code or send a link' button gets no announcement that a modal/dialog opened, and can navigate (swipe/Tab) into the app content behind the scrim since aria-modal is absent - the same background-leak problem as Settings, just without the extra unlabeled-button issue.",
+  "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Share BadgeBudget\" to the sheet div at line 5683, consistent with FeedbackSheet/SwapsSheet in the same file.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "accessibility-22",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Differential name-edit input has no accessible name",
+  "severity": "medium",
+  "where": "index.html:4714 (Settings differentials row)",
+  "detail": "`<input className=\"nm\" value={d.name} disabled={k==='base'} onChange={...} style={{...}}/>` has no wrapping <label>, no aria-label, no placeholder, and no id/htmlFor pairing. Every other input in this same Settings screen (name, base rate, tax fields, new-differential/new-goal inputs) carries either an aria-label or at minimum a placeholder; this one field - the only in-place editor for an existing differential's name - has neither.",
+  "failure": "A screen-reader user tabs to this field while editing a custom differential (e.g. one named 'Charge') and hears only 'edit text, Charge' with no field name, so on a row where they haven't just heard the adjacent toggle (which does carry aria-label={d.name}) they cannot tell this control is the differential's name versus any other text field on the page.",
+  "fix": "Add aria-label={d.name + ' name'} (or similar) to the input at index.html:4714.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "accessibility-23",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Duplicate, context-free \"Del\" button labels in differentials and savings-goals lists",
+  "severity": "medium",
+  "where": "index.html:4716 and 4755 (Settings)",
+  "detail": "Every per-row delete control in both the differentials list and the savings-goals list renders `<button className=\"danger-link\" onClick={...}>Del</button>` with no aria-label distinguishing rows. A user with 4 differentials and 3 goals ends up with 7 buttons that all have the identical accessible name 'Del'. Differential deletion is gated by confirmAsync (index.html:4691, names the differential in the confirmation copy), but delGoal (index.html:4687) deletes immediately with zero confirmation.",
+  "failure": "A screen-reader user navigating Settings via the rotor's 'buttons' list (which strips surrounding row context) cannot tell which 'Del' belongs to which goal or differential. For goals specifically, since there is no confirmation step, activating the wrong one in that list permanently deletes the wrong savings goal with no undo.",
+  "fix": "Give each delete button a distinguishing aria-label, e.g. aria-label={'Delete '+d.name+' differential'} at 4716 and aria-label={'Delete '+g.name+' goal'} at 4755; consider also gating delGoal behind confirmAsync to match the differential-delete pattern.",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "accessibility-24",
   "lens": "accessibility",
   "status": "confirmed",
   "dissent": []
@@ -481,6 +870,54 @@
   ],
   "id": "accessibility-25",
   "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Withdraw/Decline confirm dialog (used by the reveal-flow actions) has no Escape handler and lets Tab escape the dialog",
+  "severity": "medium",
+  "where": "index.html:2127-2148 (ConfirmHost), invoked from SwapsSheet's doWithdraw (:5069) and doDecline (:5155)",
+  "detail": "`confirmAsync(...)` — the confirmation shown for 'Withdraw this post?' (index.html:5069) and 'Decline this proposed swap?' (index.html:5155) inside the matching/reveal flow — renders `role=\"alertdialog\" aria-modal=\"true\"` (index.html:2138) with only two buttons: Cancel then Confirm (`autoFocus`, index.html:2143). autoFocus correctly seeds initial focus on Confirm, but there is no keydown handler anywhere in ConfirmHost, so Escape does not dismiss it, and Tab forward from the auto-focused Confirm button (the last element inside the dialog) is not intercepted, so focus leaves the dialog into whatever follows ConfirmHost in the document instead of cycling back to Cancel.",
+  "failure": "A nurse using the keyboard to decline a proposed swap (index.html:5155) reaches the confirm dialog, and either presses Escape expecting it to cancel (it does nothing — the destructive choice stays on screen with no keyboard-conventional way to back out) or tabs forward from the focused Confirm button and lands outside the alertdialog entirely, again with the modal claim unmet.",
+  "fix": "Give ConfirmHost the same Escape-to-cancel keydown handler AccountMenu already has (index.html:1966-1969), and trap Tab between Cancel and Confirm.",
+  "wageCore": false,
+  "slices": [
+   "swap-board"
+  ],
+  "id": "accessibility-26",
+  "lens": "accessibility",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Render-blocking boot scripts prevent any paint (even the splash) until 5 cross-origin CDN fetches resolve",
+  "severity": "medium",
+  "where": "index.html:17-21 (script tags), index.html:487 (#splash), index.html:490-592 (boot watchdog)",
+  "detail": "The 5 CDN scripts (React, ReactDOM, Babel standalone, pdf.js, supabase-js) are classic <script src> tags in <head> with no async/defer, spanning 3 third-party origins (unpkg.com x2, cdnjs.cloudflare.com, cdn.jsdelivr.net). Per HTML parsing rules the browser must fetch+execute all 5 sequentially before continuing to parse the rest of <head> (the ~460-line <style> block) and reach <body> — so neither the #splash placeholder nor the boot watchdog script (which starts the 8s timer) can run until all 5 have loaded or errored.",
+  "failure": "On a slow or filtered connection (e.g. locked-down hospital Wi-Fi) where one of these 3rd-party origins stalls, the user sees a fully blank white tab with zero feedback — no spinner, no watchdog message — for as long as that network fetch hangs, because the watchdog's own 8s clock cannot start counting until the parser reaches the boot <script> tag, which requires all 5 earlier blocking scripts to have already resolved.",
+  "fix": "Add a minimal inline watchdog/fallback at the very top of <head>, before the 5 CDN script tags, so a loading/stalled-connection fallback can appear independent of whether those specific network fetches ever complete; alternatively investigate defer + Babel-standalone's DOMContentLoaded auto-transform to unblock initial parsing.",
+  "wageCore": false,
+  "slices": [
+   "boot"
+  ],
+  "id": "performance-00",
+  "lens": "performance",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Scrolling the calendar past a pay-period boundary fires a real Supabase write",
+  "severity": "medium",
+  "where": "index.html:2735-2748 (onMonthScroll -> setPPS), 2291-2295 (serializeState includes payPeriodStart), 2453-2487 (debounced save effect, payPeriodStart is a dependency at line 2487, and the body at 2459-2479 saves unconditionally once hydrated with no check that anything besides the view state changed)",
+  "detail": "payPeriodStart is part of the persisted blob (serializeState) and is a dependency of the 500ms-debounced cloud-save effect. onMonthScroll (a scroll-settle handler on the month view) calls setPPS(ps) whenever the scroll-follow logic decides the visible row belongs to a different pay period (line 2746: `if(ps && ps!==payPeriodStart) setPPS(ps)`). That state change alone re-triggers the save effect, and the effect has no content-equality guard against what was last written (unlike the 15s poll's own normalize() check at 2550/2560) - it only checks blob size and hydration status before calling saveToSupabase. So a signed-in user who just scrolls the month calendar to look at a future/past period, with no edits at all, produces a real network upsert to user_data roughly once per period boundary crossed (throttled only by the 500ms debounce and the 180ms scroll-settle timer).",
+  "failure": "A nurse casually scrolling through several months on her phone (checking a coworker's request, planning ahead) causes a burst of Supabase writes and a flashing 'Syncing...' indicator (line 3442) purely from browsing, once per pay-period boundary she scrolls past - wasted battery/data and free-tier write volume for a pure read/navigation action, and it also bumps updated_at, which can make a second signed-in device's 15s poll believe a real edit just landed when only the view moved.",
+  "fix": "Either drop payPeriodStart from the debounced-save trigger (persist the viewed period separately, e.g. only on pagehide/sign-out, or fold it into an existing save rather than scheduling a new one), or apply the same normalize()-style content-equality check the poll already uses (comparing serialized data with payPeriodStart zeroed out) before calling saveToSupabase, so a save that would be byte-identical is skipped.",
+  "wageCore": false,
+  "slices": [
+   "data-sync"
+  ],
+  "id": "performance-03",
+  "lens": "performance",
   "status": "confirmed",
   "dissent": []
  },
@@ -536,6 +973,110 @@
   "dissent": []
  },
  {
+  "title": "Per-day/period money rollup (shifts + PTO) hand-duplicated in 3 places instead of calling statOf/ptoStatOf",
+  "severity": "medium",
+  "where": "index.html:2636-2650 (ptoStatOf/statOf) vs 2775-2777 (yearMonths) vs 2793-2805 (calc)",
+  "detail": "ptoStatOf+statOf is the one place that is supposed to define 'a day's money': shiftGross summed over shifts[k], plus PTO at `e.hours*baseRate` for dayEvents[k]. yearMonths (year-view totals) and calc (the hero figure, via taxInputs/computeNet) don't call statOf/ptoStatOf — each re-implements the identical two loops (`shifts[k].forEach(s=>{g+=shiftGross(...);h+=s.hours})` and `if(e.kind==='pto'&&e.hours>0){g+=e.hours*baseRate;h+=e.hours}`) inline. The comment at 2776 ('PTO adds to gross/hours like every other rollup (statOf/calc)') itself acknowledges the parallel implementations exist rather than being shared.",
+  "failure": "A future change to how PTO is priced (e.g. paying PTO at a shift's differential rate instead of flat baseRate, or capping PTO hours) is a plausible ask and touches statOf/ptoStatOf, whose output feeds the calendar day cells. If the dev updates statOf/ptoStatOf only (they're the named, documented rollup) and the harness's calendar assertions pass, the hero figure (calc, 2793-2805) and the Year view totals (yearMonths, 2768-2780) keep computing PTO the old way — a nurse would see the calendar day cell disagree with the hero total for the same pay period, with nothing in the diff or the existing tests catching it because there is no single function all three call.",
+  "fix": "Have calc() and yearMonths() call statOf(k)/ptoStatOf(k) (or a shared pure helper both can use outside the per-day closure) instead of re-summing shifts/dayEvents inline, so PTO/shift pricing has exactly one implementation.",
+  "wageCore": true,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "code-quality-02",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "sampleNet() (onboarding's projected take-home) hand-rolls the same tax formula as computeNet() instead of calling it, and isn't part of the Invariant 3 function list",
+  "severity": "medium",
+  "where": "index.html:3416-3423 (sampleNet, inside applyPaystub's App scope) vs index.html:1231-1251 (computeNet)",
+  "detail": "sampleNet builds a 6-shift sample, sums shiftGross correctly, but then reimplements FICA-base/income-tax-base/fed/state/net entirely by hand (3419-3422) instead of calling `computeNet(g, taxInputs)` the way calc() (line 2809) and patternMetrics() (line 1298) do. It also never includes customWithholdings (`cw` in computeNet, lines 1242-1243) at all — every other real net calculation in the app sums customWithholdings into deductions; this one doesn't. sampleNet is not named anywhere in Invariant 3's protected function list (shiftGross/hourlyRate/computeNet/calc/statOf/ptoStatOf/patternMetrics), so the wage-core skill's required baseline probes and 'equality assertion against the deployed build' never exercise it.",
+  "failure": "This is the literal dollar figure shown on the 'You're all set' onboarding screen (line 5822, 'Projected take-home'), a nurse's very first number from the app. If a future wage-core change alters computeNet's formula (e.g. how FICA or a deduction cap works) and is verified correctly per the wage-core protocol, sampleNet's independent copy is not in scope for that verification and can silently diverge — the onboarding preview would show a different take-home than the hero/Breakdown will show moments later for an equivalent shift mix. Concretely today: any state where customWithholdings is non-empty (reachable via the supported Export JSON → hand-edit → Import JSON round trip, since sanitizeData validates and computeNet already sums that array) makes sampleNet's net figure too high by exactly the omitted withholding amount, while calc()/Breakdown correctly subtract it.",
+  "fix": "Replace sampleNet's inline tax math with `computeNet(g, {pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings})` (or reuse the existing `taxInputs` memo shape) so onboarding's preview and the real hero can never drift, and add it to the wage-core protocol's coverage.",
+  "wageCore": true,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "code-quality-03",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": [
+   "sampleNet() is only called from the onboarding \\\"You're all set\\\" screen (index.html:5813), which renders only while setupComplete is false. The finding's concrete repro — Export JSON, hand-edit customWithholdings in, then Import JSON to make sampleNet's omission observable — is not reachable: importData() (index.html ~3073-3082, the only Import JSON entry point, in Settings) calls applyData(d) and then unconditionally setSetupComplete(true) in the same action. That flips setupComplete to true and unmounts the onboarding flow (and sampleNet with it) before any customWithholdings value it just loaded could ever be read by sampleNet. There's no other UI path that populates customWithholdings while setupComplete is still false. So while sampleNet duplicating computeNet's math instead of calling it is a real maintainability smell worth the proposed refactor, the specific 'nurse sees a wrong onboarding number' failure scenario the finding describes is not reachable given how the UI constrains input, and the medium severity rests on that unreachable scenario.\""
+  ]
+ },
+ {
+  "title": "Day-key stringification is independently reimplemented three times over the same shifts/dayEvents object",
+  "severity": "medium",
+  "where": "index.html:658 (keyOfDate), index.html:837 (keyOfYMD), index.html:2623 (App's local keyOf)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "code-quality-04",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": [
+   "The finding names three functions (keyOfDate at index.html:664, keyOfYMD at index.html:837, App's local keyOf at index.html:2623) that all format a Date as YYYY-MM-DD, but the finding's own detail/failure/fix fields are empty — there is no concrete failure scenario claimed at all, so there's nothing to check reachability of. Inspecting the three sites confirms they are trivial one-line format helpers with matching output (same padStart pattern), not divergent implementations that could disagree: keyOfDate is module-level and used by periodStartOf; keyOfYMD is a local const scoped inside parseICSSchedule; App's keyOf is a local closure mirroring keyOfDate exactly. All three always agree on any valid Date input, so there's no bug, just incidental duplication (arguably three lines saved by extraction). Without a failure claim to evaluate, and given the triviality of the duplication, this is a non-actionable style nit rather than a code-quality defect worth the owner's time.\""
+  ]
+ },
+ {
+  "title": "Month-section ref map never clears entries on unmount, so the pay-period stepper can silently stop scrolling the calendar",
+  "severity": "medium",
+  "where": "index.html:3568 (secRef callback), consequence at index.html:2762-2765 (scrollFocusToDate) and index.html:2720 (focusRowDates), comment at index.html:2707-2713",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "calendar"
+  ],
+  "id": "code-quality-05",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "\"Save as template\" can silently capture the wrong shift type/hours when the last entry came from a template quick-tap",
+  "severity": "medium",
+  "where": "index.html:4135-4139 (applyTemplateTap), :4140-4160 (doSaveTemplate), :4094 (configDirtySinceAdd ref)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "code-quality-07",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Editing the cycle anchor silently discards a customized apply-start date",
+  "severity": "medium",
+  "where": "index.html:4384-4387 (setAnchor) interacting with 4552 and 4557 (applyStart)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "pattern-lab"
+  ],
+  "id": "code-quality-09",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": [
+   "The finding's own record (code-quality-09.json) has empty detail/failure/fix fields — no concrete failure scenario or repro is actually specified, just a title. Reading the cited code doesn't support a real bug either: setAnchor syncing applyStart(v) is harmless because applyStart is unconditionally re-synced to draft.anchor every time the apply sheet is opened (`onClick={()=>{ setApplyStart(draft.anchor); setApplyOpen(true); }}`, index.html:4550ish), and the date input itself stays directly editable while applyOpen. So there's no scenario where a user's intentionally customized apply-start date is silently lost without them being able to see/re-set it — the anchor field and apply-start field are deliberately kept in sync as a convenience, not an accidental clobber of separately-tracked state. Refuted.\""
+  ]
+ },
+ {
   "title": "Sign-out resets onboarding data but not onboarding step, so a stale obStep can reopen the wizard mid-flow with defaulted data and silently commit it",
   "severity": "high",
   "where": "resetToDefaults() index.html:2335-2340 (called from the auth-state-change SIGNED_OUT branch at 2414 and from handleSignOut at 2536); obStep state at 2192-2201; finish() at 3408-3414; Onboarding done screen at 5812-5834",
@@ -554,6 +1095,38 @@
   ]
  },
  {
+  "title": "Goal preview divides by a goal target that can be zero, printing \"Infinity%\"",
+  "severity": "medium",
+  "where": "index.html:4247-4248 (AddShiftSheet preview) combined with index.html:4686 (Settings updGoalTarget) and index.html:4020-4028 (NumInput.commit)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "code-quality-13",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Body-scroll lock effect omits showShare, so the Share sheet lets the page scroll behind it",
+  "severity": "medium",
+  "where": "index.html:2596-2600 (body-overflow effect) vs index.html:2228 (showShare state) and index.html:5666-5702 (ShareSheet)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "settings-etc"
+  ],
+  "id": "code-quality-14",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "pagehide/visibility flush silently drops a failed cloud save (no backup, no error surfaced)",
   "severity": "high",
   "where": "index.html:2489-2505 (the `flush` effect), contrast with the debounced-save effect at 2470-2479",
@@ -570,6 +1143,88 @@
   "dissent": []
  },
  {
+  "title": "MAX_BLOB_BYTES guard is only enforced on one of three save call sites",
+  "severity": "medium",
+  "where": "index.html:2464-2469 (the only size check) vs. flush() at 2489-2505 and retrySync() at 2508-2516",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "data-sync"
+  ],
+  "id": "code-quality-19",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "runIcalSync's outer catch swallows every background-sync failure with no console.error or telemetry",
+  "severity": "medium",
+  "where": "index.html:3285-3288 (runIcalSync), index.html:2442 (loadIcalSub call in the app-open effect)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync"
+  ],
+  "id": "code-quality-22",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Manual .ics file re-import mislabels unchanged icsUid matches as \"updated\", contradicting the code's own documented purpose of the `changed` flag",
+  "severity": "medium",
+  "where": "index.html:1507-1509 (comment defining `changed`), index.html:3125-3137 (onImportICS passes unfiltered plan.toUpdate), index.html:3269-3283 (runIcalSync filters to `changed` only), index.html:3811 (confirm-screen text: 'update N that changed')",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "calendar-sync"
+  ],
+  "id": "code-quality-24",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Google sign-in has no try/catch around signInWithOAuth, unlike the sibling email path a few lines above",
+  "severity": "medium",
+  "where": "index.html:4615-4628 (handleGoogleAuth)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "code-quality-25",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": [
+   "The finding's own detail/failure/fix fields are empty — it names an asymmetry (email path wrapped in try/catch, Google path isn't) but never shows a concrete failure mode. Looking at the actual code, signInWithOAuth per supabase-js convention returns errors via the {error} return value rather than throwing, and the code does check `if(err) setError(err.message)`. The comment right above handleEmailAuth explains the try/catch there exists specifically for a UMD binding footgun (`const action = supabase.auth.signUp` detaching `this`), which doesn't apply here since the method is called directly on the client in both cases. Without a demonstrated throw path (e.g. a call that would produce an unhandled rejection or leave loading stuck), this is a stylistic asymmetry, not a substantiated defect.\""
+  ]
+ },
+ {
+  "title": "harness.mjs's vendor()/PKGS are dead code duplicating ci.yml's package list",
+  "severity": "medium",
+  "where": "tests/harness.mjs:16-23 (PKGS) and :41-44 (vendor)",
+  "detail": "",
+  "failure": "",
+  "fix": "",
+  "wageCore": false,
+  "slices": [
+   "infra"
+  ],
+  "id": "code-quality-29",
+  "lens": "code-quality",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "Hero's \"Taxes & deductions\" chip can show a bigger deduction than the gross next to it, and disagrees with the Breakdown a tap away",
   "severity": "high",
   "where": "index.html:3487 (hero chip renders calc.ded) and index.html:1244-1250 (computeNet)",
@@ -581,6 +1236,38 @@
    "money-surfaces"
   ],
   "id": "product-design-00",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Saved templates silently drop the Overtime flag, so reusing one understates the shift's value with no on-screen signal",
+  "severity": "medium",
+  "where": "index.html:4140-4160 (doSaveTemplate builds `tpl` without isOvertime), :4135-4139 (applyTemplateTap never sets isOvertime on the shift it inserts), :2915-2926 (toggleQuickFillDay same), :1051-1068 (templates sanitizeData branch has no isOvertime field at all)",
+  "detail": "The template object model has no isOvertime field anywhere in its lifecycle: doSaveTemplate's `tpl = {name, shiftType, hours, bonusType, customBonus, ...start}` (line 4154) never reads it, even though the same function goes out of its way (comment at 4144-4150) to correctly recover bonusType/customBonus/start from the just-added list entry so the template 'faithfully captures what's on the day.' Both places a template is turned back into a shift -- applyTemplateTap (4136) and quick-fill's toggleQuickFillDay (2922) -- construct the new shift object without an isOvertime key, so it's always falsy. The templates branch of sanitizeData (1051-1068) also has no isOvertime coercion, confirming this isn't a one-off omission but the actual data shape.",
+  "failure": "A nurse configures Night 12h + Overtime + On-call bonus (base $40, night diff $10/hr -> $50/hr differential rate). The live preview correctly shows 1.5x972 + 60 = about $1,032 take-home-adjusted gross, she clicks '+ Add to this day', then immediately 'Save as template' (e.g. named 'Mandatory OT night'). Any later use of that template -- the one-tap 'QUICK ADD FROM TEMPLATE' chip in the sheet, or bulk quick-fill across days on the calendar -- adds a shift worth only base+diff x12 + bonus (about $708, 31% less), because isOvertime is silently false. Nothing in the UI discloses this: the per-shift row in 'ON THIS DAY' (4192-4202) shows no dollar figure at all, so there's nothing to contradict the number she remembers from when she built the template, and no toast/label ever says 'overtime not saved to templates.' This directly breaks the promise of knowing what a shift is worth before working it -- the number she believes she reproduced isn't the number she'll actually get.",
+  "fix": "Include isOvertime in the tpl object doSaveTemplate builds (mirroring how it already recovers src.bonusType/src.start), set it on the shift objects applyTemplateTap and toggleQuickFillDay construct, and add `isOvertime: t.isOvertime===true` to the templates sanitizeData coercion so it round-trips through storage. If dropping OT from templates is actually intentional, the QUICK ADD/quick-fill chip should say so or omit the OT-looking styling, rather than silently producing a lower number.",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "product-design-02",
+  "lens": "product-design",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "The 'live' shift-value preview doesn't update while typing custom Hours or a custom Bonus amount -- only on blur",
+  "severity": "medium",
+  "where": "index.html:4016-4035 (NumInput buffers keystrokes in local `raw` state and only calls onCommit on blur or Enter), consumed by Hours at :4226 and Custom bonus at :4241, feeding previewGross/previewNet at :4104-4105 and the preview block at :4243-4249",
+  "detail": "NumInput's onChange only updates its own local `raw` string; the value it hands back to AddShiftSheet (and thus `hours`/`customBonus` state, and therefore previewGross/previewNet) only changes in the onBlur/Enter commit handler. Every other control in the sheet (hour-preset buttons, shift-type chips, the Overtime toggle, the bonus <select>) updates the preview the instant it's clicked, but the two free-text numeric fields do not.",
+  "failure": "A nurse is offered a 10-hour pickup with a $200 flat incentive and wants to see if it's worth it before committing. She taps the Hours field and types '10' (replacing the default 12), then taps the Bonus dropdown to 'Custom' and types '200' into the amount field. If she reads the 'This shift adds +$X gross ... take-home' line at that point -- exactly the moment the feature exists to answer -- it still reflects the pre-edit 12h/$0-bonus shift, because neither keystroke has been committed yet. The number only becomes correct once she taps/tabs to another field. Anyone who trusts what's on screen at the moment of decision, rather than blurring the field first, is shown a stale figure for exactly the two most decision-relevant customizable inputs (hours and a flat bonus).",
+  "fix": "Either have NumInput report a best-effort parsed value on every keystroke (falling back to the last committed value on unparseable input, e.g. '1.') so previewGross/previewNet track it live like every other control, or have AddShiftSheet read the field's in-progress text directly for the preview calculation while it's focused.",
+  "wageCore": false,
+  "slices": [
+   "add-shift"
+  ],
+  "id": "product-design-03",
   "lens": "product-design",
   "status": "confirmed",
   "dissent": []
@@ -683,6 +1370,38 @@
   "dissent": []
  },
  {
+  "title": "privacy.html claims the anon_id device identifier 'is not linked to your name' — track() writes it into the same row as user_id for every signed-in action",
+  "severity": "medium",
+  "where": "privacy.html:104-107 vs index.html:1385-1397 (track()), exercised by ~25 call sites passing user?.id (e.g. 2859 shift_saved, 2912 template_applied, 3392 paystub_imported, 5063 swap_posted)",
+  "detail": "privacy.html's Usage analytics section says events carry 'the page path, your browser's user-agent string, and a random device identifier generated in your browser. That identifier is not linked to your name and is not shared with anyone.' But track(name, props, userId) (index.html:1385-1397) always sets both anon_id:anonId() and user_id:userId in the SAME row, and the overwhelming majority of call sites pass userId=user?.id whenever the visitor is signed in (shift_saved, template_saved, swap_posted, pattern_saved, etc.). auth.users (which user_id foreign-keys into) holds the signed-in person's email and, for Google sign-in, name. CLAUDE.md's own dashboard spec confirms this join is actually performed operationally: the 'segment' classification tags a device 'insider' by matching 'any anon_id ever seen signed in as' the owner's or Courtney's account — i.e. the anon_id-to-identity join privacy.html says doesn't happen is precisely what the project's own ops tooling does.",
+  "failure": "Once a signed-in nurse does anything tracked (saves a shift, applies a template, posts a swap), her per-device anon_id sits in the same events row as her user_id. Anyone with database access (the owner, who already runs 'select ... from events' per the documented Owner-read queries) can trivially resolve that user_id to her email/name via auth.users — the exact linkage the privacy notice tells her doesn't happen.",
+  "fix": "Rewrite the disclosure to state accurately that once signed in, the device identifier can be associated with the account (matching actual, intentional behavior used for the insider/public segment split), rather than asserting it is never linked to identity.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "privacy-telemetry-01",
+  "lens": "privacy-telemetry",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "privacy.html's Feedback section omits that a signed-in submitter's account id is always attached, regardless of the optional contact field",
+  "severity": "medium",
+  "where": "privacy.html:117-119 vs index.html:2006-2045 (FeedbackSheet submit) and 1354-1371 (submitFeedback)",
+  "detail": "privacy.html says: 'If you use the feedback button, your message is stored along with the page you were on and your browser's user-agent string. An email address is optional — supply one only if you want a reply.' This frames identification as opt-in via the 'contact' field. But FeedbackSheet's submit (index.html:2043) calls submitFeedback({..., userId:(user&&user.id)||null}), and submitFeedback (1354-1371) writes that straight into feedback.user_id whenever the person is signed in — independent of whether 'contact' is filled in.",
+  "failure": "A signed-in nurse who deliberately leaves the optional contact field blank, believing (per the notice's framing) that doing so keeps her feedback unattributed, has her account id stored on the row anyway — the row is linkable to her account from the moment it's inserted, contact field or not.",
+  "fix": "State plainly that feedback submitted while signed in carries your account id on the row in addition to whatever you put in the optional contact field, so 'optional... only if you want a reply' isn't read as 'optional... only way to be identified'.",
+  "wageCore": false,
+  "slices": [
+   "telemetry-auth"
+  ],
+  "id": "privacy-telemetry-02",
+  "lens": "privacy-telemetry",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
   "title": "Add-Shift preview, calendar day cells, goal lines and the weekend-night card use a keep-ratio that omits percent custom withholdings, so they disagree with the hero and the pattern lab",
   "severity": "high",
   "where": "index.html:2819-2820 (keepRatio) -> consumers at 4104-4105 & 4245-4248 (AddShiftSheet preview + goal line), 3919 & 3933 (Calendar day cell), 4747 (Settings '≈ N typical 12h shifts'), 3434 & 3512 ('Pick up a weekend night?' card)",
@@ -700,6 +1419,42 @@
   "status": "confirmed",
   "dissent": [
    "The arithmetic is accurate but the failure path is not reachable through the shipped UI. `keepRatio` (index.html:2820) does omit `customWithholdings`, and `computeNet` (:1243) does subtract percent ones on `incomeTaxBase` — so IF state held a percent custom withholding, the Add-Shift preview (:4105), day cells (:3919/:3933), Settings goal line (:4747) and weekend-night card (:3434) would diverge from the hero/lab. But nothing in the app can put one there. `setCW` is invoked in exactly two places: `applyData` on load (:2318) and the clear-all reset to `[]` (:2338). It is passed into `SettingsSheet` as a prop (:3633/:4676) and never called — the Settings region (:4676–4800) contains no custom-withholding editor; the only \"withholding\" control is the FICA type/percent pair (:4731–4733). The paystub extractor (:3330–3400) maps a 403(b) line to `pretaxDeductions` (a flat dollar amount, which the finding itself concedes is defensibly excluded at the margin) and FICA to `ficaRate`; it never emits `customWithholdings`. Onboarding and the Add-Shift sheet don't touch it either. So the finding's scenario — \"a nurse whose Settings carry a percent 'Other withholding' (e.g. a 5% 403b)\" — names a control that does not exist; a real 403b lands in pretax dollars, not a percent withholding. The only routes to a non-empty `customWithholdings` are Import JSON (:4772 → `importData` :3074 → `applyData`) of a hand-edited file (the app's own export always carries `[]`), a direct localStorage/DB edit, or a legacy blob from a hypothetical earlier editor (pickaxe on the shallow 55-commit history finds none, and the 3 `user_data` rows are all builders). The finding's own repro was \"with the extracted functions\", i.e. synthetic state fed straight to the math, not the UI. Net: the whole `customWithholdings` feature is dormant (sanitized, priced by `computeNet`, shown as the $0 \"Other withholdings\" breakdown row at :3987, but with no input), so hero, lab and the preview family agree for every state the app can produce. At most a low note to fold percent withholdings into `keepRatio` if an editor ever ships — not a [high] displayed-dollar disagreement."
+  ]
+ },
+ {
+  "title": "Add-Shift sheet defaults to the Night type even when Night is switched off — sheet and hero pay a differential the lab prices at base",
+  "severity": "medium",
+  "where": "index.html:4077 (`useState('night')`), with 4099 (`active` chip filter), 4104-4105 (preview), 4108-4109 (`draftShift`/`add`), vs 1198-1207 `patternCellShiftType`",
+  "detail": "AddShiftSheet initialises `shiftType` to the literal `'night'` and never reconciles it with the `active` list it renders chips from. Settings lets a nurse toggle any differential off (`tog`, index.html:4690). When Night is inactive: no SHIFT TYPE chip is highlighted (the chip row only maps `active`), yet `previewGross` is still `shiftGross(baseRate, differentials['night'], draft)` — `hourlyRate` (1119-1124) never looks at `active` — so the preview prices a Night shift, and the primary button on a fresh day commits `draftShift()` with `shiftType:'night'`. The hero then prices that shift with the Night differential too. The pattern lab's Night brush goes through `patternCellShiftType`, which resolves to `'base'` when `night.active` is false. Numbers from the real functions (base $65.15, defaults, Night off): sheet preview +$902 gross / +$702 take-home; two such shifts → hero $1,404; the same two nights in a 7-day pattern → lab $1,217 (per shift $781.80 vs $901.80). The sheet is the wrong one: it silently selects a type the nurse turned off, with no chip lit to show why. (If she *deletes* Night instead, `differentials['night']` is undefined and all three surfaces fall back to base — dollars agree, but the sheet still saves an unknown `shiftType` key.) A second instance of the same class of bug was also noted at the dashboard's 'Pick up a weekend night?' card (index.html:3434), which likewise prices `differentials['weekend-eve']` without checking `.active`.",
+  "failure": "Nurse deactivates Night in Settings (\"I only work days\"), taps a calendar day, sees no shift-type chip selected but a preview of +$902 gross / +$702 take-home, taps \"Add shift\". Her calendar and hero now carry a Night-differential shift she cannot see a reason for; the pattern lab, given the same rotation, shows $187 less per paycheck than the hero.",
+  "fix": "Initialise from the active list: `useState(()=> (Object.entries(differentials).find(([k,d])=>d.active && k!=='overtime')||['base'])[0])`, and add a small effect that resets `shiftType` to that value whenever the current `shiftType` is no longer in `active` (covers a Settings change while the sheet is open). No wage-core function changes; add a harness assertion: deactivate Night, open the sheet, assert a chip is highlighted and the preview equals `shiftGross(base, differentials[thatChip], ...)`.",
+  "wageCore": false,
+  "slices": [
+   "wage-core",
+   "money-surfaces"
+  ],
+  "id": "cross-surface-01",
+  "lens": "cross-surface",
+  "status": "confirmed",
+  "dissent": []
+ },
+ {
+  "title": "Pattern lab 'Take-home per paycheck' is a multi-paycheck average for cycles that don't divide 14, with no cue — no actual paycheck ever matches it",
+  "severity": "medium",
+  "where": "index.html:1282-1298 (patternMetrics span=lcm(n,14), periodGross=gross/periods), labels at 4540 ('Take-home per paycheck'), 4428 ('Take-home / paycheck'), 4447 ('/ paycheck ·')",
+  "detail": "patternMetrics averages gross over lcm(cycle,14) days and labels the result 'per paycheck'. For 7- and 14-day cycles this equals the hero exactly (verified: pitman, mtw-nights, 3-1-3-7, weekend presets, anchor 3 days off the pay-period start, messy taxes — lab === hero to the cent). For the shipped '4 on, 4 off nights' preset (cycle 8, span 56) and any 28-day or custom cycle, the number is an average of 2-4 different paychecks and the UI never says so. The only drift hint (4534-4536) talks about weekdays, and for a 28-day cycle `drifts` is false so there is no hint at all. Reproduced: 4on4off, base 50, defaults, anchor 2026-09-13, applied 8 weeks: lab says $3,967 take-home / $5,196 gross / 84 hrs; the hero shows $4,457 (96 hrs) for paychecks 1-2 and $3,477 (72 hrs) for paychecks 3-4 — the lab's figure appears on no paycheck. A front-loaded 28-day custom cycle (7 shifts in weeks 1-2, 3 in weeks 3-4): lab $2,838, hero $3,967 then $1,709 — a 40% miss on the first paycheck with `drifts:false` and no warning. Neither surface is mathematically wrong; the lab's label is, because the surface's stated purpose is 'see the paycheck it makes before you commit'. (A parallel repro on the same code path found the shipped 4on4off preset's lab figure of $5,036 falling between $4,212 and $5,677 depending on pay-period offset — same defect, same site.)",
+  "failure": "Nurse picks the '4 on, 4 off nights' preset, reads 'Take-home per paycheck $3,967', taps 'Put it on the calendar', and the hero for that very period shows $4,457; two paychecks later it shows $3,477. In the side-by-side table she compares 4-on-4-off's $3,967 against Pitman's exact $3,207 as if both were single-paycheck figures.",
+  "fix": "In PatternLab, when `lcm(metrics.n,14) > 14` (i.e. metrics.n does not divide 14), change the label/sub-line to say it is an average — e.g. 'Take-home per paycheck (avg. over {span/14} paychecks)' at 4540 and a footnote on the 4428/4447 rows — or have patternMetrics also return the per-period min/max (loop the span in 14-day windows, run computeNet on each) and render 'between $3,477 and $4,457, avg $3,967'. Label-only change needs no wage-core session; the min/max variant touches patternMetrics and does.",
+  "wageCore": true,
+  "slices": [
+   "wage-core",
+   "pattern-lab"
+  ],
+  "id": "cross-surface-02",
+  "lens": "cross-surface",
+  "status": "confirmed",
+  "dissent": [
+   "The mechanism the finding grants is not an oversight but a documented design choice made specifically for the case the finding centres on. The comment above patternMetrics (index.html:1253-1256) says: \"Money is averaged over lcm(cycle,14) days so a cycle that doesn't divide a fortnight (the 8-day '4 on 4 off') still yields an honest per-paycheck figure.\" CLAUDE.md's Pattern lab paragraph documents the same: \"take-home per paycheck via computeNet() over lcm(cycle,14) days (patternMetrics())\". The author looked at the 4-on-4-off preset, saw that its paychecks alternate 96h/72h, and decided the long-run average is the per-paycheck number the lab should show. The finding disagrees with that judgment call; it does not expose a defect.\n\nThe lab's framing also makes the average the right metric, not a wrong one. Its money block is a comparison surface: the side-by-side table (4428), the card sub-line (4447), and the \"≈ $X a year\" line (periodNet*26, 4542) all ask \"what does this rotation earn\", and for that question a long-run average is the only figure that compares a drifting 8-day cycle against a fixed 14-day Pitman apples-to-apples (Pitman's exact figure is its average too). Rendering \"between $3,477 and $4,457\" would make the no-nudge side-by-side table harder to read, not more honest. The actual paycheck for a specific period is the hero's job, and the apply flow (confirmApply, 4510) lands the nurse there immediately, where she sees $4,457 for that period before the shifts are worked.\n\nWhat remains is a copy nit: no \"avg.\" qualifier appears anywhere in the UI (grep for average/avg hits only the code comment), so a nurse could briefly expect the first paycheck to equal the lab figure. That is a one-word label tweak gated on lcm(n,14)>14, not a medium wage-core finding, and the finding's own preferred fix (min/max via computeNet per 14-day window) would open a dedicated Invariant 3 session to solve a labelling question. The front-loaded 28-day custom-cycle repro (40% first-paycheck miss) is a contrived pattern, and the hero corrects it the moment it is applied."
   ]
  }
 ]
