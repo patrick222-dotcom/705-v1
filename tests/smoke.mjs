@@ -12,7 +12,7 @@ import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmSync, existsSync } from 'node:fs';
-import { buildScratch, serve, isExpectedNetwork, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
+import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = join(ROOT, '.harness-scratch');
@@ -171,6 +171,110 @@ const run = async () => {
       Math.round((spine.withhold.pre + spine.withhold.fed + spine.withhold.fica + spine.withhold.st
         + spine.withhold.post + spine.withhold.cw) * 100) === Math.round(spine.withhold.ded * 100),
       `rows=${(spine.withhold.pre+spine.withhold.fed+spine.withhold.fica+spine.withhold.st+spine.withhold.post+spine.withhold.cw).toFixed(2)} ded=${spine.withhold.ded.toFixed(2)}`);
+    /* ---- paystub import ------------------------------------------------------------
+       Fixtures are the real HOURS AND EARNINGS rows off Courtney's two Main Line Health
+       stubs, space-joined the way pdf.js hands them over (items are joined with ' ', so
+       inside a page there are no line breaks to anchor on — which is why the old parser
+       needed a "PD " prefix and therefore saw nothing on the 2025 format). */
+    const stub = await page.evaluate(() => {
+      const HDR = 'Description Rate Hours Earnings Hours Earnings ';
+      const perDiem2023 = HDR
+        + 'Inservice / Seminars 65.150000 3.50 228.03 46.25 3,013.21 '
+        + 'PD Weekday Day 65.150000 30.00 1,954.51 510.50 33,259.28 '
+        + 'PD Weekday Eve 69.790000 12.50 872.38 297.25 20,745.12 '
+        + 'PD Weekend Day 65.150000 11.50 749.23 87.25 5,684.36 '
+        + 'PD Weekend Eve 69.790000 16.50 1,151.54 61.75 4,309.57 '
+        + 'PD Weekend Overtime Eve 67.034424 1.25 129.13 1.25 129.13 '
+        + 'Hourly Unpaid Absence 0.00 24.50 0.00 '
+        + 'Critical Staffing Bonus 0.00 12.00 300.00 '
+        + 'Bonus-Critical Staffing 0.00 100.00 ';
+      const benefited2025 = HDR
+        + 'Regular 70.810000 47.10 3,335.15 1,065.65 74,092.42 '
+        + '3rd Shift Differential 7.000000 20.00 140.00 485.60 3,399.20 '
+        + 'DVH - Downstaff Vol Holiday 70.810000 5.90 417.78 5.90 417.78 '
+        + 'SI2 - Staffing Incentive Level 25.000000 4.60 115.00 4.60 115.00 '
+        + 'Superior Experience Award 0.00 187.50 '
+        + 'Authorized Unpaid Absence 0.00 30.72 0.00 '
+        + '2nd Shift Differential 0.00 14.90 67.06 ';
+      /* Not from a stub — a column shape. Both of hers print 0.00 in the current-earnings
+         column on a YTD-only row, so `rate > 0` happens to reject them and the column-count
+         guard never fires. A layout that omits the blank current columns instead would hand
+         the parser (rate, ytdHours, ytdEarnings) and it would import a phantom 78-hour row.
+         That is what the >=5 guard is for, so it gets a case rather than going untested. */
+      const ytdOnlyShape = HDR + 'Basic Leave 70.810000 78.26 5,414.03 ';
+      const by = (rows, d) => rows.find((r) => r.description === d) || null;
+      const a = parseEarningsRows(perDiem2023), b = parseEarningsRows(benefited2025);
+      return {
+        ytdOnly: parseEarningsRows(ytdOnlyShape).map((r) => r.description),
+        old2023: a.map((r) => r.description),
+        new2025: b.map((r) => r.description),
+        weekdayDay: by(a, 'PD Weekday Day'),
+        thirdShift: by(b, '3rd Shift Differential'),
+        otRow: by(a, 'PD Weekend Overtime Eve'),
+        /* What the app would actually WRITE into her differentials from each stub. This is
+           the number that ends up on screen, so it is the one worth pinning. */
+        derived2023: differentialsFromStub(a, 65.15),
+        derived2025: differentialsFromStub(b, 70.81),
+        classify: {
+          third: classifyPaystubRow('3rd Shift Differential'),
+          second: classifyPaystubRow('2nd Shift Differential'),
+          si2: classifyPaystubRow('SI2 - Staffing Incentive Level'),
+          dvh: classifyPaystubRow('DVH - Downstaff Vol Holiday'),
+          regular: classifyPaystubRow('Regular'),
+          weekendEve: classifyPaystubRow('PD Weekend Eve'),
+          weekdayDay: classifyPaystubRow('PD Weekday Day'),
+          night: classifyPaystubRow('Night Shift Diff'),
+        },
+      };
+    });
+    ok('stub: the 2025 format parses at all — it used to yield nothing',
+      JSON.stringify(stub.new2025) === JSON.stringify(
+        ['Regular', '3rd Shift Differential', 'DVH - Downstaff Vol Holiday', 'SI2 - Staffing Incentive Level']),
+      JSON.stringify(stub.new2025));
+    ok('stub: and names the two rows that carry her real differentials',
+      stub.new2025.includes('3rd Shift Differential') && stub.new2025.includes('SI2 - Staffing Incentive Level'),
+      JSON.stringify(stub.new2025));
+    ok('stub: the 2023 per-diem format still parses, and the column header is not a row',
+      stub.old2023.length === 6 && stub.old2023[0] === 'Inservice / Seminars'
+      && stub.old2023[1] === 'PD Weekday Day', JSON.stringify(stub.old2023));
+    ok('stub: rate and hours come off the row, not the header',
+      stub.weekdayDay && stub.weekdayDay.rate === 65.15 && stub.weekdayDay.hours === 30,
+      JSON.stringify(stub.weekdayDay));
+    ok('stub: a differential row keeps its own rate, not the base rate',
+      stub.thirdShift && stub.thirdShift.rate === 7 && stub.thirdShift.hours === 20,
+      JSON.stringify(stub.thirdShift));
+    ok('stub: YTD-only rows are skipped, not read as current activity',
+      !stub.old2023.includes('Hourly Unpaid Absence') && !stub.new2025.includes('Superior Experience Award')
+      && !stub.new2025.includes('2nd Shift Differential'), JSON.stringify(stub.old2023.concat(stub.new2025)));
+    ok('stub: a row carrying only YTD columns is skipped even when its rate is real',
+      stub.ytdOnly.length === 0, JSON.stringify(stub.ytdOnly));
+    ok('stub: a row whose rate x hours does not equal earnings is flagged, not trusted',
+      stub.otRow && stub.otRow.exact === false && stub.weekdayDay.exact === true,
+      `ot=${JSON.stringify(stub.otRow)}`);
+    ok('stub: the blended FLSA overtime rate never becomes her weekend differential',
+      stub.derived2023['weekend-eve'] === 4.64,
+      `PD Weekend Eve says +$4.64; got ${stub.derived2023['weekend-eve']}`);
+    ok('stub: the 2023 rows she actually worked derive the rates the stub prints',
+      stub.derived2023['weekday-eve'] === 4.64 && stub.derived2023['weekend-day'] === 0,
+      JSON.stringify(stub.derived2023));
+    ok('stub: a Rate column holding the differential alone is not subtracted from base',
+      stub.derived2025['night'] === 7, `7.00 - 70.81 would be -63.81; got ${stub.derived2025['night']}`);
+    ok('stub: no import can write a negative differential',
+      Object.values(stub.derived2023).concat(Object.values(stub.derived2025)).every((v) => v >= 0),
+      JSON.stringify([stub.derived2023, stub.derived2025]));
+    ok('stub: "3rd Shift" is recognised as a night differential',
+      stub.classify.third === 'night', String(stub.classify.third));
+    ok('stub: "2nd Shift" is recognised as an evening differential',
+      stub.classify.second === 'weekday-eve', String(stub.classify.second));
+    ok('stub: "Staffing Incentive Level" is no longer read as an evening differential',
+      stub.classify.si2 === null, `"Level" contains "eve"; got ${stub.classify.si2}`);
+    ok('stub: a downstaffing row is not read as a holiday premium',
+      stub.classify.dvh === null, String(stub.classify.dvh));
+    ok('stub: existing classifications are unchanged',
+      stub.classify.weekendEve === 'weekend-eve' && stub.classify.night === 'night'
+      && stub.classify.weekdayDay === null && stub.classify.regular === null,
+      JSON.stringify(stub.classify));
+
     /* ---- the unpaid meal break -----------------------------------------------------
        Main Line Health schedules a 12.5-hour block, auto-deducts 30 minutes, and pays 12.0.
        So the "12 hours" a nurse types is ALREADY net of the meal — the deduction is not
@@ -673,6 +777,94 @@ const run = async () => {
     ok('meal: the Add Shift sheet offers the toggle, worded as what happened',
       /MEAL BREAK/.test(sheet) && /never got my 30-minute lunch/.test(sheet),
       (sheet.match(/never got[^\n]*/) || ['<missing>'])[0]);
+    await ctx.close();
+  }
+
+  /* ---- 10. the paystub importer, driven with a real PDF ------------------------------
+     Everything above about the stub parser is a unit test on a fixture string. This is the
+     only place the whole path runs: a file goes into the input, pdf.js reads it, and the
+     review sheet renders what would be written. Using a real PDF matters — pdf.js returns
+     one text item per Tj and the app joins them with a single space, so this is what proves
+     the parser survives having no line breaks to work with. */
+  if (want(10)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+    /* Her 2025 stub: base pay on its own row, and a differential row whose Rate column holds
+       the premium alone. Subtracting base from that $7.00 would write -$63.81/hr. */
+    const pdf = makeMinimalPdf([
+      /* Laid out the way the real stub is: the Pay Rate label and its value are in different
+         table columns, so everything from the employee-id block sits between them. A tidied
+         fixture would have hidden the bug this section exists to pin. */
+      'Pay Begin Date: 08/11/2025',
+      'Pay End Date: 08/24/2025',
+      'Employee ID: Department: Location: Job Title: Pay Rate:',
+      '57786 B01035-System Travel Agility Team Bryn Mawr Hospital STAT Nurse 5 $70.810000 Hourly',
+      'HOURS AND EARNINGS',
+      'Description Rate Hours Earnings Hours Earnings',
+      'Regular 70.810000 47.10 3,335.15 1,065.65 74,092.42',
+      '3rd Shift Differential 7.000000 20.00 140.00 485.60 3,399.20',
+      'SI2 - Staffing Incentive Level 25.000000 4.60 115.00 4.60 115.00',
+      '2nd Shift Differential 0.00 14.90 67.06',
+      'TAXES',
+      'Description Current YTD',
+      'Fed W/H 327.42 8,859.89',
+      'Fed MED/EE 58.04 1,500.50',
+      'Fed OASDI/EE 248.16 6,415.92',
+      'PA W/H 122.49 3,166.88',
+      'PA PHILADELPHIA W/H 150.37 3,890.65',
+      'PA  LS Tax 2.00 52.00',
+      'TOTAL GROSS FED TAXABLE GROSS TOTAL TAXES TOTAL DEDUCTIONS NET PAY',
+      'Current 4,007.93 3,927.77 911.29 1,057.76 2,038.88',
+    ]);
+    await page.locator('.topbar .avatar, .topbar button').first().click().catch(() => {});
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll('button, a')].find((x) => /settings/i.test(x.textContent));
+      if (b) b.click();
+    });
+    await page.waitForTimeout(400);
+    const input = page.locator('input[type=file][accept=".pdf"]').first();
+    await input.setInputFiles({ name: 'stub.pdf', mimeType: 'application/pdf', buffer: pdf });
+    /* Settings is itself a .modal and matches instantly, so waiting on the selector would read
+       the DOM before pdf.js has finished and score a parse failure as a test failure. Wait for
+       the review sheet's own heading — or for the failure sheet, so a real break still reports
+       as a break rather than as a timeout. */
+    await page.waitForFunction(
+      () => /Review your paystub|Couldn't read that paystub/.test(document.body.innerText),
+      null, { timeout: 25000 }).catch(() => {});
+    const sheet = await page.evaluate(() => document.body.innerText.replace(/\u00a0/g, ' '));
+    ok('import: a real PDF reaches the review sheet instead of "couldn\'t read that paystub"',
+      /Review your paystub/.test(sheet) && !/Couldn't read that paystub/.test(sheet),
+      (sheet.match(/Review your paystub|Couldn't read that paystub/) || ['<neither>'])[0]);
+    ok('import: the differential row is listed, which the shipped build finds nothing of',
+      /3rd Shift Differential/.test(sheet), (sheet.match(/DETECTED[\s\S]{0,140}/) || ['<no rows>'])[0]);
+    ok('import: and previews it as +$7.00/hr of night pay, not minus sixty-three dollars',
+      /Night\s*·\s*\+\$7\.00\/hr/.test(sheet) && !/-\$/.test(sheet),
+      (sheet.match(/3rd Shift Differential[\s\S]{0,80}/) || ['<missing>'])[0]);
+    ok('import: a staffing incentive is shown as ignored, not written in as a rate',
+      /SI2[\s\S]{0,120}?Not a differential/.test(sheet),
+      (sheet.match(/SI2[\s\S]{0,90}/) || ['<missing>'])[0]);
+    const fields = await page.evaluate(() => {
+      const m = [...document.querySelectorAll('.modal')].find((x) => /Review your paystub/.test(x.textContent));
+      if (!m) return { nums: [], date: '<no review modal>' };
+      return { nums: [...m.querySelectorAll('input[type=number]')].map((i) => i.value),
+        date: (m.querySelector('input[type=date]') || {}).value };
+    });
+    /* Read the field, not the page: $70.81 also appears in the Regular row, so a text match
+       passes even when the base rate was never extracted. */
+    ok('import: base pay is read off the stub, though the label is in another column',
+      fields.nums[0] === '70.81', `base field "${fields.nums[0]}"`);
+    ok('import: the pay period start comes across', fields.date === '2025-08-11', fields.date || '<none>');
+    /* 122.49 + 150.37 + 2.00 over a $4,007.93 gross is 6.86%: state withholding, the city tax
+       and the local services tax, all three. Caveat worth writing down rather than implying:
+       her stub labels that last one "PA  LS Tax" with two spaces and the shipped regex wanted
+       one, which is fixed here — but the double space does not survive this PDF builder, so
+       this case cannot tell the two apart. It pins the sum, not the label. */
+    ok('import: state, city and local services tax all reach the state rate',
+      fields.nums[3] === '6.86', `state rate ${fields.nums[3]}`);
+    ok('import: no page errors driving the whole path',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
   }
 

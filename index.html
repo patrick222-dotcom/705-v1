@@ -942,19 +942,122 @@ function groupLabel(g){
   return g.items.length>1 ? `${g.items.length} shifts like ${base}` : base;
 }
 
+/* Pull the earnings rows out of a paystub's HOURS AND EARNINGS block.
+
+   pdf.js joins a page's text items with a single space, so inside a page there are NO line
+   breaks to anchor a row on. The previous version dealt with that by requiring every row to
+   start "PD " or "Incentive - " — the shape of ONE employer's per-diem statement. The same
+   nurse's statement two years later reads "Regular", "3rd Shift Differential", "SI2 - ...",
+   so every row was skipped and the import reported "no differential rows detected".
+
+   So: tokenise instead of pattern-matching. Words accumulate into a description until a run
+   of numbers appears; that run ends the row. A row with a current rate, hours AND earnings
+   carries five numbers (rate, hours, earnings, then the YTD pair) — anything shorter is a
+   YTD-only line with no current activity and is skipped rather than guessed at.
+
+   Each row is then checked against the stub's own arithmetic. Where rate x hours equals
+   earnings the row is `exact` and its rate can be trusted; where it doesn't, the rate column
+   is something else — Main Line Health's own footnote says it may be "from an FLSA
+   calculation", which is exactly what their overtime row is. Those are returned but flagged,
+   never silently treated as an hourly rate. */
+const EARN_NUM_RE = /^[\d,]+\.\d{2,6}$/;
+const EARN_CENT_TOLERANCE = 0.02;   // stubs round per line; 65.15 x 30 prints as 1,954.51
+function parseEarningsRows(sectionText){
+  /* Drop the column header (and the dashed Current/YTD rule above it) so "Description Rate
+     Hours Earnings" cannot land in the first row's description. */
+  const body = String(sectionText||'')
+    .replace(/^[\s\S]*?Description\s+Rate\s+Hours\s+Earnings(?:\s+Hours\s+Earnings)?/i, '');
+  const toks = body.split(/\s+/).filter(Boolean);
+  const out = [], seen = new Set();
+  let words = [], i = 0;
+  const numOf = t => parseFloat(t.replace(/,/g,''));
+  while(i < toks.length){
+    if(!EARN_NUM_RE.test(toks[i])){ words.push(toks[i++]); continue; }
+    const nums = [];
+    while(i < toks.length && EARN_NUM_RE.test(toks[i])) nums.push(numOf(toks[i++]));
+    const description = words.join(' ').trim(); words = [];
+    if(!description || nums.length < 5) continue;          // YTD-only line: no current activity
+    const [rate, hours, earnings] = nums;
+    if(!(rate > 0) || !(hours > 0) || !(hours < 200)) continue;
+    const key = description.toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    out.push({ description, rate, hours, earnings,
+      exact: Math.abs(rate*hours - earnings) <= EARN_CENT_TOLERANCE });
+  }
+  return out;
+}
+
+/* Turn parsed earnings rows into the differential amounts this app would write.
+
+   This is the whole reason the importer exists, so it lives in one function that both the
+   review sheet and the apply step call — a sheet that previews one number while apply writes
+   another is worse than no preview.
+
+   A paystub's Rate column does not always mean the same thing, and the description does not
+   reliably say which. Two shapes, on the same nurse's stubs two years apart:
+
+     PD Weekday Eve           69.790000    full hourly rate, differential already inside it
+     3rd Shift Differential    7.000000    the differential alone; base pay is on its own row
+
+   Subtracting base from the second yields -$63.81/hr. Arithmetic tells them apart without
+   trusting the wording: a full rate is at least the base rate, a bare differential is below it.
+   Either way the result can never be negative.
+
+   Rows the stub's own arithmetic does not support are skipped outright. On the 2023 stub that
+   is "PD Weekend Overtime Eve 67.034424", whose Rate column is a blended FLSA figure rather
+   than an hourly rate — and which classifies as weekend-eve and sits BELOW the real weekend
+   row, so it was silently overwriting a $4.64 weekend differential with $1.88.
+
+   Multiplier differentials (holiday, overtime) are absent from the result on purpose: their
+   amount is a ratio we do not read off a stub. Callers activate those keys without touching
+   the amount. */
+function differentialsFromStub(rows, baseRate, defaults){
+  const b = Number(baseRate)||0, defs = defaults || DIFF_DEFAULTS, out = {};
+  if(!(b > 0)) return out;
+  (rows||[]).forEach(r => {
+    if(r && r.exact === false) return;
+    const key = classifyPaystubRow(r && r.description);
+    if(!key || key === 'base') return;
+    if((defs[key]||{}).type === 'multiplier') return;
+    const rate = Number(r.rate)||0;
+    if(!(rate > 0)) return;
+    out[key] = Math.round((rate >= b ? rate - b : rate) * 100)/100;
+  });
+  return out;
+}
+
 /* Map a parsed paystub earnings-row description to a differential key.
    Weekend variants are tested first so "Weekend Night" -> weekend-eve (not night).
    Returns null for rows we can't confidently classify — callers MUST skip those
-   and never fall back to 'base' (that would corrupt the Day-regular rate). */
+   and never fall back to 'base' (that would corrupt the Day-regular rate).
+
+   Matching is on whole words. Substring matching read "SI2 - Staffing Incentive Level" as an
+   evening differential, because "Level" contains "eve" — a staffing incentive would have
+   silently become her evening rate.
+
+   Shift NUMBERS are recognised too: employers who schedule 12-hour shifts often still name
+   differentials by the 8-hour shift they came from, so "3rd Shift Differential" is the night
+   rate and "2nd Shift Differential" is the evening one. The deny-list ahead of them keeps
+   rows that merely mention a paid category — downstaffing drawn from a holiday bank, unpaid
+   absence, leave, bonuses, awards — from being read as a differential. */
+const PAYSTUB_NOT_A_DIFFERENTIAL = ['downstaff','unpaid','absence','leave','bonus','award',
+  'retro','disab','pension','inservice','seminar','seminars','reimbursement','stipend'];
 function classifyPaystubRow(desc){
-  const d=(desc||'').toLowerCase();
-  if(d.includes('weekend')&&(d.includes('eve')||d.includes('evening')||d.includes('night'))) return 'weekend-eve';
-  if(d.includes('weekend')&&d.includes('day')) return 'weekend-day';
-  if(d.includes('weekday')&&(d.includes('eve')||d.includes('evening'))) return 'weekday-eve';
-  if(d.includes('night')) return 'night';
-  if(d.includes('eve')||d.includes('evening')) return 'weekday-eve';
-  if(d.includes('overtime')) return 'overtime';
-  if(d.includes('holiday')) return 'holiday';
+  const words = String(desc||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ');
+  const d = ' ' + words.join(' ') + ' ';
+  const has = w => d.indexOf(' '+w+' ') >= 0;
+  const anyOf = (...ws) => ws.some(has);
+  if(PAYSTUB_NOT_A_DIFFERENTIAL.some(has)) return null;
+  if(has('weekend') && anyOf('eve','evening','night','nights')) return 'weekend-eve';
+  if(has('weekend') && has('day')) return 'weekend-day';
+  if(has('weekday') && anyOf('eve','evening')) return 'weekday-eve';
+  if(anyOf('3rd','third') && has('shift')) return 'night';
+  if(anyOf('2nd','second') && has('shift')) return 'weekday-eve';
+  if(anyOf('night','nights')) return 'night';
+  if(anyOf('eve','evening')) return 'weekday-eve';
+  if(has('overtime')) return 'overtime';
+  if(has('holiday')) return 'holiday';
   return null;
 }
 
@@ -3642,20 +3745,24 @@ function App(){
     const ex={};
     let m;
     if((m=text.match(/Pay Begin Date:\s*(\d{2}\/\d{2}\/\d{4})/))){ const[mm,dd,yy]=m[1].split('/'); ex.payPeriodStart=`${yy}-${mm}-${dd}`; }
-    if((m=text.match(/Pay Rate:\s*\$?([\d,]+\.?\d*)\s*Hourly/))) ex.baseRate=parseFloat(m[1].replace(/,/g,''));
+    /* The label and its value are in different table columns, so pdf.js hands them over with the
+       whole job-title block between them: "Pay Rate: 57786 B01035-… STAT Nurse 5 $70.810000
+       Hourly". Anchoring on the label therefore matched nothing on either of the real stubs we
+       have, which is why an import produced no base rate and, with it, no differentials. The
+       "$<amount> Hourly" token is the thing that is actually unambiguous, so fall back to it. */
+    if((m=text.match(/Pay Rate:\s*\$?([\d,]+\.?\d*)\s*Hourly/))
+      || (m=text.match(/\$\s*([\d,]+\.\d{2,6})\s*Hourly/))) ex.baseRate=parseFloat(m[1].replace(/,/g,''));
     if((m=text.match(/403\(b\)[^\d]+([\d,]+\.?\d*)/))) ex.pretaxDeductions=parseFloat(m[1].replace(/,/g,''));
     const med=text.match(/Fed MED\/EE[^\d]+([\d,]+\.?\d*)/), oas=text.match(/Fed OASDI\/EE[^\d]+([\d,]+\.?\d*)/);
     if(med&&oas) ex.ficaWithholding=parseFloat(med[1].replace(/,/g,''))+parseFloat(oas[1].replace(/,/g,''));
-    let stt=0; const pa=text.match(/PA W\/H[^\d]+([\d,]+\.?\d*)/), ph=text.match(/PA PHILADELPHIA W\/H[^\d]+([\d,]+\.?\d*)/), ls=text.match(/PA LS Tax[^\d]+([\d,]+\.?\d*)/);
+    let stt=0; const pa=text.match(/PA W\/H[^\d]+([\d,]+\.?\d*)/), ph=text.match(/PA PHILADELPHIA W\/H[^\d]+([\d,]+\.?\d*)/), ls=text.match(/PA\s+LS Tax[^\d]+([\d,]+\.?\d*)/);   /* the stub prints two spaces */
     if(pa)stt+=parseFloat(pa[1].replace(/,/g,'')); if(ph)stt+=parseFloat(ph[1].replace(/,/g,'')); if(ls)stt+=parseFloat(ls[1].replace(/,/g,''));
     if(stt>0) ex.stateTax=stt;
     const g=text.match(/TOTAL GROSS[^\d]+([\d,]+\.?\d*)/); if(g) ex.grossPay=parseFloat(g[1].replace(/,/g,''));
     if(ex.ficaWithholding&&ex.grossPay) ex.ficaRate=ex.ficaWithholding/ex.grossPay*100;
     if(ex.stateTax&&ex.grossPay){ const stBase=ex.grossPay-(ex.pretaxDeductions||0); if(stBase>0) ex.stateTaxRate=ex.stateTax/stBase*100; }
-    ex.shifts=[]; const sec=text.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
-    if(sec){ const rx=/(?:PD |Incentive - )([\w\s-]+?)\s+([\d.]+)\s+([\d.]+)\s+([\d,.]+)(?:\s+[\d.]+\s+[\d,.]+)?/g; let mm2; const seen=new Set();
-      while((mm2=rx.exec(sec[1]))!==null){ const desc=mm2[1].trim(); const hrs=parseFloat(mm2[3]); const k=desc.toLowerCase();
-        if(hrs>0&&hrs<200&&!seen.has(k)){ seen.add(k); ex.shifts.push({description:desc,rate:parseFloat(mm2[2]),hours:hrs,earnings:parseFloat(mm2[4].replace(/,/g,''))}); } } }
+    const sec=text.match(/HOURS AND EARNINGS([\s\S]*?)TAXES/);
+    ex.shifts = sec ? parseEarningsRows(sec[1]) : [];
     return ex;
   };
   const onPaystub = async (e)=>{
@@ -3677,11 +3784,15 @@ function App(){
     if(p.ficaRate){ setFicaType('percent'); setFicaPct(Math.round(p.ficaRate*100)/100); }
     if(p.shifts&&p.shifts.length&&p.baseRate){
       const nd={...differentials};
+      const amounts = differentialsFromStub(p.shifts, p.baseRate, differentials);
+      Object.keys(amounts).forEach(key=>{ nd[key]={...nd[key], amount: amounts[key], active:true}; });
+      /* Multiplier keys are recognised but their ratio is not read off a stub, so seeing the row
+         only turns the differential on. Non-exact rows are skipped here too. */
       p.shifts.forEach(s=>{
+        if(s && s.exact === false) return;
         const key=classifyPaystubRow(s.description);
-        if(!key || key==='base') return;   // never mutate Day-regular; skip unrecognized rows
-        const da = Math.round((s.rate-p.baseRate)*100)/100;
-        nd[key]={...nd[key], amount: nd[key]&&nd[key].type==='multiplier'?nd[key].amount:da, active:true};
+        if(!key || key==='base' || !nd[key] || nd[key].type!=='multiplier') return;
+        nd[key]={...nd[key], active:true};
       });
       setDiff(nd);
     }
@@ -3995,7 +4106,22 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
   }
 
   const baseNum = parseFloat(base)||0;
-  const rows = (p.shifts||[]).map(s=>({...s, key:classifyPaystubRow(s.description)}));
+  /* Preview exactly what apply would write — same function, same base rate the user is editing
+     above, so the two can never drift apart. */
+  const amounts = differentialsFromStub(p.shifts, baseNum, differentials);
+  const rows = (p.shifts||[]).map(s=>{
+    const key = classifyPaystubRow(s.description);
+    const mult = key && differentials[key] && differentials[key].type==='multiplier';
+    return {...s, key,
+      /* Why a row contributes nothing. A row we simply don't recognise is usually base pay,
+         PTO or leave — correctly ignored, so it reads as information. A row whose Rate column
+         failed the stub's own arithmetic is the one worth flagging: it looks like a rate and
+         isn't. */
+      skip: s.exact===false ? "Rate doesn't match hours × earnings — not read as an hourly rate"
+          : !key || key==='base' ? 'Not a differential — ignored' : null,
+      alarm: s.exact===false,
+      amount: mult ? null : (Object.prototype.hasOwnProperty.call(amounts, key) ? amounts[key] : null)};
+  });
 
   const apply=()=>{
     const draft={...p};
@@ -4032,20 +4158,19 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
           <div className="sec-lab" style={{marginTop:18}}>DETECTED DIFFERENTIAL ROWS</div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {rows.map((r,i)=>{
-              const da=Math.round((r.rate-baseNum)*100)/100;
-              const known = r.key && r.key!=='base';
+              const known = !r.skip;
               const diff = known ? differentials[r.key] : null;
               return (
                 <div className="row-item" key={i}>
                   <div>
                     <div style={{fontWeight:600,fontSize:13.5}}>{r.description}</div>
-                    <div style={{fontSize:11.5,color: known?'var(--muted-2)':'var(--danger)'}}>
+                    <div style={{fontSize:11.5,color: r.alarm?'var(--danger)':'var(--muted-2)'}}>
                       {known
-                        ? `→ ${diff?.name||r.key}${diff?.type==='multiplier'?'':`  ·  +$${da.toFixed(2)}/hr`}`
-                        : 'Unrecognized — ignored'}
+                        ? `→ ${diff?.name||r.key}${r.amount==null?'':`  ·  +$${r.amount.toFixed(2)}/hr`}`
+                        : r.skip}
                     </div>
                   </div>
-                  <div className="num" style={{fontWeight:700,fontSize:13.5,color: known?'var(--money-ink)':'var(--muted-2)'}}>${Number(r.rate||0).toFixed(2)}/hr</div>
+                  <div className="num" style={{fontWeight:700,fontSize:13.5,color: known?'var(--money-ink)':'var(--muted-2)'}}>${Number(r.rate||0).toFixed(2)}{known&&r.amount!=null?'/hr':''}</div>
                 </div>
               );
             })}

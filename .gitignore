@@ -15,6 +15,7 @@ scratchpad/
 _site/
 .harness-scratch/
 .equality-scratch/
+.dbg-scratch/
 
 # test output
 test-results/
