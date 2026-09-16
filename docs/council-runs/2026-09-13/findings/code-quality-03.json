@@ -1,0 +1,14 @@
+{
+ "title": "sampleNet() (onboarding's projected take-home) hand-rolls the same tax formula as computeNet() instead of calling it, and isn't part of the Invariant 3 function list",
+ "severity": "medium",
+ "where": "index.html:3416-3423 (sampleNet, inside applyPaystub's App scope) vs index.html:1231-1251 (computeNet)",
+ "detail": "sampleNet builds a 6-shift sample, sums shiftGross correctly, but then reimplements FICA-base/income-tax-base/fed/state/net entirely by hand (3419-3422) instead of calling `computeNet(g, taxInputs)` the way calc() (line 2809) and patternMetrics() (line 1298) do. It also never includes customWithholdings (`cw` in computeNet, lines 1242-1243) at all — every other real net calculation in the app sums customWithholdings into deductions; this one doesn't. sampleNet is not named anywhere in Invariant 3's protected function list (shiftGross/hourlyRate/computeNet/calc/statOf/ptoStatOf/patternMetrics), so the wage-core skill's required baseline probes and 'equality assertion against the deployed build' never exercise it.",
+ "failure": "This is the literal dollar figure shown on the 'You're all set' onboarding screen (line 5822, 'Projected take-home'), a nurse's very first number from the app. If a future wage-core change alters computeNet's formula (e.g. how FICA or a deduction cap works) and is verified correctly per the wage-core protocol, sampleNet's independent copy is not in scope for that verification and can silently diverge — the onboarding preview would show a different take-home than the hero/Breakdown will show moments later for an equivalent shift mix. Concretely today: any state where customWithholdings is non-empty (reachable via the supported Export JSON → hand-edit → Import JSON round trip, since sanitizeData validates and computeNet already sums that array) makes sampleNet's net figure too high by exactly the omitted withholding amount, while calc()/Breakdown correctly subtract it.",
+ "fix": "Replace sampleNet's inline tax math with `computeNet(g, {pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings})` (or reuse the existing `taxInputs` memo shape) so onboarding's preview and the real hero can never drift, and add it to the wage-core protocol's coverage.",
+ "wageCore": true,
+ "slices": [
+  "wage-core",
+  "money-surfaces"
+ ],
+ "id": "code-quality-03"
+}

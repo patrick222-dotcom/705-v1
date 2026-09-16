@@ -1,0 +1,13 @@
+{
+ "title": "pagehide/visibility flush silently drops a failed cloud save (no backup, no error surfaced)",
+ "severity": "high",
+ "where": "index.html:2489-2505 (the `flush` effect), contrast with the debounced-save effect at 2470-2479",
+ "detail": "The main debounced save path (2470-2479) treats `saveToSupabase`'s return value as significant on both branches: on success it updates `lastSeenAt` and clears the backup key, on failure (`ts` falsy) it calls `writeBackup(user.id, dataToSave)` and `setSyncError(true)`. The `flush()` handler, which exists specifically to catch the last edit before the tab is backgrounded or closed ('the 500ms debounce would otherwise drop it', comment at 2489), only wires up the success case: `saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; ...removeItem... } })` (line 2496). There is no `else` and no `.catch()` — if `ts` is null (RLS error, dropped network request, Supabase 5xx), nothing happens: `writeBackup` is never called and `syncError` is never set.",
+ "failure": "A nurse edits a shift, then immediately backgrounds the app (switches apps / locks the phone) — exactly the moment this handler is designed for. If that cloud write happens to fail (a very plausible time for a mobile network hiccup), the edit is not persisted to Supabase, not written to the per-user failed-save backup (`nursingWagePlannerData::<uid>`), and no sync-error indicator is shown. If the tab is actually killed (not just backgrounded) rather than resumed, that edit is gone with no trace and no recovery path, even though Invariant 4's whole 'per-user failed-save backup... wins when newer than the cloud row' mechanism exists precisely to prevent this class of loss.",
+ "fix": "Give the flush handler the same failure branch as the debounced-save effect: on `ts` falsy, call `writeBackup(snap.user.id, snap.data)` (and ideally `setSyncError(true)`, though a state update racing tab teardown is less critical than the local backup write).",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "code-quality-18"
+}

@@ -1,0 +1,163 @@
+[
+ {
+  "slice": "money-surfaces",
+  "findings": [
+   {
+    "title": "Hero's 'See the full breakdown' / 'Share BadgeBudget' links accidentally inherit the full .hero card style, ballooning them and adding dead scroll space to the very first screen",
+    "severity": "high",
+    "where": "index.html:3491-3492 (className=\"hero more linklike\"); CSS: .linklike padding:0 at 79, .hero padding/border-radius/background/box-shadow at 114, .hero .more at 119",
+    "detail": "The two footer buttons are given className=\"hero more linklike\" — three independent classes, not a scoped \".hero .more\" selector. Because the token \"hero\" is also the class name of the enclosing card, both buttons literally match the top-level `.hero{background:var(--ink);border-radius:22px;padding:22px 24px;...box-shadow:...}` rule (line 114) in addition to `.hero .more` (119) and `.linklike` (79). `.hero` and `.linklike` have equal CSS specificity (one class each), so the tie is broken by source order, and `.hero` (declared later, at line 114) beats `.linklike`'s `padding:0` (line 79) — the buttons keep `.hero`'s 22px/24px padding, border-radius and box-shadow instead of being flush, padding-free text links. Verified live on an iPhone-13 viewport: document.querySelectorAll('.hero') genuinely returns 3 elements (the card plus both buttons); each button's computed style is 'padding: 22px 24px', height balloons to 59px, and a screenshot shows each rendering as its own visible dark rounded pill with an inset highlight seam nested inside the real hero card, rather than a plain link line.",
+    "failure": "On every load, the hero card — the first thing a nurse sees, and the thing the whole app is built around — is roughly 120px taller than intended, almost entirely padding around two one-line links. One-handed on a phone, that's extra scrolling distance before she reaches the calendar / '+ Log a shift' controls beneath it, and the two links visually read as broken/unstyled boxes rather than the intended small footer actions.",
+    "fix": "Stop reusing the literal token \"hero\" as a class on these buttons — give them a distinct class (e.g. \"hero-more\") so they no longer match the card-level .hero rule, or restructure so the descendant relationship is expressed purely through DOM nesting rather than a repeated class name.",
+    "wageCore": false
+   },
+   {
+    "title": "Dollar-amount edit fields in Settings (differential rate, savings-goal target) have a 17px-tall tap target, versus 44px used everywhere else in the same sheet",
+    "severity": "medium",
+    "where": "index.html:4715 (differential amount NumInput) and 4754 (goal target NumInput); CSS: .drow .amt / .drow .amt input at 312-313, .danger-link at 423",
+    "detail": "`.drow .amt{padding:5px 10px}` wraps the number, but `.drow .amt input{width:54px;border:none;background:transparent;...}` sets no padding or min-height on the <input> itself, and the wrapper is a plain <span> (not a <label>), so tapping the padded pill around the number does nothing — only the number glyph itself is live. Measured live in the rendered Settings sheet on an iPhone-13 viewport: each goal-target and differential-rate NumInput is 54x17px (34x17 for a multiplier-type differential), and the adjacent 'Del' button on the same row is 35x39px — both well under the 44px minimum the codebase otherwise enforces (33 other spots in index.html explicitly set minHeight:44), and in visible contrast to the compliant ~42px-tall .inp input fields (line 292, padding:13px 14px) used for base rate, tax %, and bonus $ a few rows above in the same form.",
+    "failure": "Correcting a savings-goal target or a shift differential's dollar rate one-handed mid-shift means landing a tap inside a 17px-tall strip — under half the app's own stated minimum — and the larger padded pill around it looks tappable but isn't, so a mistap lands nowhere and she has to try again to get the cursor into the number field. The 'Del' button on the same row is likewise a few pixels short of 44px in each dimension.",
+    "fix": "Give .drow .amt input real padding or min-height:44px so the live hit-box matches the visible pill (or turn the .amt span into a <label> so tapping anywhere in the pill focuses the input), and bump .danger-link to a 44px box on these money-editing rows to match the convention used elsewhere in the file.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "calendar",
+  "findings": [
+   {
+    "title": "Calendar scroll box has an absolute 420px height floor that exceeds the entire viewport in landscape",
+    "severity": "medium",
+    "where": "index.html:184 (.cal-vscroll), contrast with .sheet/.modal at index.html:396,399",
+    "detail": "`.cal-vscroll{max-height:60vh;min-height:420px;...}` sets a hard 420px minimum height on the Month-view scroll box, in plain (non-dynamic) `vh`. Elsewhere in this same file the sheet/modal containers were deliberately switched to `dvh` (`.sheet{max-height:92dvh}` line 396, `.modal{max-height:90dvh}` line 399) specifically because mobile browser chrome changes available height — the calendar container is the one scroll surface that was never brought in line with that pattern, and unlike them it also carries a bare pixel floor with no viewport-relative cap under it.",
+    "failure": "Rotate an iPhone 13 (the project's own test profile) to landscape while on Month view. Landscape viewport height for a phone is typically ~350-390px after Safari's toolbar, well under the 420px the calendar box is forced to occupy. The calendar's own scroll container alone now consumes more vertical space than the entire screen, pushing the greet-row/hero, the +Log a shift button and the bottom nav completely off-screen — a one-handed nurse who rotates her phone (even accidentally) has to scroll the whole page up and down just to see anything besides the calendar grid, including controls that were one glance away in portrait.",
+    "fix": "Cap `.cal-vscroll` against the real viewport instead of a fixed px floor — e.g. drop `min-height:420px` (or express it as `min(420px, 60dvh)`) and switch `60vh` to `60dvh` so the box shrinks with the actual available height in landscape the same way `.sheet`/`.modal` already do.",
+    "wageCore": false
+   },
+   {
+    "title": "Pay-period boundary chip inside the scrolling grid is a ~19px-tall tap target with no hit-area expansion",
+    "severity": "medium",
+    "where": "index.html:200-202 (.cal-pp-div, .pp-chip), rendered at index.html:3899-3902",
+    "detail": "`.pp-chip{font-size:10.5px;padding:3px 9px;...}` inside `.cal-pp-div{margin:3px 0 7px}` yields a button roughly 18-19px tall (padding 3px+3px plus a ~10.5px line), sitting directly between rows of 42-44px day cells in the same 7-column grid, only 3px above and 7px below the neighboring cell rows. Elsewhere in this exact file, small buttons of similar visual size are deliberately padded out to the 44px minimum with a pseudo-element: `.calnav button` is 36x36 but gets `::after{inset:-5px}` (index.html:161-162) for an effective ~46x46 hit area, and `.period button` is 24x24 but gets `::after{inset:-10px}` (index.html:104-105) for an effective 44x44. The pp-chip has no equivalent — it is the one small interactive control in the calendar left at its bare visual size.",
+    "failure": "A nurse scrolling one-handed through the month list to jump to a different pay period (the chip's whole purpose — it calls `onBoundaryPick`) has to land a thumb on an ~19px strip wedged between day-cell rows that are the primary tap target on the same screen. She is likely to either miss the chip (nothing happens) or overshoot onto the adjacent day cell, which opens the Add-Shift sheet for the wrong date instead of switching pay periods.",
+    "fix": "Give `.pp-chip` the same `::after{content:'';position:absolute;inset:-Npx}` hit-area expansion already used by `.calnav button` and `.period button` in this file, sized to bring it to at least 44px tall, or increase its own padding/margin to reach that height directly.",
+    "wageCore": false
+   },
+   {
+    "title": "Day-cell tap targets drop to ~42px square at the ≤360px breakpoint this file itself treats as supported small-phone width",
+    "severity": "low",
+    "where": "index.html:221 (.cell), sizing driven by .cal-vscroll padding and .grid gap at index.html:206-212",
+    "detail": "At the ≤360px breakpoint (the same one index.html:441-448 singles out by name — \"Very small phones (≤360px, e.g. iPhone SE)\" — for a topbar-padding fix), the Month grid's available width is viewport minus 18px .wrap padding ×2, minus .card's 1px border and 18px padding ×2 (cancelled back out by `.cal-vscroll-wrap{margin:0 -18px}`), minus `.cal-vscroll`'s mobile padding of 8px×2 (line 211) — leaving ~306px for 7 columns with a 2px gap (line 212), i.e. (306-12)/7 ≈ 42px per cell. That's under the 44px tap-target guideline; at ≥375px (a real iPhone SE/6/7/8) the same math clears ~44px, so this only bites below that width.",
+    "failure": "On a ≤360px-wide Android phone (the class of device the file's own ≤360px media query is written for), the day cells — the single most-used tap target in the whole calendar, used to open every shift — are individually ~2px narrower/shorter than the 44px minimum, with no compensating hit-area expansion the way `.calnav`/`.period` buttons get elsewhere in this file. Marginal, but it's the primary tap surface of the screen shrinking below the line other small controls in this codebase were explicitly tuned to meet.",
+    "fix": "If ≤360px devices matter enough to have their own topbar rule, either drop the grid gap further at that breakpoint or reduce `.cal-vscroll`'s side padding by a couple px so cells stay at/above 44px, or accept it as a known trade-off explicitly (it isn't currently called out anywhere).",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "add-shift",
+  "findings": [
+   {
+    "title": "SHIFT TYPE chips in Add-Shift sheet are 5px under the 44px tap-target minimum, unlike every sibling control in the same sheet",
+    "severity": "medium",
+    "where": "index.html:4205-4212 (JSX, the SHIFT TYPE .chips-grid) and index.html:317-321 (.chips-grid/.chip-sel CSS, no min-height set)",
+    "detail": "The SHIFT TYPE picker is a 2-column grid of `.chip-sel` buttons with no inline min-height override: `<button key={k} className={'chip-sel'+...} onClick={...}><i .../>{d.name}</button>` (index.html:4208). `.chip-sel` itself only sets `padding:11px 12px` plus a 1.5px border (index.html:318), with no explicit height. Measured live on an iPhone 13 viewport (390x844) via the project's own Playwright harness, these buttons render at 39px tall. Every other interactive control in the exact same AddShiftSheet component was explicitly fixed to 44px: the OVERTIME toggle chip (`style={{...,minHeight:44}}`, index.html:4216), the QUICK ADD FROM TEMPLATE buttons (`style={{flex:1,minHeight:44}}`, index.html:4180), and the MARK THIS DAY / day-event chips (`style={{...,minHeight:44}}`, index.html:4255) - confirmed by the same measurement to render at exactly 44px. The calendar's own quick-fill template chips (index.html:3534, `style={{minHeight:44}}`) follow the same 44px convention. So within this one sheet, the single highest-frequency control - the one every logged shift requires tapping to set Day/Night/Weekend/Holiday/Bonus - is the one control the developer forgot to size, while every neighboring chip was deliberately fixed.",
+    "failure": "A nurse holding her phone one-handed mid-shift, thumb reaching across the sheet to tap 'Night' in the 2-column grid, gets a 39px-tall target with only 8px of vertical gap to the row below (row2 'Weekend day/night' starts at y=224.5 when row1 starts at y=177.5, per the measured boxes) - noticeably tighter than the 44px targets she gets for every other choice in the same flow (overtime toggle, template quick-add, PTO/education/appointment/off). The practical result is a higher mis-tap rate on exactly the control that determines the wage differential applied and previewed for that shift; she has to notice the wrong chip highlighted, undo, and retry.",
+    "fix": "Add the same `minHeight:44` (or equivalent CSS min-height) to the SHIFT TYPE `.chip-sel` buttons at index.html:4208, matching the inline style already applied to the OT toggle, template buttons, and event-kind chips a few lines below in the same component - or move `min-height:44px` into the shared `.chip-sel` CSS rule (index.html:318) so every current and future call site gets it for free instead of requiring each caller to remember the inline override.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "pattern-lab",
+  "findings": [
+   {
+    "title": "Pattern-grid day cells drop below the 44px tap target on iPhone SE/mini-width phones",
+    "severity": "medium",
+    "where": "index.html:347-348 (.pl-grid/.pl-cell), rendered at index.html:4520-4531, inside .modal's fixed padding at index.html:399",
+    "detail": "`.pl-grid` is a 7-column CSS grid with a fixed `gap:5px`, sitting inside `.modal{padding:24px}` (line 399, no per-breakpoint reduction anywhere in the file's three @media blocks at lines 206, 440, 447). Cell side = ((viewportWidth-48)-30)/7. At 390px (iPhone 13, the harness's own device profile) that's 44.6px — just barely compliant — but at 375px (iPhone 13 mini / iPhone SE 2nd-3rd gen) it's 42.4px, at 360px (the width the app itself explicitly designs for at line 441's SE comment) it's 40.3px, and at 320px (older SE) it's 34.6px. Contrast with the main calendar grid the app already tuned for this: `.grid` uses `gap:3px` dropping to `gap:2px` under 520px (lines 174, 212) and its outer padding shrinks to 8px under 520px (line 211) — the pattern-lab grid never received the equivalent treatment even though it's the same 7-column layout squeezed into a much more heavily padded (24px) modal.",
+    "failure": "A nurse one-handed, mid-shift, painting a 14- or 28-day custom rotation (PATTERN_CYCLE_CHOICES includes 28, PATTERN_MAX_CYCLE is 42) on an iPhone SE/mini-class phone taps a ~40-42px square. A thumb mis-tap lands on the adjacent day and silently paints or clears the wrong cell — there's no per-tap confirmation, only the eventual 'Put it on the calendar' preview many taps later, by which point it's easy to have several wrong cells that look plausible and go unnoticed.",
+    "fix": "Give `.pl-grid`/`.pl-cell` the same narrow-viewport treatment already applied to the main calendar grid: shrink the gap and/or reduce the modal's side padding specifically around the pattern grid under ~400px, so each of the 7 columns clears 44px down to 360px width.",
+    "wageCore": false
+   },
+   {
+    "title": "REPEATS EVERY cycle-length buttons render ~41px tall, under the 44px tap target",
+    "severity": "low",
+    "where": "index.html:4503",
+    "detail": "The 7/8/14/28-day preset buttons override the shared `.hrs .hc` style (`.hrs .hc{padding:11px;...font-size:14px}`, index.html:323) with an inline `{fontSize:13,padding:'11px 4px'}`. Height ≈ 2×11px padding + 2×1.5px border + ~13×1.2 line-height ≈ 40.6px, below the 44px guideline for a primary choice control at the top of every new-pattern flow.",
+    "failure": "Picking the rotation length is the first tap a nurse makes when starting a new pattern; a ~41px-tall pill is more likely to be mis-tapped one-handed than the rest of the app's already-borderline `.hc` buttons (which sit at ~41.8px by default but aren't further narrowed).",
+    "fix": "Drop the inline font/padding override (or raise vertical padding back toward the default ~13px+) so the button reaches 44px tall; if horizontal space for 4 pills plus the custom-length input is the concern, let the row wrap onto two lines instead of shrinking button height.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "onboarding",
+  "findings": [
+   {
+    "title": "est-banner action buttons are under the 44px tap-target minimum, unlike every other interactive control in this slice",
+    "severity": "medium",
+    "where": "index.html:143-144 (.est-banner button / .est-banner button.ghost CSS), rendered at index.html:3470-3475",
+    "detail": "`.est-banner button{padding:9px 13px;...font-size:12.5px}` (line 143) has no explicit line-height or min-height, so its rendered height is roughly 9+9px padding plus a ~12.5px line box — about 33-35px tall. That's the button a nurse taps to react to a rough/sample estimate: 'Sharpen it'/'Enter my rate' and 'Clear the sample'/'Got it', 8px apart in a `.row{display:flex;gap:8px;...}` (line 142). I checked whether this app compensates for small controls the way it does elsewhere: `.back` (line 368) and `.tg` (line 281) both carry a `::after{position:absolute;...}` hit-slop overlay (lines 369 and 282) that pads their effective tap area out to ~44px, and `.acct-menu button` (line 94) and `.pl-brushes .chip-sel` (line 346) both set `min-height:44px` directly — so the codebase clearly already treats 44px as the bar elsewhere. `.est-banner button` has neither technique.",
+    "failure": "A nurse reading the est-banner after a rough/sample setup, one-handed, taps to fix her estimate. The two buttons are each ~34px tall with only 8px between them and no invisible hit-slop margin, so a fingertip (which is wider than either button) can land on the wrong one — e.g. tapping 'Got it' (which silently sets estimateMode to '' and dismisses the banner for good) when she meant to tap 'Sharpen it' (which opens Settings), or missing both buttons on the first tap and having to re-aim.",
+    "fix": "Give `.est-banner button` `min-height:44px` (matching `.acct-menu button` / `.pl-brushes .chip-sel`), or add a `::after{content:'';position:absolute;inset:-Npx}` hit-slop overlay the way `.back` and `.tg` already do, and widen the 8px gap between the two banner buttons.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "settings-etc",
+  "findings": [
+   {
+    "title": "Share sheet is the one sheet that doesn't lock background scroll",
+    "severity": "medium",
+    "where": "index.html:2596-2600 (body-scroll-lock effect) vs index.html:2228-2230/3657 (showShare state) and index.html:5666-5702 (ShareSheet)",
+    "detail": "App's single scroll-lock effect sets `document.body.style.overflow='hidden'` only while `sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns` is true (index.html:2597). `showShare` (declared 2228, set by `openShare` at 2230, used to conditionally render `<ShareSheet>` at 3657) is not in that list, and ShareSheet itself (5666-5702) has no scroll-lock effect of its own — I checked its full body, there is none.",
+    "failure": "Tap SHARE in Settings (or wherever `openShare` is wired) to bring up the QR-code sheet, then, while holding the phone up for a coworker to scan (exactly what the sheet's own copy says to do: \"Hold this up and let them scan it with their camera\"), a stray touch or the phone shifting in a one-handed grip drags the calendar page underneath — the background is still scrollable/rubber-bands, unlike every other sheet in the app (Settings, Feedback, Breakdown, Auth, ics import, Swaps, Patterns all lock it). Closing the sheet afterward can leave the calendar scrolled to a different position than before it opened.",
+    "fix": "Add `showShare` to the OR condition in the effect at index.html:2597 (and its dependency array at 2600), matching the pattern already used for every other sheet.",
+    "wageCore": false
+   },
+   {
+    "title": "Avatar (sole mobile Settings/Sign-out entry point) is a 40px tap target with no hit-area bump, unlike its sibling icon button",
+    "severity": "medium",
+    "where": "index.html:86 (.avatar) vs index.html:75-76 (.iconbtn / .iconbtn::after) and index.html:1974-1975 (AccountMenu's avatar button)",
+    "detail": "`.iconbtn` (the topbar feedback 💬 button) is 40x40 visually but gets `.iconbtn::after{position:absolute;inset:-2px}` (line 76), which is hit-testable and bumps its real tap target to 44x44 — the app clearly knows and applies the 44px minimum. `.avatar` (line 86) is also 40x40 but gets no such pseudo-element or padding; `.acct` (87) adds no padding either. I rendered both in a real browser at 390px width and measured: iconbtn effectively 44x44 (via the -2px inset), avatar exactly 40x40 with no expansion. Per the file's own comment (index.html:80-85), since 2026-09-13 this avatar is \"the only route to Settings and Sign out on a phone\" below 920px — it absorbed the old separate gear/sign-out icon buttons.",
+    "failure": "A nurse reaching one-handed for the top-right corner to open Settings or sign out gets a target 4px narrower on each axis than Apple's 44pt minimum and than the feedback button right next to it — on the one control in the bar that has no fallback route if missed.",
+    "fix": "Give `.avatar` the same `::after{content:'';position:absolute;inset:-2px}` treatment `.iconbtn` already has (or increase its own width/height to 44px), so its real hit area matches its sibling.",
+    "wageCore": false
+   },
+   {
+    "title": "Savings-goal \"Del\" is a ~35x34px target sitting next to an editable field, with no confirmation (unlike the equivalent differential delete)",
+    "severity": "medium",
+    "where": "index.html:4687 (delGoal), 4755 (goal Del button), 4691 (del — differentials, has confirmAsync), index.html:423 (.danger-link CSS)",
+    "detail": "`delGoal=id=>setGoals((goals||[]).filter(g=>g.id!==id))` (4687) removes a savings goal immediately with no dialog. The structurally identical destructive action one section up, deleting a differential, is guarded: `del=async k=>{ if(!(await confirmAsync(...))) return; ... }` (4691) with an explicit warning. I rendered the actual `.danger-link` markup (color/font-weight/font-size/padding/margin from index.html:423) inside a `.drow` at 390px width and measured its real hit box: 35.45 x 34px — under the 44px minimum in both dimensions — placed directly beside the goal's `NumInput` (the thing a user is actually trying to tap to edit the target amount, line 4754).",
+    "failure": "Editing a goal's target amount one-handed, a thumb that lands a few px off the amount field hits \"Del\" instead and the goal — name, target, everything — is gone instantly with zero confirmation and no undo, unlike the differential row one section above which stops to ask first.",
+    "fix": "Route delGoal through the same confirmAsync(...) used for del(k) at 4691, and/or enlarge the Del hit area (bump .danger-link padding or add an ::after inset like .iconbtn) so it isn't both undersized and irreversible.",
+    "wageCore": false
+   }
+  ]
+ },
+ {
+  "slice": "swap-board",
+  "findings": [
+   {
+    "title": "First-run join/create inputs miss the Enter-to-submit handler their duplicate 'another board' inputs have",
+    "severity": "medium",
+    "where": "index.html:5388-5391 (create-board input) and 5396-5400 (join-code input), vs. the near-identical 5576-5579 and 5592-5597",
+    "detail": "The zero-groups screen's 'Create your unit's board' name input (5388-5391) and 'Join with a code' input (5396-5400) have no `onKeyDown` handler. The visually and behaviorally identical inputs shown later once a nurse already has ≥1 group — 'Create another board' (5578-5579) and 'Join another board' (5595-5597) — both carry `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` / `doJoinGroup()`. Same field, same button, same purpose; only the first-run copy lacks the keyboard submit path.",
+    "failure": "A nurse joining her unit's board for the very first time (the most common swap-board entry point: a colleague texted her a 6-char code rather than tapping a link) types the code one-handed with the iOS keyboard up, then has no keyboard-native way to submit — Return/Go does nothing here — so she has to dismiss or work around the keyboard to find and tap 'Join board' below. The exact same action a returning user takes to join a SECOND board works fine with Return, so the app is inconsistent about which keyboard behavior she gets on identical UI.",
+    "fix": "Add the same `onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}` to the 5396-5400 input and `onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}` to the 5388-5391 input, matching 5579/5597.",
+    "wageCore": false
+   },
+   {
+    "title": "Display-name step autoFocuses its input, raising the keyboard before the question is readable — the same anti-pattern already removed from FeedbackSheet",
+    "severity": "low",
+    "where": "index.html:5356 (autoFocus on the display-name input), c.f. index.html:2026 (comment) / FeedbackSheet 2006-2032",
+    "detail": "The one-time 'What should colleagues call you when a swap is confirmed?' screen's input has `autoFocus` (line 5356), so the keyboard opens the instant this screen mounts. Two hundred lines earlier, FeedbackSheet explicitly does NOT autoFocus its textarea, with an inline comment explaining exactly this failure mode was found and fixed: \"Focusing is also what raises the keyboard, which is why the textarea no longer autoFocuses: on a phone that put the keyboard over the tiles before she could read them\" (2026-2027). SwapsSheet's display-name step reintroduces the same pattern the team removed elsewhere.",
+    "failure": "A nurse opening 'Shift swaps' for the first time gets the keyboard shoved up before she's read the title/subtitle explaining why she's being asked to name herself and that it's anonymous until a swap confirms — the same disorienting mid-shift, one-handed moment the FeedbackSheet fix was written to avoid. (Submitting itself still works via the input's own Enter handler, so this is a first-impression/readability papercut rather than something that blocks her.)",
+    "fix": "Drop `autoFocus` from the 5356 input, same as FeedbackSheet's textarea, so the question is visible before the keyboard appears.",
+    "wageCore": false
+   }
+  ]
+ }
+]

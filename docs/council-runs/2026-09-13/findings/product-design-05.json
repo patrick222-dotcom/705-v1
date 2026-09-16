@@ -1,0 +1,13 @@
+{
+ "title": "Welcome-screen sample take-home figure is hardcoded and doesn't match the app's own math for the identical schedule",
+ "severity": "high",
+ "where": "index.html:5721-5722 (welcome screen literal) vs sampleNet() at index.html:3416-3423, DIFF_DEFAULTS at index.html:686-697, default baseRate at index.html:2204",
+ "detail": "The obStep===0 welcome screen shows a static, non-computed figure: `<div className=\"lbl\">Sample · 72 hrs this period</div>` followed by `<div className=\"num\">$3,951</div>` (line 5721-5722) — literal strings, not derived from any function. The same '72 hrs / 6 shifts' scenario is independently defined a few hundred lines later in `sampleNet()` (3 night + 2 weekend-day + 1 base, 12h each = 72 hrs), which the 'done' screen (obStep 4) actually renders via `fmt(sample.net)`. Computing sampleNet() by hand with the app's current defaults (baseRate=65.15 at line 2204, DIFF_DEFAULTS night=+$10/hr and weekend-day=+$11.5/hr at line 686, federal 12%, state 2.5%, FICA standard 7.65%, no pretax/posttax) gives gross = 3*(75.15*12) + 2*(76.65*12) + 1*(65.15*12) = 5326.80, and net = 5326.80 - (5326.80*0.0765 + 5326.80*0.12 + 5326.80*0.025) = 5326.80 - 1180.04 = 4146.76, i.e. fmt() would show $4,147 — not $3,951. The two numbers disagree by about $196 (≈5%) for what is presented as the exact same 72-hour, 6-shift schedule.",
+ "failure": "A brand-new visitor sees '$3,951' on the very first screen (framed as 'we do the messy math so the number's never a surprise'). If she continues through the full setup path (steps 1-3) without touching any rate, the 'done' screen a few taps later — using the same default rate and the same 72-hour/6-shift assumption — shows $4,147 instead. The app contradicts its own headline number within a single onboarding session, which is precisely the kind of surprise the product claims to eliminate.",
+ "fix": "Either compute the welcome-screen figure the same way sampleNet() does (call the existing sampleNet-equivalent logic against current default state, which is already in scope at obStep 0) so the two screens can never drift apart again, or replace the literal '$3,951' with a value that is verified to match sampleNet()'s output under the current defaults. Do not hand-tune the string again without re-deriving it — that is how it went stale.",
+ "wageCore": false,
+ "slices": [
+  "onboarding"
+ ],
+ "id": "product-design-05"
+}

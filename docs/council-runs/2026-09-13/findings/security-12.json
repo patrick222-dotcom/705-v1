@@ -1,0 +1,13 @@
+{
+ "title": "client_error batch can exceed the live `events_props_check` (< 2000 bytes) and is silently dropped after the ring buffer was already cleared",
+ "severity": "medium",
+ "where": "index.html:1443-1456 (flushClientErrors) with index.html:1385-1398 (track) and the live constraint `events_props_check CHECK (pg_column_size(props) < 2000)`",
+ "detail": "`flushClientErrors` ships up to `ERR_FLUSH_CAP`=8 entries, each with a 300-char `msg`, 80-char `src`, `t` and `line`. Measured in the live database: 8 entries at 300 chars = 3,116 jsonb bytes; 6×300 = 2,348; 8×200 = 2,316; 8×170 = 2,060 — all rejected by the CHECK; 5×300 = 1,964 and 8×120 = 1,676 pass. So any batch of ≥6 max-length entries, or 8 entries averaging ≳165 chars, fails with 23514. Max-length entries are the normal case for the errors that matter: `ErrorBoundary.componentDidCatch` (index.html:2160) logs `error` plus the JSON-stringified `errorInfo` (a componentStack of hundreds of chars, sliced to 500 in the buffer and 300 in the flush), and PostgREST error objects mirrored from `console.error('Load error:', error)` (1469) run 150-300 chars. `track()` swallows the rejection into `console.debug` (1396), which is not mirrored into the ring buffer, and `__takeErrorLog()` (567-572) already removed the batch before the send — so the loss is total and self-concealing. Live data so far: 11 client_error rows, max 526 bytes, max n=3, so nothing has been lost *yet*; the arithmetic is deterministic for the first bad session.",
+ "failure": "A nurse hits a React render crash loop (ErrorBoundary fires several times) or a run of failed cloud loads during one visit. On her next app open the flush builds an 8-entry, ~3 KB batch, Postgres rejects it, the ring buffer is already empty, and the owner's `select … where name='client_error'` shows nothing for exactly the session that needed diagnosing — worse than before the telemetry existed, because the local buffer was also drained.",
+ "fix": "Budget the payload in `flushClientErrors` before calling `track`: cut per-entry `msg` to ~160 chars and drop the oldest entries while `JSON.stringify(props).length > ~1700` (jsonb adds ~5-10% over the text form, so 1,700 text bytes stays under 2,000). Optionally also widen the CHECK in a `004` migration (e.g. `< 4000`) so a stale client can't lose a batch either. Add a smoke assertion that seeds 8 long entries into `scrubpayErrors` and asserts the resulting event body is under the cap.",
+ "wageCore": false,
+ "slices": [
+  "telemetry-auth"
+ ],
+ "id": "security-12"
+}

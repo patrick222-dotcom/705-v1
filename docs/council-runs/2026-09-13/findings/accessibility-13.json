@@ -1,0 +1,13 @@
+{
+ "title": "Pattern Lab has no focus trap and no Escape-to-close, so keyboard focus leaks into the obscured app behind it",
+ "severity": "high",
+ "where": "index.html:4300-4581 (function PatternLab, no keydown handling or focus management anywhere in the component); index.html:2596-2600 (body-scroll lock is the only 'modal open' side effect); index.html:1966-1968 (Escape-to-close exists for the account menu, for contrast)",
+ "detail": "There is no `useEffect`/`addEventListener('keydown', ...)` and no ref-based focus trap anywhere in PatternLab (confirmed by reading lines 4300-4420 and grepping the whole component body). The app never uses `ReactDOM.createPortal` (grep returns nothing) and never sets `inert` or toggles `aria-hidden` on background content when a sheet opens — the only 'a modal is open' side effect anywhere in the app is `document.body.style.overflow='hidden'` at line 2598, which blocks page scroll but does nothing to the DOM's tab order or accessibility tree. Meanwhile the account menu two thousand lines earlier (lines 1966-1968) does register a document keydown listener that closes on Escape, showing the app knows how to do this and simply didn't do it here.",
+ "failure": "A keyboard user opens Pattern Lab, then presses Shift+Tab from the '×' Close button (aria-label=\"Close\", line 4419) — focus moves backward into whatever topnav/calendar control precedes PatternLab in the DOM (e.g. the 'Patterns'/'Swaps'/'Settings' topnav links or a calendar day cell), all of which are still fully interactive but visually hidden under the `.scrim` overlay (`rgba(18,18,26,.55)` + blur, line 394). The user sees no focus indicator at all (it's under the overlay) and can activate a background control — e.g. re-triggering `openPatternLab` or opening Settings underneath the already-open Pattern Lab — while apparently still 'inside' Pattern Lab. Separately, pressing Escape while Pattern Lab is open does nothing at all; the only ways to close it are clicking the × button or clicking the scrim backdrop.",
+ "fix": "Give the modal a focus trap (cycle Tab/Shift+Tab within its own focusable elements) and move focus onto it when it opens (e.g. the close button or heading), restoring focus to the invoking control on close; add a `keydown` listener for `Escape` that calls `dismiss()`, matching the pattern already used for the account menu at line 1966.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "accessibility-13"
+}

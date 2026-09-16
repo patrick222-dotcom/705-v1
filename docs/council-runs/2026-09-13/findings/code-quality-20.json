@@ -1,0 +1,13 @@
+{
+ "title": "Cross-device poll's content-equality check doesn't canonicalize key order, so it rarely matches even identical data",
+ "severity": "medium",
+ "where": "index.html:2550 (`normalize`) and 2560 (the comparison), under the comment block at 2540-2546",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "code-quality-20"
+}

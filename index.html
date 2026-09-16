@@ -27,7 +27,7 @@
     --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
     --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
     --muted:#6B665C; --muted-2:#726D62; --line:#EEEDE8; --line-2:#E7E5DE;
-    --danger:#C84B3C; --danger-soft:#F3D6D1;
+    --danger:#B03D2E; --danger-soft:#F3D6D1;   /* 5.3:1 on the glass panels and money-soft, not just on white */
 
     /* Liquid Glass tokens */
     --glass:rgba(255,255,255,.55); --glass-strong:rgba(255,255,255,.74);
@@ -83,7 +83,8 @@
      real button now, never decorative -- below 920px .topnav is display:none, so this is the only
      route to Settings and Sign out on a phone. z-index clears .topbar (40) and .fab (45) but stays
      under .scrim (80), so an open sheet always covers the menu. */
-  .avatar{width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .avatar{position:relative;width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .avatar::after{content:'';position:absolute;inset:-2px;border-radius:50%}  /* same hit-slop as .iconbtn — it is the only phone route to Settings (council 2026-09-13) */
   .acct{position:relative;display:flex;flex:0 0 auto}
   /* Outside-tap closes through this transparent fixed backdrop rather than a document listener:
      on iOS WebKit a document-level click handler misses taps on non-interactive elements unless a
@@ -112,6 +113,8 @@
   .card h3{margin:0 0 14px;font-size:14px;font-weight:700}
 
   .hero{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 20px 46px rgba(16,14,24,.32)}
+  .hero:focus{outline:none}
+  .hero:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
   .hero .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
   .hero .num{font-family:'Bricolage Grotesque';font-weight:800;color:var(--mint);font-size:clamp(46px,12vw,64px);line-height:1;letter-spacing:-.03em;margin:8px 0 14px}
   .bd-note{font-size:11.5px;line-height:1.5;color:var(--muted);background:var(--glass);border:1px solid var(--glass-line);border-radius:10px;padding:8px 10px;margin:-2px 0 10px}
@@ -140,8 +143,8 @@
   .est-banner{background:#FFF6E6;border:1px solid #F3DCAE;border-radius:17px;padding:14px 16px;margin-bottom:14px}
   .est-banner .t{font-weight:700;font-size:13.5px;color:#7A5A12}
   .est-banner .s{font-size:12.5px;line-height:1.5;color:#8A6A22;margin-top:3px}
-  .est-banner .row{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
-  .est-banner button{background:#7A5A12;color:#fff;padding:9px 13px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .est-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
+  .est-banner button{background:#7A5A12;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .est-banner button.ghost{background:transparent;color:#8A6A22;border:1px solid #E4C98F}
 
   /* quick-fill banner (shift templates applied across multiple calendar days) */
@@ -182,7 +185,9 @@
      clipped, which is why the section can be wider than the card's other rows without looking
      like a separate box floating outside it. */
   .cal-vscroll-wrap{position:relative;margin:0 -18px}
-  .cal-vscroll{max-height:60vh;min-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
+  .cal-vscroll:focus{outline:none}
+  .cal-vscroll:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+  .cal-vscroll{max-height:60dvh;min-height:min(420px,60dvh);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 20px;scrollbar-width:none;background:var(--card)}
   .cal-vscroll::-webkit-scrollbar{display:none}
   .cal-vscroll-fade{position:absolute;left:0;right:0;bottom:20px;height:34px;background:linear-gradient(to bottom, transparent, var(--card));pointer-events:none}
   .cal-month-sec{margin-bottom:20px}
@@ -200,7 +205,8 @@
      so the 7-column day alignment is never disturbed. */
   .cal-pp-div{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:3px 0 7px}
   .cal-pp-div::before,.cal-pp-div::after{content:'';flex:1;height:1px;background:var(--line)}
-  .cal-pp-div .pp-chip{flex:0 0 auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--muted-2);background:var(--card);padding:3px 9px;border-radius:20px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  .cal-pp-div .pp-chip{position:relative;flex:0 0 auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--muted-2);background:var(--card);padding:0 11px;min-height:32px;display:inline-flex;align-items:center;border-radius:20px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  .cal-pp-div .pp-chip::after{content:'';position:absolute;inset:-6px 0}  /* 32 + 6 + 6 = 44px hit area, within the divider row's own margins */
   .cal-pp-div .pp-chip:hover{background:var(--indigo-soft);color:var(--indigo-ink)}
   /* mobile: let the grid bleed past the card's AND the page's own padding so it fills
      the phone screen almost edge-to-edge, with a slim padding of its own and a tighter gap. */
@@ -310,13 +316,13 @@
   .drow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:9px}
   .drow.off{opacity:.55}
   .drow .nm{font-weight:600;font-size:14px;flex:1;min-width:0;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
-  .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:5px 10px;border-radius:var(--r-pill);white-space:nowrap}
-  .drow .amt input{width:54px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
+  .drow .amt{font-weight:700;font-size:13px;background:#F2F1EC;padding:0 10px;min-height:44px;display:inline-flex;align-items:center;border-radius:var(--r-pill);white-space:nowrap}
+  .drow .amt input{width:54px;min-height:44px;border:none;background:transparent;font:inherit;text-align:right;outline:none}
   .ddash{border:1.5px dashed #D8D5CC;border-radius:13px;padding:12px;text-align:center;font-weight:600;font-size:13px;color:#7A766C;width:100%}
 
   /* chips */
   .chips-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:11px 12px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
+  .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:11px 12px;min-height:44px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
   .chip-sel i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
   .chip-sel.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
   .chip-sel.on i{background:#fff!important}
@@ -326,7 +332,7 @@
 
   /* tags */
   .tag{display:inline-block;font-weight:600;font-size:10.5px;padding:3px 8px;border-radius:var(--r-pill);margin-top:5px}
-  .tag.est{color:#C2820A;background:#FDF3DD}
+  .tag.est{color:#8A5A05;background:#FDF3DD}
   .tag.auto{color:var(--indigo);background:var(--indigo-soft)}
 
   /* pattern lab */
@@ -346,6 +352,7 @@
   .pl-brushes{display:flex;flex-wrap:wrap;gap:8px}
   .pl-brushes .chip-sel{width:auto;min-height:44px}
   .pl-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  @media (max-width:400px){ .pl-grid{gap:3px;margin:0 -6px} }  /* 7 cells clear 44px down to 360px wide (council 2026-09-13, mobile-ux-06) */
   .pl-cell{aspect-ratio:1/1;min-height:0;border-radius:9px;background:#fbfaf7;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;transition:transform .08s,box-shadow .12s}
   .pl-cell:hover{box-shadow:0 4px 12px rgba(20,20,30,.08);transform:translateY(-1px)}
   .pl-cell.wk{background:#F3F2EC}
@@ -354,6 +361,9 @@
   .pl-cell .g{font-size:15px;line-height:1;font-weight:700}
   .pl-cell .g.off{color:#cfccc2;font-size:17px}
   .pl-cell .h{font-size:9.5px;font-weight:700;color:var(--ink)}
+  .pl-cell{position:relative}
+  .pl-cell .fx{position:absolute;top:2px;right:3px;font-size:8px;line-height:1}
+  .pl-money .avg,.pl-cmp .avg{font-weight:500;font-size:10.5px;color:var(--muted-2)}
   .pl-money{background:var(--ink);border-radius:16px;padding:16px 18px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
   .pl-money .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
   .pl-money .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em;line-height:1.1;margin-top:2px}
@@ -372,6 +382,7 @@
   /* onboarding */
   .ob{min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding:22px 24px calc(24px + env(safe-area-inset-bottom))}
   .ob .eyebrow{font-weight:600;font-size:12.5px;color:var(--indigo);margin-bottom:10px;letter-spacing:.02em}
+  .ob h1{margin:0;font-size:inherit}
   .ob .q{font-family:'Bricolage Grotesque';font-weight:700;font-size:25px;line-height:1.18}
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
   .ob .spacer{flex:1;min-height:18px}
@@ -421,7 +432,7 @@
   .preview .v{font-weight:700;font-size:14px;color:var(--money-ink);margin-top:2px}
   .row-item{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin-bottom:9px}
   .link{color:var(--indigo);font-weight:600;font-size:13px}
-  .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:10px 8px;margin:-10px -8px}
+  .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:14px 8px;margin:-14px -8px;min-height:44px;display:inline-flex;align-items:center}
 
   /* swap matching: count badge on entry points + suggestion/plan cards */
   .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:700;line-height:1;margin-left:6px;vertical-align:middle}
@@ -607,6 +618,25 @@
 <script type="text/babel" data-presets="react">
 const { useState, useMemo, useEffect, useLayoutEffect, useRef } = React;
 
+/* Escape closes whichever sheet is on top. One hook, every dialog (council 2026-09-13, a11y):
+   each open sheet pushes a handler ref; a single document listener calls only the top one, so
+   Escape on a confirm dialog never also dismisses the sheet under it. The ref is refreshed every
+   render, so the handler always sees current state without re-registering. */
+const _escStack = [];
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape' || !_escStack.length) return;
+  const top = _escStack[_escStack.length-1];
+  if(top.current) top.current(e);
+});
+function useEscape(handler, active=true){
+  const ref = useRef(handler); ref.current = handler;
+  useEffect(()=>{
+    if(!active) return;
+    _escStack.push(ref);
+    return ()=>{ const i = _escStack.lastIndexOf(ref); if(i>=0) _escStack.splice(i,1); };
+  },[active]);
+}
+
 /* ---------- icons ---------- */
 const Ic = {
   share: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V3"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>,
@@ -643,6 +673,10 @@ const withTimeout = (p, ms, label) => Promise.race([
 /* ---------- model ---------- */
 const STORE_KEY = 'nursingWagePlannerData';
 const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier safety; real data is a few KB)
+/* Size of a blob as Postgres will see it (UTF-8 bytes), not JS string length (UTF-16 units). Every
+   path that writes user_data measures with this so the cap means one thing (council 2026-09-13,
+   security-05: the check lived at one of three save sites, and flush/retry bypassed it). */
+function blobBytes(data){ try{ return new TextEncoder().encode(JSON.stringify(data)).length; }catch(_){ return JSON.stringify(data).length; } }
 const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
 const MAX_GOALS = 12;      // cap on savings goals (bounds per-row blob growth; keeps the list scannable)
 
@@ -687,6 +721,7 @@ const periodRangeLabel = (startISO) => {
 const animateScrollTop = (el, target, duration=380) => {
   const start = el.scrollTop, max = Math.max(0, el.scrollHeight - el.clientHeight);
   const clamped = Math.max(0, Math.min(target, max)), delta = clamped - start, t0 = performance.now();
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches){ el.scrollTop = clamped; return; }
   const ease = p => p<0.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
   const step = now => {
     const p = Math.min(1, (now-t0)/duration);
@@ -1189,6 +1224,7 @@ function sanitizeData(d){
         hours: Number(t.hours),
         bonusType: t.bonusType,
         customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0,
+        isOvertime: t.isOvertime===true,   // council 2026-09-13 (#9): templates used to drop the OT flag silently
         ...(typeof t.start==='string' && TIME_RE.test(t.start) ? {start:t.start} : {})
       }));
   }
@@ -1695,6 +1731,7 @@ function planPatternApply(pattern, shifts, differentials, opts){
    record it as the "last write we made" so the focus-refetch can ignore our own writes. */
 async function saveToSupabase(userId, data){
   if(!supabase) return null;
+  if(blobBytes(data) > MAX_BLOB_BYTES){ logClientError('Save skipped: blob over MAX_BLOB_BYTES'); return null; }   // the ONE size check; flush + retry inherit it
   const updatedAt = new Date().toISOString();
   try{
     // onConflict MUST be user_id. The table's PK is `id uuid default gen_random_uuid()` and
@@ -1813,6 +1850,11 @@ function flushDeferredEvents(userId){
 }
 
 const ERR_FLUSH_CAP = 8;
+/* events.props carries CHECK (pg_column_size(props) < 2000). jsonb runs a little over its text form,
+   so the flushed batch is held under 1,700 text chars by dropping the OLDEST entries — the ring buffer
+   was already cleared, so an over-cap row was a silent loss of exactly the load worth diagnosing
+   (council 2026-09-13, security-12). */
+const ERR_FLUSH_TEXT_BUDGET = 1700;
 function redactMoney(v){
   return String(v==null?'':v)
     .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
@@ -1825,11 +1867,13 @@ function flushClientErrors(userId){
     if(!buf.length) return;
     const errors = buf.slice(-ERR_FLUSH_CAP).map(e=>({
       t: (e && e.t) || null,
-      msg: redactMoney(e && e.msg).slice(0,300),
+      msg: redactMoney(e && e.msg).slice(0,160),
       src: String((e && e.src) || '').split('/').pop().slice(0,80) || null,
       line: (e && e.line) || null
     }));
-    track('client_error', {n: buf.length, errors}, userId);
+    const props = {n: buf.length, errors};
+    while(errors.length > 1 && JSON.stringify(props).length > ERR_FLUSH_TEXT_BUDGET) errors.shift();
+    track('client_error', props, userId);
   }catch(_){ /* diagnostics must never break the app they diagnose */ }
 }
 
@@ -2339,12 +2383,7 @@ async function revealSwapMatch(matchId){
 function AccountMenu({user, name, onSettings, onSignOut}){
   const [open,setOpen] = useState(false);
   const initial = (user ? (user.email||'') : (name||'')).trim().charAt(0).toUpperCase();
-  useEffect(()=>{
-    if(!open) return;
-    const onKey = e => { if(e.key==='Escape') setOpen(false); };
-    document.addEventListener('keydown', onKey);
-    return ()=>document.removeEventListener('keydown', onKey);
-  },[open]);
+  useEscape(()=>setOpen(false), open);
   const pick = fn => ()=>{ setOpen(false); fn(); };
   return (
     <div className="acct">
@@ -2391,6 +2430,9 @@ function FeedbackSheet({user, surface, onClose}){
      holds an untouched scaffold (or nothing): once she has typed her own words, changing the tile
      re-tags the report without eating them. */
   const lastScaffold = useRef('');
+  /* Escape closes the sheet only while the box is empty or still an untouched scaffold -- the
+     same "never eat her words" rule the tiles follow. */
+  useEscape(()=>{ if(!msg.trim() || msg===lastScaffold.current) onClose(); });
   const where = surface || 'Planner';
 
   const pickTile = (t)=>{
@@ -2508,8 +2550,9 @@ function ConfirmHost(){
     _ui.confirmFn=(msg,opts)=>new Promise(res=>setSt({msg,opts:opts||{},resolve:res}));
     return ()=>{ _ui.confirmFn=null; };
   },[]);
+  const done=(v)=>{ if(st) st.resolve(v); setSt(null); };
+  useEscape(()=>done(false), !!st);
   if(!st) return null;
-  const done=(v)=>{ st.resolve(v); setSt(null); };
   const o=st.opts;
   return (
     <div className="scrim" style={{zIndex:210}} onClick={()=>done(false)}>
@@ -2609,6 +2652,10 @@ function App(){
   const [sheetDate,setSheetDate] = useState(null);   // add-shift sheet open for date
   const [showSettings,setShowSettings] = useState(false);
   const [showBreakdown,setShowBreakdown] = useState(false);
+  /* Dismissing the estimate banner unmounts the button that had focus; hand it to the hero figure
+     the banner was qualifying instead of letting it drop to <body>. */
+  const heroRef = useRef(null);
+  const focusHero = ()=>setTimeout(()=>{ const h = heroRef.current; if(h) h.focus({preventScroll:true}); }, 0);
   const [showAuth,setShowAuth] = useState(false);  // auth modal
   const [authMode,setAuthMode] = useState('signin'); // 'signin' or 'signup'
   const [showShare,setShowShare] = useState(false);  // QR/link sheet — the app's only distribution surface
@@ -2731,6 +2778,20 @@ function App(){
     setWorkPeriod('40'); setOtMethod('regular-rate');
     setMealMins(DEFAULT_MEAL_MINS); setMealMode('included');
   };
+  /* Everything a signed-in session leaves in memory that must never survive into the next one:
+     the cloud-hydration marks, the sync bookkeeping, the calendar subscription (Invariant 13 —
+     the feed URL is a bearer credential, and on a shared phone the next account must not see
+     it), and the onboarding step. Called from BOTH the SIGNED_OUT branch and handleSignOut. The
+     two had drifted (council 2026-09-13: code-quality-00 = security-09, code-quality-11) — the
+     manual path claimed to mirror the branch but never cleared the iCal state, so a stalled
+     signOut left the previous account's secret feed URL in Settings for the next sign-in. */
+  const clearSignedInState = ()=>{
+    hydratedForUser.current = null; lastSeenAt.current = null;
+    setSyncError(false);
+    setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
+    resetToDefaults();
+    setObStep(0);
+  };
 
   /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
   const hydrateFromCloud = async (userId, timeoutMs)=>{
@@ -2802,12 +2863,7 @@ function App(){
       }else{
         // Signed out: wipe in-memory state so the debounced save can't leak this user's
         // wage data into the shared anonymous localStorage key, then restore pre-login anon data.
-        hydratedForUser.current = null;
-        setSyncError(false);
-        resetToDefaults();
-        lastSeenAt.current = null;
-        // Drop the signed-in user's calendar subscription from memory (never leak it to anon state).
-        setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
+        clearSignedInState();
         setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
       }
     });
@@ -2832,7 +2888,8 @@ function App(){
     let cancelled=false;
     (async ()=>{
       let sub=null;
-      try{ sub = await loadIcalSub(uid); }catch(_){ return; }
+      try{ sub = await loadIcalSub(uid); }
+      catch(_){ if(!cancelled){ setIcalSub(null); setIcalUrl(''); } return; }   // never keep a previous account's URL on a failed load
       if(cancelled) return;
       setIcalSub(sub); setIcalUrl(sub ? sub.icalUrl : '');
       if(sub && sub.icalUrl && icalSyncedForUser.current!==uid){
@@ -2854,7 +2911,7 @@ function App(){
         if(hydratedForUser.current !== user.id) return;
         // Free-tier guard: a single pathological blob shouldn't balloon the DB. Well above any
         // realistic pay history (~a few KB), so this only ever trips on corruption/abuse.
-        if(JSON.stringify(dataToSave).length > MAX_BLOB_BYTES){
+        if(blobBytes(dataToSave) > MAX_BLOB_BYTES){
           if(!oversizeWarned.current){ oversizeWarned.current = true; toast('Your data got unusually large — cloud sync paused. Try clearing old shifts.','error'); }
           writeBackup(user.id, dataToSave);
           setSyncError(true);
@@ -2886,7 +2943,9 @@ function App(){
       if(!snap) return;
       if(snap.user){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key
-        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } }); }catch(_){} }
+        // A failed save here mirrors to the per-user backup exactly as the debounced path does — the
+        // flush used to have only a success branch (council 2026-09-13, data-integrity-00).
+        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } else { writeBackup(snap.user.id, snap.data); } }); }catch(_){} }
       }else{
         try{ localStorage.setItem(STORE_KEY, JSON.stringify(snap.data)); }catch(_){}
       }
@@ -2922,11 +2981,10 @@ function App(){
     if(!(await confirmAsync('You can sign back in anytime.',{title:'Sign out?',confirm:'Sign out'}))) return;
     await signOutClient();
     // Force signed-out state locally — never rely on onAuthStateChange, which won't fire if
-    // signOut stalled. Mirrors the SIGNED_OUT branch (safe/idempotent if that also fires).
-    hydratedForUser.current = null; lastSeenAt.current = null; prevUserId.current = null;
-    setSyncError(false);
+    // signOut stalled. Same routine as the SIGNED_OUT branch (idempotent if that also fires).
+    prevUserId.current = null;
     setSession(null); setUser(null);
-    resetToDefaults();
+    clearSignedInState();
     setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
   };
 
@@ -2987,10 +3045,11 @@ function App(){
   },[ready,setupComplete]);
 
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare]);
+  useEscape(()=>setShowBreakdown(false), showBreakdown);   // the one sheet rendered inline in App
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -3319,7 +3378,7 @@ function App(){
       const idx = arr.findIndex(s=>s.templateId===qfTemplate.id);
       const next = idx>=0
         ? arr.filter((_,i)=>i!==idx)
-        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, templateId:qfTemplate.id, ...(qfTemplate.start?{start:qfTemplate.start}:{})}];
+        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, isOvertime:qfTemplate.isOvertime===true, templateId:qfTemplate.id, ...(qfTemplate.start?{start:qfTemplate.start}:{})}];
       const n2={...prev}; if(next.length) n2[k]=next; else delete n2[k]; return n2;
     });
     qfTouched.current.add(k);
@@ -3396,6 +3455,7 @@ function App(){
       return next;
     });
     setEstimateMode('');
+    focusHero();
     toast('Sample cleared — the planner is yours now.','success');
     track('sample_cleared', null, user?.id);
   };
@@ -3532,7 +3592,7 @@ function App(){
       // sit directly over the shift-type chips and Next/Confirm button on a 390px screen,
       // blocking taps for ~3.6s until it auto-dismisses. See icsDropSummary for wording.
       const dropNotice = icsDropSummary(parsed);
-      setIcsImport({ groups, toUpdate:plan.toUpdate, toRemove:plan.toRemove,
+      setIcsImport({ groups, toUpdate:plan.toUpdate.filter(u=>u.changed), toRemove:plan.toRemove,
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
         answers, stepIdx:0, dropNotice });
     };
@@ -3683,6 +3743,7 @@ function App(){
         answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true });
       track('ics_sync_done', {events:parsed.events.length}, user.id);
     }catch(e){
+      console.error('ical sync failed:', (e && e.message) || String(e));   // mirrored into the ring buffer -> client_error; the URL is never logged
       if(manual) toast("Couldn't reach your calendar. Check the link and try again.",'error');
     }finally{
       icalInFlight.current = false; setIcalBusy(false);
@@ -3879,7 +3940,7 @@ function App(){
               <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>
               {estimateMode==='sample'
                 ? <button className="ghost" onClick={clearSample}>Clear the sample</button>
-                : <button className="ghost" onClick={()=>{ setEstimateMode(''); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
+                : <button className="ghost" onClick={()=>{ setEstimateMode(''); focusHero(); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
             </div>
           </div>
         )}
@@ -3887,7 +3948,7 @@ function App(){
         <div className="dash">
           {/* LEFT */}
           <div className="col">
-            <div className="hero">
+            <div className="hero" ref={heroRef} tabIndex={-1}>
               <div className="lbl">Projected take-home</div>
               <div className="num num">{fmt(calc.net)}</div>
               <div className="chips">
@@ -3896,8 +3957,8 @@ function App(){
                 {calc.hours>0 && <span className="chip">Keep {calc.pct}%</span>}
                 {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
-              <button className="hero more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
-              <button className="hero more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
+              <button className="more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
+              <button className="more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
             </div>
 
             <div className="stats">
@@ -3952,28 +4013,30 @@ function App(){
                     <button className="btn btn-primary btn-sm" style={{minHeight:44,flex:'0 0 auto'}} onClick={endQuickFill}>Done</button>
                   </div>}
                 </div>}
-              <div className="viewseg" role="tablist" aria-label="Calendar view">
+              {/* A plain labelled button group, not a tablist: it never had the arrow-key tab
+                  pattern the role promises, and a segmented control doesn't need one. */}
+              <div className="viewseg" role="group" aria-label="Calendar view">
                 {[['month','Month'],['year','Year']].map(([v,l])=>
-                  <button key={v} role="tab" aria-selected={calView===v} className={calView===v?'on':''}
+                  <button key={v} aria-pressed={calView===v} className={calView===v?'on':''}
                     onClick={()=>{ if(v!==calView) track('view_changed', {view:v}, user?.id); setCalView(v); }}>{l}</button>)}
               </div>
               {calView==='year' &&
                 <div className="calnav">
-                  <button onClick={()=>navCal(-1)} aria-label="Previous">‹</button>
+                  <button onClick={()=>navCal(-1)} aria-label="Previous year">‹</button>
                   <span className="calnav-t">{viewTitle}</span>
-                  <button onClick={()=>navCal(1)} aria-label="Next">›</button>
+                  <button onClick={()=>navCal(1)} aria-label="Next year">›</button>
                 </div>}
               {calView==='year'
                 ? <YearList months={yearMonths} onPick={(m)=>{ setCalFocus(`${parseISO(calFocus).getFullYear()}-${String(m+1).padStart(2,'0')}-01`); setCalView('month'); }} />
                 : <div className="cal-vscroll-wrap">
-                    <div className="cal-vscroll" ref={monthScrollRef} onScroll={onMonthScroll}>
+                    <div className="cal-vscroll" ref={monthScrollRef} onScroll={onMonthScroll} tabIndex={0} aria-label="Calendar months">
                       {monthWindow.map(mo=>
                         <MonthSection key={mo.key} y={mo.y} m={mo.m} keyOf={keyOf} statOf={statOf}
                           differentials={differentials} shifts={shifts} dayEvents={dayEvents} notes={notes}
                           onPick={qfMode ? (qfTemplate ? toggleQuickFillDay : (()=>{})) : openSheet}
                           qfActive={qfMode && !!qfTemplate} qfTemplateId={qfTemplate && qfTemplate.id} keepRatio={keepRatio}
                           periodAnchor={payPeriodStart} onBoundaryPick={pickBoundaryPeriod}
-                          secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; }} />)}
+                          secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; else delete monthSecRefs.current[mo.key]; }} />)}
                     </div>
                     <div className="cal-vscroll-fade" aria-hidden="true"></div>
                   </div>}
@@ -4027,8 +4090,8 @@ function App(){
 
       {showBreakdown &&
         <div className="scrim" onClick={()=>setShowBreakdown(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="sheet-h"><div className="t">Your paycheck math</div><button className="back" onClick={()=>setShowBreakdown(false)}>{Ic.x}</button></div>
+          <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Your paycheck math">
+            <div className="sheet-h"><div className="t">Your paycheck math</div><button className="back" onClick={()=>setShowBreakdown(false)} aria-label="Close">{Ic.x}</button></div>
             <div className="sub" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>{periodLabel} · here's where it goes</div>
             <Breakdown calc={calc} />
             <div className="disclaimer">Estimates for planning. Always verify against your real paystub.</div>
@@ -4091,12 +4154,13 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
   const [pre,setPre]=useState(p.pretaxDeductions!=null?String(p.pretaxDeductions):'');
   const [fica,setFica]=useState(p.ficaRate!=null?String(Math.round(p.ficaRate*100)/100):'');
   const [st,setSt]=useState(p.stateTaxRate!=null?String(Math.round(p.stateTaxRate*100)/100):'');
+  useEscape(onCancel);
 
   if(empty){
     return (
       <div className="scrim" onClick={onCancel}>
-        <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}}>
-          <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
+        <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:440}} role="dialog" aria-modal="true" aria-label="Couldn't read that paystub">
+          <div className="sheet-h"><div className="t">Couldn't read that paystub</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
           <div className="help">We couldn't find any pay details in this PDF. It works best with the <b>detailed</b> paystub from your payroll portal (Workday, UKG, Kronos…) that lists your pay rate and hours — a photo, a screenshot, or a one-page summary usually won't parse. Your file never left your device. You can set things up manually below.</div>
           <div className="spacer" style={{height:18}}></div>
           <button className="btn btn-primary" onClick={onCancel}>Set it up manually</button>
@@ -4135,8 +4199,8 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
 
   return (
     <div className="scrim" onClick={onCancel}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="sheet-h"><div className="t">Review your paystub</div><button className="back" onClick={onCancel}>{Ic.x}</button></div>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Review your paystub">
+        <div className="sheet-h"><div className="t">Review your paystub</div><button className="back" onClick={onCancel} aria-label="Close">{Ic.x}</button></div>
         <div className="sub" style={{fontSize:13,color:'var(--muted-2)',marginBottom:16}}>We read these from your PDF. Fix anything that looks off, then apply.</div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>Base hourly rate</div>
@@ -4204,6 +4268,7 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
   const toRemove = state.toRemove || [];
   const toUpdateEvents = state.toUpdateEvents || [];
   const toRemoveEvents = state.toRemoveEvents || [];
+  useEscape(onCancel);
   const total = groups.length;
   const isFinal = stepIdx >= total;
   /* 'event' and 'skip' are both "this isn't a shift" answers, and BOTH are remembered by uid so the
@@ -4343,8 +4408,9 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
           + (t.g>0 ? ', about ' + fmt(Math.round(t.g*keepRatio)) + ' take-home' : '')
           + (hasOT ? ', includes overtime' : '')
           + (!has ? ', no shifts' : '')
-          + (hasNote ? ', has a note' : '')}>
-        <div className="d">{dt.getDate()}{hasOT && <span aria-hidden="true" style={{fontSize:8,fontWeight:800,color:'#11A86B',marginLeft:2,verticalAlign:'top',letterSpacing:'.5px'}}>OT</span>}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
+          + (hasNote ? ', has a note' : '')
+          + (isToday ? ', today' : '')}>
+        <div className="d">{dt.getDate()}{hasOT && <span aria-hidden="true" style={{fontSize:8,fontWeight:800,color:'var(--money-ink)',marginLeft:2,verticalAlign:'top',letterSpacing:'.5px'}}>OT</span>}{hasNote && <span className="note-mark" aria-hidden="true"></span>}</div>
         {has
           ? <div style={{marginTop:'auto'}}>
               {/* Shift glyphs and event rings share one marker row (capped to 4 combined) so a day
@@ -4502,6 +4568,17 @@ function fmtAvailDates(dates){
   return parts.join(', ');
 }
 /* "Night ×12h · starts 7:00 PM" — wage-free by construction (shift_meta never carries $). */
+/* shift_meta comes from another member's row: validate before it becomes one of her shifts.
+   The same shape sanitizeData would keep -- a string shiftType, finite hours in (0,24], an
+   optional HH:MM start -- so nothing is written that a reload would then drop. */
+function validShiftMeta(m){
+  if(!m || typeof m!=='object' || Array.isArray(m)) return false;
+  if(typeof m.shiftType!=='string' || !m.shiftType || m.shiftType.length>40) return false;
+  const h = Number(m.hours);
+  if(!isFinite(h) || h<=0 || h>24) return false;
+  if(m.start!=null && m.start!=='' && !(typeof m.start==='string' && TIME_RE.test(m.start))) return false;
+  return true;
+}
 function giveMetaLine(meta, differentials){
   if(!meta) return '';
   const label = (differentials && differentials[meta.shiftType] && differentials[meta.shiftType].name) || meta.shiftType || 'Shift';
@@ -4570,11 +4647,13 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const save = ()=> onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), events, note.trim());
   // Scrim dismiss: never silently drop rows/events/note the user already set; a clean sheet just closes.
   const dismiss = ()=> dirty ? onSave(list, events, note.trim()) : onClose();
+  useEscape(dismiss);
 
   // One-tap template apply: adds that template's shift to this day instantly.
   const applyTemplateTap = (t)=>{
-    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, templateId:t.id, ...(t.start?{start:t.start}:{})}]);
+    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, isOvertime:t.isOvertime===true, templateId:t.id, ...(t.start?{start:t.start}:{})}]);
     setDirty(true);
+    configDirtySinceAdd.current = false;   // a tap is an add: "Save as template" next should capture the tapped shift, not the untouched controls
     track('template_tap', null, userId);
   };
   const doSaveTemplate = ()=>{
@@ -4590,8 +4669,9 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
     // since, the live control values are what they mean to save.
     const last = list[list.length-1];
     const src = (last && !configDirtySinceAdd.current)
-      ? last : {bonusType, customBonus, start};
-    const tpl = {name:nm.slice(0,40), shiftType, hours:clampedHours, bonusType:src.bonusType||'none', customBonus:src.customBonus||0};
+      ? last : {shiftType, hours:clampedHours, bonusType, customBonus, start, isOvertime};
+    const tpl = {name:nm.slice(0,40), shiftType:src.shiftType, hours:Math.min(24,Math.max(0.1, Number(src.hours)||0.1)),
+      bonusType:src.bonusType||'none', customBonus:src.customBonus||0, isOvertime:src.isOvertime===true};
     if(src.start) tpl.start = src.start;
     const ok = onSaveTemplate(tpl);
     // On a failed (capped) save, leave the input open with the typed name so freeing a slot
@@ -4601,7 +4681,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
   return (
     <div className="scrim" onClick={dismiss}>
-      <div className="sheet" onClick={e=>e.stopPropagation()}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add a shift">
         <div className="grab"></div>
         <div className="sheet-h">
           <div className="t">Add a shift</div>
@@ -4618,7 +4698,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
               {templates.map(t=>(
                 <div key={t.id} style={{display:'flex',alignItems:'center',gap:8}}>
                   <button className="chip-sel" style={{flex:1,minHeight:44}} onClick={()=>applyTemplateTap(t)}>
-                    <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h
+                    <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h{t.isOvertime ? ' · OT' : ''}
                   </button>
                   <button className="back" aria-label={'Delete template '+t.name} onClick={()=>onDeleteTemplate(t)}>{Ic.x}</button>
                 </div>
@@ -4634,10 +4714,10 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
-                  {s.isOvertime && <span style={{fontSize:12,fontWeight:700,color:'#11A86B'}}>OT ×1.5</span>}
+                  {s.isOvertime && <span className="ot-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>OT ×1.5</span>}
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
-                <button className="danger-link" onClick={()=>remove(s.id)}>Remove</button>
+                <button className="danger-link" onClick={()=>remove(s.id)} aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}>Remove</button>
               </div>
             ))}
           </div>}
@@ -4700,12 +4780,12 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         {bonusType==='custom' &&
           <div className="inp pre" style={{marginBottom:16}}><span className="pfx">$</span><NumInput value={customBonus} onCommit={v=>{ setCustomBonus(v); configDirtySinceAdd.current=true; }} min={0} ariaLabel="Custom bonus per shift" placeholder="0.00"/></div>}
 
-        <div className="preview">
+        <div className="preview" aria-live="polite" aria-atomic="true">
           <div className="k">This shift adds</div>
-          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span style={{fontWeight:700,color:'#11A86B'}}> · incl. OT ×1.5</span>}{noMeal && <span style={{fontWeight:700,color:'#F5A524'}}> · incl. missed lunch</span>}</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span className="ot-tag" style={{fontWeight:700,color:'var(--money-ink)'}}> · incl. OT ×1.5</span>}{noMeal && <span className="meal-tag" style={{fontWeight:700,color:'#8A5A05'}}> · incl. missed lunch</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
-          {goals && goals.length>0 && previewNet>0 &&
-            <div className="k" style={{marginTop:6}}>toward your {goals.length===1?'goal':'goals'}: {goals.slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
+          {goals && goals.some(g=>g.target>0) && previewNet>0 &&
+            <div className="k" style={{marginTop:6}}>toward your {goals.filter(g=>g.target>0).length===1?'goal':'goals'}: {goals.filter(g=>g.target>0).slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
         </div>
 
         <div className="sec-lab" style={{marginTop:4}}>{list.length ? 'ALSO ON THIS DAY' : 'MARK THIS DAY'}</div>
@@ -4738,7 +4818,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
               <div className="inp" style={{flex:1}}>
                 <input value={tplName} onChange={e=>setTplName(e.target.value)} placeholder="Template name (e.g. Nights)" maxLength={40} autoFocus
                   aria-label="Template name"
-                  onKeyDown={e=>{ if(e.key==='Enter') doSaveTemplate(); if(e.key==='Escape') setSavingTpl(false); }}/>
+                  onKeyDown={e=>{ if(e.key==='Enter') doSaveTemplate(); if(e.key==='Escape'){ e.stopPropagation(); setSavingTpl(false); } }}/>
               </div>
               <button className="btn btn-soft btn-sm" style={{minHeight:44}} onClick={doSaveTemplate}>Save</button>
               <button className="back" aria-label="Cancel save template" onClick={()=>setSavingTpl(false)}>{Ic.x}</button>
@@ -4774,6 +4854,10 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
     [draft,applyOpen,shifts,differentials,applyStart,applyWeeks,applyReplace]);
 
   const fmtHrs = h => String(Math.round(h*10)/10);
+  /* patternMetrics averages money over lcm(cycle,14) days. For a 7- or 14-day cycle that IS one
+     paycheck; for anything else (8-day "4 on 4 off", 28-day custom) real checks alternate around
+     the figure, so say so next to it. Label only -- the number is the same one it always was. */
+  const avgNote = cells => { const k = lcm(cells.length, 14)/14; return k>1 ? `avg. over ${k} paychecks — checks will vary` : ''; };
   const cellColor = c => {
     if(!c) return '#E7E5DE';
     const key = c.kind==='fixed' ? c.shiftType : (c.kind==='night' ? 'night' : 'base');
@@ -4782,7 +4866,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   const cellLabel = c => {
     if(!c) return 'off';
     const nm = c.kind==='fixed' ? ((differentials[c.shiftType]&&differentials[c.shiftType].name)||c.shiftType) : (c.kind==='night'?'Night':'Day');
-    return `${nm} ${c.hours}h${c.start?' from '+fmtTime12(c.start):''}`;
+    return `${nm} ${c.hours}h${c.start?' from '+fmtTime12(c.start):''}${c.kind==='fixed' ? ' (template — pay type fixed)' : ''}`;
   };
   const weekendShort = m => {
     if(!m.weekendEvery || !m.weekendsWorked) return 'none';
@@ -4813,8 +4897,8 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
     else L.push({ic:'☀', text:<>Days only</>});
     return L;
   };
-  const goalLine = m => (goals && goals.length && m && m.periodNet>0)
-    ? goals.slice(0,3).map(g=>{ const n=Math.max(1,Math.ceil(g.target/m.periodNet)); return `${g.name}: ${n} paycheck${n===1?'':'s'} (${fmtMonths(n)})`; }).join(' · ')
+  const goalLine = m => (goals && goals.some(g=>g.target>0) && m && m.periodNet>0)
+    ? goals.filter(g=>g.target>0).slice(0,3).map(g=>{ const n=Math.max(1,Math.ceil(g.target/m.periodNet)); return `${g.name}: ${n} paycheck${n===1?'':'s'} (${fmtMonths(n)})`; }).join(' · ')
     : null;
 
   /* ---- editing ---- */
@@ -4843,7 +4927,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   };
   const setAnchor = (v)=>{
     if(!/^\d{4}-\d{2}-\d{2}$/.test(v) || keyOfDate(parseISODate(v))!==v) return;
-    setDraft(d=>({...d, anchor:v})); setApplyStart(v); setDirty(true);
+    setDraft(d=>({...d, anchor:v})); if(!applyOpen) setApplyStart(v); setDirty(true);
   };
   const open = (p)=>{ setDraft({...p, cells:[...p.cells]}); setDirty(false); setApplyOpen(false); setApplyStart(p.anchor); };
   const startPreset = (preset)=>{ open(preset ? patternFromPreset(preset, payPeriodStart) : blankPattern(payPeriodStart, 7)); setDirty(true); };
@@ -4863,6 +4947,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
     if(draft && dirty && metrics && metrics.shifts && !(await confirmAsync('Close without saving this pattern?',{title:'Discard changes?',confirm:'Discard',danger:true}))) return;
     onClose();
   };
+  useEscape(dismiss);
   const del = async ()=>{ if(await onDelete(draft)){ setDraft(null); setApplyOpen(false); setDirty(false); } };
   const confirmApply = ()=>{
     if(!applyPlan || !applyPlan.adds.length) return;
@@ -4875,7 +4960,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   if(!draft){
     return (
       <div className="scrim" onClick={dismiss}>
-        <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Pattern lab">
           <div className="sheet-h"><div className="t">Pattern lab</div><button className="back" onClick={dismiss} aria-label="Close">{Ic.x}</button></div>
           <div className="hint" style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Design a rotation and see two things before you commit to it: the paycheck it makes, and the life it makes — longest stretch, longest break, which days stay yours.</div>
 
@@ -4885,7 +4970,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
               <table className="pl-cmp">
                 <thead><tr><th></th>{allMetrics.map(({p})=><th key={p.id} scope="col">{p.name}</th>)}</tr></thead>
                 <tbody>
-                  <tr><th scope="row">Take-home / paycheck</th>{allMetrics.map(({p,m})=><td key={p.id} className="v num">{fmt(m.periodNet)}</td>)}</tr>
+                  <tr><th scope="row">Take-home / paycheck</th>{allMetrics.map(({p,m})=><td key={p.id} className="v num">{fmt(m.periodNet)}{avgNote(p.cells) ? <span className="avg" title={avgNote(p.cells)}> avg.</span> : null}</td>)}</tr>
                   <tr><th scope="row">Hours / week</th>{allMetrics.map(({p,m})=><td key={p.id} className="num">{fmtHrs(m.hoursPerWeek)}</td>)}</tr>
                   <tr><th scope="row">Longest stretch</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.longestRun} on</td>)}</tr>
                   <tr><th scope="row">Longest break</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.longestBreak} off</td>)}</tr>
@@ -4893,6 +4978,8 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
                   <tr><th scope="row">Always off</th>{allMetrics.map(({p,m})=><td key={p.id}>{m.drifts ? 'drifts' : (m.alwaysOff.map(d=>DOW_SHORT[d]).join(' ') || '—')}</td>)}</tr>
                 </tbody>
               </table>
+              {allMetrics.some(({p})=>avgNote(p.cells)) &&
+                <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>avg. — that cycle doesn't divide a fortnight, so the figure is averaged over several paychecks; individual checks will vary.</div>}
             </div>
           </>}
 
@@ -4944,7 +5031,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
 
   return (
     <div className="scrim" onClick={dismiss}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label={isSaved?'Edit pattern':'New pattern'}>
         <div className="sheet-h">
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <button className="back" onClick={back} aria-label="Back to your patterns">‹</button>
@@ -4985,7 +5072,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
               <button key={i} type="button" className={'pl-cell'+(c?' on':'')+(wk&&!metrics.drifts?' wk':'')} onClick={()=>paint(i)}
                 aria-pressed={!!c} aria-label={`Day ${i+1}${metrics.drifts?'':' · '+DOW_SHORT[dow]}: ${cellLabel(c)}`}>
                 <span className="dw">{metrics.drifts ? i+1 : DOW_SHORT[dow][0]}</span>
-                {c ? <><span className="g" style={{color:cellColor(c)}}>{cls==='night'?'☾':'☀'}</span><span className="h num">{c.hours}h</span></>
+                {c ? <><span className="g" style={{color:cellColor(c)}}>{cls==='night'?'☾':'☀'}</span><span className="h num">{c.hours}h</span>{c.kind==='fixed' && <span className="fx" aria-hidden="true">⚡</span>}</>
                    : <span className="g off">·</span>}
               </button>);
           })}
@@ -4993,11 +5080,13 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',margin:'8px 0 16px'}}>
           {metrics.drifts
             ? `${[8,11,18].indexOf(n)>=0?'An':'A'} ${n}-day cycle doesn't line up with the week, so the weekday each cell lands on changes every cycle.`
-            : 'Tap a day to paint the selected shift; tap again to clear it. Weekend days pick up your weekend differentials automatically.'}
+            : brush.indexOf('tpl:')===0
+              ? 'Tap a day to paint the template; tap again to clear it. Template cells (⚡) keep the template\'s pay type as-is — weekend differentials are not inferred for them.'
+              : 'Tap a day to paint the selected shift; tap again to clear it. Weekend days pick up your weekend differentials automatically.'}
         </div>
 
-        <div className="pl-money">
-          <div className="k">Take-home per paycheck</div>
+        <div className="pl-money" aria-live="polite" aria-atomic="true">
+          <div className="k">Take-home per paycheck{avgNote(draft.cells) ? <span className="avg"> · {avgNote(draft.cells)}</span> : null}</div>
           <div className="v num">{fmt(metrics.periodNet)}</div>
           <div className="s">{fmt(metrics.periodGross)} gross · {fmtHrs(metrics.periodHours)} hrs · ≈ <span className="num">{fmt(metrics.yearNet)}</span> a year</div>
           {gl && <div className="s" style={{marginTop:8}}>If every paycheck went to it — {gl}</div>}
@@ -5024,7 +5113,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
             <span className="nm" style={{whiteSpace:'normal'}} onClick={()=>setApplyReplace(v=>!v)}>Replace shifts already on those days</span>
           </div>
           {applyPlan &&
-            <div className="preview" style={{margin:'0 0 14px'}}>
+            <div className="preview" style={{margin:'0 0 14px'}} aria-live="polite" aria-atomic="true">
               <div className="k">This adds</div>
               <div className="v">{applyPlan.adds.length} shift{applyPlan.adds.length===1?'':'s'} · {fmtDateShort(applyPlan.startKey)} – {fmtDateShort(applyPlan.endKey)}</div>
               {applyPlan.skipped>0 && <div className="k" style={{marginTop:6}}>{applyPlan.skipped} day{applyPlan.skipped===1?'':'s'} already scheduled — left alone</div>}
@@ -5043,6 +5132,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
 /* ---------- Auth Modal ---------- */
 function AuthModal({mode:initialMode,onClose}){
   const [mode,setMode] = useState(initialMode||'signin');
+  useEscape(onClose);
   const [email,setEmail] = useState('');
   const [password,setPassword] = useState('');
   const [loading,setLoading] = useState(false);
@@ -5089,10 +5179,10 @@ function AuthModal({mode:initialMode,onClose}){
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+      <div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}} role="dialog" aria-modal="true" aria-label={mode==='signup'?'Create account':'Sign in'}>
         <div className="sheet-h">
           <div className="t">{mode==='signup'?'Create account':'Sign in'}</div>
-          <button className="back" onClick={onClose}>{Ic.x}</button>
+          <button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button>
         </div>
 
         <form onSubmit={handleEmailAuth}>
@@ -5138,14 +5228,19 @@ function Settings(props){
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
     workPeriod,setWorkPeriod,otMethod,setOtMethod,mealBreakMins,setMealMins,mealBreakMode,setMealMode}=props;
+  useEscape(onClose);
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
   const [goalName,setGoalName]=useState('');
   const [goalTarget,setGoalTarget]=useState(0);
   const addGoal=()=>{ const nm=goalName.trim(); const t=parseFloat(goalTarget)||0;
     if(nm && t>0 && (goals||[]).length<MAX_GOALS){ setGoals([...(goals||[]),{id:Date.now()+Math.random(),name:nm.slice(0,40),target:t}]); setGoalName(''); setGoalTarget(0); } };
-  const updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:parseFloat(v)||0} : g));
-  const delGoal=id=>setGoals((goals||[]).filter(g=>g.id!==id));
+  const updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:Math.max(0, parseFloat(v)||0)} : g));
+  const delGoal=async id=>{
+    const g=(goals||[]).find(x=>x.id===id);
+    if(!(await confirmAsync(`"${g?g.name:'This goal'}" comes off every shift preview — this can't be undone.`,{title:'Delete goal?',confirm:'Delete',danger:true}))) return;
+    setGoals((goals||[]).filter(x=>x.id!==id));
+  };
 
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
@@ -5154,8 +5249,8 @@ function Settings(props){
 
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose}>{Ic.x}</button></div>
+      <div className="modal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Settings">
+        <div className="sheet-h"><div className="t">Settings</div><button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button></div>
 
         {/* First row on purpose: word of mouth on a unit is the only distribution this app has,
             and the mobile top bar has no room left for a fifth icon (it measures exactly to the
@@ -5172,9 +5267,9 @@ function Settings(props){
           <div className={'drow'+(d.active?'':' off')} key={k}>
             <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
             <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
-            <input className="nm" value={d.name} disabled={k==='base'} onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
+            <input className="nm" value={d.name} disabled={k==='base'} aria-label="Differential name" onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
             <span className="amt">{d.type==='multiplier'?<><NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' multiplier'} style={{width:34}}/>×</>:<>+$<NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' amount'}/></>}</span>
-            {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}}>Del</button>}
+            {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}} aria-label={'Delete '+d.name+' differential'}>Del</button>}
           </div>
         ))}
         <div style={{display:'flex',gap:8,marginTop:4}}>
@@ -5260,7 +5355,7 @@ function Settings(props){
               <i style={{width:10,height:10,borderRadius:'50%',background:'var(--money-ink)',flex:'0 0 auto'}}></i>
               <span className="nm" style={{fontWeight:600,fontSize:14,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
               <span className="amt">+$<NumInput value={g.target} onCommit={v=>updGoalTarget(g.id,v)} min={0} ariaLabel={g.name+' target amount'}/></span>
-              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}}>Del</button>
+              <button className="danger-link" onClick={()=>delGoal(g.id)} style={{flex:'0 0 auto'}} aria-label={'Delete '+g.name+' goal'}>Del</button>
             </div>
             {n!=null && <div className="k" style={{margin:'-4px 0 8px 22px',fontSize:11,color:'var(--muted-2)'}}>≈ {n.toLocaleString('en-US')} typical 12h shift{n===1?'':'s'} to reach this</div>}
           </div>
@@ -5328,6 +5423,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   const [loading,setLoading] = useState(true);
   const [loadError,setLoadError] = useState(false);
   const [tablesMissing,setTablesMissing] = useState(false);
+  useEscape(onClose);
   const [profile,setProfile] = useState(null);
   const [dnDraft,setDnDraft] = useState('');
   const [savingProfile,setSavingProfile] = useState(false);
@@ -5792,6 +5888,10 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
       return;
     }
 
+    if(incoming && !validShiftMeta(incoming.shift_meta)){
+      toast("That shift's details don't look right — copy the plan instead.",'error');
+      return;
+    }
     const updates = {};   // dateKey -> next shift array for that day
     const sameMeta = (s,meta)=> s.shiftType===meta.shiftType && Number(s.hours)===Number(meta.hours) && (s.start||'')===((meta&&meta.start)||'');
     let removed = false, added = false;
@@ -5807,7 +5907,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
       const arr = (updates[dk] || shifts[dk] || []).slice();
       if(!arr.some(s=>sameMeta(s, incoming.shift_meta))){
         const meta = incoming.shift_meta;
-        arr.push({id:Date.now()+Math.random(), shiftType:meta.shiftType, hours:meta.hours, bonusType:'none', customBonus:0, ...(meta.start?{start:meta.start}:{})});
+        arr.push({id:Date.now()+Math.random(), shiftType:meta.shiftType, hours:Number(meta.hours), bonusType:'none', customBonus:0, isOvertime:false, ...(meta.start?{start:meta.start}:{})});
         added = true;
       }
       updates[dk] = arr;
@@ -5911,7 +6011,8 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div className="card" style={{marginBottom:14}}>
               <h3>Create your unit's board</h3>
               <div className="inp" style={{marginBottom:10}}>
-                <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Nights" aria-label="Board name"/>
+                <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Nights" aria-label="Board name"
+                  onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}/>
               </div>
               <button className="btn btn-primary" disabled={creating} onClick={doCreateGroup}>{creating?'Creating…':'Create board'}</button>
             </div>
@@ -5920,7 +6021,8 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
               <div style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.5,marginBottom:10}}>Enter the 6-character code a colleague shared with you.</div>
               <div className="inp" style={{marginBottom:10}}>
                 <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
-                  placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>
+                  placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"
+                  onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}/>
               </div>
               <button className="btn btn-ghost" disabled={joining} onClick={()=>doJoinGroup()}>{joining?'Joining…':'Join board'}</button>
             </div>
@@ -6191,6 +6293,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
    mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
    into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
 function ShareSheet({onClose, userId, surface}){
+  useEscape(onClose);
   const blurb = 'BadgeBudget — see what a shift is really worth before you pick it up.';
   const sendLink = async ()=>{
     if(navigator.share){
@@ -6207,7 +6310,7 @@ function ShareSheet({onClose, userId, surface}){
   };
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="sheet" onClick={e=>e.stopPropagation()}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Share BadgeBudget">
         <div className="grab"></div>
         <div className="sheet-h">
           <div className="t">Share BadgeBudget</div>
@@ -6242,7 +6345,7 @@ function Onboarding(props){
       <div className="brand">badgebudget<span className="b-dot"></span></div>
       <div className="spacer"></div>
       <span className="pill" style={{marginBottom:16}}>For bedside nurses</span>
-      <div className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</div>
+      <h1 className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</h1>
       <div className="help">Nights, weekends, holidays, that charge bonus — we do the messy math so the number's never a surprise.</div>
       <div className="hero" style={{marginTop:22}}>
         <div className="lbl">Sample · 72 hrs this period</div>
@@ -6263,7 +6366,7 @@ function Onboarding(props){
 
   const Head = ({step,label})=>(
     <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
-      <button className="back" onClick={()=>setObStep(obStep-1)}>‹</button>
+      <button className="back" onClick={()=>setObStep(obStep-1)} aria-label="Back">‹</button>
       <div className="prog"><i style={{width:(step*25)+'%'}}></i></div>
     </div>
   );
@@ -6273,7 +6376,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={1}/>
       <div className="eyebrow">YOUR PAY</div>
-      <div className="q">What's your base hourly rate?</div>
+      <h1 className="q">What's your base hourly rate?</h1>
       <div className="help">The rate before any differentials or bonuses — on your paystub it's usually listed as "Pay Rate." Close is good enough to start; a paystub sharpens it later. <b>The amount below is just an example — enter your own rate.</b></div>
       <div className="inp pre" style={{marginTop:28}}>
         <span className="pfx" style={{fontSize:22}}>$</span>
@@ -6295,7 +6398,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={2}/>
       <div className="eyebrow">OPTIONAL · DIFFERENTIALS</div>
-      <div className="q">How does your pay change by shift?</div>
+      <h1 className="q">How does your pay change by shift?</h1>
       <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
@@ -6317,7 +6420,7 @@ function Onboarding(props){
     <div className="ob">
       <Head step={3}/>
       <div className="eyebrow">STEP 3 OF 4 · TAXES & DEDUCTIONS</div>
-      <div className="q">Last thing — taxes & take-outs.</div>
+      <h1 className="q">Last thing — taxes & take-outs.</h1>
       <div className="help">We estimated these from typical nurse withholdings. Adjust anything you know.</div>
       <div style={{marginTop:18,display:'flex',flexDirection:'column',gap:10}}>
         <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Federal income tax</div><span className="tag est">ESTIMATED</span></div>
@@ -6342,16 +6445,16 @@ function Onboarding(props){
     <div className="ob dark" style={{alignItems:'center',textAlign:'center'}}>
       <div className="spacer"></div>
       <div style={{width:74,height:74,borderRadius:'50%',background:'var(--mint)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 12px rgba(52,211,153,.14)'}}>{Ic.check}</div>
-      <div className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</div>
+      <h1 className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</h1>
       <div className="help" style={{color:'#9A9DAB'}}>Based on a typical two-week schedule, here's what you'd take home:</div>
       <div style={{width:'100%',background:'var(--ink-2)',borderRadius:22,padding:24,marginTop:24}}>
         <div style={{fontSize:12,fontWeight:600,color:'#9A9DAB'}}>Projected take-home</div>
         <div className="num" style={{fontFamily:"'Bricolage Grotesque'",fontWeight:800,fontSize:54,color:'var(--mint)',letterSpacing:'-.03em',margin:'8px 0',lineHeight:1}}>{fmt(sample.net)}</div>
-        <div style={{fontSize:13,color:'#7E8290',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
+        <div style={{fontSize:13,color:'#9A9DAB',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
       </div>
       <div style={{width:'100%',marginTop:14}}>
         <div className="field" style={{margin:0,textAlign:'left'}}>
-          <div className="inp"><input placeholder="What should we call you?" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
+          <div className="inp"><input placeholder="What should we call you?" aria-label="Your name" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
         </div>
       </div>
       <div className="spacer"></div>

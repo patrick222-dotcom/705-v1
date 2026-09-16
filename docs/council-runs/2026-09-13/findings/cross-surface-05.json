@@ -1,0 +1,13 @@
+{
+ "title": "Template ('fixed') brushes never pick up weekend differentials, contradicting the grid hint; two identical-looking Saturday cells price $78 apart",
+ "severity": "low",
+ "where": "index.html:1201-1212 (patternCellShiftType: `if(cell.kind==='fixed') return cell.shiftType`), brush construction 4365-4375 (brushCell), hint 4536, cellLabel/cellColor 4318-4327",
+ "detail": "Generic 'day'/'night' brushes resolve to weekend-day/weekend-eve on Sat/Sun (1205-1211), but a cell painted from a saved template keeps the template's shiftType verbatim. The hint under the grid (4536) says unconditionally 'Weekend days pick up your weekend differentials automatically.' A 'Nights' template (shiftType 'night', 12h, 19:00) and the built-in Night brush produce cells with identical glyph (☾), identical colour (both `differentials['night'].color`, 4318-4322) and identical label ('Night 12h from 7:00 PM', 4323-4327), yet on a Saturday the generic one prices at weekend-eve ($798 at base 50 with defaults) and the template one at night ($720). Reproduced via patternCellShiftType on 2026-09-19: generic night → 'weekend-eve', fixed night → 'night'; generic day → 'weekend-day', fixed base → 'base'. The applied shifts carry the same type as the readout, so hero and lab agree with each other — the disagreement is between the lab's two brushes and between the lab and its own hint. The comment at 1139-1141 says fixed cells keeping their type is deliberate, but nothing in the UI tells the nurse which brush she used.",
+ "failure": "Nurse saves her usual 'Nights' shift as a template (the app encourages this), opens the pattern lab, paints Fri/Sat/Sun with the ⚡ Nights brush and reads 'Weekend days pick up your weekend differentials automatically.' The readout is $156/paycheck lower than if she had painted the same three cells with the built-in ☾ Night brush, and the Sat/Sun shifts land on the calendar as plain 'Night', not 'Weekend night'.",
+ "fix": "Either (a) in patternCellShiftType, when cell.kind==='fixed' and cell.shiftType is 'base' or 'night', apply the same weekend upgrade the generic branch does (keeps custom-*/holiday/bonus-incentive templates verbatim) — this changes applied shift types, so run the wage-core probe protocol even though the function is outside the Invariant 3 list; or (b) make the hint at 4536 conditional: only claim automatic weekend differentials when the active brush is a generic one, and mark fixed weekend cells (e.g. a different glyph or 'as template' in cellLabel) so the two brushes are distinguishable.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "cross-surface-05"
+}

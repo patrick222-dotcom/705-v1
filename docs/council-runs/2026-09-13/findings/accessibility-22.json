@@ -1,0 +1,13 @@
+{
+ "title": "ShareSheet has no dialog role or accessible name for the region",
+ "severity": "medium",
+ "where": "index.html:5682-5688 (ShareSheet)",
+ "detail": "ShareSheet's outer sheet div (`<div className=\"sheet\" onClick={e=>e.stopPropagation()}>`) carries none of role=\"dialog\", aria-modal, or aria-label/aria-labelledby, even though its own close button (line 5687) does have aria-label=\"Close\" and the visible title 'Share BadgeBudget' (line 5686) exists as plain text. This is the same gap as Settings but only on the region-level semantics, not the button.",
+ "failure": "A screen-reader user tapping the Settings 'Show a QR code or send a link' button gets no announcement that a modal/dialog opened, and can navigate (swipe/Tab) into the app content behind the scrim since aria-modal is absent - the same background-leak problem as Settings, just without the extra unlabeled-button issue.",
+ "fix": "Add role=\"dialog\" aria-modal=\"true\" aria-label=\"Share BadgeBudget\" to the sheet div at line 5683, consistent with FeedbackSheet/SwapsSheet in the same file.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "accessibility-22"
+}

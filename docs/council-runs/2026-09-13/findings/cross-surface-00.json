@@ -1,0 +1,15 @@
+{
+ "title": "Add-Shift preview, calendar day cells, goal lines and the weekend-night card use a keep-ratio that omits percent custom withholdings, so they disagree with the hero and the pattern lab",
+ "severity": "high",
+ "where": "index.html:2819-2820 (keepRatio) -> consumers at 4104-4105 & 4245-4248 (AddShiftSheet preview + goal line), 3919 & 3933 (Calendar day cell), 4747 (Settings '≈ N typical 12h shifts'), 3434 & 3512 ('Pick up a weekend night?' card)",
+ "detail": "The hero (calc, 2787-2810) and the pattern lab (patternMetrics 1298) both price take-home through computeNet(), which subtracts customWithholdings — including type:'percent' ones computed on incomeTaxBase (1243). Every other take-home figure in the app is previewGross*keepRatio, and keepRatio = 1 - (federalTaxRate+stateTaxRate+ficaForPreview)/100 knows nothing about customWithholdings. Omitting the flat per-period deductions from a per-shift marginal figure is defensible; omitting a percent withholding is not — it is a per-dollar rate that applies fully at the margin. Reproduced with the extracted functions: base $50, fed 12, state 2.5, standard FICA, one custom withholding {Pension, 5, percent}, one 12h base shift in the period -> hero net 437.10 (Keep 73%), lab periodNet 437.10, Add-Shift previewNet 467 (implied keep 78%), day cell ~$467. Settings' goal line even claims to be 'the same per-shift take-home the Add-Shift preview uses' (4745-4746) — it is, and both are off from the hero. Hero and lab agree with each other; the preview family is the wrong one. (A related but separately-scoped omission was also raised: keepRatio also ignores flat pretax/posttax deductions the hero subtracts per paycheck, which is more defensible as a marginal-pricing choice once the paycheck already covers those flat amounts — the percent-withholding gap above has no such defense.)",
+ "failure": "A nurse whose Settings carry a percent 'Other withholding' (e.g. a 5% 403b) logs one 12h day shift: the hero says $437 take-home this period and the lab says $437 / paycheck for a one-shift fortnight, but the Add-Shift sheet for that exact shift says 'about +$467 take-home', the calendar cell shows ~$467, and a $5,000 goal reads '≈ 11 typical 12h shifts' in Settings and in the preview when the hero's rate needs 12. Every pickup she evaluates is overstated by the withholding percentage.",
+ "fix": "Fold the percent withholdings into keepRatio at 2820: const pctCW = (customWithholdings||[]).reduce((a,w)=> a + (w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0); const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+pctCW)/100). All five consumers then agree with computeNet at the margin. Add a harness assertion that, with a percent withholding set, Math.round(previewGross*keepRatio) === Math.round(computeNet(previewGross, taxInputs).net) when pretax/posttax are 0. Not an Invariant-3 function, but it changes displayed dollars, so run the wage-math probes and the deployed-build equality check.",
+ "wageCore": false,
+ "slices": [
+  "wage-core",
+  "money-surfaces",
+  "pattern-lab"
+ ],
+ "id": "cross-surface-00"
+}

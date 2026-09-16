@@ -48,6 +48,91 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Wage-core session — council 2026-09-13 bucket 3 (NEVER auto-applies; `/wage-core` protocol)** —
+  `harness:drivable`. Every item here changes a displayed dollar figure or an Invariant-3 coercion; none
+  is nightly work however small the diff. One session: baseline probes, one new assertion per change, then
+  the hero/breakdown equality assertion against the **deployed** build naming each intended difference.
+  Cheapest first — synthesis #1 Add-Shift seeds `'night'` even when Night is switched off and prices it
+  (`wage-math-12`; underneath it the `active:false` product call — "stop paying" vs "hide from the
+  picker", the lab and the calendar answer differently); #2 hero "Taxes & deductions" chip shows
+  `round(gross) − round(net)` (`wage-math-00`); #4 `ficaWithholdingType` allowlist in `sanitizeData`
+  (`wage-math-02`); #3 multiplier coercion (`wage-math-01`); #6 the onboarding done-screen `sampleNet`
+  builds its own tax model beside `computeNet` (`wage-math-04`); #8 percent withholdings are missing from
+  `keepRatio`, so the Add-Shift preview, the goal reverse view and the calendar cells over-promise
+  (`wage-math-06`); #14 paystub-import floor (`wage-math-15`); `code-quality-02` (make `calc`/`yearMonths`
+  call `statOf`/`ptoStatOf` — zero behaviour change, and the equality assertion is exactly its test);
+  optionally #7's min/max paycheck range in `patternMetrics`; and the group-7 leftover — the pattern lab's
+  **template brush still drops `isOvertime`** because `patternCellToShift` (1261) hard-codes it false
+  (templates carry the flag everywhere else since 2026-09-16). Also worth taking while there:
+  `wage-math-08`/`cross-surface-04` (raw float "36.900000000000006 hrs" in the hero chip), `wage-math-13`
+  (≈$/hr from the rounded net), `wage-math-05` (year view prints gross unlabeled beside take-home cells),
+  `wage-math-11` ("about 1 years"). Findings: `docs/council-runs/2026-09-13/findings/<id>.json`; the
+  skill's "what counts as wage core" list now names `sampleNet` and `keepRatio`.
+- [ ] **Swap-board + infra hardening session, against the production project — council 2026-09-13 bucket 2
+  (security scored 2/10 on verified findings)** — `harness:needs-live-auth`. In this order: (1) port
+  `rls_audit.js` into `tests/` *first* so the probes exist, adding two: as member A, `select user_id from
+  swap_members` and `select created_by from swap_groups` must both be denied. (2) migration `006` (004 and
+  005 are taken): **#15 step 1** — `poster_key` is reversible (`security-00`, **critical**): `authenticated`
+  holds SELECT on `swap_members(user_id)` and `swap_groups(created_by)`, the salt is a public constant in a
+  public repo, md5 is a one-liner — one REST select + one loop maps every key on a board to a uuid and
+  names the creator outright. Revoke select/update on both tables from `authenticated`, re-grant
+  `select (id, name, invite_code, created_at)` on groups (the client never selects the other columns —
+  1675/1706/1719 checked). **#16** `propose_swap` never checks the caller is a leg (`security-01`): any
+  member can pair any two open posts, both vanish from the board, and the client re-proposes every 15s —
+  `raise 'not_a_party'` unless a leg's `leg_user = auth.uid()`. **#17** the raw "parties decline matches"
+  UPDATE policy bypasses `decline_swap_match` and strands the other post as `proposed` (`security-02`) —
+  drop the policy, revoke update on `swap_matches`. **#18**'s `jsonb_typeof`-guarded CHECK on
+  `swap_posts.shift_meta` (the client guard shipped 2026-09-16). **#19**'s `check (pg_column_size(data) <=
+  524288)` + `jsonb_typeof = 'object'` on `user_data` (`security-05`; the client-side check is one
+  function since 2026-09-16). (3) **#20** `ical-proxy` accepts the public anon key (`security-08`,
+  live-probed: `Bearer <anon key>` runs the handler, 422 not 401) and `www.google.com` is allowlisted with
+  no path constraint — require `role === 'authenticated'` + uuid `sub`, pin the Google entries to
+  `/calendar/ical/`, redeploy, add the negative curl to the `ship` skill. (4) **#15 step 2**: a per-group
+  random secret in a no-grant table, read inside `swap_board()`, so a leaked uid can never be turned into a
+  key (nothing persists `poster_key` client-side, so no data impact). Then rewrite Invariant 7,
+  `docs/swap-board.md` and the 001 migration comment ("Not reversible" is false). Until this lands the
+  in-app copy "your unit sees it anonymously" (5062) is untrue; do it before the board is ever promoted
+  again. Advisor WARNs about `anon`-executable swap RPCs remain expected.
+- [ ] **PKCE for Google sign-in + the OAuth try/finally** — council #21 (`security-11`) + `code-quality-25`
+  — `harness:needs-live-auth`. `createClient(url,key)` takes supabase-js 2.45.4's default
+  `flowType:'implicit'`, so tokens land in `#access_token=…&refresh_token=…` and the post-load `hash=''`
+  leaves that URL one Back-press away (verified in the sandbox). Fix is one line, `{auth:{flowType:'pkce'}}`,
+  but PKCE adds a `localStorage.setItem` inside `signInWithOAuth` that throws in Safari private mode —
+  which is when the missing try/catch/finally around the Google button becomes real, so do both together
+  and verify with a **never-signed-in** Google account on a real phone (`takeSwapInviteFromUrl` preserves
+  `?code=`; the redirect allow-list is unchanged). Then fix the comment at the `createClient` site and
+  CLAUDE.md → Auth (corrected to "implicit" 2026-09-16).
+- [ ] **Boot splash before the CDN scripts** — council #26 (`performance-00`) — Invariant 1 territory.
+  The five blocking `<script>`s precede `#splash` and the watchdog, so nothing paints and the 8s clock
+  can't start while a CDN hangs on hospital Wi-Fi. `block-babel` and `hang-getSession` must stay green.
+- [ ] **Save-path and contract follow-ups from the council** — `harness:drivable` — **#25** scrolling
+  past a pay-period boundary fires a real upsert and bumps `updated_at` for the other device
+  (`performance-03`; belongs with the jsonb canonicalisation item below — skip byte-identical saves or
+  persist `payPeriodStart` outside the save trigger); **#23**'s optimistic-backup-before-send variant
+  (changes `BACKUP_KEY` hydrate semantics; the minimal failure-branch fix shipped 2026-09-16); **#13** the
+  NumInput contract (the "live" preview moves only on blur because NumInput buffers for the mobile
+  select-all-clear gesture — `product-design-03`); **#36** calendar grid semantics (`role="grid"`/row
+  navigation — `accessibility-04`, session-sized).
+- [ ] **Product calls the council surfaced (OWNER DECISION)** — **#5** "Clear the sample" leaves the
+  placeholder $65.15 with the banner gone, so every figure logged afterwards is against a fictitious rate
+  and persists to cloud (`product-design-06`, high) — track "rate explicitly set" or redirect to rate entry
+  while `baseRate` still equals the sample default; **#1**'s `active:false` semantics (see the wage-core
+  item); **#35** focus-trap policy — the council's position is that "no sheet traps focus" has expired at
+  six modal sheets (`accessibility-13/-25/-26`, `-15`'s focus half); one small utility reused by every
+  `role="dialog"` sheet if yes; `product-design-08` swap suggestion cards show no pay figure — the feature
+  that would make the board consistent with the app's promise, but it cuts against the de-emphasis
+  decision; revisit only if the board is re-emphasised, and then via the wage-core protocol.
+- [ ] **Council 2026-09-13 lows and rejected worth a groom** — never agent-verified; candidates, not
+  action items. `mobile-ux-04/-07` (tap-target pair), `mobile-ux-13` (display-name `autoFocus` — the
+  anti-pattern already removed from FeedbackSheet), `security-06` (differential `color` unvalidated into
+  `style`), `security-07` (`__proto__`-named `shiftType` poisons a period), `security-10` (`webcal://`
+  accepted client-side, rejected by the proxy), `security-13` (`user_id` on `events`/`feedback` is
+  client-asserted), `code-quality-04/-08/-10/-21` (copy-pasted literals, three day-key formatters),
+  `code-quality-26`, `code-quality-27` (migration 002 not re-run-safe), `code-quality-28` (the gate's
+  "never silently omitted" promise for Invariants 7/13), `code-quality-29` (dead `vendor()`/`PKGS`
+  duplicating ci.yml's install line), `performance-02`, `data-integrity-06` (`differentials` is the one
+  uncapped collection — a two-line cap). `accessibility-07`/`-20` were taken in the 2026-09-16 a11y pass.
+
 - [ ] **Hours-in-window differentials** (`harness:drivable`; the largest remaining gap between a
   projection and a real check). Courtney's current employer pays a differential against the HOURS that
   fall in a window, not against the shift: her 2025 stub reads `3rd Shift Differential  7.000000 ×
@@ -494,6 +579,24 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-16 (dedicated session — the council's bucket 1, PR #101) — **43 confirmed findings applied in
+  seven groups, 78 new negative-tested assertions in `tests/smoke.mjs` §11.** (1) `.hero` class leak on the
+  two footer links, ShareSheet in the scroll lock, Enter on the first-run board inputs. (2) one
+  `clearSignedInState()` for the manual sign-out and the `SIGNED_OUT` branch — clears the iCal URL
+  (Invariant 13) and the onboarding step. (3) `privacy.html` corrected: email/password sign-in, the
+  account-id link on events, feedback's account id. (4) one blob-size check inside `saveToSupabase`
+  (`TextEncoder`), a failure branch on the pagehide flush, a budgeted `client_error` batch. (5) tap targets
+  to the app's own 44px convention. (6) the a11y pass: `useEscape()` — one document listener, a handler
+  stack, Escape closes only the topmost dialog — on every sheet; `role="dialog"` + labels on the seven that
+  lacked them; AA tokens (OT tag → `--money-ink`, `.tag.est` → `#8A5A05`, `--danger` → `#B03D2E`); live
+  regions; accessible names; reduced motion; est-banner focus handoff; h1 onboarding questions; `.viewseg`
+  drops its fake tablist. (7) `$0` goal guards + delete confirm; "avg. over N paychecks" caption when
+  `lcm(cycle,14) > 14`; brush-aware grid hint + ⚡ template-cell marker; templates carry `isOvertime`
+  (sanitizer, quick-tap, quick-fill, save, row label); quick-tap counts as an add for "Save as template";
+  `validShiftMeta()` before "Add to my calendar"; `runIcalSync` catch → `console.error`; manual re-import
+  filters unchanged matches; month refs deleted on unmount; anchor edits leave a customised apply-start.
+  Everything wage-core and everything needing the production project is routed above, not applied. Run
+  record: `docs/council-runs/2026-09-13/`, `docs/history.md` → 2026-09-16.
 - 2026-09-16 (nightly, groom-only) — **No app ship — nothing low-risk + drivable left in the queue.**
   Quiet 48h: 0 new feedback, 0 signups, 0 setups, 0 swap events, **0 client_errors** (the recent
   calendar/swap/`<noscript>` ships introduced no errors). The remaining open work is either design/owner-

@@ -1,0 +1,13 @@
+{
+ "title": "Dollar-amount edit fields in Settings (differential rate, savings-goal target) have a 17px-tall tap target, versus 44px used everywhere else in the same sheet",
+ "severity": "medium",
+ "where": "index.html:4715 (differential amount NumInput) and 4754 (goal target NumInput); CSS: .drow .amt / .drow .amt input at 312-313, .danger-link at 423",
+ "detail": "`.drow .amt{padding:5px 10px}` wraps the number, but `.drow .amt input{width:54px;border:none;background:transparent;...}` sets no padding or min-height on the <input> itself, and the wrapper is a plain <span> (not a <label>), so tapping the padded pill around the number does nothing — only the number glyph itself is live. Measured live in the rendered Settings sheet on an iPhone-13 viewport: each goal-target and differential-rate NumInput is 54x17px (34x17 for a multiplier-type differential), and the adjacent 'Del' button on the same row is 35x39px — both well under the 44px minimum the codebase otherwise enforces (33 other spots in index.html explicitly set minHeight:44), and in visible contrast to the compliant ~42px-tall .inp input fields (line 292, padding:13px 14px) used for base rate, tax %, and bonus $ a few rows above in the same form.",
+ "failure": "Correcting a savings-goal target or a shift differential's dollar rate one-handed mid-shift means landing a tap inside a 17px-tall strip — under half the app's own stated minimum — and the larger padded pill around it looks tappable but isn't, so a mistap lands nowhere and she has to try again to get the cursor into the number field. The 'Del' button on the same row is likewise a few pixels short of 44px in each dimension.",
+ "fix": "Give .drow .amt input real padding or min-height:44px so the live hit-box matches the visible pill (or turn the .amt span into a <label> so tapping anywhere in the pill focuses the input), and bump .danger-link to a 44px box on these money-editing rows to match the convention used elsewhere in the file.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "mobile-ux-01"
+}

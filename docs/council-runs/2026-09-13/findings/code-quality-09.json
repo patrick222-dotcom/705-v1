@@ -1,0 +1,13 @@
+{
+ "title": "Editing the cycle anchor silently discards a customized apply-start date",
+ "severity": "medium",
+ "where": "index.html:4384-4387 (setAnchor) interacting with 4552 and 4557 (applyStart)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "code-quality-09"
+}

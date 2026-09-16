@@ -1,0 +1,462 @@
+{
+ "runDir": "docs/council-runs/2026-09-13",
+ "applied": [
+  {
+   "via": 7,
+   "what": "pattern-lab per-paycheck figure captioned as an average when lcm(cycle,14) > 14",
+   "ids": [
+    "product-design-04",
+    "wage-math-09",
+    "cross-surface-02"
+   ],
+   "note": ""
+  },
+  {
+   "via": 9,
+   "what": "templates carry isOvertime (sanitizer, quick-tap, quick-fill, Save as template, row label)",
+   "ids": [
+    "product-design-02"
+   ],
+   "note": "templates only; the pattern-lab template brush still drops isOvertime (patternCellToShift is wage-core; routed)"
+  },
+  {
+   "via": 10,
+   "what": "$0 goal guarded in the shift preview and the lab goal line; updGoalTarget floors at 0; delGoal confirms",
+   "ids": [
+    "product-design-07",
+    "code-quality-13",
+    "wage-math-14",
+    "mobile-ux-11",
+    "accessibility-24"
+   ],
+   "note": ""
+  },
+  {
+   "via": 11,
+   "what": "brush-aware grid hint + \u26a1 marker and \"(template \u2014 pay type fixed)\" label on fixed cells",
+   "ids": [
+    "wage-math-10",
+    "cross-surface-05"
+   ],
+   "note": "fix (a) only: brush-aware hint + template-cell marker; the arithmetic is unchanged by design"
+  },
+  {
+   "via": 12,
+   "what": "applyTemplateTap sets configDirtySinceAdd=false; doSaveTemplate reads shiftType/hours/isOvertime from the last-added shift when untouched",
+   "ids": [
+    "code-quality-07"
+   ],
+   "note": ""
+  },
+  {
+   "via": 18,
+   "what": "validShiftMeta() guards doApplyPlan; hours coerced with Number()",
+   "ids": [
+    "security-03"
+   ],
+   "note": "client guard only (validShiftMeta); the jsonb CHECK is routed to the hardening session"
+  },
+  {
+   "via": 19,
+   "what": "blobBytes()/TextEncoder size check inside saveToSupabase; the debounced path and flush share it",
+   "ids": [
+    "security-05",
+    "code-quality-19"
+   ],
+   "note": "client half only: one size check inside saveToSupabase using TextEncoder, 23514 treated as a failed save; the server CHECK is routed"
+  },
+  {
+   "via": 22,
+   "what": "client_error batch budgeted to ~1,700 chars (ERR_FLUSH_TEXT_BUDGET), oldest entries dropped",
+   "ids": [
+    "security-12"
+   ],
+   "note": ""
+  },
+  {
+   "via": 23,
+   "what": "pagehide/visibilitychange flush writes the per-user backup on a failed save",
+   "ids": [
+    "data-integrity-00",
+    "code-quality-18"
+   ],
+   "note": "minimal fix: writeBackup in the pagehide flush failure branch; the optimistic-backup variant is routed"
+  },
+  {
+   "via": 24,
+   "what": "clearSignedInState() shared by handleSignOut and the SIGNED_OUT branch; clears icalSub/icalUrl/icalSyncedForUser and obStep",
+   "ids": [
+    "code-quality-00",
+    "security-09",
+    "code-quality-11"
+   ],
+   "note": ""
+  },
+  {
+   "via": 27,
+   "what": "runIcalSync catch console.errors; onImportICS filters toUpdate to changed",
+   "ids": [
+    "code-quality-22",
+    "code-quality-24"
+   ],
+   "note": ""
+  },
+  {
+   "via": 28,
+   "what": "secRef deletes on unmount; setAnchor leaves applyStart alone while the apply panel is open",
+   "ids": [
+    "code-quality-05",
+    "code-quality-09"
+   ],
+   "note": ""
+  },
+  {
+   "via": 29,
+   "what": "hero footer buttons are className=\"more linklike\" (no .hero)",
+   "ids": [
+    "mobile-ux-00"
+   ],
+   "note": ""
+  },
+  {
+   "via": 30,
+   "what": "tap-target CSS pass: avatar ::after hit-slop, est-banner buttons 44px, pp-chip 32px + ::after slop, .drow .amt 44px, .chip-sel 44px, .pl-grid gap at \u2264400px, .danger-link 44px, .cal-vscroll capped at 60dvh",
+   "ids": [
+    "mobile-ux-01",
+    "mobile-ux-03",
+    "mobile-ux-05",
+    "mobile-ux-06",
+    "mobile-ux-08",
+    "mobile-ux-10",
+    "mobile-ux-02"
+   ],
+   "note": ""
+  },
+  {
+   "via": 31,
+   "what": "showShare in the body-scroll lock; Enter handlers on the first-run Board name / Invite code inputs",
+   "ids": [
+    "mobile-ux-09",
+    "code-quality-14",
+    "mobile-ux-12",
+    "code-quality-16"
+   ],
+   "note": ""
+  },
+  {
+   "via": 32,
+   "what": "useEscape() hook + _escStack (one document listener, topmost handler only) on AddShift, PatternLab, Settings, Breakdown, Share, Auth, Swaps, Feedback (guarded), ICS import, paystub review, ConfirmHost, AccountMenu; role=\"dialog\" aria-modal aria-label on the seven sheets that lacked it; aria-label=\"Close\" on Breakdown/Settings/Auth/paystub close buttons",
+   "ids": [
+    "accessibility-10",
+    "accessibility-12",
+    "accessibility-21",
+    "accessibility-02",
+    "accessibility-22",
+    "accessibility-13",
+    "accessibility-25",
+    "accessibility-26"
+   ],
+   "note": "role/aria-modal/aria-label + aria-label=\"Close\" + one shared Escape stack (useEscape) on every sheet; focus traps deliberately NOT added (owner decision #35, routed)"
+  },
+  {
+   "via": 33,
+   "what": "OT tag \u2192 var(--money-ink); .tag.est \u2192 #8A5A05; --danger \u2192 #B03D2E; done-screen gross line \u2192 #9A9DAB",
+   "ids": [
+    "accessibility-00",
+    "accessibility-16",
+    "accessibility-01",
+    "accessibility-17"
+   ],
+   "note": ""
+  },
+  {
+   "via": 34,
+   "what": "aria-live on the Add-Shift preview, .pl-money and the apply preview; Remove/Del buttons named; differential name input, onboarding back button, done-step name field labelled; year nav \"Previous/Next year\"; \", today\" in the day-cell label; prefers-reduced-motion in animateScrollTop; est-banner dismiss focuses the hero; h1.q onboarding questions; .cal-vscroll tabIndex",
+   "ids": [
+    "accessibility-03",
+    "accessibility-14",
+    "accessibility-11",
+    "accessibility-18",
+    "accessibility-23",
+    "accessibility-24",
+    "accessibility-08",
+    "accessibility-05",
+    "accessibility-19",
+    "accessibility-15",
+    "accessibility-07",
+    "accessibility-20"
+   ],
+   "note": "accessibility-15: the heading half only (h1 per onboarding step); the focus-move half is routed with #35. -07 and -20 are lows taken in passing."
+  },
+  {
+   "via": 36,
+   "what": ".viewseg is role=\"group\" with aria-pressed buttons; .cal-vscroll tabIndex=0 + aria-label",
+   "ids": [
+    "accessibility-06",
+    "accessibility-09"
+   ],
+   "note": "accessibility-06: roles dropped (plain labelled button group with aria-pressed), not the tab pattern implemented; -04 grid semantics routed."
+  },
+  {
+   "via": 37,
+   "what": "privacy.html: email/password sign-in disclosed, anon_id/user_id linkage on events, feedback carries user_id when signed in",
+   "ids": [
+    "privacy-telemetry-00",
+    "privacy-telemetry-01",
+    "privacy-telemetry-02"
+   ],
+   "note": ""
+  }
+ ],
+ "routed": [
+  {
+   "id": "wage-math-12",
+   "via": 1,
+   "title": "Add-Shift sheet defaults to `'night'` even when Night is switched off,",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "cross-surface-01",
+   "via": 1,
+   "title": "Add-Shift sheet defaults to `'night'` even when Night is switched off,",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "wage-math-03",
+   "via": 1,
+   "title": "Add-Shift sheet defaults to `'night'` even when Night is switched off,",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "cross-surface-06",
+   "via": 1,
+   "title": "Add-Shift sheet defaults to `'night'` even when Night is switched off,",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "product-design-00",
+   "via": 2,
+   "title": "Hero \"Taxes & deductions\" chip is uncapped",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "wage-math-00",
+   "via": 2,
+   "title": "Hero \"Taxes & deductions\" chip is uncapped",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "cross-surface-03",
+   "via": 2,
+   "title": "Hero \"Taxes & deductions\" chip is uncapped",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "wage-math-02",
+   "via": 2,
+   "title": "Hero \"Taxes & deductions\" chip is uncapped",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "wage-math-01",
+   "via": 3,
+   "title": "A blanked multiplier coerces to 0\u00d7",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "code-quality-01",
+   "via": 4,
+   "title": "`ficaWithholdingType` has no allowlist, so any unknown string zeroes F",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "product-design-06",
+   "via": 5,
+   "title": "\"Clear the sample\" leaves the placeholder $65.15 with the banner gone",
+   "to": "owner product call"
+  },
+  {
+   "id": "product-design-05",
+   "via": 6,
+   "title": "Welcome screen hardcodes `$3,951`; the app's own `sampleNet()` gives $",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "code-quality-03",
+   "via": 6,
+   "title": "Welcome screen hardcodes `$3,951`; the app's own `sampleNet()` gives $",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "cross-surface-00",
+   "via": 8,
+   "title": "`keepRatio` omits percent custom withholdings",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "wage-math-04",
+   "via": 8,
+   "title": "`keepRatio` omits percent custom withholdings",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "product-design-01",
+   "via": 8,
+   "title": "`keepRatio` omits percent custom withholdings",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "product-design-03",
+   "via": 13,
+   "title": "The \"live\" preview doesn't move while typing Hours or a custom Bonus \u2014",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "wage-math-06",
+   "via": 14,
+   "title": "Paystub import can write a negative differential from a premium-only e",
+   "to": "wage-core session (bucket 3)"
+  },
+  {
+   "id": "security-00",
+   "via": 15,
+   "title": "`poster_key` is reversible",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "security-01",
+   "via": 16,
+   "title": "`propose_swap` never checks the caller is a leg",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "security-02",
+   "via": 17,
+   "title": "Raw \"parties decline matches\" UPDATE policy bypasses `decline_swap_mat",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "security-08",
+   "via": 20,
+   "title": "`ical-proxy` accepts the public anon key",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "security-11",
+   "via": 21,
+   "title": "Google sign-in runs the implicit flow, not PKCE",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "code-quality-25",
+   "via": 21,
+   "title": "Google sign-in runs the implicit flow, not PKCE",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "performance-03",
+   "via": 25,
+   "title": "Scrolling past a pay-period boundary fires a real Supabase upsert",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "performance-00",
+   "via": 26,
+   "title": "Nothing paints \u2014 not even the splash \u2014 until all 5 cross-origin CDN sc",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "accessibility-04",
+   "via": 36,
+   "title": "calendar grid semantics",
+   "to": "dedicated session (bucket 2)"
+  },
+  {
+   "id": "mobile-ux-04",
+   "via": 30,
+   "title": "low tap-target pair",
+   "to": "backlog groom (low)"
+  },
+  {
+   "id": "mobile-ux-07",
+   "via": 30,
+   "title": "low tap-target pair",
+   "to": "backlog groom (low)"
+  },
+  {
+   "id": "code-quality-29",
+   "via": 37,
+   "title": "dead vendor()/PKGS in the harness",
+   "to": "backlog groom"
+  },
+  {
+   "id": "code-quality-04",
+   "via": 37,
+   "title": "three day-key formatters",
+   "to": "backlog groom"
+  }
+ ],
+ "scoresBefore": [
+  {
+   "lens": "wage-math",
+   "score": 4,
+   "worst": "Six medium-severity, adversarially-confirmed defects sit directly in the app's core value proposition \u2014 \"shows what a shift is worth before it's worked\" \u2014 and at least three of them make the *preview* price wrong in ordi",
+   "toReachEight": "Fix all six confirmed medium findings, prioritizing the three that corrupt a live preview price rather than just a summary label: (1) gate hourlyRate/shiftGross/patternCellShiftType/brushCell everywhere on the differenti"
+  },
+  {
+   "lens": "security",
+   "score": 2,
+   "worst": "security-00 [critical, confirmed, live-verified on the production project]: poster_key \u2014 the entire anonymity mechanism of the swap board \u2014 is reversible. The 'scrubpay-swaps' salt is a public constant (the repo is publi",
+   "toReachEight": "Fix the critical anonymity break first: derive poster_key from a private per-deployment secret (not a public repo constant) and tighten swap_members/swap_groups grants/policies so members can only see what the anonymity "
+  },
+  {
+   "lens": "mobile-ux",
+   "score": 3,
+   "worst": "mobile-ux-00 (high, confirmed): the hero's \"See the full breakdown\" / \"Share BadgeBudget\" links accidentally inherit the full `.hero` card's padding/border-radius/background/box-shadow via a stray `hero more linklike` cl",
+   "toReachEight": "Fix the systemic sub-44px tap-target pattern that recurs across six independently-confirmed findings in six different components \u2014 Settings' differential-rate/goal-target NumInputs (01, 17px tall), Add-Shift's SHIFT TYPE"
+  },
+  {
+   "lens": "accessibility",
+   "score": 2,
+   "worst": "Systemic dialog-accessibility failure across nearly every sheet in the app: AddShiftSheet (accessibility-10), Pattern Lab (accessibility-12, -13) and Settings (accessibility-21) render as plain divs with no role=\"dialog\"",
+   "toReachEight": "Fix the dialog pattern once (role=\"dialog\", aria-modal, a real focus trap, initial-focus placement, Escape-to-close, a labelled close button) and apply it uniformly to AddShiftSheet, PatternLab, Settings, ShareSheet and "
+  },
+  {
+   "lens": "performance",
+   "score": 4,
+   "worst": "performance-00 (confirmed, medium): nothing paints \u2014 not even the boot splash \u2014 until all 5 cross-origin CDN scripts (React/ReactDOM/Babel/pdf.js/supabase-js from three different hosts) resolve, because the script tags a",
+   "toReachEight": "Fix the two confirmed mediums \u2014 make the boot splash paint before/independent of the 5 CDN fetches (e.g. inline critical splash markup ahead of the script tags, or defer/async the CDN scripts with a loading state that do"
+  },
+  {
+   "lens": "data-integrity",
+   "score": 5,
+   "worst": "data-integrity-00 (high, confirmed): the pagehide/visibilitychange flush handler (index.html:2489-2505) calls saveToSupabase(...).then(ts=>{ if(ts){...} }) with no else branch -- verified live at index.html:2496. The deb",
+   "toReachEight": "Fix data-integrity-00: give flush the same writeBackup-on-failure branch the debounced effect has (ideally write the backup synchronously before the best-effort save fires, since a .then() continuation isn't guaranteed t"
+  },
+  {
+   "lens": "code-quality",
+   "score": 4,
+   "worst": "A recurring root-cause pattern, not a single bug: near-identical logic is written twice (or three times) at sibling call sites, and the copies drift. code-quality-00 (high) -- handleSignOut doesn't mirror the SIGNED_OUT ",
+   "toReachEight": "Extract the duplicated branches into single shared functions so a fix lands everywhere at once: one sign-out/reset routine that both handleSignOut and the SIGNED_OUT auth listener call (closes 00 and 11); a shared saveWi"
+  },
+  {
+   "lens": "product-design",
+   "score": 3,
+   "worst": "product-design-08 (confirmed, high): the entire swap board -- a first-class product surface whose own welcome-screen and share-sheet copy promise \"know your real take-home before you pick up the shift\" -- passes SwapsShe",
+   "toReachEight": "Fix the five confirmed high-severity findings, all of which puncture the \"no surprises\" promise in ordinary, non-edge usage: (00) hero's \"Taxes & deductions\" chip vs. the Breakdown a tap away disagreeing whenever flat de"
+  },
+  {
+   "lens": "privacy-telemetry",
+   "score": 4,
+   "worst": "privacy-telemetry-00 (high, confirmed): privacy.html tells nurses \"Sign-in uses Google... stores no password,\" but the AuthModal's first, more prominent option is an email+password form (handleEmailAuth, index.html:4591-",
+   "toReachEight": "All three confirmed findings are documentation-accuracy fixes to privacy.html, not app-code changes, and none touch wage-core: (1) disclose the email/password path alongside Google and correct the \"stores no password\" cl"
+  },
+  {
+   "lens": "cross-surface",
+   "score": 4,
+   "worst": "cross-surface-00 (high, confirmed): keepRatio \u2014 the arithmetic behind the Add-Shift preview, both calendar day-cell figures, the Settings goal-shifts-to-reach line, and the weekend-night pickup card \u2014 omits percent-type ",
+   "toReachEight": "Fix cross-surface-00 by folding percent customWithholdings into keepRatio (the finding gives the exact patch) so all five downstream consumers agree with computeNet at the margin, per Invariant 3 protocol (wage-math prob"
+  }
+ ],
+ "shipped": "PR #101 squash-merged into claude/migrate-to-github-deploy-3F5RD on 2026-09-16; live at https://badgebudget.com (marker: _escStack)"
+}

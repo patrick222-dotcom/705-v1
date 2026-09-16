@@ -1,0 +1,13 @@
+{
+ "title": "Danger-red money text narrowly fails AA on the app's translucent glass panels",
+ "severity": "medium",
+ "where": "index.html:3999 (Breakdown deduction rows, rendered inside the modal at 3620-3628), index.html:4571 (Pattern Lab 'will be replaced' warning inside .preview), index.html:4716/4755 (.danger-link 'Del' buttons in the Settings modal)",
+ "detail": "var(--danger) (#C84B3C) is used at 12-13px/600 weight for deduction values, warnings and 'Del' links. Computed against the literal token values: on the near-opaque .card background used when Breakdown is embedded inline (rgba(255,255,255,.93), line 111, call site 3586) it's ~4.64:1 — passes. But the same red text rendered inside .modal (rgba(246,245,241,.88) over the dark .scrim, lines 394/399) or .preview (var(--money-soft) #E3F7EE, line 418) computes to ~4.15-4.25:1 — under the 4.5:1 AA minimum for normal text. That's the Breakdown popup (line 3625 'See the full breakdown'), the Settings goal/differential Del buttons, and the Pattern Lab apply-preview warning — three of the named money surfaces.",
+ "failure": "The same federal-tax/FICA/state-tax deduction figures are legible when shown inline on the dashboard but slip just under the AA contrast floor when the user taps 'See the full breakdown ›' to view them in the popup, because that surface's glass panel is measurably less opaque than the plain white card.",
+ "fix": "Either drop the .modal/.preview backdrop-filter tint under var(--danger) text specifically, or darken var(--danger) by a few percent so it clears 4.5:1 against #E3F7EE and the translucent panel's effective color, not just against pure white.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "accessibility-01"
+}

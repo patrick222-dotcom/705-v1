@@ -1,0 +1,13 @@
+{
+ "title": "Client-side calendar-host allowlist (providerOf) and the ical-proxy Edge Function's ALLOWLIST are independently maintained and already disagree",
+ "severity": "medium",
+ "where": "index.html:3245-3251 (providerOf) vs supabase/functions/ical-proxy/index.ts:20-26 (ALLOWLIST)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "code-quality-23"
+}

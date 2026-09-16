@@ -11,7 +11,7 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmSync, existsSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -866,6 +866,534 @@ const run = async () => {
       errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
+  }
+
+  /* ---- 11. council 2026-09-13, bucket 1 --------------------------------------------------
+     Each block below pins one fix from docs/council-runs/2026-09-13/synthesis.md (bucket 1: nightly-
+     safe, no Invariant-3 function, no displayed-dollar change). Every assertion was negative-tested
+     against a copy with the fix reverted -- see docs/history.md for the run. */
+  if (want(11)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+
+    /* mobile-ux-00 (#29): the two hero footer links carried className="hero more linklike", so each
+       inherited the whole .hero card rule -- a 59px dark pill apiece, ~120px of dead first screen. */
+    const heroCount = await page.evaluate(() => document.querySelectorAll('.hero').length);
+    ok('council: exactly one .hero card renders on the dashboard', heroCount === 1, `${heroCount} .hero`);
+    const links = await page.evaluate(() => [...document.querySelectorAll('.hero .more')].map((b) => ({
+      h: Math.round(b.getBoundingClientRect().height), bg: getComputedStyle(b).backgroundColor })));
+    ok('council: hero footer links are inline links, not cards',
+      links.length === 2 && links.every((l) => l.h < 40 && /rgba\(0, 0, 0, 0\)|transparent/.test(l.bg)), JSON.stringify(links));
+
+    /* mobile-ux-09 (#31): ShareSheet was the one sheet left out of the body-scroll lock effect. */
+    await page.locator('button[aria-label="Share BadgeBudget"]').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { timeout: 4000 });
+    const lockedOpen = await page.evaluate(() => document.body.style.overflow);
+    ok('council: opening the share sheet locks body scroll', lockedOpen === 'hidden', `overflow=${JSON.stringify(lockedOpen)}`);
+    await page.locator('.sheet-h button[aria-label="Close"]').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { state: 'detached', timeout: 4000 });
+    const lockedClosed = await page.evaluate(() => document.body.style.overflow);
+    ok('council: closing the share sheet releases body scroll', lockedClosed === '', `overflow=${JSON.stringify(lockedClosed)}`);
+
+    /* mobile-ux-12 (#31): the first-run create/join inputs on the swap board lacked the Enter-to-submit
+       their "another board" siblings have. The zero-groups screen needs a live session the sandbox
+       cannot mint, so this half is pinned at the source: both inputs carry an Enter handler. */
+    const src = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    const firstRun = src.slice(src.indexOf("<h3>Create your unit's board</h3>"), src.indexOf('<h3>Join with a code</h3>') + 1200);
+    ok('council: first-run board-name input submits on Enter', /aria-label="Board name"[^>]*onKeyDown=\{e=>\{ if\(e\.key==='Enter'\) doCreateGroup\(\)/.test(firstRun));
+    ok('council: first-run invite-code input submits on Enter', /aria-label="Invite code"[^>]*onKeyDown=\{e=>\{ if\(e\.key==='Enter'\) doJoinGroup\(\)/.test(firstRun));
+
+    ok('council: no page errors in the bucket-1 section', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+
+    /* code-quality-00 = security-09 (#24) and code-quality-11: the manual sign-out path claimed to
+       mirror the SIGNED_OUT branch but never cleared the calendar subscription (Invariant 13 -- the
+       feed URL is a bearer credential) or the onboarding step. The sandbox cannot mint a session, so
+       the client is stubbed the way section 5 stubs getSession(): A is signed in, signOut() resolves,
+       onAuthStateChange never fires SIGNED_OUT (the stalled case the manual path exists for), and
+       window.__fireAuth lets the test sign B in afterwards through the app's own callback. */
+    const fakeAuth = async (seed, cloud = false) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.addInitScript((withCloud) => {
+        const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' }, access_token: 'a', refresh_token: 'a' };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const orig = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = orig(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                  c.auth.onAuthStateChange = (cb) => { window.__fireAuth = (ev, sess) => cb(ev, sess); return { data: { subscription: { unsubscribe() {} } } }; };
+                  c.auth.signOut = async () => ({ error: null });
+                  if (withCloud) {
+                    /* A thenable query chain: selects answer "no row" (PGRST116, the first-run case),
+                       inserts succeed, upserts are counted and fail with 23514 while window.__failSave
+                       is set. Enough for hydration to complete and for a save to be made to fail. */
+                    c.from = () => {
+                      const q = { _op: 'select' };
+                      for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single']) q[m] = () => q;
+                      q.insert = () => { q._op = 'insert'; return q; };
+                      q.upsert = () => { q._op = 'upsert'; window.__upserts = (window.__upserts || 0) + 1; return q; };
+                      q.then = (res, rej) => Promise.resolve(
+                        q._op === 'upsert' ? (window.__failSave ? { error: { code: '23514', message: 'stub' } } : { error: null })
+                        : q._op === 'insert' ? { error: null }
+                        : { data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                      return q;
+                    };
+                  }
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, cloud);
+      return { ctx, page, errors };
+    };
+    const signOutViaMenu = async (page) => {
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Sign out")').click();
+      await page.locator('.btn-primary:has-text("Sign out")').click();
+      await page.waitForSelector('button:has-text("Sign in")', { timeout: 6000 }).catch(() => {});
+    };
+    {
+      const { ctx, page, errors } = await fakeAuth(true);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const ical = page.locator('input[aria-label="Calendar iCal address"]');
+      await ical.fill('https://calendar.google.com/calendar/ical/SECRET-A/basic.ics');
+      await page.locator('.sheet-h button.back').first().click();
+      await signOutViaMenu(page);
+      await page.evaluate(() => window.__fireAuth('SIGNED_IN', { user: { id: '22222222-2222-4222-8222-222222222222', email: 'b@example.com' }, access_token: 'b', refresh_token: 'b' }));
+      await page.waitForSelector('.avatar:has-text("B")', { timeout: 6000 }).catch(() => {});
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const after = await ical.inputValue().catch(() => '(no input)');
+      ok("council: a manual sign-out clears the previous account's iCal URL before the next sign-in", after === '', JSON.stringify(after));
+      ok('council: no page errors across the sign-out drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+    {
+      /* A user who signed up without ever using the app anonymously finishes onboarding signed in;
+         signing out then re-rendered onboarding at the last step reached instead of the welcome. */
+      const { ctx, page } = await fakeAuth(false);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 20000 });
+      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.getByRole('button', { name: /see my estimate/i }).click();
+      await page.waitForSelector('.avatar', { timeout: 10000 });
+      await signOutViaMenu(page);
+      await page.waitForTimeout(600);
+      const welcome = await page.getByRole('button', { name: /get my estimate/i }).count();
+      const rateStep = await page.locator('.q:has-text("base hourly rate")').count();
+      ok('council: sign-out returns onboarding to the welcome screen, not the last step reached', welcome === 1 && rateStep === 0, `welcome=${welcome} rateStep=${rateStep}`);
+      await ctx.close();
+    }
+
+    /* privacy-telemetry-00/-01/-02 (#37): privacy.html is static and in the publish set, so it is
+       pinned at the source. Each check names a fact the notice used to get wrong. */
+    {
+      const pv = readFileSync(join(ROOT, 'privacy.html'), 'utf8');
+      const account = pv.slice(pv.indexOf('<h3>Your account</h3>'), pv.indexOf('<h2>What is never collected</h2>'));
+      ok('council: privacy notice discloses the email/password sign-in path', /email address and password/i.test(account) && /hashed/.test(account));
+      const analytics = pv.slice(pv.indexOf('<h2>Usage analytics</h2>'), pv.indexOf('<h2>Error reports</h2>'));
+      ok('council: privacy notice no longer claims the device id is never linked to you',
+        !/not linked to your name/.test(analytics) && /account id/.test(analytics) && /associated with your account/.test(analytics));
+      const feedback = pv.slice(pv.indexOf('<h2>Feedback</h2>'), pv.indexOf('<h2>Calendar sync</h2>'));
+      ok('council: privacy notice says signed-in feedback carries the account id regardless of contact',
+        /carries\s+your account id/.test(feedback) && /whether or not you fill in a contact/.test(feedback));
+    }
+
+    /* data-integrity-00 (#23), security-05 client half (#19), security-12 (#22). */
+    {
+      const { ctx, page, errors } = await fakeAuth(true, true);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.waitForTimeout(1500);   // let hydration and any debounced save settle while saves still succeed
+      const UID = '11111111-1111-4111-8111-111111111111';
+      const flush = await page.evaluate((uid) => {
+        localStorage.removeItem('nursingWagePlannerData::' + uid);
+        window.__failSave = true;
+        Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        return new Promise((r) => setTimeout(() => r({ backup: localStorage.getItem('nursingWagePlannerData::' + uid) !== null, upserts: window.__upserts || 0 }), 400));
+      }, UID);
+      ok('council: a failed pagehide flush keeps the per-user backup', flush.backup === true, JSON.stringify(flush));
+
+      const size = await page.evaluate(async (uid) => {
+        const before = window.__upserts || 0;
+        window.__failSave = false;
+        const ts = await saveToSupabase(uid, { pad: 'x'.repeat(MAX_BLOB_BYTES + 1) });
+        return { ts, upsertsDuring: (window.__upserts || 0) - before };
+      }, UID);
+      ok('council: saveToSupabase refuses an oversize blob before it reaches the network', size.ts === null && size.upsertsDuring === 0, JSON.stringify(size));
+
+      const budget = await page.evaluate(() => {
+        const entries = Array.from({ length: 8 }, (_, i) => ({ t: i, msg: ('E' + i + ' ').padEnd(300, 'x'), src: 'x'.repeat(90) + '.js', line: 100 + i }));
+        localStorage.setItem('scrubpayErrors', JSON.stringify(entries));
+        let captured = null; const realTrack = window.track;
+        window.track = (name, props) => { captured = { name, props }; };
+        try { flushClientErrors(null); } finally { window.track = realTrack; }
+        return captured && { name: captured.name, len: JSON.stringify(captured.props).length, kept: captured.props.errors.length, n: captured.props.n, newestKept: captured.props.errors[captured.props.errors.length - 1].msg.slice(0, 2) };
+      });
+      ok('council: client_error batch stays under the events.props size CHECK and keeps the newest entries',
+        !!budget && budget.name === 'client_error' && budget.len <= 1700 && budget.kept >= 1 && budget.kept < 8 && budget.n === 8 && budget.newestKept === 'E7', JSON.stringify(budget));
+      ok('council: no page errors across the save-path drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* mobile-ux-00/-01/-02/-03/-05/-06/-08/-10 (#30): the tap-target pass. The app's own convention
+       is 44px (33 explicit minHeight:44 sites, .iconbtn's ::after hit-slop); these were the controls
+       under it. Hit-slop is proven with elementFromPoint just outside the visible box, not by
+       reading the stylesheet. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE, estimateMode: 'rough' }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      /* The boot splash (#splash, fixed, z-index 9999) fades for 350ms after the app paints and
+         intercepts elementFromPoint until it is gone -- wait it out before any hit test. */
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(150);
+
+      const av = await page.evaluate(() => {
+        const a = document.querySelector('.avatar'); const r = a.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.right + 1, r.top + r.height / 2);
+        return { w: Math.round(r.width), outside: !!(hit && hit.closest('.avatar')) };
+      });
+      ok('council: avatar hit area extends past its 40px circle', av.outside, JSON.stringify(av));
+
+      const eb = await page.evaluate(() => [...document.querySelectorAll('.est-banner button')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      ok('council: est-banner buttons are 44px tap targets', eb.length >= 2 && eb.every((h) => h >= 44), JSON.stringify(eb));
+
+      const pp = await page.evaluate(() => {
+        const c = document.querySelector('.pp-chip'); if (!c) return { count: 0 };
+        c.scrollIntoView({ block: 'center' }); const r = c.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.bottom + 4);
+        return { count: 1, h: Math.round(r.height), below: !!(hit && hit.closest('.pp-chip')) };
+      });
+      ok('council: pay-period chip reaches a 44px hit area', pp.count === 1 && pp.h + 12 >= 44 && pp.below, JSON.stringify(pp));
+
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForTimeout(300);
+      const vs = await page.evaluate(() => Math.round(document.querySelector('.cal-vscroll').getBoundingClientRect().height));
+      ok('council: calendar scroll box fits a landscape viewport', vs <= 240, `${vs}px tall at a 390px viewport`);
+      await page.setViewportSize({ width: 360, height: 780 });
+      await page.waitForTimeout(300);
+
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.drow .amt input', { timeout: 5000 });
+      const st = await page.evaluate(() => ({
+        amt: [...document.querySelectorAll('.drow .amt input')].map((i) => Math.round(i.getBoundingClientRect().height)),
+        del: [...document.querySelectorAll('.drow .danger-link')].map((b) => Math.round(b.getBoundingClientRect().height)) }));
+      ok('council: Settings amount inputs are 44px tap targets', st.amt.length >= 1 && st.amt.every((h) => h >= 44), JSON.stringify(st.amt));
+      ok('council: Settings Del links are 44px tap targets', st.del.length >= 1 && st.del.every((h) => h >= 44), JSON.stringify(st.del));
+      await page.locator('.sheet-h button.back').first().click();
+      await page.waitForSelector('.drow', { state: 'detached', timeout: 4000 }).catch(() => {});
+
+      await page.locator('.fab').click();
+      await page.waitForSelector('.chip-sel', { timeout: 5000 });
+      const cs = await page.evaluate(() => [...document.querySelectorAll('.chip-sel')].map((b) => Math.round(b.getBoundingClientRect().height)));
+      ok('council: shift-type chips are 44px tap targets', cs.length >= 1 && cs.every((h) => h >= 44), JSON.stringify(cs));
+      await page.mouse.click(8, 8);   // the scrim closes the sheet
+      await page.waitForSelector('.chip-sel', { state: 'detached', timeout: 4000 }).catch(() => {});
+
+      /* The fixed "+ Log a shift" button overlaps the card's Open button when the card sits at the
+         bottom of a 360px viewport; centre it first so the click lands on the button, not the fab. */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main').first().click();   // the lab opens on its preset list; a preset draws the grid
+      await page.waitForSelector('.pl-cell', { timeout: 8000 });
+      const pl = await page.evaluate(() => [...document.querySelectorAll('.pl-cell')].slice(0, 7).map((c) => Math.round(c.getBoundingClientRect().width)));
+      ok('council: pattern-grid cells clear 44px at 360px wide', pl.length === 7 && pl.every((w) => w >= 44), JSON.stringify(pl));
+
+      ok('council: no page errors across the tap-target sweep', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* accessibility-00/-02/-03/-05/-06/-08/-09/-10/-11/-12/-14/-16/-18/-19/-21/-22/-23/-24 and the
+       Escape halves of -13/-25/-26 (#32-#34, #36 partial): the a11y pass. Dialog semantics and
+       Escape are asserted by opening each sheet for real; the one Escape handler is a stack, so a
+       confirm dialog on top of Settings is closed by Escape while Settings stays -- proven, not
+       assumed. Colours are read back from the stylesheet with getComputedStyle. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+      const today = new Date(); const tk = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE, estimateMode: 'rough',
+          shifts: { [tk]: [{ id: 'ot1', shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: true, start: '07:00' }] } }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      const gone = (sel) => page.waitForSelector(sel, { state: 'detached', timeout: 4000 }).then(() => true).catch(() => false);
+      const has = (sel) => page.evaluate((q) => !!document.querySelector(q), sel);
+
+      /* share sheet */
+      await page.locator('button[aria-label="Share BadgeBudget"]').click();
+      await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { timeout: 4000 });
+      ok('a11y: share sheet is a labelled dialog', await has('.sheet[role="dialog"][aria-modal="true"][aria-label="Share BadgeBudget"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the share sheet', await gone('.sheet[aria-label="Share BadgeBudget"]'));
+
+      /* breakdown */
+      await page.locator('.hero button:has-text("See the full breakdown")').click();
+      await page.waitForSelector('.sheet-h .t:text-is("Your paycheck math")', { timeout: 4000 });
+      ok('a11y: breakdown is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Your paycheck math"] .sheet-h button.back[aria-label="Close"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the breakdown', await gone('.modal[aria-label="Your paycheck math"]'));
+
+      /* settings, and the Escape stack under a confirm dialog */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.drow .danger-link', { timeout: 5000 });
+      ok('a11y: Settings is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Settings"] .sheet-h button.back[aria-label="Close"]'));
+      const dels = await page.evaluate(() => [...document.querySelectorAll('.drow .danger-link')].map((b) => b.getAttribute('aria-label') || ''));
+      ok('a11y: every Settings Del button names what it deletes', dels.length >= 2 && dels.every((l) => /^Delete .+ differential$|^Delete .+ goal$/.test(l)) && new Set(dels).size === dels.length, JSON.stringify(dels));
+      ok('a11y: differential name inputs carry an accessible name', await has('.drow input.nm[aria-label="Differential name"]'));
+      const dangerRgb = await page.evaluate(() => getComputedStyle(document.querySelector('.drow .danger-link')).color);
+      ok('a11y: danger red is the darker AA-safe token', dangerRgb === 'rgb(176, 61, 46)', dangerRgb);
+      await page.locator('.drow .danger-link').first().click();
+      await page.waitForSelector('.cdlg', { timeout: 4000 });
+      await page.keyboard.press('Escape');
+      const confirmGone = await gone('.cdlg');
+      const settingsStill = await has('.modal[aria-label="Settings"]');
+      ok('a11y: Escape closes only the confirm dialog on top, Settings stays open', confirmGone && settingsStill, `confirmGone=${confirmGone} settingsStill=${settingsStill}`);
+      await page.keyboard.press('Escape');
+      ok('a11y: a second Escape closes Settings', await gone('.modal[aria-label="Settings"]'));
+
+      /* add-shift sheet: dialog, live region, OT tag colour, Remove names */
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet .preview', { timeout: 5000 });
+      ok('a11y: add-shift sheet is a labelled dialog', await has('.sheet[role="dialog"][aria-modal="true"][aria-label="Add a shift"]'));
+      ok('a11y: add-shift preview is a polite live region', await has('.sheet .preview[aria-live="polite"]'));
+      const ot = await page.evaluate(() => { const t = document.querySelector('.sheet .ot-tag'); return t ? getComputedStyle(t).color : '(no tag)'; });
+      ok('a11y: OT tag uses the AA-safe money-ink colour', ot === 'rgb(11, 93, 60)', ot);
+      const rm = await page.evaluate(() => [...document.querySelectorAll('.sheet .danger-link')].map((b) => b.getAttribute('aria-label') || ''));
+      ok('a11y: Remove buttons name the shift they remove', rm.length >= 1 && rm.every((l) => /^Remove .+ ×\d+h shift$/.test(l)), JSON.stringify(rm));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the add-shift sheet', await gone('.sheet[aria-label="Add a shift"]'));
+
+      /* calendar: view control, today, scroll box */
+      const cal = await page.evaluate(() => ({
+        tablist: !!document.querySelector('.viewseg[role="tablist"], .viewseg [role="tab"]'),
+        pressed: [...document.querySelectorAll('.viewseg button')].map((b) => b.getAttribute('aria-pressed')),
+        today: (document.querySelector('.cell.today') || {}).getAttribute ? document.querySelector('.cell.today').getAttribute('aria-label') : '(no today cell)',
+        tab: (document.querySelector('.cal-vscroll') || {}).getAttribute ? document.querySelector('.cal-vscroll').getAttribute('tabindex') : null }));
+      ok('a11y: the Month/Year control no longer claims a tablist it never implemented', !cal.tablist && cal.pressed.includes('true') && cal.pressed.includes('false'), JSON.stringify(cal.pressed));
+      ok("a11y: today's cell says so in its accessible name", /, today$/.test(cal.today), cal.today);
+      ok('a11y: the month scroll box is keyboard-focusable', cal.tab === '0', `tabindex=${cal.tab}`);
+
+      /* est-banner dismiss hands focus to the hero */
+      await page.locator('.est-banner button:has-text("Got it")').click();
+      await page.waitForSelector('.est-banner', { state: 'detached', timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(80);
+      const focused = await page.evaluate(() => (document.activeElement && document.activeElement.className) || '(body)');
+      ok('a11y: dismissing the estimate banner moves focus to the hero', /\bhero\b/.test(focused), focused);
+
+      /* pattern lab */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.waitForSelector('.sheet-h .t:text-is("Pattern lab")', { timeout: 5000 });
+      ok('a11y: pattern lab is a labelled dialog', await has('.modal[role="dialog"][aria-modal="true"][aria-label="Pattern lab"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the pattern lab from its list', await gone('.modal[aria-label="Pattern lab"]'));
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main').first().click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      ok('a11y: the pattern readout is a polite live region', await has('.modal[aria-label="New pattern"] .pl-money[aria-live="polite"]'));
+      /* A dirty draft must not vanish on a keypress: Escape goes through the same discard confirm
+         the backdrop tap uses, and Escape on that confirm cancels it, leaving the draft intact. */
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.cdlg', { timeout: 4000 }).catch(() => {});
+      const asked = await has('.cdlg');
+      await page.keyboard.press('Escape');
+      const kept = (await gone('.cdlg')) && (await has('.modal[aria-label="New pattern"]'));
+      ok('a11y: Escape on a dirty pattern asks before discarding, and Escape on the ask keeps the draft', asked && kept, `asked=${asked} kept=${kept}`);
+      await page.keyboard.press('Escape');
+      await page.locator('.cdlg .btn-danger').click();
+      ok('a11y: confirming the discard closes the pattern lab', await gone('.modal[role="dialog"]'));
+
+      /* auth modal (signed out) */
+      await page.locator('.topbar button:has-text("Sign in")').first().click();
+      await page.waitForSelector('.sheet-h .t:text-is("Sign in")', { timeout: 5000 });
+      ok('a11y: the sign-in modal is a labelled dialog with a named close button',
+        await has('.modal[role="dialog"][aria-label="Sign in"] .sheet-h button.back[aria-label="Close"]'));
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes the sign-in modal', await gone('.modal[aria-label="Sign in"]'));
+
+      /* feedback: Escape never eats typed words */
+      await page.locator('button[aria-label="Send feedback"]').click();
+      await page.waitForSelector('.sheet[aria-label="Send feedback"] textarea', { timeout: 5000 });
+      await page.locator('.sheet[aria-label="Send feedback"] textarea').fill('my own words');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(120);
+      ok('a11y: Escape leaves a feedback sheet with typed words open', await has('.sheet[aria-label="Send feedback"]'));
+      await page.locator('.sheet[aria-label="Send feedback"] textarea').fill('');
+      await page.keyboard.press('Escape');
+      ok('a11y: Escape closes an empty feedback sheet', await gone('.sheet[aria-label="Send feedback"]'));
+
+      /* the ESTIMATED tag token, read off the stylesheet */
+      const est = await page.evaluate(() => { const t = document.createElement('span'); t.className = 'tag est'; document.body.appendChild(t); const c = getComputedStyle(t).color; t.remove(); return c; });
+      ok('a11y: the ESTIMATED tag colour clears AA on its pill', est === 'rgb(138, 90, 5)', est);
+
+      /* reduced motion: the stepper's scroll animation jumps instead of animating */
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      const rm1 = await page.evaluate(() => { const d = document.createElement('div'); d.style.cssText = 'height:100px;overflow:auto'; d.innerHTML = '<div style="height:1000px"></div>'; document.body.appendChild(d); animateScrollTop(d, 100); const v = d.scrollTop; d.remove(); return v; });
+      ok('a11y: animateScrollTop jumps synchronously under prefers-reduced-motion', rm1 === 100, `scrollTop=${rm1}`);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const rm0 = await page.evaluate(() => { const d = document.createElement('div'); d.style.cssText = 'height:100px;overflow:auto'; d.innerHTML = '<div style="height:1000px"></div>'; document.body.appendChild(d); animateScrollTop(d, 100); const v = d.scrollTop; d.remove(); return v; });
+      ok('a11y: ...and still animates when no preference is set (control)', rm0 === 0, `scrollTop=${rm0}`);
+
+      ok('a11y: no page errors across the a11y sweep', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+    {
+      /* onboarding: real headings and a named back button */
+      const { ctx, page } = await newPage(browser, url, { seed: false });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 20000 });
+      ok('a11y: the welcome title is a heading', await page.evaluate(() => !!document.querySelector('.ob h1.display')));
+      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.waitForSelector('.ob .q', { timeout: 5000 });
+      const ob = await page.evaluate(() => ({ h1: !!document.querySelector('.ob h1.q'), back: (document.querySelector('.ob button.back') || {}).getAttribute ? document.querySelector('.ob button.back').getAttribute('aria-label') : null,
+        m: getComputedStyle(document.querySelector('.ob .q')).marginTop }));
+      ok('a11y: each onboarding question is an h1 with no stray margin', ob.h1 && ob.m === '0px', JSON.stringify(ob));
+      ok('a11y: the onboarding back button has an accessible name', ob.back === 'Back', JSON.stringify(ob.back));
+      const doneLine = src.slice(src.indexOf('hrs · 6 shifts · gross') - 120, src.indexOf('hrs · 6 shifts · gross'));
+      ok("a11y: the done screen's gross line uses the 5.7:1 grey", /#9A9DAB/.test(doneLine) && !/#7E8290/.test(doneLine));
+      await ctx.close();
+    }
+
+    /* #7, #9, #10, #11, #12, #18, #27, #28 (product-design-02/-04/-07, wage-math-10, code-quality-05/
+       -07/-09/-13/-22/-24, security-03): the last bucket-1 group. Driven where the surface exists;
+       validShiftMeta and the templates sanitizer are unit-tested as the globals they are; the two
+       one-line catch/filter edits and the ref cleanup are pinned at the source. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, { ...SEEDED_STATE,
+          templates: [{ id: 't1', name: 'Charge day', shiftType: 'base', hours: 8, bonusType: 'none', customBonus: 0, isOvertime: true }],
+          goals: [{ id: 'g1', name: 'House', target: 1000 }, { id: 'g2', name: 'Trip', target: 500 }] }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+      const gone = (sel) => page.waitForSelector(sel, { state: 'detached', timeout: 4000 }).then(() => true).catch(() => false);
+      const has = (sel) => page.evaluate((q) => !!document.querySelector(q), sel);
+
+      const san = await page.evaluate(() => sanitizeData({ templates: [
+        { id: 'x', name: 'OT', shiftType: 'night', hours: 12, bonusType: 'none', isOvertime: true },
+        { id: 'y', name: 'No', shiftType: 'night', hours: 12, bonusType: 'none' } ] }).templates.map((t) => t.isOvertime));
+      ok('council: the templates sanitizer keeps the OT flag (#9)', JSON.stringify(san) === '[true,false]', JSON.stringify(san));
+
+      const vm = await page.evaluate(() => [
+        validShiftMeta({ shiftType: 'base', hours: '12' }), validShiftMeta({ shiftType: 'night', hours: 12, start: '19:00' }),
+        validShiftMeta({ shiftType: 'base', hours: 'abc' }), validShiftMeta({ shiftType: 7, hours: 12 }), validShiftMeta({ shiftType: 'base', hours: 0 }),
+        validShiftMeta({ shiftType: 'base', hours: 25 }), validShiftMeta({ shiftType: 'base', hours: 12, start: '99:99' }), validShiftMeta(['base']), validShiftMeta(null)]);
+      ok("council: another member's shift_meta is validated before it becomes her shift (#18)",
+        JSON.stringify(vm) === '[true,true,false,false,false,false,false,false,false]', JSON.stringify(vm));
+
+      /* #9 + #12: quick-tap an OT template, then "Save as template" must capture that shift */
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet[aria-label="Add a shift"]', { timeout: 5000 });
+      const tplBtn = page.locator('.sheet .chip-sel:has-text("Charge day")');
+      ok('council: a template row shows its OT flag (#9)', /· OT/.test(await tplBtn.innerText()));
+      await tplBtn.click();
+      await page.waitForSelector('.sheet .row-item .ot-tag', { timeout: 4000 }).catch(() => {});
+      ok('council: a quick-tapped OT template lands as an OT shift (#9)', await has('.sheet .row-item .ot-tag'));
+      await page.locator('.sheet button:has-text("Save as template")').click();
+      await page.locator('.sheet input[aria-label="Template name"]').fill('Copy of charge');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.sheet .chip-sel:has-text("Copy of charge")', { timeout: 4000 }).catch(() => {});
+      const copy = await page.locator('.sheet .chip-sel:has-text("Copy of charge")').innerText().catch(() => '(not saved)');
+      ok('council: "Save as template" right after a quick-tap captures the tapped shift, OT included (#12, #9)', /×8h · OT/.test(copy), JSON.stringify(copy));
+      await page.keyboard.press('Escape');
+      await gone('.sheet[aria-label="Add a shift"]');
+
+      /* #10: a goal edited to $0 leaves the preview, and Del asks first */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const house = page.locator('input[aria-label="House target amount"]');
+      await house.fill('0'); await house.press('Tab');
+      await page.keyboard.press('Escape');
+      await gone('.modal[aria-label="Settings"]');
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet .preview', { timeout: 5000 });
+      const goalLine = await page.evaluate(() => { const ks = [...document.querySelectorAll('.sheet .preview .k')].map((k) => k.textContent); return ks.find((t) => /toward your/.test(t)) || '(no goal line)'; });
+      ok('council: a $0 goal is left out of the shift preview instead of printing Infinity% (#10)', !/Infinity|NaN|House/.test(goalLine) && /Trip/.test(goalLine), goalLine);
+      await page.keyboard.press('Escape');
+      await gone('.sheet[aria-label="Add a shift"]');
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.locator('button[aria-label="Delete Trip goal"]').click();
+      const asked = await page.waitForSelector('.cdlg', { timeout: 4000 }).then(() => true).catch(() => false);
+      const stillThere = await has('button[aria-label="Delete Trip goal"]');
+      ok('council: deleting a goal asks first (#10)', asked && stillThere, `asked=${asked} stillThere=${stillThere}`);
+      if (asked) await page.locator('.cdlg .btn-danger').click();
+      ok('council: confirming removes the goal (#10)', await gone('button[aria-label="Delete Trip goal"]'));
+      await page.keyboard.press('Escape');
+      await gone('.modal[aria-label="Settings"]');
+
+      /* #7 / #11 / #28 in the pattern lab */
+      const openLab = page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main:has-text("4 on, 4 off")').click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      const k8 = await page.locator('.pl-money .k').innerText();
+      ok('council: an 8-day cycle says its paycheck figure is an average (#7)', /avg\. over 4 paychecks/.test(k8), JSON.stringify(k8));
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.cdlg', { timeout: 4000 }).catch(() => {});
+      await page.locator('.cdlg .btn-danger').click().catch(() => {});
+      await gone('.modal[role="dialog"]');
+      await openLab.evaluate((b) => b.scrollIntoView({ block: 'center' }));
+      await openLab.click();
+      await page.locator('.pl-card-main:has-text("Mon–Wed nights")').click();
+      await page.waitForSelector('.pl-money', { timeout: 8000 });
+      const k7 = await page.locator('.pl-money .k').innerText();
+      ok('council: a 7-day cycle carries no average caption (#7 control)', !/avg\./.test(k7), JSON.stringify(k7));
+
+      await page.locator('.pl-brushes .chip-sel:has-text("Charge day")').click();
+      const hint = await page.evaluate(() => [...document.querySelectorAll('.modal .hint')].map((h) => h.textContent).find((t) => /Tap a day/.test(t)) || '(no hint)');
+      ok('council: the grid hint is honest about template cells (#11)', /Template cells/.test(hint) && !/pick up your weekend differentials automatically/.test(hint), JSON.stringify(hint));
+      await page.locator('.pl-cell').first().click();
+      const fx = await page.evaluate(() => { const c = document.querySelector('.pl-cell.on .fx'); return c ? c.closest('.pl-cell').getAttribute('aria-label') : '(no marker)'; });
+      ok('council: a template-painted cell is marked and says its pay type is fixed (#11)', /template/.test(fx), JSON.stringify(fx));
+
+      await page.locator('.modal button:has-text("Put it on the calendar")').click();
+      const startInput = page.locator('.pl-apply input[type="date"]');
+      await startInput.fill('2026-10-05');
+      await page.locator('input[aria-label="Cycle start date"]').fill('2026-09-21');
+      const startAfter = await startInput.inputValue();
+      ok('council: editing the cycle anchor leaves a customised apply-start alone (#28)', startAfter === '2026-10-05', JSON.stringify(startAfter));
+
+      ok('council: runIcalSync logs a failed background sync (#27)', /catch\(e\)\{\n\s*console\.error\('ical sync failed:'/.test(src));
+      ok('council: manual .ics re-import counts only changed matches (#27)', /setIcsImport\(\{ groups, toUpdate:plan\.toUpdate\.filter\(u=>u\.changed\)/.test(src));
+      ok('council: month section refs are dropped on unmount (#28)', /else delete monthSecRefs\.current\[mo\.key\]/.test(src));
+
+      ok('council: no page errors across the group-7 drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
   }
 
   await browser.close();

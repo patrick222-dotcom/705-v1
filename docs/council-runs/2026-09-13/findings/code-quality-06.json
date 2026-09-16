@@ -1,0 +1,13 @@
+{
+ "title": "Removing the only shift on a day silently re-adds a different, unconfirmed phantom shift",
+ "severity": "high",
+ "where": "index.html:4127-4130 (hasOtherContent/save), interacting with :4288 (primary button label) and :2857-2867 (saveDayShifts)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "code-quality-06"
+}

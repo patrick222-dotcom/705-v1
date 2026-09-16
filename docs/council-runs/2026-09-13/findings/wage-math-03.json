@@ -1,0 +1,13 @@
+{
+ "title": "Pattern lab and calendar price a toggled-off differential differently",
+ "severity": "low",
+ "where": "/home/user/705-v1/index.html:1206-1213 (patternCellShiftType resolves a 'night'/weekend cell to 'base' unless differentials[k].active); 2646 (statOf) and 2795 (calc) call shiftGross(baseRate, differentials[s.shiftType], s) with no active check; hourlyRate 1119-1124",
+ "detail": "The Settings toggle dims the row and removes the chip from the Add-Shift sheet (4099), and the lab treats it as 'she doesn't get this differential' — but calc/statOf/yearMonths keep applying the amount to any shift already carrying that shiftType (logged before the toggle, imported from .ics via the questionnaire at 3184, or added by a template/quick-fill). Only the delete path (4691) warns about repricing, which implies toggling off was meant to be display-only; the lab contradicts that. Either semantics is defensible; the two surfaces holding different ones is the defect.",
+ "failure": "Log Mon–Wed 12h nights this period (or .ics-import them), then toggle Night off in Settings. Hero still prices them at $75.15/hr (night amount included, +$360 gross for the period). Open Patterns → 'Mon–Wed nights' preset anchored on the same week: it prices the identical three nights at $65.15/hr and shows a take-home per paycheck ~$280 lower than the hero for the same schedule.",
+ "fix": "Pick one: (a) make hourlyRate/shiftGross treat `diff.active===false` as no differential so the calendar reprices to match the lab and the dimmed row (then the delete warning applies to toggling too, and the Settings hint should say so); or (b) drop the `active()` gate in patternCellShiftType so the lab prices what the calendar prices. (a) touches wage core; (b) does not, but leaves the toggle as pure decluttering. Either way add a probe covering an inactive differential on both paths.",
+ "wageCore": true,
+ "slices": [
+  "wage-core"
+ ],
+ "id": "wage-math-03"
+}

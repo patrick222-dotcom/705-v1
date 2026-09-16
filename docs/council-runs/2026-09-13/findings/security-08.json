@@ -1,0 +1,14 @@
+{
+ "title": "ical-proxy accepts the public anon key: verify_jwt does not mean \"signed-in user\"",
+ "severity": "medium",
+ "where": "supabase/functions/ical-proxy/index.ts:8-9 and :46-59 (no role/user check anywhere in the handler); anon key shipped at index.html:616",
+ "detail": "The function's header comment and CLAUDE.md both claim `verify_jwt` restricts the proxy to signed-in users (\"an unauthenticated POST is 401, so it is not an open proxy\"). That is only true for a request with NO Authorization header. The Supabase gateway's verify_jwt checks the signature, and the project's anon key is itself a JWT signed with the same secret (`role: anon`, exp 2036). Live probe against the deployed function (version 1, byte-identical to the repo copy): no header -> 401 UNAUTHORIZED_NO_AUTH_HEADER; `Authorization: Bearer <anon key from index.html>` with `{\"url\":\"https://www.google.com/\"}` -> 422 not_a_calendar, i.e. the handler ran and fetched the upstream. The handler never inspects the JWT's `role`/`sub` (index.ts:46-59 go straight from body parsing to the allowlist), so anyone who has viewed the page source can drive it. The allowlist still holds (169.254.169.254 -> 403), so this is not an internal SSRF, but the second allowlist entry `/^www\\.google\\.com$/` (index.ts:22) has no path constraint, so the project is an anonymous relay for arbitrary google.com URLs and any public/secret Google Calendar feed, with `Access-Control-Allow-Origin: *` (index.ts:31) so it works from any web page.",
+ "failure": "A script with the anon key (harvested by any of the crawlers already hitting badgebudget.com) loops POSTs at a large public Google calendar feed: each call is a free-tier invocation plus up to 2MB of egress. The project hits the free-tier egress/compute cap, and every real nurse loses cloud sync and calendar sync until the next billing window, or the owner pays. The intended control (\"only a signed-in user can call this\") is simply not in force.",
+ "fix": "In the handler, before the allowlist: read `req.headers.get('Authorization')`, decode the bearer JWT payload (the gateway has already verified its signature) and return 401 unless `payload.role === 'authenticated'` and `payload.sub` is a UUID; or equivalently build a supabase client with that header and require `auth.getUser()` to return a user. Then correct the two comments (index.ts:8-9, CLAUDE.md Supabase section) and add the negative test to the ship ritual: `curl` with the anon key must return 401. While there, pin both Google entries to the `/calendar/ical/` path prefix so `www.google.com` is not a general-purpose relay.",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync",
+  "infra"
+ ],
+ "id": "security-08"
+}

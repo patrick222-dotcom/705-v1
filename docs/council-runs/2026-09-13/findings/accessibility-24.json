@@ -1,0 +1,13 @@
+{
+ "title": "Duplicate, context-free \"Del\" button labels in differentials and savings-goals lists",
+ "severity": "medium",
+ "where": "index.html:4716 and 4755 (Settings)",
+ "detail": "Every per-row delete control in both the differentials list and the savings-goals list renders `<button className=\"danger-link\" onClick={...}>Del</button>` with no aria-label distinguishing rows. A user with 4 differentials and 3 goals ends up with 7 buttons that all have the identical accessible name 'Del'. Differential deletion is gated by confirmAsync (index.html:4691, names the differential in the confirmation copy), but delGoal (index.html:4687) deletes immediately with zero confirmation.",
+ "failure": "A screen-reader user navigating Settings via the rotor's 'buttons' list (which strips surrounding row context) cannot tell which 'Del' belongs to which goal or differential. For goals specifically, since there is no confirmation step, activating the wrong one in that list permanently deletes the wrong savings goal with no undo.",
+ "fix": "Give each delete button a distinguishing aria-label, e.g. aria-label={'Delete '+d.name+' differential'} at 4716 and aria-label={'Delete '+g.name+' goal'} at 4755; consider also gating delGoal behind confirmAsync to match the differential-delete pattern.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "accessibility-24"
+}

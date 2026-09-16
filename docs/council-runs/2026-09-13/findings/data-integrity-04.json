@@ -1,0 +1,13 @@
+{
+ "title": "A shift that moved outside the 60-day-back/366-day-forward sync window is indistinguishable from a deleted shift, and the confirm screen states it as certain",
+ "severity": "medium",
+ "where": "index.html:1545-1576 (icsPlanFromExisting removal logic, esp. `if(!inWindow(rec.dateKey)) return;`), 826-864 (parseICSSchedule drops out-of-window events before the caller ever sees them), 3828-3834 (IcsImportSheet: \"Removing … — gone from your calendar feed.\")",
+ "detail": "`parseICSSchedule` silently drops any VEVENT outside [today-60d, today+366d] (`droppedWindow`, 864) — the caller never learns the event still exists at a new date outside that range. `icsPlanFromExisting`'s removal pass then treats \"this icsUid wasn't seen in the fresh parse\" as \"deleted from the calendar\" as long as the *previously stored* dateKey is inside the window (1558-1566) — it has no way to tell \"deleted\" apart from \"moved to a date the current fetch window doesn't cover.\" The confirm sheet then asserts, unconditionally, that the listed shifts are \"gone from your calendar feed\" (3832-3834) with no hedge.",
+ "failure": "A shift that was correctly imported near-term gets rescheduled in the source calendar to more than 366 days out (e.g. a hospital or travel-nurse contract that publishes far-future dates) or corrected to a date more than 60 days in the past. The next sync no longer sees that UID in-window, proposes it under \"Removing … gone from your calendar feed,\" and if the user (trusting the app's own confident wording) taps Confirm, `icsConfirmImport` permanently deletes a shift that was never actually cancelled — losing real logged hours/pay-type data with no undo.",
+ "fix": "Either widen/soften the removal claim when the shift's own recorded date is near a window boundary, or track that the UID was seen previously and simply skip removal (leave it stored, unflagged) when its own current window straddles a boundary, and change the confirm copy from an assertion (\"gone from your calendar feed\") to a hedge (e.g. \"no longer appears in the synced window\").",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "data-integrity-04"
+}

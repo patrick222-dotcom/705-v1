@@ -1,0 +1,13 @@
+{
+ "title": "Hero's \"Taxes & deductions\" chip can show a bigger deduction than the gross next to it, and disagrees with the Breakdown a tap away",
+ "severity": "high",
+ "where": "index.html:3487 (hero chip renders calc.ded) and index.html:1244-1250 (computeNet)",
+ "detail": "computeNet() computes `ded = pretax+fica+fed+st+posttax+cw` uncapped (line 1244) and returns it as `ded`, but then deliberately caps the *displayed* pre/post fields (`dispPre`/`dispPost`, lines 1246-1249) specifically 'so Breakdown rows still sum' when a period's gross can't absorb the full flat pretax/posttax deductions. The hero's chip at line 3487 (`Taxes & deductions –{fmt(calc.ded)}`) is the one and only other consumer of `.ded` in the whole file (confirmed by grep) and uses the raw uncapped value, so it never got the same treatment.",
+ "failure": "Any signed-in nurse who has entered a per-period Pre-tax or Post-tax deduction in Settings (a completely normal, first-class field, not an edge feature) and views a pay period where she hasn't logged shifts yet -- the default state at the start of every new two-week period, or right after finishing Settings before adding a single shift -- sees a hero that reads e.g. 'Projected take-home $0' with chips 'Gross $0' next to 'Taxes & deductions –$260' (reproduced exactly: pretaxDeductions=200, posttaxDeductions=60, gross=0 -> ded=260, net=0). Tapping 'See the full breakdown' immediately shows every row at $0, summing correctly to gross. The two on-screen surfaces for the identical pay period visibly disagree about how much was withheld, which reads as a broken calculator on the app's single core promise -- know what a shift is worth, no surprises -- and is reachable through completely ordinary use, not a contrived input.",
+ "fix": "Render the hero's deduction chip as `calc.gross-calc.net` (or equivalently the sum of the already-capped fields computeNet returns: fica+fed+st+cw+pre+post) instead of the raw `calc.ded`, so it is definitionally reconciled with the net figure right next to it and with the Breakdown view. This is a one-line change at the App component's JSX call site (line 3487) and does not require touching computeNet's return shape since `.ded` has no other reader.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "product-design-00"
+}

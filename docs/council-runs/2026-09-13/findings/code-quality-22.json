@@ -1,0 +1,13 @@
+{
+ "title": "runIcalSync's outer catch swallows every background-sync failure with no console.error or telemetry",
+ "severity": "medium",
+ "where": "index.html:3285-3288 (runIcalSync), index.html:2442 (loadIcalSub call in the app-open effect)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "calendar-sync"
+ ],
+ "id": "code-quality-22"
+}

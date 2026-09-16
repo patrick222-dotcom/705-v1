@@ -1,0 +1,13 @@
+{
+ "title": "Hero hours chip prints the raw float sum, so it can show '36.900000000000006 hrs' directly above a stat that says '36.9'",
+ "severity": "low",
+ "where": "index.html:3489 ({calc.hours} hrs · N shifts) vs 3496 (calc.hours.toFixed(calc.hours%1?1:0)) and 3970 (YearList uses toFixed)",
+ "detail": "calc.hours is accumulated with += over shift and PTO hours (2796, 2803). The .ics importer rounds each event to a tenth (861) but the sum of tenths is not exact in binary floating point, and NumInput (4016-4029) accepts any decimal the nurse types. The stat under the hero and the YearList both format with toFixed; the chip interpolates the number raw. Reproduced: three 12.3h shifts -> chip '36.900000000000006 hrs · 3 shifts', stat '36.9'; 12.1h + 12.2h -> '24.299999999999997 hrs'.",
+ "failure": "A nurse whose calendar feed lists 07:00-19:18 shifts (12.3h after the importer's rounding) sees 'Keep 73%' next to '36.900000000000006 hrs · 3 shifts' in the hero, while the 'hours this period' stat just below says 36.9.",
+ "fix": "Format the chip the same way as the stat: {calc.hours.toFixed(calc.hours%1?1:0)} hrs at 3489 (or round once in calc: hours = Math.round(hours*100)/100 — that touches calc, so prefer the render-side fix).",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "cross-surface-04"
+}

@@ -1,0 +1,14 @@
+{
+ "title": "Raw 'parties decline matches' UPDATE policy bypasses decline_swap_match and strands the other party's post as 'proposed' forever",
+ "severity": "medium",
+ "where": "supabase/migrations/001_swap_board.sql:202-205 (policy), :233-235 (update (status) grant), :130 and :277-278 (why it is unrecoverable); live policy confirmed via pg_policies",
+ "detail": "decline_swap_match() exists precisely so declining releases the reserved posts in one transaction (001:269-282). But the policy 'parties decline matches' plus `grant ... update (status) on swap_matches` still let any party `PATCH /rest/v1/swap_matches?id=eq.<m>` with `{status:'declined'}` directly. That path never touches swap_posts. Afterwards: the author's 'update own posts' USING requires status='open' (001:130) so she cannot withdraw or edit it; decline_swap_match raises match_not_proposed because status is already 'declined' (001:277-278); reveal_match raises match_not_proposed (001:315); the board RPC hides it from everyone else (001:164). The client only ever uses the RPC (index.html:1938-1944; the sole `.from('swap_matches')` is a select at :1882), so the raw path is pure attack surface.",
+ "failure": "Colleague B, party to a match with A, sends one REST PATCH from devtools. A's give-up post vanishes from the unit's board, shows only in A's own list, cannot be withdrawn, edited or re-proposed, and never comes back -- A's shift is effectively un-swappable until the owner fixes the row in SQL.",
+ "fix": "`drop policy \"parties decline matches\" on public.swap_matches; revoke update on public.swap_matches from authenticated;` (re-grant only `select (id, group_id, status, created_at)`). All declines then go through the security-definer RPC. Add an rls_audit assertion that a direct PATCH to status='declined' is 42501 for a party.",
+ "wageCore": false,
+ "slices": [
+  "swap-board",
+  "infra"
+ ],
+ "id": "security-02"
+}

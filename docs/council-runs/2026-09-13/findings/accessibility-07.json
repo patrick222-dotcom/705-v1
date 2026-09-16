@@ -1,0 +1,13 @@
+{
+ "title": "Year-view prev/next buttons have a vague, ungrouped aria-label",
+ "severity": "low",
+ "where": "index.html:3553-3557 (.calnav div and its two buttons)",
+ "detail": "In Year view, the prior/next-year buttons are `aria-label=\"Previous\"` and `aria-label=\"Next\"` with no wrapping group label — contrast with the pay-period stepper right above it (index.html:3457), which wraps identical-looking ‹/› buttons in `role=\"group\" aria-label=\"Pay period\"` and gives the buttons themselves `aria-label=\"Previous pay period\"`/`\"Next pay period\"`. The Year-view .calnav div has no role or aria-label at all.",
+ "failure": "A screen-reader user tabbing through the calendar card in Year view reaches a button announced only as \"Previous, button\" — nothing says it steps by year (versus the pay-period stepper's control, one screen away, which does say what it steps). They have to explore surrounding content to guess what it does.",
+ "fix": "Label the buttons `aria-label=\"Previous year\"`/`\"Next year\"` (matching the pattern already used for the pay-period stepper), and/or add `role=\"group\" aria-label=\"Year\"` to the wrapping .calnav div.",
+ "wageCore": false,
+ "slices": [
+  "calendar"
+ ],
+ "id": "accessibility-07"
+}

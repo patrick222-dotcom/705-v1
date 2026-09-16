@@ -1,0 +1,13 @@
+{
+ "title": "sanitizeData passes differential `color` through unvalidated; it lands in `style={{background:…}}` under a CSP that allows `img-src https:`, so an imported JSON file can plant a persistent tracking beacon",
+ "severity": "low",
+ "where": "index.html:1039-1046 (differentials branch: `dd[k] = {...v, amount, type}` keeps any `color`); rendered at index.html:3535, 4181, 4195, 4209, 4713, 5776 as `background:` and 3574, 3929 as `color:`; CSP at index.html:6 (`img-src 'self' data: https:`).",
+ "detail": "The sanitizer's contract (comment at 947-952) is that a blob from cloud, localStorage or imported JSON is coerced into safe shapes before reaching React state. `amount` and `type` are coerced, but `color` is spread through as-is, and `applyData` (2323) merges it over DIFF_DEFAULTS. React assigns inline styles through the CSSOM, so a value like `url(https://attacker.example/p.gif)` is a valid `background` and the browser fetches it; the `<meta>` CSP explicitly allows any https image host. Because the differential is saved into the user_data blob, the fetch recurs on every device, on every app open, for every calendar cell that shows a shift of that type. No script executes and no wage data is in the request — what leaks is IP, user-agent, timing and a per-open ping to a third party the nurse never chose. The only realistic delivery is 'Import data' with a .json someone else prepared (importData at ~3005 hands the parsed file straight to applyData).",
+ "failure": "A nurse imports a colleague's exported JSON (or a file that claims to be one). One differential in it has `color: 'url(https://x.example/t)'`. From then on every render of her calendar, template chips and Settings rows makes a request to x.example, on every phone and laptop she signs into, until she notices the dot for that shift type looks wrong and re-picks its colour.",
+ "fix": "In the differentials branch of sanitizeData, after the existing `dd[k] = {...}` assignment (leave that statement untouched so the amount/type coercions are not edited), add `if(!(typeof dd[k].color==='string' && /^#[0-9a-fA-F]{6}$/.test(dd[k].color))) delete dd[k].color;` so applyData's merge falls back to the DIFF_DEFAULTS colour. Add a smoke assertion that a blob with `color:'url(https://x)'` renders the default `#8A93A6`, and negative-test it.",
+ "wageCore": false,
+ "slices": [
+  "data-sync"
+ ],
+ "id": "security-06"
+}

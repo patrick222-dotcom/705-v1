@@ -1,0 +1,13 @@
+{
+ "title": "Goal with target 0 renders 'Infinity% (≈0 shifts)' in the sheet preview, then vanishes on reload",
+ "severity": "low",
+ "where": "index.html:4248 (previewNet/g.target) and :4686 (updGoalTarget → parseFloat(v)||0)",
+ "detail": "`addGoal` (4683-4684) requires `t>0`, but `updGoalTarget` (4686) accepts whatever NumInput commits, and NumInput (4016-4027) commits `min` (=0, per the goal row at 4757) on an emptied field. The sheet's goal line (4248) is guarded only by `previewNet>0`, not `g.target>0`, so `previewNet/0` → Infinity and `Math.ceil(0/previewNet)` → 0. On the next load `sanitizeData` (goals branch, 1071-1082) drops any goal with target ≤ 0, so the goal silently disappears.",
+ "failure": "Settings → Savings goals → clear the amount field of 'Car' (blur commits 0). Open any day: the preview reads 'toward your goal: Car Infinity% (≈0 shifts)'. Reopen the app later: the 'Car' goal is gone with no message.",
+ "fix": "In the sheet, `goals.filter(g=>g.target>0).slice(0,3)` before mapping (and hide the line if none remain). In Settings, have `updGoalTarget` keep the previous target when `parseFloat(v)` is not > 0, or give that NumInput `min={1}`, so a goal can never be saved into the state that the loader deletes.",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "wage-math-14"
+}

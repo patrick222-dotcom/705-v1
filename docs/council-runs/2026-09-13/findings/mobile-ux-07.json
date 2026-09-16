@@ -1,0 +1,13 @@
+{
+ "title": "REPEATS EVERY cycle-length buttons render ~41px tall, under the 44px tap target",
+ "severity": "low",
+ "where": "index.html:4503",
+ "detail": "The 7/8/14/28-day preset buttons override the shared `.hrs .hc` style (`.hrs .hc{padding:11px;...font-size:14px}`, index.html:323) with an inline `{fontSize:13,padding:'11px 4px'}`. Height ≈ 2×11px padding + 2×1.5px border + ~13×1.2 line-height ≈ 40.6px, below the 44px guideline for a primary choice control at the top of every new-pattern flow.",
+ "failure": "Picking the rotation length is the first tap a nurse makes when starting a new pattern; a ~41px-tall pill is more likely to be mis-tapped one-handed than the rest of the app's already-borderline `.hc` buttons (which sit at ~41.8px by default but aren't further narrowed).",
+ "fix": "Drop the inline font/padding override (or raise vertical padding back toward the default ~13px+) so the button reaches 44px tall; if horizontal space for 4 pills plus the custom-length input is the concern, let the row wrap onto two lines instead of shrinking button height.",
+ "wageCore": false,
+ "slices": [
+  "pattern-lab"
+ ],
+ "id": "mobile-ux-07"
+}

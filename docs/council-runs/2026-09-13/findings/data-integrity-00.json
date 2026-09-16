@@ -1,0 +1,13 @@
+{
+ "title": "pagehide/visibilitychange flush silently drops an edit when the best-effort save fails",
+ "severity": "high",
+ "where": "index.html:2489-2505 (flush), contrast with the debounced save effect's failure handling at index.html:2470-2479; saveToSupabase at index.html:1324-1344",
+ "detail": "The debounced save effect explicitly guards against a failed cloud write: when saveToSupabase(...) resolves null (it always resolves, never throws — see the catch at 1339-1343 and the error branch at 1337), the else branch at line 2478 calls writeBackup(user.id, dataToSave) so the edit survives locally under BACKUP_KEY. The separate `flush` handler registered for `pagehide`/`visibilitychange`→hidden (added specifically because '500ms debounce would otherwise drop it', per the comment at 2489) does not do this: its call chain is `saveToSupabase(...).then(ts=>{ if(ts){ ...clear backup... } })` — the `if(ts)` guard only handles the success path. When `ts` is null/falsy (network drop, RLS/Postgres error, or the fetch simply being torn down mid-flight as the page actually unloads), the `.then` body does nothing: no writeBackup call, no error surfaced.",
+ "failure": "Signed-in user edits a shift, then immediately backgrounds or closes the tab (the debounce hasn't fired yet, which is exactly the case this handler exists for) on a flaky connection. The pagehide-triggered save fails; because flush's failure branch is a no-op, the edit is written to BACKUP_KEY nowhere, never reaches Supabase, and — once the tab is actually gone — no longer exists in memory either. On the next load, hydrateFromCloud finds no newer backup and no newer cloud row, so the edit is gone with no toast, no syncError, and no recovery path, unlike every other save-failure path in the app.",
+ "fix": "Mirror the debounced effect's failure handling in flush: when saveToSupabase resolves falsy, call writeBackup(snap.user.id, snap.data) just like line 2478 does. Because a `.then()` callback isn't guaranteed to run once actual page teardown begins, prefer writing the backup synchronously before firing the best-effort save (optimistic backup, cleared only on confirmed success) rather than only in the async continuation.",
+ "wageCore": false,
+ "slices": [
+  "wage-core"
+ ],
+ "id": "data-integrity-00"
+}

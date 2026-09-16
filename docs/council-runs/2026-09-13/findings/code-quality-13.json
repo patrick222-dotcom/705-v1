@@ -1,0 +1,13 @@
+{
+ "title": "Goal preview divides by a goal target that can be zero, printing \"Infinity%\"",
+ "severity": "medium",
+ "where": "index.html:4247-4248 (AddShiftSheet preview) combined with index.html:4686 (Settings updGoalTarget) and index.html:4020-4028 (NumInput.commit)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "code-quality-13"
+}

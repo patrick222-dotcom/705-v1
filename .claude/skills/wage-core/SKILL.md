@@ -1,6 +1,6 @@
 ---
 name: wage-core
-description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, statOf, ptoStatOf, patternMetrics, the rate/differential coercions in sanitizeData, the BONUS table, or anything that changes a displayed dollar figure. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
+description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, or anything that changes a displayed dollar figure. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
 ---
 
 # Wage core
@@ -15,9 +15,15 @@ stop and mark the item `deferred`.
 ## What counts as wage core
 
 `shiftGross`, `hourlyRate`, `computeNet` (the per-paycheck tax model shared by the hero and
-the pattern lab since #65), `calc`, `statOf` / `ptoStatOf`, `patternMetrics`, and the
-rate/differential coercions in `sanitizeData`. The `BONUS` table too — changing a bonus rate
-changes every historical shift's displayed value.
+the pattern lab since #65), `calc`, `statOf` / `ptoStatOf`, `patternMetrics` and the
+`patternCellToShift` it prices cells through, and the rate/differential coercions in
+`sanitizeData`. The `BONUS` table too — changing a bonus rate changes every historical shift's
+displayed value. **Also `sampleNet`** (the onboarding done-screen figure) **and `keepRatio`**
+(the take-home ratio behind the Add-Shift preview, the goal reverse view and the calendar
+cells): both build a tax model *beside* `computeNet` and had drifted from it when the council
+looked on 2026-09-13 (`wage-math-04`, `-06`). They were outside this list, which is how they
+drifted; a surface that prints a dollar figure from its own arithmetic is wage core whatever
+it is called.
 
 Adding a *sanitizer branch for a new data shape* (as #62 did for `goals`) is not wage core
 and is fine in a nightly, provided it ships with a unit test and the existing probes stay green.

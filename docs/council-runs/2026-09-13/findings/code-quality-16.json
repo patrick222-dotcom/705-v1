@@ -1,0 +1,13 @@
+{
+ "title": "First-run create/join-board inputs don't submit on Enter; their later duplicates do",
+ "severity": "low",
+ "where": "index.html:5388-5400 (Create your unit's board / Join with a code, groups.length===0 branch) vs index.html:5574-5601 (Create another board / Join another board, the groups.length>0 duplicate)",
+ "detail": "",
+ "failure": "",
+ "fix": "",
+ "wageCore": false,
+ "slices": [
+  "swap-board"
+ ],
+ "id": "code-quality-16"
+}

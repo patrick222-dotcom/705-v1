@@ -1,0 +1,13 @@
+{
+ "title": "Share sheet is the one sheet that doesn't lock background scroll",
+ "severity": "medium",
+ "where": "index.html:2596-2600 (body-scroll-lock effect) vs index.html:2228-2230/3657 (showShare state) and index.html:5666-5702 (ShareSheet)",
+ "detail": "App's single scroll-lock effect sets `document.body.style.overflow='hidden'` only while `sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns` is true (index.html:2597). `showShare` (declared 2228, set by `openShare` at 2230, used to conditionally render `<ShareSheet>` at 3657) is not in that list, and ShareSheet itself (5666-5702) has no scroll-lock effect of its own — I checked its full body, there is none.",
+ "failure": "Tap SHARE in Settings (or wherever `openShare` is wired) to bring up the QR-code sheet, then, while holding the phone up for a coworker to scan (exactly what the sheet's own copy says to do: \"Hold this up and let them scan it with their camera\"), a stray touch or the phone shifting in a one-handed grip drags the calendar page underneath — the background is still scrollable/rubber-bands, unlike every other sheet in the app (Settings, Feedback, Breakdown, Auth, ics import, Swaps, Patterns all lock it). Closing the sheet afterward can leave the calendar scrolled to a different position than before it opened.",
+ "fix": "Add `showShare` to the OR condition in the effect at index.html:2597 (and its dependency array at 2600), matching the pattern already used for every other sheet.",
+ "wageCore": false,
+ "slices": [
+  "settings-etc"
+ ],
+ "id": "mobile-ux-09"
+}

@@ -1,0 +1,13 @@
+{
+ "title": "SHIFT TYPE chips in Add-Shift sheet are 5px under the 44px tap-target minimum, unlike every sibling control in the same sheet",
+ "severity": "medium",
+ "where": "index.html:4205-4212 (JSX, the SHIFT TYPE .chips-grid) and index.html:317-321 (.chips-grid/.chip-sel CSS, no min-height set)",
+ "detail": "The SHIFT TYPE picker is a 2-column grid of `.chip-sel` buttons with no inline min-height override: `<button key={k} className={'chip-sel'+...} onClick={...}><i .../>{d.name}</button>` (index.html:4208). `.chip-sel` itself only sets `padding:11px 12px` plus a 1.5px border (index.html:318), with no explicit height. Measured live on an iPhone 13 viewport (390x844) via the project's own Playwright harness, these buttons render at 39px tall. Every other interactive control in the exact same AddShiftSheet component was explicitly fixed to 44px: the OVERTIME toggle chip (`style={{...,minHeight:44}}`, index.html:4216), the QUICK ADD FROM TEMPLATE buttons (`style={{flex:1,minHeight:44}}`, index.html:4180), and the MARK THIS DAY / day-event chips (`style={{...,minHeight:44}}`, index.html:4255) - confirmed by the same measurement to render at exactly 44px. The calendar's own quick-fill template chips (index.html:3534, `style={{minHeight:44}}`) follow the same 44px convention. So within this one sheet, the single highest-frequency control - the one every logged shift requires tapping to set Day/Night/Weekend/Holiday/Bonus - is the one control the developer forgot to size, while every neighboring chip was deliberately fixed.",
+ "failure": "A nurse holding her phone one-handed mid-shift, thumb reaching across the sheet to tap 'Night' in the 2-column grid, gets a 39px-tall target with only 8px of vertical gap to the row below (row2 'Weekend day/night' starts at y=224.5 when row1 starts at y=177.5, per the measured boxes) - noticeably tighter than the 44px targets she gets for every other choice in the same flow (overtime toggle, template quick-add, PTO/education/appointment/off). The practical result is a higher mis-tap rate on exactly the control that determines the wage differential applied and previewed for that shift; she has to notice the wrong chip highlighted, undo, and retry.",
+ "fix": "Add the same `minHeight:44` (or equivalent CSS min-height) to the SHIFT TYPE `.chip-sel` buttons at index.html:4208, matching the inline style already applied to the OT toggle, template buttons, and event-kind chips a few lines below in the same component - or move `min-height:44px` into the shared `.chip-sel` CSS rule (index.html:318) so every current and future call site gets it for free instead of requiring each caller to remember the inline override.",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "mobile-ux-05"
+}

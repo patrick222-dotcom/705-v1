@@ -1,0 +1,13 @@
+{
+ "title": "Hero hours chip renders the raw float sum, so tenth-hour shifts show '36.900000000000006 hrs'",
+ "severity": "low",
+ "where": "index.html:3489 (`{calc.hours} hrs · {periodShiftCount} shifts`) vs index.html:3496 and index.html:3970 which use toFixed",
+ "detail": "calc.hours is a plain accumulator over `s.hours` (index.html:2795-2802). The hours NumInput (index.html:4226) commits any parseFloat value — `step=\"0.5\"` is only a spinner hint — and Kronos-style timekeeping rounds to tenths, so 12.3h / 8.1h entries are realistic. The stats tile and Year view both format hours with `toFixed(h%1?1:0)`; the hero chip is the one surface that prints the float directly. Verified in Node: 12.3+12.3+12.3 = 36.900000000000006; 8.1+8.2 = 16.299999999999997.",
+ "failure": "Three 12.3h shifts in the period: hero chip reads '36.900000000000006 hrs · 3 shifts' while the stats tile directly beneath reads '36.9'.",
+ "fix": "Use the same formatter as the stats tile: `{calc.hours.toFixed(calc.hours%1?1:0)} hrs`.",
+ "wageCore": false,
+ "slices": [
+  "money-surfaces"
+ ],
+ "id": "wage-math-08"
+}

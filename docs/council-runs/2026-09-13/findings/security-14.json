@@ -1,0 +1,13 @@
+{
+ "title": "Deploy workflow runs mutable action tags with pages:write + id-token:write",
+ "severity": "low",
+ "where": ".github/workflows/deploy.yml:30, 33, 48, 54 (actions/checkout@v4, configure-pages@v4, upload-pages-artifact@v3, deploy-pages@v4); ci.yml:29, 32, 56, 59",
+ "detail": "deploy.yml grants `pages: write` and `id-token: write` (lines 13-16) and resolves four actions by floating major tag. A moved or compromised tag runs with the OIDC token that publishes badgebudget.com. CI's actions run with contents:read only, so the exposure is the deploy job. Already listed in CLAUDE.md under 'CI and the harness' as to-do; recorded here because it is the one place in this slice where what reaches nurses' phones depends on a ref nobody in the repo controls.",
+ "failure": "A poisoned `actions/deploy-pages` or `upload-pages-artifact` release publishes attacker HTML at badgebudget.com on the next merge; every signed-in nurse who opens the app hands it her session and wage blob, and the SRI/CSP in index.html cannot help because the page itself is replaced.",
+ "fix": "Pin each `uses:` to a full commit SHA with the version in a trailing comment (e.g. `actions/checkout@<sha> # v4.2.2`), and bump checkout/setup-node off the deprecated Node 20 runtime while doing it. Have scripts/check_build.mjs assert every `uses:` in both workflows matches `@[0-9a-f]{40}` so the pin cannot silently regress.",
+ "wageCore": false,
+ "slices": [
+  "infra"
+ ],
+ "id": "security-14"
+}

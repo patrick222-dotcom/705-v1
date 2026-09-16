@@ -1,0 +1,13 @@
+{
+ "title": "Sheet defaults to shiftType 'night' even when Night is toggled off, and prices the hidden differential",
+ "severity": "medium",
+ "where": "index.html:4077 (useState('night')), :4099 (active chip filter), :4104-4105 (preview), :1119-1124 (hourlyRate ignores `active`)",
+ "detail": "AddShiftSheet initialises `shiftType` to the literal 'night' (line 4077) and never reconciles it with the chip list, which is filtered to `d.active` (line 4099). There is no useEffect in the component (checked 4075-4300). `hourlyRate` (1119-1124) does not consult `active`, so `differentials['night']` with `active:false` still adds its amount. The pattern lab does honour the flag — `patternCellShiftType` (1206-1212) prices a night cell as 'base' when Night is inactive — so the two surfaces disagree on the same setup. Settings (4712) and onboarding (5779) both expose the Night switch, so this is one tap away from the default.",
+ "failure": "Base $50, Night switched off in Settings or onboarding. Tap '+ Log a shift': no shift-type chip is highlighted, yet the preview reads '+$720 gross · about +$561 take-home' (60×12 × 0.7785). Tapping 'Add shift' without touching a chip saves a 'night' shift; the ON THIS DAY row reads 'Night ×12h', the hero rises by $720 and the calendar cell shows ~$561. A day shift at her rate is $600 gross / ~$467 take-home, so every quick log is $120 high on a differential she turned off.",
+ "fix": "Initialise from the first active, non-overtime key: `useState(()=>{ const a=Object.entries(differentials).find(([k,d])=>d.active&&k!=='overtime'); return a?a[0]:'base'; })` — or, equivalently, derive `active` first and seed from `active[0]`. Add a harness assertion: toggle Night off, open the sheet, assert a chip is `aria-pressed` and the preview equals base×12×keepRatio. (Whether an inactive differential should keep paying on already-logged shifts in calc/statOf is a separate product call; this fix does not touch that.)",
+ "wageCore": false,
+ "slices": [
+  "add-shift"
+ ],
+ "id": "wage-math-12"
+}
