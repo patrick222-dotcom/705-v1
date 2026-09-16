@@ -11,7 +11,7 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rmSync, existsSync } from 'node:fs';
+import { rmSync, existsSync, readFileSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -409,6 +409,47 @@ const run = async () => {
     const body = await page.locator('body').innerText();
     ok('ops: the gate leaks no row content', !/Reply to:/.test(body));
     ok('ops: gate raises no page error', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 8. council 2026-09-13, bucket 1 --------------------------------------------------
+     Each block below pins one fix from docs/council-runs/2026-09-13/synthesis.md (bucket 1: nightly-
+     safe, no Invariant-3 function, no displayed-dollar change). Every assertion was negative-tested
+     against a copy with the fix reverted -- see docs/history.md for the run. */
+  if (want(8)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+
+    /* mobile-ux-00 (#29): the two hero footer links carried className="hero more linklike", so each
+       inherited the whole .hero card rule -- a 59px dark pill apiece, ~120px of dead first screen. */
+    const heroCount = await page.evaluate(() => document.querySelectorAll('.hero').length);
+    ok('council: exactly one .hero card renders on the dashboard', heroCount === 1, `${heroCount} .hero`);
+    const links = await page.evaluate(() => [...document.querySelectorAll('.hero .more')].map((b) => ({
+      h: Math.round(b.getBoundingClientRect().height), bg: getComputedStyle(b).backgroundColor })));
+    ok('council: hero footer links are inline links, not cards',
+      links.length === 2 && links.every((l) => l.h < 40 && /rgba\(0, 0, 0, 0\)|transparent/.test(l.bg)), JSON.stringify(links));
+
+    /* mobile-ux-09 (#31): ShareSheet was the one sheet left out of the body-scroll lock effect. */
+    await page.locator('button[aria-label="Share BadgeBudget"]').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { timeout: 4000 });
+    const lockedOpen = await page.evaluate(() => document.body.style.overflow);
+    ok('council: opening the share sheet locks body scroll', lockedOpen === 'hidden', `overflow=${JSON.stringify(lockedOpen)}`);
+    await page.locator('.sheet-h button[aria-label="Close"]').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Share BadgeBudget")', { state: 'detached', timeout: 4000 });
+    const lockedClosed = await page.evaluate(() => document.body.style.overflow);
+    ok('council: closing the share sheet releases body scroll', lockedClosed === '', `overflow=${JSON.stringify(lockedClosed)}`);
+
+    /* mobile-ux-12 (#31): the first-run create/join inputs on the swap board lacked the Enter-to-submit
+       their "another board" siblings have. The zero-groups screen needs a live session the sandbox
+       cannot mint, so this half is pinned at the source: both inputs carry an Enter handler. */
+    const src = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    const firstRun = src.slice(src.indexOf("<h3>Create your unit's board</h3>"), src.indexOf('<h3>Join with a code</h3>') + 1200);
+    ok('council: first-run board-name input submits on Enter', /aria-label="Board name"[^>]*onKeyDown=\{e=>\{ if\(e\.key==='Enter'\) doCreateGroup\(\)/.test(firstRun));
+    ok('council: first-run invite-code input submits on Enter', /aria-label="Invite code"[^>]*onKeyDown=\{e=>\{ if\(e\.key==='Enter'\) doJoinGroup\(\)/.test(firstRun));
+
+    ok('council: no page errors in the bucket-1 section', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
   }

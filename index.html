@@ -2612,10 +2612,10 @@ function App(){
   },[ready,setupComplete]);
 
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare]);
 
   /* Flush any feedback that was saved locally while offline. */
   useEffect(()=>{
@@ -3499,8 +3499,8 @@ function App(){
                 {calc.hours>0 && <span className="chip">Keep {calc.pct}%</span>}
                 {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
-              <button className="hero more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
-              <button className="hero more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
+              <button className="more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
+              <button className="more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
             </div>
 
             <div className="stats">
@@ -5414,7 +5414,8 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div className="card" style={{marginBottom:14}}>
               <h3>Create your unit's board</h3>
               <div className="inp" style={{marginBottom:10}}>
-                <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Nights" aria-label="Board name"/>
+                <input value={createName} onChange={e=>setCreateName(e.target.value.slice(0,60))} placeholder="e.g. 4 North Nights" aria-label="Board name"
+                  onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup(); }}/>
               </div>
               <button className="btn btn-primary" disabled={creating} onClick={doCreateGroup}>{creating?'Creating…':'Create board'}</button>
             </div>
@@ -5423,7 +5424,8 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
               <div style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.5,marginBottom:10}}>Enter the 6-character code a colleague shared with you.</div>
               <div className="inp" style={{marginBottom:10}}>
                 <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
-                  placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"/>
+                  placeholder="ABC123" maxLength={6} style={{textTransform:'uppercase',letterSpacing:'2px',fontWeight:700,textAlign:'center'}} aria-label="Invite code"
+                  onKeyDown={e=>{ if(e.key==='Enter') doJoinGroup(); }}/>
               </div>
               <button className="btn btn-ghost" disabled={joining} onClick={()=>doJoinGroup()}>{joining?'Joining…':'Join board'}</button>
             </div>
