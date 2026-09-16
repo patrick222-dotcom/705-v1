@@ -459,9 +459,9 @@ const run = async () => {
        the client is stubbed the way section 5 stubs getSession(): A is signed in, signOut() resolves,
        onAuthStateChange never fires SIGNED_OUT (the stalled case the manual path exists for), and
        window.__fireAuth lets the test sign B in afterwards through the app's own callback. */
-    const fakeAuth = async (seed) => {
+    const fakeAuth = async (seed, cloud = false) => {
       const { ctx, page, errors } = await newPage(browser, url, { seed });
-      await page.addInitScript(() => {
+      await page.addInitScript((withCloud) => {
         const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' }, access_token: 'a', refresh_token: 'a' };
         let real;
         Object.defineProperty(window, 'supabase', {
@@ -476,6 +476,22 @@ const run = async () => {
                   c.auth.getSession = async () => ({ data: { session: A }, error: null });
                   c.auth.onAuthStateChange = (cb) => { window.__fireAuth = (ev, sess) => cb(ev, sess); return { data: { subscription: { unsubscribe() {} } } }; };
                   c.auth.signOut = async () => ({ error: null });
+                  if (withCloud) {
+                    /* A thenable query chain: selects answer "no row" (PGRST116, the first-run case),
+                       inserts succeed, upserts are counted and fail with 23514 while window.__failSave
+                       is set. Enough for hydration to complete and for a save to be made to fail. */
+                    c.from = () => {
+                      const q = { _op: 'select' };
+                      for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single']) q[m] = () => q;
+                      q.insert = () => { q._op = 'insert'; return q; };
+                      q.upsert = () => { q._op = 'upsert'; window.__upserts = (window.__upserts || 0) + 1; return q; };
+                      q.then = (res, rej) => Promise.resolve(
+                        q._op === 'upsert' ? (window.__failSave ? { error: { code: '23514', message: 'stub' } } : { error: null })
+                        : q._op === 'insert' ? { error: null }
+                        : { data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                      return q;
+                    };
+                  }
                 } catch (_) {}
                 return c;
               };
@@ -483,7 +499,7 @@ const run = async () => {
             real = v;
           },
         });
-      });
+      }, cloud);
       return { ctx, page, errors };
     };
     const signOutViaMenu = async (page) => {
@@ -541,6 +557,45 @@ const run = async () => {
       const feedback = pv.slice(pv.indexOf('<h2>Feedback</h2>'), pv.indexOf('<h2>Calendar sync</h2>'));
       ok('council: privacy notice says signed-in feedback carries the account id regardless of contact',
         /carries\s+your account id/.test(feedback) && /whether or not you fill in a contact/.test(feedback));
+    }
+
+    /* data-integrity-00 (#23), security-05 client half (#19), security-12 (#22). */
+    {
+      const { ctx, page, errors } = await fakeAuth(true, true);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.waitForTimeout(1500);   // let hydration and any debounced save settle while saves still succeed
+      const UID = '11111111-1111-4111-8111-111111111111';
+      const flush = await page.evaluate((uid) => {
+        localStorage.removeItem('nursingWagePlannerData::' + uid);
+        window.__failSave = true;
+        Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        return new Promise((r) => setTimeout(() => r({ backup: localStorage.getItem('nursingWagePlannerData::' + uid) !== null, upserts: window.__upserts || 0 }), 400));
+      }, UID);
+      ok('council: a failed pagehide flush keeps the per-user backup', flush.backup === true, JSON.stringify(flush));
+
+      const size = await page.evaluate(async (uid) => {
+        const before = window.__upserts || 0;
+        window.__failSave = false;
+        const ts = await saveToSupabase(uid, { pad: 'x'.repeat(MAX_BLOB_BYTES + 1) });
+        return { ts, upsertsDuring: (window.__upserts || 0) - before };
+      }, UID);
+      ok('council: saveToSupabase refuses an oversize blob before it reaches the network', size.ts === null && size.upsertsDuring === 0, JSON.stringify(size));
+
+      const budget = await page.evaluate(() => {
+        const entries = Array.from({ length: 8 }, (_, i) => ({ t: i, msg: ('E' + i + ' ').padEnd(300, 'x'), src: 'x'.repeat(90) + '.js', line: 100 + i }));
+        localStorage.setItem('scrubpayErrors', JSON.stringify(entries));
+        let captured = null; const realTrack = window.track;
+        window.track = (name, props) => { captured = { name, props }; };
+        try { flushClientErrors(null); } finally { window.track = realTrack; }
+        return captured && { name: captured.name, len: JSON.stringify(captured.props).length, kept: captured.props.errors.length, n: captured.props.n, newestKept: captured.props.errors[captured.props.errors.length - 1].msg.slice(0, 2) };
+      });
+      ok('council: client_error batch stays under the events.props size CHECK and keeps the newest entries',
+        !!budget && budget.name === 'client_error' && budget.len <= 1700 && budget.kept >= 1 && budget.kept < 8 && budget.n === 8 && budget.newestKept === 'E7', JSON.stringify(budget));
+      ok('council: no page errors across the save-path drive', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
     }
   }
 

@@ -642,6 +642,10 @@ const withTimeout = (p, ms, label) => Promise.race([
 /* ---------- model ---------- */
 const STORE_KEY = 'nursingWagePlannerData';
 const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier safety; real data is a few KB)
+/* Size of a blob as Postgres will see it (UTF-8 bytes), not JS string length (UTF-16 units). Every
+   path that writes user_data measures with this so the cap means one thing (council 2026-09-13,
+   security-05: the check lived at one of three save sites, and flush/retry bypassed it). */
+function blobBytes(data){ try{ return new TextEncoder().encode(JSON.stringify(data)).length; }catch(_){ return JSON.stringify(data).length; } }
 const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
 const MAX_GOALS = 12;      // cap on savings goals (bounds per-row blob growth; keeps the list scannable)
 
@@ -1335,6 +1339,7 @@ function planPatternApply(pattern, shifts, differentials, opts){
    record it as the "last write we made" so the focus-refetch can ignore our own writes. */
 async function saveToSupabase(userId, data){
   if(!supabase) return null;
+  if(blobBytes(data) > MAX_BLOB_BYTES){ logClientError('Save skipped: blob over MAX_BLOB_BYTES'); return null; }   // the ONE size check; flush + retry inherit it
   const updatedAt = new Date().toISOString();
   try{
     // onConflict MUST be user_id. The table's PK is `id uuid default gen_random_uuid()` and
@@ -1453,6 +1458,11 @@ function flushDeferredEvents(userId){
 }
 
 const ERR_FLUSH_CAP = 8;
+/* events.props carries CHECK (pg_column_size(props) < 2000). jsonb runs a little over its text form,
+   so the flushed batch is held under 1,700 text chars by dropping the OLDEST entries — the ring buffer
+   was already cleared, so an over-cap row was a silent loss of exactly the load worth diagnosing
+   (council 2026-09-13, security-12). */
+const ERR_FLUSH_TEXT_BUDGET = 1700;
 function redactMoney(v){
   return String(v==null?'':v)
     .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
@@ -1465,11 +1475,13 @@ function flushClientErrors(userId){
     if(!buf.length) return;
     const errors = buf.slice(-ERR_FLUSH_CAP).map(e=>({
       t: (e && e.t) || null,
-      msg: redactMoney(e && e.msg).slice(0,300),
+      msg: redactMoney(e && e.msg).slice(0,160),
       src: String((e && e.src) || '').split('/').pop().slice(0,80) || null,
       line: (e && e.line) || null
     }));
-    track('client_error', {n: buf.length, errors}, userId);
+    const props = {n: buf.length, errors};
+    while(errors.length > 1 && JSON.stringify(props).length > ERR_FLUSH_TEXT_BUDGET) errors.shift();
+    track('client_error', props, userId);
   }catch(_){ /* diagnostics must never break the app they diagnose */ }
 }
 
@@ -2489,7 +2501,7 @@ function App(){
         if(hydratedForUser.current !== user.id) return;
         // Free-tier guard: a single pathological blob shouldn't balloon the DB. Well above any
         // realistic pay history (~a few KB), so this only ever trips on corruption/abuse.
-        if(JSON.stringify(dataToSave).length > MAX_BLOB_BYTES){
+        if(blobBytes(dataToSave) > MAX_BLOB_BYTES){
           if(!oversizeWarned.current){ oversizeWarned.current = true; toast('Your data got unusually large — cloud sync paused. Try clearing old shifts.','error'); }
           writeBackup(user.id, dataToSave);
           setSyncError(true);
@@ -2521,7 +2533,9 @@ function App(){
       if(!snap) return;
       if(snap.user){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key
-        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } }); }catch(_){} }
+        // A failed save here mirrors to the per-user backup exactly as the debounced path does — the
+        // flush used to have only a success branch (council 2026-09-13, data-integrity-00).
+        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } else { writeBackup(snap.user.id, snap.data); } }); }catch(_){} }
       }else{
         try{ localStorage.setItem(STORE_KEY, JSON.stringify(snap.data)); }catch(_){}
       }
