@@ -257,7 +257,8 @@ if (wants('3')) {
     return agent(
       `You are the ${l.key} lens of the BadgeBudget council. Score this lens 1-10 for the app as it ` +
       `stands; 8 is the bar the council holds.\n\n` +
-      `Titles and locations for every id below are in ${runDir}/index.json (read it first); the full text of any finding is ${runDir}/findings/<id>.json.\n\n` +
+      `Titles and locations for every id below are in ${runDir}/index.json (read it first); the full text of any finding is ${runDir}/findings/<id>.json. ` +
+      `The status lists in THIS prompt are authoritative: any status field inside index.json or confirmed.json may lag behind the verdicts this run just produced.\n\n` +
       `CONFIRMED after adversarial review (${conf.length}):\n${conf.map(line).join('\n') || '(none)'}\n\n` +
       `REJECTED by the refuters (${rej.length}) -- these do not count against the app:\n${rej.map((f) => `- ${f.id} ${f.title}`).join('\n') || '(none)'}\n\n` +
       `UNVERIFIED (${unv.length}) -- refuters did not complete; count as open, not confirmed:\n${unv.map(line).join('\n') || '(none)'}\n\n` +
@@ -270,12 +271,18 @@ if (wants('3')) {
       .then((s) => s && ({ ...s, lens: l.key, confirmed: conf.length, rejected: rej.length, unverified: unv.length, lows: lows.length }))
   }))
   out.scores = scores.filter(Boolean)
+  const allIds = (st) => LENSES.flatMap((l) => (merged[l.key] || []).filter((f) => f.severity !== 'low' && statusOf(f.id) === st).map((f) => f.id))
+  const lowIds = LENSES.flatMap((l) => (merged[l.key] || []).filter((f) => f.severity === 'low').map((f) => f.id))
   const synthesis = await agent(
     `Synthesize a BadgeBudget council run into what the owner should do next.\n\n` +
-    `The verified findings are in ${runDir}/confirmed.json (every finding that survived adversarial ` +
-    `review, with lens, severity, where, detail, failure, fix, wageCore and any dissenting refuter). ` +
-    `Read it in full. The unverified and low-severity findings are listed in ${runDir}/status.md and ` +
-    `${runDir}/dedups.json; they are backlog candidates, not action items.\n\n` +
+    `AUTHORITATIVE STATUS (this run's verdicts; status fields inside index.json / confirmed.json on disk may lag and must not override this list):\n` +
+    `CONFIRMED (${allIds('confirmed').length}): ${allIds('confirmed').join(', ') || 'none'}\n` +
+    `REJECTED (${allIds('rejected').length}): ${allIds('rejected').join(', ') || 'none'}\n` +
+    `UNVERIFIED (${allIds('unverified').length}): ${allIds('unverified').join(', ') || 'none'}\n` +
+    `LOW, never agent-verified (${lowIds.length}): ${lowIds.join(', ') || 'none'}\n\n` +
+    `Every finding's full text (lens, severity, where, detail, failure, fix, wageCore) is in ${runDir}/findings/<id>.json; ` +
+    `titles and locations for all of them are in ${runDir}/index.json. Read every CONFIRMED finding in full. ` +
+    `Rejected and low findings are backlog candidates, not action items.\n\n` +
     `LENS SCORES:\n${JSON.stringify(out.scores, null, 2)}\n\n` +
     `COVERAGE GAPS: ${unreviewed.length ? unreviewed.join(', ') : 'none -- all 56 cells reviewed'}\n\n` +
     `KNOWN, already in the backlog -- anything that restates one of these goes in a "found the backlog" bucket, not the action list:\n- ${KNOWN.join('\n- ')}\n\n` +

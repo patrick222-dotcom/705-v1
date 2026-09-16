@@ -121,6 +121,11 @@ night (03:00 UTC) via one-shot Routines firing into the same session — `docs/h
 
 Prerequisites, in order of how likely they are to bite:
 
+- **Derived files lag inside a run.** `confirmed.json`, `index.json` and `status.md` are regenerated
+  only by `persist`, so an agent that reads them mid-run sees the *previous* batch's picture. The
+  2026-09-16 synthesis read a 42-item `confirmed.json` while the run it belonged to had just
+  confirmed 85, and "corrected" the scorers downward on that basis. Every stage now gets the
+  authoritative id-by-status list inline from the script; files are for finding *text* only.
 - **Persist after every batch, before anything else.** The `.output` file with the workflow's return
   value lives in the container; `persist` is what moves it into git. A batch whose result was not
   persisted has to be bought again.
