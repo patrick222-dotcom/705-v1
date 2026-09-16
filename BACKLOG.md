@@ -48,6 +48,32 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Hours-in-window differentials** (`harness:drivable`; the largest remaining gap between a
+  projection and a real check). Courtney's current employer pays a differential against the HOURS that
+  fall in a window, not against the shift: her 2025 stub reads `3rd Shift Differential  7.000000 ×
+  20.00 hours` beside `Regular 70.810000 × 47.10 hours`. A shift carrying one `shiftType` cannot
+  express that — and her own shift is a 3a–3p straddle, 4 night hours and 8 day hours, so this is her
+  normal case, not an edge one. Needs a window model on the job record (start/end per differential),
+  a per-shift split, and a Breakdown that shows the split without turning the hero into a payroll
+  register. **Why NOT the nightly:** it is wage-core (Invariant 3), it changes every displayed figure
+  for anyone who uses it, and it needs a design call on how a split shift reads on a phone.
+- [ ] **`isWeekend` uses the start date only** (`index.html:915`), so a Friday 7p–Saturday 7a shift is
+  weekday though 7 of its 12 hours are Saturday. Same shape as the item above — the fix is hours in a
+  window, not a different date to test — so do them together rather than patching this one alone.
+- [ ] **Teach the importer the Aya travel layout** (`harness:drivable`). The 2022 Aya statement has no
+  `HOURS AND EARNINGS` block at all: `Hours/Units Rate Amount` columns, `$`-prefixed amounts, indented
+  earning names, and a `Reimbursements` section carrying the non-taxable per-diem and housing stipends.
+  `parseEarningsRows` handles the PeopleSoft shape only, so this file yields nothing. `computeNet`
+  already takes the `{taxable, nonTaxable}` split these stipends need (2026-09-15); the importer is the
+  missing half. **Why NOT the nightly:** a second format needs a second set of real fixtures and a
+  decision about how the review sheet presents non-taxable money, which is the whole TP-014 surface.
+- [ ] **The PA/Philadelphia tax model** (wage-core). State tax is computed on `gross − pretax`, but PA
+  taxes full gross less Section 125 only — 403(b) is *not* deductible for PA — and there is no concept
+  of a city tax, though her stub carries `PA PHILADELPHIA W/H` at roughly 3.75% and a flat `PA  LS Tax`.
+  The importer derives a single blended "state rate" that quietly absorbs all three, which is why the
+  number looks right on her stub and would be wrong for anyone outside Philadelphia. **Why NOT the
+  nightly:** it moves every take-home figure and needs a residence/work-state model to be worth doing.
+
 - [ ] **Pin the GitHub Actions to SHAs + bump the deprecated Node 20 runtime** (supply-chain hardening;
   from CLAUDE.md → Open items). `ci.yml` and `deploy.yml` reference actions by floating major tag
   (`actions/checkout@v4`, `actions/setup-node@v4`, the Pages actions) and `.mcp.json` runs the Supabase
