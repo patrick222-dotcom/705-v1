@@ -173,6 +173,31 @@ found the backlog:
 - `te_swap_p2_algo.js` and `rls_audit.js` have never been in git, so their quoted figures are
   unreproducible.
 
+## The re-check (after the fixes ship)
+
+A full re-run to learn whether the fixes moved the scores would cost a whole window to answer two
+narrow questions: did each fix land, and what does each lens score now. `.claude/workflows/council-recheck.mjs`
+answers exactly those and nothing else — one verifier per applied synthesis entry (is the fix in the
+code, is it pinned by an assertion, what residue is left), one re-scorer per lens given its own
+previous score and "worst", and one short synthesis that produces the before/after table for
+`docs/history.md`. It does **not** look for new defects; anything a verifier notices goes in
+`residual`, never into a finding list, because an unverified aside dressed as a finding is what the
+live-vote floor exists to prevent. Everything runs on `sonnet` except the synthesis.
+
+```
+# args are a committed file, so the re-check survives a reclaimed container
+Workflow({ scriptPath: '.claude/workflows/council-recheck.mjs',
+           args: <contents of docs/council-runs/<date>/recheck-args.json> })
+```
+
+`recheck-args.json` carries: `applied` (one entry per synthesis number that shipped — its ids, a
+one-line description of the fix, and a scope note naming any half that was routed instead), `routed`
+(every confirmed id that did not ship and where it now lives), `scoresBefore` (lens, score, worst,
+toReachEight from `scores.json`) and `shipped` (the PR and the live marker). Keep it under ~16KB —
+the scorers read `scores.json` and `findings/<id>.json` themselves for anything longer. About 30
+agents; a fifth of a window. Fold the result into `docs/history.md` as the before/after table, and
+into `BACKLOG.md` only if a verifier says a fix did not land.
+
 ## After a run
 
 Record it in `docs/history.md`: lenses and scores, confirmed-vs-rejected counts, what was applied
