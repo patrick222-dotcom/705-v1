@@ -43,9 +43,22 @@
 --   ob          — furthest onboarding step reached (0 welcome .. 4 done), null if never shown.
 --   synthetic   — the test harness writing to production analytics. `tests/harness.mjs` rewrote
 --                 the CDN script tags but not the Supabase URL, so every CI smoke run inserted
---                 real rows carrying Playwright's iPhone-13 user agent. The harness is fixed in
---                 the same change as this file; this flag exists to keep the ~270 rows it already
+--                 real rows carrying Playwright's iPhone-13 profile user agent. The harness is
+--                 fixed in the same change as this file; this flag keeps the 291 rows it already
 --                 wrote out of the way without deleting history. Excluded by default.
+--
+--                 The match is the INTERNALLY INCONSISTENT PAIR `iPhone OS 15_0` + `Version/18.0`,
+--                 never a WebKit build number. Playwright's pinned iPhone 13 profile emits
+--                 `Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15
+--                 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1`, and no real iPhone
+--                 reports Safari 18 on iOS 15.0 — so the pair cannot collide with a genuine device
+--                 the way either half alone could. `AppleWebKit/605.1.15` is on every real iPhone
+--                 in this table, and a phone stuck on iOS 15 is rare rather than impossible; a
+--                 first draft of this file matched a build number that appears in zero rows, so
+--                 the flag silently classified nothing. 291 rows / 251 devices, 232 of them one
+--                 event, first seen 2026-09-07 — the day `ci.yml` was added and `gate` + `smoke`
+--                 became required checks — and the seven event names present are exactly the ones
+--                 `tests/smoke.mjs` drives.
 create or replace function public.ops_device_list(
   p_limit int default 100,
   p_include_synthetic boolean default false
@@ -93,7 +106,9 @@ begin
       count(*) filter (where e.name = 'client_error')                as errors,
       bool_or(e.user_id in (select a.uid from public.ops_admins a))  as insider,
       (array_agg(e.user_agent order by e.created_at desc))[1]        as ua,
-      (array_agg(e.name       order by e.created_at desc))[1]        as stalled_at
+      (array_agg(e.name       order by e.created_at desc))[1]        as stalled_at,
+      bool_or(e.user_agent like '%iPhone OS 15\_0 %'
+          and e.user_agent like '%Version/18.0 %')                   as synthetic
     from public.events e
     where e.anon_id is not null
     group by e.anon_id
@@ -119,9 +134,9 @@ begin
       when d.ua ilike '%android%'      then 'Android'::text
       else 'Desktop'::text
     end,
-    (d.ua like '%AppleWebKit/604.1.38%')
+    coalesce(d.synthetic, false)
   from d
-  where p_include_synthetic or d.ua is null or d.ua not like '%AppleWebKit/604.1.38%'
+  where p_include_synthetic or not coalesce(d.synthetic, false)
   order by d.last_seen desc
   limit least(greatest(coalesce(p_limit, 100), 1), 500);
 end;

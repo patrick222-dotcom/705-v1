@@ -1437,7 +1437,7 @@ const run = async () => {
     const extra = end ? Object.keys(end.props || {}).filter((k) => !allowed.includes(k)) : ['(no row)'];
     ok('session_end: no prop outside the declared, money-free whitelist', extra.length === 0, extra.join(','));
     /* Scoped to props, which is what this change introduces. `user_agent` is a long-standing
-       column and carries version numbers like AppleWebKit/604.1.38 that look money-shaped to any
+       column and carries version numbers like AppleWebKit/605.1.15 that look money-shaped to any
        honest regex — widening this to the whole row tests the wrong thing and fails on a string
        nobody chose. */
     ok('session_end: its props contain no money-shaped figure',
@@ -1496,6 +1496,25 @@ const run = async () => {
       !scratchOps.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
     ok('harness: index.html itself is untouched (the rewrite is scratch-only)',
       src.includes('mnnlgcxnvodjwlhhiphq.supabase.co'));
+
+    /* Migration 006 flags the rows the harness already wrote so they stay out of the console.
+       Its predicate is a guess about a string the SQL cannot see, and the first draft guessed a
+       WebKit build number that appears in ZERO rows — a flag that silently classified nothing and
+       looked exactly like a flag that worked. Tie it to the real thing: the user agent this
+       harness's own pinned Playwright actually emits for the iPhone 13 profile. If a Playwright
+       bump changes it, this fails here rather than quietly un-flagging 251 devices. */
+    const harnessUA = devices['iPhone 13'].userAgent;
+    const mig = readFileSync(join(ROOT, 'supabase/migrations/006_ops_device_trail.sql'), 'utf8');
+    const likes = [...mig.matchAll(/e\.user_agent like '%([^']+)%'/g)].map((m) => m[1].replace(/\\_/g, '_'));
+    ok('synthetic: migration 006 has a predicate to check at all', likes.length > 0, likes.join(' + '));
+    ok('synthetic: every LIKE in it matches the harness user agent this suite really sends',
+      likes.length > 0 && likes.every((l) => harnessUA.includes(l)),
+      `${JSON.stringify(harnessUA)} vs ${JSON.stringify(likes)}`);
+    /* And the other half: it must not match a genuine iPhone. iOS 15.0 paired with Safari 18 is
+       the impossible combination; either half alone is on real devices in the table. */
+    const realUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1';
+    ok('synthetic: it does not match a real iPhone user agent from the events table',
+      !likes.every((l) => realUA.includes(l)));
   }
 
   await browser.close();

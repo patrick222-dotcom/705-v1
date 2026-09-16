@@ -18,8 +18,13 @@ runs `smoke` on every push and pull_request, so each run inserted real `app_open
 `setup_completed` / `shift_saved` rows under a fresh `anon_id` (a new browser context starts with
 empty localStorage). The fingerprint is unmistakable once looked for: `app_open` rows 2–3 seconds
 apart in bursts of three, every one carrying Playwright's iPhone 13 profile string
-`AppleWebKit/604.1.38`. Of 304 iPhone-UA devices, **266 had fired exactly one event and 213 first
-appeared in the previous four days** — the council run and its PR churn.
+the internally inconsistent pair **`iPhone OS 15_0` + `Version/18.0`** — no real iPhone reports
+Safari 18 on iOS 15.0. **291 rows across 251 devices, 232 of them a single event, first seen
+2026-09-07**: the day `ci.yml` was added and `gate` + `smoke` became required checks. The seven
+event names present are exactly the ones `tests/smoke.mjs` drives. (Match the pair, never a WebKit
+build number: `AppleWebKit/605.1.15` is on every genuine iPhone in the table, and the first draft of
+migration 006 matched a build number present in zero rows, so its `synthetic` flag silently
+classified nothing until it was checked against the data.)
 
 It compounded with a second defect. `scripts/dashboard_snapshot.sql:52` reads
 `case when is_mobile then 'mobile'`, so a user agent *claiming* to be a phone is classified as, in

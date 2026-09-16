@@ -467,8 +467,13 @@ mobile user agents, and **the project's own test harness was writing to producti
 `tests/harness.mjs` rewrote the five CDN `<script>` tags but never `SUPABASE_URL`, so on a GitHub
 runner (open network, `ci.yml` runs `smoke` on every push and PR) each run inserted real rows under
 a fresh `anon_id`. Fingerprint: `app_open` rows 2–3 seconds apart in bursts, all carrying
-Playwright's iPhone 13 profile string `AppleWebKit/604.1.38`. Of 304 iPhone-UA devices on
-2026-09-16, **266 had fired exactly one event and 213 first appeared in the previous four days**.
+Playwright's iPhone 13 profile, identified by the internally inconsistent pair **`iPhone OS 15_0`
++ `Version/18.0`** (no real iPhone reports Safari 18 on iOS 15.0; match the pair, never a WebKit
+build number — `AppleWebKit/605.1.15` is on every genuine iPhone in the table). **291 rows across
+251 devices, 232 of them a single event, first seen 2026-09-07 — the day `ci.yml` was added and
+`gate` + `smoke` became required checks — and the only seven event names present are exactly the
+ones `tests/smoke.mjs` drives.** For scale: of 304 iPhone-UA devices on 2026-09-16, 266 had fired
+exactly one event.
 The harness is contained as of 2026-09-16 (scratch copies point at an RFC 2606 `.invalid` host,
 gated in `check_build.mjs` and negative-tested); `ops_device_list()` flags those rows `synthetic`
 and hides them by default rather than deleting history. **The classifier itself is not yet fixed

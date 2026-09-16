@@ -52,7 +52,8 @@ _(empty — promote from the candidate lists below with judgment)_
   reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
   "The real users" without any engagement check. Between UA-spoofing bots and the test harness that
   wrote to production `events` until 2026-09-16, that inflated every activation figure computed since
-  2026-09-07. Fix the classifier (require engagement, exclude `AppleWebKit/604.1.38`), then restate the
+  2026-09-07. Fix the classifier (require engagement, and reuse migration 006's `synthetic` predicate
+  — the `iPhone OS 15_0` + `Version/18.0` pair — rather than inventing a second one), then restate the
   numbers in CLAUDE.md and `docs/history.md` rather than leaving two sets in circulation. Dedicated
   because it rewrites published figures and wants a human to agree the new ones are the honest ones.
 
@@ -606,7 +607,8 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   welcome-screen bounce was the one stage the funnel existed to measure and could not see; every
   historical row starts at 1. **Also contained the harness**: `buildScratch` rewrote the five CDN
   tags but never `SUPABASE_URL`, so every CI run on a GitHub runner wrote real rows into production
-  `events` — 266 of 304 iPhone-UA devices were one-event harness runs, 213 from four days. Scratch
+  `events` — 291 rows across 251 devices, 232 of them a single event, first seen 2026-09-07, the day
+  CI became a required check. Scratch
   copies now point at an RFC 2606 `.invalid` host (with the scratch CSP widened to match, or the
   requests die before Playwright can intercept them). Gates: 2 new `check_build.mjs` checks, 13 new
   `tests/smoke.mjs` assertions (§12–13), **every one negative-tested**. Still open, deliberately:

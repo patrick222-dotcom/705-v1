@@ -193,9 +193,13 @@ support question no longer needs a SQL session.
 
 **`synthetic`, and why history was not deleted.** `tests/harness.mjs` rewrote the five CDN script
 tags but never `SUPABASE_URL`, so every CI smoke run on a GitHub runner inserted real rows into
-production `events` under a fresh `anon_id` — 266 of 304 iPhone-UA devices on 2026-09-16 were one
-event each, 213 of them from the previous four days, all carrying Playwright's iPhone 13 profile
-string. The harness is contained in the same change; `ops_device_list()` flags those rows rather
+production `events` under a fresh `anon_id` — **291 rows across 251 devices, 232 of them a single
+event, first seen 2026-09-07**, the day `ci.yml` was added and CI became a required check. They are
+identified by the internally inconsistent pair `iPhone OS 15_0` + `Version/18.0` that Playwright's
+pinned iPhone 13 profile emits and no real iPhone does; matching a WebKit build number instead is a
+mistake this file made in its first draft, because `AppleWebKit/605.1.15` is on every genuine iPhone
+in the table and the build number I first reached for appears in zero rows, so the flag classified
+nothing at all. The harness is contained in the same change; `ops_device_list()` flags those rows rather
 than removing them, and hides them unless the console's "Show test traffic" toggle asks. Deleting
 would have destroyed the evidence of how long it ran.
 

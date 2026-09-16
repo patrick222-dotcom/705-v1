@@ -41,8 +41,10 @@ const MAP = [
  * fresh anon_id because each browser context starts with empty localStorage.
  *
  * The damage is measurable: of 304 iPhone-user-agent devices on 2026-09-16, 266 had fired exactly
- * one event and 213 first appeared in the previous four days — all of them carrying Playwright's
- * iPhone 13 profile string. A test suite was the app's largest "user" by two orders of magnitude.
+ * one event, and 251 of them carry Playwright's iPhone 13 profile — identified by the internally
+ * inconsistent pair `iPhone OS 15_0` + `Version/18.0`, which no real iPhone emits. 291 rows, first
+ * seen 2026-09-07: the day `ci.yml` was added and CI became a required check. A test suite was the
+ * app's largest "user" by two orders of magnitude.
  *
  * `.invalid` is reserved by RFC 2606 and can never resolve. Requests still carry the same
  * /rest/v1/... paths, so `page.route('**\/rest/v1/feedback*')` interception — which is how the
