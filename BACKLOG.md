@@ -48,6 +48,59 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [x] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero**~~
+  — **SHIPPED 2026-09-14** (owner authorized Courtney's request; see Done log). `onMonthScroll` neutered so
+  the hero stays on the period set by open/‹›/chip/Today; open-to-current already worked via `landCurrent`.
+  Original note kept below for context:
+- [ ] ~~**Calendar/hero: default to current pay period on open + stop scroll-follow drifting the hero
+  (DESIGN CALL)** — `wish` feedback 2026-09-13 22:11 from Courtney: *"calendar should default to current
+  pay period upon opening. Keep the hero locked at the current pay period unless someone intentionally
+  clicks a different pay period or a 'next pay period' button."* This is really two things: (a) confirm
+  the app lands on the **current** period on open (payPeriodStart inits to today; applyData has a
+  `landCurrent` path — verify a returning user with drifted state still opens on current), and (b) the
+  bigger one — she wants the hero to **stop auto-following scroll**, but the "Hero auto-follows scroll
+  (Month view)" behavior (`onMonthScroll`, ~index.html:2707) is a **deliberate, documented product
+  feature**. Changing it is an **owner design call**, not a nightly fix: options are (i) keep scroll-follow
+  but guarantee open-to-current; (ii) make scroll-follow a setting (default off per Courtney); (iii)
+  remove it so only the ‹ › stepper moves the period. Delicate (interacts with the 15s sync's
+  `keepPeriod` guard and `suppressFollow`), so verify in the harness against the deployed build.
+  `harness:drivable` once the owner picks a direction.
+- [ ] **Ops console phase 2 — the monitoring panels** — `harness:drivable` — wrap
+  `scripts/dashboard_snapshot.sql` (202 lines, already written and iterated) in an admin-gated
+  `ops_snapshot()` and render it on `/ops.html`: health + `client_error`, the activation funnel with
+  its cohort/insider splits, and swap-board health as **counts only**. Not nightly work — it adds a
+  SECURITY DEFINER function, and the guard inside one is the only line of defence there is.
+  Design: `docs/ops-console-scope.md`.
+
+- [x] ~~**Ops console phase 3a — add `feedback.anon_id` (DO THIS EARLY)**~~ — SHIPPED 2026-09-14
+  (migration 005, see Done log). Original note below for the reasoning, which held up: the day it
+  shipped, all 10 existing rows were already permanently unjoinable, one of them submitted hours
+  earlier. ORIGINAL:** — `harness:drivable` —
+  `feedback` carries `user_id`, `page` and `user_agent` and nothing that identifies the device, so an
+  anonymous nurse's feedback row **cannot be joined to her event trail** — precisely the join the
+  support tool exists to make. Small migration, one extra field on the insert in `submitFeedback`.
+  **Only works going forward:** every row submitted before it ships stays unjoinable, which is why
+  this is worth doing ahead of the rest of phase 3 rather than after.
+
+- [ ] **Ops console phase 3b — the per-device drill-down** — `harness:needs-live-auth` —
+  `ops_device(anon_id)`: one device's event trail, which `ob_step` it stalled at, its `client_error`
+  rows, first/last seen. **Unblocked 2026-09-14** (3a shipped the join key). Also add
+  `anon_id` to `ops_feedback_inbox()`'s return and an index on `feedback (anon_id)` — both were
+  deliberately left out of 3a because nothing queried them yet. The line on what it may never return is in
+  `docs/ops-console-scope.md` → *Where the line is*; read it before widening the function.
+
+- [ ] **Ops console phase 4 — triage state on the inbox** — `harness:unscoped` — an inbox becomes a
+  tool when a row can be marked handled. Needs a write path into `feedback` and a column; a write path
+  is a bigger decision than a read one, hence last.
+
+- [ ] **Adversarially audit the ops RPCs** — `harness:needs-live-auth` — the swap board's anonymity
+  boundary got 29/29 + 5/5 on 2026-07-30 because someone tried to break it. The ops functions deserve
+  the same, and the questions are known: can a non-admin call any `ops_*` function; can an admin reach
+  `user_data`, a swap `poster_key`, or an `ical_subscriptions` URL through one; does `ops_admins` leak
+  through PostgREST; does a revoked admin lose access immediately. **A security-definer guard that has
+  only ever been tested by someone it lets through has not been tested.**
+
+
 - [ ] **Swap board de-emphasis — Courtney's call vs. the just-shipped invite prominence (OWNER DECISION)** —
   feedback 2026-09-12 16:48 from Courtney (bagwellc0387, the target nurse): *"Take the shift swap option
   off or at least out of the cue for now. Until we have more users that's just taking up space."* This
@@ -122,7 +175,13 @@ _(empty — promote from the candidate lists below with judgment)_
   unit" (Board-created screen + group header). **Remaining (backlogged):** (4) onboarding-end
   "send to a coworker", (5) share-the-result, (6) add-to-home-screen (PWA). Each new surface should carry
   the `{surface}` tag so its contribution is measurable. `harness:drivable`.
-- [ ] **Swap board: the zero-proposal funnel — no way to respond to a specific post** (data-surfaced
+- [~] **Swap board: the zero-proposal funnel** — **cause (2) the code gap SHIPPED 2026-09-14** (see Done
+  log): non-mine open posts now carry a **"Propose a swap"** button that proposes the vetted suggestion
+  when one correlates, else guides to the composer. **Cause (1) critical mass remains** — with
+  `dense_units=0` the suggester still finds no pairs, so most taps hit the compose-your-side path; that's
+  a growth problem, not code. Awaiting Courtney's live verification of the authed round-trip. Original
+  scoping kept below:
+- [ ] ~~**Swap board: the zero-proposal funnel — no way to respond to a specific post**~~ (data-surfaced
   2026-09-12 from the ops dashboard: 5 posts, **0 swap proposals ever** — the entire `swap_match_*`
   event cluster is dead). Two distinct causes: **(1) critical mass** — `dense_units=0`, biggest group
   is 2 members, so the client-side suggestion engine (which correlates posts by `poster_key` into
@@ -134,6 +193,9 @@ _(empty — promote from the candidate lists below with judgment)_
   affordance would give a direct path even when the correlation engine finds nothing. Feature-sized
   and `harness:needs-live-auth` (touches the `propose_swap` flow + the anonymity/reveal gate — verify
   by the swap-UI standard, never weaken RLS/`poster_key`), so a dedicated session, not a nightly.
+  **Corroborated 2026-09-14 by a real `broken` feedback tile** (owner, on the MLH board): *"there's
+  nothing to click, it just says they want a shift and i have no actionable step"* — exactly cause (2).
+  Now user-confirmed, not just dashboard-inferred; strongest candidate for the next dedicated swap session.
 - [x] ~~**Ops dashboard — nightly auto-refresh**~~ — WIRED 2026-09-12 (owner green-lit "Yes, wire it
   in"). CLAUDE.md → Ops dashboard now instructs each nightly to regenerate + republish the artifact
   after GROOM, with the URL and the snapdata-swap mechanics recorded there. Dashboard upkeep, separate
@@ -389,6 +451,100 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-15 (nightly) — **`<noscript>` fallback on the home page.** Closes the long-standing open item
+  (Google brand verification flagged "home page behind a login page", and a crawler saw one word of body
+  text — the whole app is JS-rendered). Added a self-contained `<noscript>` right after `<body>`: heading +
+  the app description (mirrors the owner-approved `<meta name="description">`), a "needs JavaScript" note,
+  and a relative link to `/privacy.html` — no external resources, CSP-safe. Verified with **JavaScript
+  disabled** in the harness: the page now renders 341 chars of real content (heading, description, JS note)
+  instead of one word. Inert when JS is on (splash still covers it). Head/body only — no JSX/boot/SRI/
+  wage-core/storage changes. Gate 9/9, groom 33/33, smoke 65/65. Owner-side half (a Search Console DNS TXT
+  record) still required to fully pass brand verification.
+- 2026-09-14 (owner-directed, interactive) — **Two Courtney/owner feedback fixes: hero stops following
+  scroll + a "Propose a swap" action on colleagues' posts.** Owner authorized building both deferred items.
+  **(Calendar)** `onMonthScroll` neutered — the hero take-home now stays on the period set by open
+  (`landCurrent`, already correct), the ‹ › stepper, a boundary-chip tap, or Today; scrolling the calendar
+  only browses months. Verified in the harness: opens on the current period, stays put through a full-height
+  scroll, and the stepper still advances it. `focusRowDates` left unused so it's a one-line revert / could
+  become a setting. **(Swap)** non-mine open posts now render a **"Propose a swap"** button (`respondToPost`):
+  if the existing suggester correlates the post with one of mine it proposes that vetted match (same path as
+  the SUGGESTED FOR YOU card, anonymous until every leg accepts); otherwise it guides to the composer to post
+  the shift they'd trade. **No new backend, no change to `propose_swap` / `poster_key` / the anonymity model.**
+  `needs-live-auth`, so parse + boot verified here (gate 9/9, smoke 65/65) and **Courtney live-verifies the
+  authed round-trip** (steps emailed 2026-09-14). Cause (1) critical mass (dense_units=0) still means most
+  taps hit the compose path — a growth problem, not code.
+- 2026-09-14 (nightly, groom-only) — **GROOM: triaged 2 feedback-tile items; no gate-safe build (queue
+  dry), nothing shipped to the app.** The feedback tiles are working — both new rows arrived typed:
+  (1) `broken` (owner) "clicked a swap post wanting a shift 9/16, nothing to click, no actionable step" →
+  **corroborates the existing swap zero-proposal item** (cause 2, the inert non-owner post); now
+  user-confirmed, `needs-live-auth`, still a dedicated session. (2) `wish` (Courtney) "default to current
+  pay period on open + keep the hero locked unless I navigate" → filed as a **design call** (she's asking
+  to change the deliberate scroll-follow-pay-period feature; owner picks the direction) + delicate
+  period-init surgery → dedicated session. Neither is nightly-safe. Positive signal: `share_opened` fired
+  4× in 24h — the share surfaces shipped 2026-09-13 are being used. Signal: 4 users (0 new), 66 devices/24h,
+  0 setups/24h, 11 feedback total. Gate 8/8, groom 33/33.
+- 2026-09-14 (dedicated session) — **Ops console phase 3a: `feedback.anon_id` (migration 005),
+  applied and live.** The column that makes an anonymous nurse's report traceable to what her device
+  actually did — `page` is always `/` in a single-page app and `user_id` is null when she isn't
+  signed in, so this is the only join there is. Mirrors `events.anon_id` exactly (type, 64-char cap,
+  nullability) because columns that drift apart fail a join quietly. Set inside `submitFeedback`, so
+  the offline-queue flush carries it too. **privacy.html updated in the same change** — the
+  per-device id was disclosed under Usage analytics but not under Feedback, and feedback now carries
+  it; both are in the publish set, so notice and behaviour moved together. Two new smoke assertions
+  (65 total), both negative-tested, asserting the real insert over the wire rather than trusting the
+  code: the row carries `anon_id`, and it is *this device's* id. Verified as `anon` against the live
+  DB in rolled-back transactions: the insert path accepts it, the CHECK rejects 65 chars. No index —
+  004 set the standard that each index names a query that already runs, and nothing queries this
+  column until 3b. **Only works forward:** all 10 pre-existing rows stay permanently unjoinable.
+- 2026-09-14 — **First feedback row ever tagged by the tiles** arrived 2026-09-13 22:11 UTC
+  (`kind: 'wish'`, a calendar-default request), hours after the tiles shipped — so the tiles are
+  being used. It landed hours before migration 005, so it is also permanently untraceable: the exact
+  cost 3a was rushed to stop accruing.
+- 2026-09-13 (dedicated session) — **Ops console phase 1 is LIVE at badgebudget.com/ops.html**
+  (#103 squash-merged, 585ab69). Deployed bytes verified byte-identical to the branch; the other four
+  publish-set files still 200 and `CNAME` still reads `badgebudget.com` (Invariant 8 intact).
+  **Verified over the real network, not just simulated:** hit the deployed REST API with the public
+  anon key — `feedback`, `events` and `ops_admins` all 42501 permission denied, all three `ops_*`
+  RPCs 42501 permission denied for function, `user_data` returns `[]` (its policy is scoped to
+  `auth.uid()`, null for anon). **Known gap:** the production page was never rendered in a real
+  browser from the build container — the egress relay resets Chromium's TLS tunnel, so `page.goto`
+  can't reach badgebudget.com from here even though curl can. One manual look on a phone, signed in,
+  is still owed before the URL goes to anyone.
+- 2026-09-13 (dedicated session) — **Migration 004 applied to the live project; the ops gate probed
+  10/10.** Non-admin refused at `is_ops_admin()` (false), at the table (permission denied) and at both
+  RPCs (42501); `anon` refused one step earlier at EXECUTE permission; both owner and Courtney get
+  true and see all 9 rows; revocation flips true→false with no cache and no deploy. **The useful
+  surprise:** probe 3 first failed with *permission denied for table feedback* — as the owner, on the
+  allow-list. That is the design working. Being on the list opens the door, not the table; the
+  function is the only way in. `feedback` and `events` each still carry zero SELECT policies.
+  Advisors: no ERRORs, 19 security-definer WARNs (8 anon = the swap RPCs only, 11 authenticated =
+  those plus the 3 new ops functions), 1 new INFO for `ops_admins` RLS-with-no-policy, which is
+  intentional. Results table in `docs/ops-console-scope.md`.
+- 2026-09-13 (dedicated session, read-only) — **Live figures re-read; CLAUDE.md's were badly stale,
+  and one of them was hiding good news.** Actual: 4 `user_data`, **9 feedback** (doc said 4), **689
+  events** (doc said ~270), 278 devices (doc said 135), 4 `auth.users`. The important one: **a 4th
+  auth user signed up 2026-09-12 12:14 UTC via Google and is not a builder account** — the first
+  genuine signup since 2026-09-02, so the consent-screen publishing on 2026-09-07 did pay off. It is
+  a one-visit account (`last_sign_in_at` == `created_at`), and nobody noticed for a day. All 9
+  feedback rows are `kind is null` (all predate the tiles, which shipped 2026-09-13), 1 of 9 is
+  anonymous — so the `feedback.anon_id` gap already bites today, not hypothetically. Corrected in
+  CLAUDE.md → Supabase Headroom and Open items.
+- 2026-09-13 (dedicated session) — **Ops console phase 1: a live feedback inbox at `/ops.html`.**
+  Reading feedback was a SQL session; it is now a page Courtney can open on her phone. New
+  `004_ops_console.sql`: an `ops_admins` allow-list (RLS on, **zero policies**, so it is invisible
+  through the API), `is_ops_admin()`, and two admin-gated SECURITY DEFINER RPCs —
+  `ops_feedback_inbox()` (keyset-paginated) and `ops_feedback_summary()`. **`feedback` and `events`
+  keep zero select policies**: the first read path into them is the function bodies, not the tables,
+  which is the same pattern the swap board uses as its anonymity boundary. The inbox returns message,
+  contact, tile kind, a coarse device label and an insider flag; it withholds `user_id` (you cannot
+  email a uuid), the raw user agent, and everything from `user_data` / the swap board /
+  `ical_subscriptions`. Page borrows the app's session (same origin = same localStorage), so it needs
+  no auth UI and no OAuth redirect allow-list entry. **Publish set 4 → 5** (Invariant 8 edit) with four
+  new mechanical checks on `ops.html` — noindex, no `service_role`, no `innerHTML`, unlinked from the
+  app — plus smoke section 7 on the signed-out gate. All 9 new assertions negative-tested; suite
+  58 → 63. Also the first indexes on `events`/`feedback`, backing queries the nightly snapshot already
+  runs as seq scans. Scope, phases 2–4 and the privacy line: `docs/ops-console-scope.md`.
+  **Migration not yet applied to the live project — owner action, see the doc.**
 - 2026-09-13 (nightly, groom-only) — **GROOM run: triaged 2 new feedback items; no gate-safe build item
   (queue dry), nothing shipped to the app.** Read `feedback`/`events` live: 2 new feedback rows in 24h,
   both from Courtney (target nurse) — (1) de-emphasize the swap board until there are users [**tensions

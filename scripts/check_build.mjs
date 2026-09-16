@@ -9,9 +9,12 @@
  *
  *   node scripts/check_build.mjs
  *
- * Scope: only what a machine can check honestly. Invariants 3 (wage-core), 10 (fetch before
- * touching the deploy branch), 11 (protected branches) and 12 (registrar settings) are human
- * disciplines and are listed as UNCHECKED in the output rather than silently omitted.
+ * Scope: only what a machine can check honestly. Six invariants are human-held and are listed as
+ * UNCHECKED in the output rather than silently omitted: 3 (wage-core), 7 (the swap salt, which
+ * lives in a deployed Postgres function this repo cannot see), 10 (fetch before touching the
+ * deploy branch), 11 (protected branches), 12 (registrar settings) and 13 (the iCal feed URL as a
+ * bearer credential). 7 and 13 were missing from that roll-call until 2026-09-13 — neither checked
+ * nor declared, which is the silent omission this comment exists to forbid.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +27,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const html = read('index.html');
+const ops = read('ops.html');
 const deploy = read('.github/workflows/deploy.yml');
 
 const results = [];
@@ -121,11 +125,29 @@ check(8, 'Publish set is exactly the intended files', () => {
     'Google OAuth consent screen and leaving the app with no privacy notice');
   // Anything NOT copied silently 404s on Pages; anything added by accident ships publicly. Both
   // directions matter, so the set is asserted exactly rather than as a minimum.
-  const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'CNAME'];
+  must(/cp ops\.html _site\//.test(deploy),
+    'ops.html dropped from the publish set — the ops console would 404');
+  const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'ops.html', 'CNAME'];
   const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
   must(copies.length === expected.length && expected.every((f) => copies.includes(f)),
     `publish set should be exactly [${expected.join(', ')}], found [${copies.join(', ')}]`);
   return copies.join(', ');
+});
+
+/* ---- Invariant 8: ops.html is published, so what it contains is a public question ---------
+   It sits on the open internet at a guessable URL. The gate that makes that safe lives in
+   Postgres (ops_feedback_inbox raises 42501), but three things about the page itself would
+   turn a safe design into a leak, and all three are mechanically checkable. */
+check(8, 'Ops console ships nothing it should not', () => {
+  must(/name="robots"[^>]*noindex/.test(ops),
+    'ops.html lost its noindex — an admin console in Google results is not an admin console');
+  must(!/service_role/.test(ops) && !/"role":"service_role"/.test(ops),
+    'ops.html contains a service_role key — that key bypasses RLS entirely and must never ship');
+  must(!/\.innerHTML\s*=/.test(ops),
+    'ops.html assigns innerHTML — every string it renders was typed by the public into a feedback box');
+  must(!html.includes('ops.html'),
+    'the app links to ops.html — it must stay unreferenced so nurses never discover it exists');
+  return 'noindex, no service_role, no innerHTML, unlinked';
 });
 
 check(9, 'Deploy branch still triggers a deploy', () => {
@@ -140,7 +162,7 @@ console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core, 10 fetch-before-branch, 11 protected branches, 12 URL forwarding off\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core, 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {

@@ -484,6 +484,18 @@
 </style>
 </head>
 <body>
+<!-- No-JS fallback: the whole app is JS-rendered, so without this a crawler or a JS-disabled
+     browser sees an empty shell (one word of body text) — which is also why Google's brand
+     verification flagged the home page as "behind a login page". Real content + a working link,
+     self-contained (no external resources, CSP-safe). Copy mirrors the <meta name="description">. -->
+<noscript>
+  <div style="max-width:640px;margin:0 auto;padding:48px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#16181F;line-height:1.6">
+    <h1 style="font-size:26px;margin:0 0 12px">BadgeBudget</h1>
+    <p style="font-size:16px;margin:0 0 16px">Know what a shift is really worth before you pick it up. BadgeBudget projects take-home pay for nurses — differentials, overtime, PTO and taxes — and runs an anonymous shift-swap board.</p>
+    <p style="font-size:15px;color:#52514e;margin:0 0 16px">This is an interactive app and needs JavaScript. Please enable JavaScript, then reload this page to get started.</p>
+    <p style="font-size:14px;margin:0"><a href="/privacy.html" style="color:#1F7A55">Privacy policy</a></p>
+  </div>
+</noscript>
 <div id="splash"><div class="logo"><span class="wm">badgebudget<span class="dot"></span></span></div><div class="spin"></div></div>
 <div id="root"></div>
 
@@ -1360,6 +1372,12 @@ async function submitFeedback({message, kind, contact, userId}){
         kind: FEEDBACK_KINDS.indexOf(kind)>=0 ? kind : 'other',
         contact: contact ? String(contact).slice(0,200) : null,
         user_id: userId || null,
+        /* The join key to this device's event trail (migration 005). Without it an anonymous
+           nurse's report cannot be connected to what she actually did, because `page` is always
+           '/' in a single-page app and `user_id` is null when she is not signed in. Set here
+           rather than at the call site so the offline-queue flush carries it too — same device,
+           same localStorage, same id. */
+        anon_id: anonId(),
         page: String(location.pathname||'').slice(0,120),
         user_agent: String(navigator.userAgent||'').slice(0,400)
       }),
@@ -2732,20 +2750,13 @@ function App(){
     if(bestTop==null) return null;
     return cells.filter(c=>Math.abs(c.getBoundingClientRect().top-bestTop)<1).map(c=>c.dataset.date);
   };
-  const onMonthScroll = ()=>{
-    if(programmaticScroll.current) return;
-    clearTimeout(scrollSettleTimer.current);
-    scrollSettleTimer.current = setTimeout(()=>{
-      if(programmaticScroll.current) return;
-      const dates = focusRowDates();
-      if(!dates || !dates.length) return;
-      const counts = new Map();
-      dates.forEach(d=>{ const ps=periodStartOf(d,payPeriodStart); counts.set(ps,(counts.get(ps)||0)+1); });
-      let ps=null, best=-1;
-      counts.forEach((c,k)=>{ if(c>best){ best=c; ps=k; } });
-      if(ps && ps!==payPeriodStart) setPPS(ps);
-    }, 180);
-  };
+  /* The hero pay period no longer follows scroll (Courtney feedback 2026-09-14): it stays on the
+     period set by open (landCurrent), the greet-row ‹ › stepper, a boundary-chip tap, or Today, and
+     scrolling the calendar only browses months — it never drifts the take-home figure. onMonthScroll
+     is now a no-op; the suppressFollow / programmaticScroll scaffolding stays for scrollFocusToDate
+     (the stepper still smooth-scrolls to the period it selects). focusRowDates is left in place,
+     unused, so restoring scroll-follow (or making it a setting) is a one-line revert. */
+  const onMonthScroll = ()=>{};
   /* Two-way sync for the greet-row stepper: set the period AND smooth-scroll so its start sits
      near the focus line, suppressing scroll-follow for the duration (see suppressFollow above). */
   const scrollFocusToDate = (dateISO)=>{
@@ -5098,6 +5109,23 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
     await refreshBoardAndMatches();
   };
 
+  /* "Propose a swap" on a colleague's post (2026-09-14, owner + Courtney feedback: a non-mine post
+     had no action button, so the only path to a swap was the auto-suggester happening to fire). If
+     the suggestion engine already correlates this post with one of mine, propose that vetted match
+     directly — the exact same path as the SUGGESTED FOR YOU card, anonymous until every leg accepts.
+     If nothing of mine pairs with it yet, there is no swap to propose, so guide them to post the
+     shift they'd trade. No new backend and no change to propose_swap or the anonymity model. */
+  const respondToPost = async (p)=>{
+    const s = suggestions.find(x => x.legPostIds.includes(p.id));
+    if(s){
+      if(!(await confirmAsync("Propose this swap to your unit? Names stay hidden until everyone accepts.",{title:'Propose swap?',confirm:'Propose'}))) return;
+      doPropose(s);
+      return;
+    }
+    toast("No match for this yet — post the shift you'd trade and we'll pair you up.");
+    openComposer();
+  };
+
   /* After every leg accepts, pull the names + retire the traded posts. reveal_match is safe to
      call more than once for the same match (idempotent server-side), so any caller that just
      observed allAccepted can call it without extra bookkeeping.
@@ -5556,7 +5584,9 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                     </div>
                     {p.is_mine && <span className="tag auto" style={{flex:'0 0 auto'}}>You</span>}
                   </div>
-                  {p.is_mine && <button className="danger-link" style={{alignSelf:'flex-start',minHeight:44,display:'inline-flex',alignItems:'center'}} onClick={()=>doWithdraw(p)}>Withdraw</button>}
+                  {p.is_mine
+                    ? <button className="danger-link" style={{alignSelf:'flex-start',minHeight:44,display:'inline-flex',alignItems:'center'}} onClick={()=>doWithdraw(p)}>Withdraw</button>
+                    : <button className="btn btn-soft btn-sm" style={{alignSelf:'flex-start',minHeight:44}} onClick={()=>respondToPost(p)}>Propose a swap</button>}
                 </div>
               ))}
             </React.Fragment>}
