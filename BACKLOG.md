@@ -23,9 +23,22 @@ _(none)_
 ## Queue
 
 ### P1
-_(empty — promote from the candidate lists below with judgment)_
+- [ ] **Pattern-list card still prints the multi-paycheck average unqualified** — `harness:drivable` —
+  the 2026-09-18 council re-check found synthesis #7 landed at two of its three sites: the comparison
+  table and the edit-mode readout carry "avg. over N paychecks — checks will vary", but the "YOUR
+  PATTERNS" card (`<b className="num">{fmt(m.periodNet)}</b> / paycheck`, ~index.html:5097) does not,
+  so a saved 8- or 28-day pattern still shows one flat figure there. Label only (`avgNote(p.cells)`
+  already exists — reuse it), one assertion that opens the lab with a saved 8-day pattern and reads the
+  card, negative-tested. No arithmetic.
 
 ### P2
+- [ ] **Pin the six council fixes a revert would not fail** — `harness:drivable` — the re-check found
+  these landed but unpinned: quick-fill carrying `isOvertime` (`toggleQuickFillDay`; nothing drives
+  quick-fill at all), the pattern-lab goal line's `$0` filter (duplicates the pinned Add-Shift one),
+  the year-nav "Previous/Next year" labels, the done-step name field's `aria-label`, the apply
+  preview's `aria-live` (the existing check is scoped to `.sheet .preview`; the lab is `.modal`), and
+  SwapsSheet's Escape (needs live auth — stub the client the way §11's `fakeAuth` does). One section-11
+  block, each assertion negative-tested.
 - [x] ~~**Paystub review sheet: say so when 0 differential rows were detected**~~ — SHIPPED
   2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
   zero differential rows.

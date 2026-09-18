@@ -157,6 +157,67 @@ subagent tokens, the raw figure counting cached context re-reads at full weight 
 `CLAUDE.md`), so it overstates cost; the honest unit is "a batch fit in a window and the nightly
 still ran".
 
+### The re-check (2026-09-18)
+
+Fired a day late (the 07:00Z Routine landed at 10:00Z on the 18th); 31 agents on `sonnet` bar the
+synthesis, 12.7 minutes, 2.6M subagent tokens, 293 tool calls — a fifth of a window, as the charter
+estimates. **20 applied entries: 20 landed, 19 complete, 1 landed short; every entry pinned, six paths
+inside them not.** The synthesis, lightly edited for the counts:
+
+Re-check of the 2026-09-13 fix pass (PR #101, squash-merged 2026-09-16, live marker `_escStack`;
+#111 has landed since and touches none of this). Each applied synthesis entry was traced to the
+current source and to the `council:`/`a11y:` assertion meant to pin it; each lens was re-scored
+against what is still live. Detail per entry: `docs/council-runs/2026-09-13/`.
+
+**Defects in the fix pass — these go first.**
+- **#7 did not land completely** (`product-design-04`, `wage-math-09`, `cross-surface-02`). The
+  "avg. over N paychecks" caption reached the comparison table (`index.html:5076`, hint 5084) and
+  the edit-mode readout (5192) but not the third site all three findings named: the pattern-list
+  card at 5097 still prints the raw `periodNet` as `$X / paycheck`. Commit 84a161a's message names
+  only "the readout and the comparison table". The pin (`tests/smoke.mjs:1363`) reads `.pl-money .k`
+  only, so it passes with the card wrong. One-line fix, one assertion, nightly-safe.
+- **Landed but not fully pinned** — a revert of these lines would not fail the suite: #9 quick-fill
+  (`toggleQuickFillDay`, 3484 — nothing drives quick-fill); #10 the pattern-lab goal line (5004,
+  duplicates the pinned AddShiftSheet filter); #32 SwapsSheet's Escape (5529, needs live auth);
+  #34 year-nav labels (4128/4130), the done-step name field (6560), the apply-preview live region
+  (5219 — the existing check is scoped to `.sheet .preview`, the lab is `.modal`).
+  Everything else: landed, pinned, negative-testable.
+
+| lens | before | after | what still holds it below 8 |
+|---|---|---|---|
+| wage-math | 4 | 5 | `wage-math-12/03` night default priced when Night is off; `-01` blank multiplier → 0×; `-06` paystub writes a negative differential; `-00/02`, `-04`; 5097 |
+| security | 2 | 3 | `security-00` poster_key reversible in production; `-01` propose_swap unchecked; `-02` raw decline UPDATE |
+| mobile-ux | 3 | 8 | cleared (`-04/-07/-13` lows remain) |
+| accessibility | 2 | 5 | no sheet traps or places focus — app-wide, not just the three IDs (#35) |
+| performance | 4 | 4 | `performance-00` blank tab behind 5 blocking CDN scripts; `-03` pay-period scroll fires an upsert |
+| data-integrity | 5 | 8 | cleared |
+| code-quality | 4 | 8 | cleared |
+| product-design | 3 | 4 | `product-design-08` swap cards show no pay figure; `-04` at 5097; `-00` hero tax chip; `-06` clear-the-sample |
+| privacy-telemetry | 4 | 8 | cleared |
+| cross-surface | 4 | 4 | `cross-surface-00` `keepRatio` (3382) omits percent withholdings — five surfaces over-promise; `-02` at 5097 |
+
+**Which BACKLOG.md session clears each lens still below 8.**
+- wage-math, cross-surface → **wage-core session (bucket 3)**. Both lenses' worst findings are the
+  same arithmetic (`keepRatio`, the night default, the multiplier coercion); nothing else moves them.
+- security → **dedicated session (bucket 2)**, the swap-board + infra hardening item. Only step 1
+  (revoke the grants) and step 2 (per-group secret in `swap_board()`) can move `security-00`.
+- performance → **dedicated session (bucket 2)** — two items there (boot splash before the CDN
+  scripts; save-path follow-ups for `-03`). Neither is one nightly.
+- accessibility → not a session: the **owner product call** (#35). Until "no sheet traps focus"
+  is reversed, no amount of labelling gets past 5.
+- product-design → no single session. `-00` and the 5097 site go with **wage-core (bucket 3)**;
+  `-06` and `-08` are **owner product calls**, and BACKLOG.md's line on `-08` ("revisit only if the
+  board is re-emphasised") is a decision to leave the lens below 8 — say so rather than re-routing it.
+
+**Did the re-check earn its cost.** Yes, narrowly: it found the missing 5097 site and six unpinned
+paths that a green CI could never have surfaced, because CI only proves the assertions that exist.
+What it could not do is what a full run does — re-read the 56 cells for defects the fix pass
+*introduced* (#101 touched ~40 sites in one file; `_escStack` and the shared `clearSignedInState`
+are new code no finding has reviewed) or verify the 34 lows, so every "after" score is bounded
+above by the old finding set and says nothing about regressions. The smoke suite is the only thing
+standing in for that, and it was written by the same pass it now vouches for.
+
+
 ## 2026-09-13 — account menu, feedback tiles, and three ways a test result can lie
 
 Shipped in #96 (details in `BACKLOG.md` → Done): the avatar became the account menu at every width,
