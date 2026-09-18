@@ -1,0 +1,364 @@
+{
+ "runDir": "docs/council-runs/2026-09-13",
+ "checks": {
+  "#7": {
+   "ids": [
+    "product-design-04",
+    "wage-math-09",
+    "cross-surface-02"
+   ],
+   "what": "pattern-lab per-paycheck figure captioned as an average when lcm(cycle,14) > 14",
+   "landed": true,
+   "pinned": true,
+   "complete": false,
+   "residual": "The fix (avg. caption + hint when lcm(cycle,14) > 14) landed at 2 of the 3 sites the findings named: the side-by-side comparison table (index.html:5076, plus the footnote hint at 5084-5085) and the edit-mode .pl-money block (index.html:5192-5194). The third site -- the pattern-list card's inline \"$X / paycheck\" line (index.html:5097, `<b className=\"num\">{fmt(m.periodNet)}</b> / paycheck ·`, originally cited as line 4447 \"pattern card\" in all three findings) -- was NOT updated: it still prints the raw periodNet figure with no avgNote/qualifier, reproducing the exact defect (unqualified multi-paycheck average) for any pattern shown in the \"YOUR PATTERNS\" list. Confirmed via `grep -n \"avgNote\" index.html`: only 3 call sites (5076, 5084, 5192), none at 5097. No scope note in BACKLOG.md, docs/history.md, or the council synthesis narrows entry #7 to exclude this third site -- BACKLOG.md:73's \"group-7 leftover\" refers to a different unrelated item (patternCellToShift dropping isOvertime in the template brush), and the commit message for 84a161a explicitly says only \"the readout and the comparison table\" got the caption, silently dropping the card.",
+   "evidence": "Findings read: docs/council-runs/2026-09-13/findings/{product-design-04,wage-math-09,cross-surface-02}.json (each names index.html sites ~4428 compare table, ~4447 pattern card, ~4540-4542 edit-mode block; stale line numbers per task note). Current code via `grep -n \"avgNote\\|periodNet\\|per paycheck\" index.html`: patternMetrics unchanged at index.html:1662-1710 (math untouched, comment at 1663-1665 acknowledges the averaging). avgNote defined index.html:4960-4963 (\"avg. over {k} paychecks — checks will vary\" when lcm(n,14)/14 > 1). Applied at index.html:5076 (compare-table `<tr>` row) and index.html:5084-5085 (footnote hint below the table) and index.html:5192 (`.pl-money .k` \"Take-home per paycheck\" caption). NOT applied at index.html:5090-5098 (pattern-card `.pl-card-main`, the `<b className=\"num\">{fmt(m.periodNet)}</b> / paycheck ·` line at 5097 has no avgNote wrapper). git show 84a161a confirms commit message: \"the readout and the comparison table say 'avg. over N paychecks...'\" (two surfaces named, card omitted). Assertion found: tests/smoke.mjs:1363 `council: an 8-day cycle says its paycheck figure is an average (#7)` — reads `.pl-money .k` (the edit-mode block, index.html:5192) after opening the \"4 on, 4 off\" preset and asserts `/avg\\. over 4 paychecks/` matches; smoke.mjs:1373 is the negative control on a 7-day preset (`!/avg\\./`). This pins the edit-mode-block fix only, not the comparison table or the (unfixed) pattern card."
+  },
+  "#9": {
+   "ids": [
+    "product-design-02"
+   ],
+   "what": "templates carry isOvertime (sanitizer, quick-tap, quick-fill, Save as template, row label)",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "All five listed sites carry the fix in code (sanitizer coercion index.html:1229, doSaveTemplate index.html:4777, applyTemplateTap quick-tap index.html:4757, toggleQuickFillDay quick-fill index.html:3484, row label index.html:4804). Four of five are pinned by tests/smoke.mjs council assertions (sanitizer round-trip, template row's OT label, quick-tap landing as OT, Save-as-template-after-quick-tap capturing OT); the quick-fill site (toggleQuickFillDay) has the fix in code but no smoke assertion exercises quick-fill at all, so that one path is unpinned. The pattern-lab brush (patternCellToShift, index.html:1613, hardcoded isOvertime:false) is unchanged, matching the scope note's routed exclusion (wage-core).",
+   "evidence": "docs/council-runs/2026-09-13/findings/product-design-02.json (finding text). index.html:1229 `isOvertime: t.isOvertime===true, // council 2026-09-13 (#9): templates used to drop the OT flag silently` inside the templates sanitizeData branch (~1214-1230). index.html:4740-4780 `applyTemplateTap` sets `isOvertime:t.isOvertime===true` (4757); `doSaveTemplate` sources `isOvertime` from `src` (4775-4777) and includes it in `tpl` (4777). index.html:3460-3485 `toggleQuickFillDay` sets `isOvertime:qfTemplate.isOvertime===true` (3484). index.html:4804 template row renders `{t.isOvertime ? ' · OT' : ''}`. index.html:1613 `patternCellToShift` still hardcodes `isOvertime:false` (unchanged, routed per scope note). tests/smoke.mjs:1306 `council: the templates sanitizer keeps the OT flag (#9)`; :1319 `council: a template row shows its OT flag (#9)`; :1322 `council: a quick-tapped OT template lands as an OT shift (#9)`; :1328 `council: \"Save as template\" right after a quick-tap captures the tapped shift, OT included (#12, #9)`. No `council:` (or any) assertion in tests/smoke.mjs drives quick-fill/toggleQuickFillDay -- grep for quick-fill terms (startQuickFill, qfMode, QUICK ADD FROM TEMPLATE, toggleQuickFillDay) returned no matches."
+  },
+  "#10": {
+   "ids": [
+    "product-design-07",
+    "code-quality-13",
+    "wage-math-14",
+    "mobile-ux-11",
+    "accessibility-24"
+   ],
+   "what": "$0 goal guarded in the shift preview and the lab goal line; updGoalTarget floors at 0; delGoal confirms",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "All five findings' code fixes are present. Pinned assertions in smoke.mjs directly cover the AddShiftSheet $0-goal filter (line 1342), delGoal's confirmAsync gate (lines 1350, 1352), and the distinguishing aria-labels (line 1168, 'a11y: every Settings Del button names what it deletes'). The pattern-lab goal line's identical filter (index.html:5004) has no dedicated smoke assertion of its own, but the code fix is verified present and mirrors the pinned AddShiftSheet fix exactly, so nothing is left open beyond that minor asymmetry.",
+   "evidence": "docs/council-runs/2026-09-13/findings/{product-design-07,code-quality-13,wage-math-14,mobile-ux-11,accessibility-24}.json read in full. index.html:4891 (AddShiftSheet goal line) — `goals.filter(g=>g.target>0).slice(0,3).map(...)`. index.html:5004 (pattern-lab reverse goal view) — same `goals.filter(g=>g.target>0).slice(0,3).map(...)`. index.html:5341 — `updGoalTarget=(id,v)=>setGoals((goals||[]).map(g=> g.id===id ? {...g, target:Math.max(0, parseFloat(v)||0)} : g));` (floors at 0). index.html:5342-5346 — `delGoal=async id=>{ const g=...; if(!(await confirmAsync(`\"${g?g.name:'This goal'}\" comes off every shift preview — this can't be undone.`,{title:'Delete goal?',confirm:'Delete',danger:true}))) return; setGoals(...); }`. index.html:5461 — `<button className=\"danger-link\" onClick={()=>delGoal(g.id)} ... aria-label={'Delete '+g.name+' goal'}>Del</button>`. tests/smoke.mjs:1168 `ok('a11y: every Settings Del button names what it deletes', ...)`; :1342 `ok('council: a $0 goal is left out of the shift preview instead of printing Infinity% (#10)', ...)`; :1350 `ok('council: deleting a goal asks first (#10)', ...)`; :1352 `ok('council: confirming removes the goal (#10)', ...)`."
+  },
+  "#11": {
+   "ids": [
+    "wage-math-10",
+    "cross-surface-05"
+   ],
+   "what": "brush-aware grid hint + ⚡ marker and \"(template — pay type fixed)\" label on fixed cells",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none — scope note limits this entry to fix (a) (brush-aware hint + fixed-cell marker/label), and that is exactly what landed; patternCellShiftType (index.html:1598-1608) still returns cell.shiftType verbatim for fixed cells, confirming the arithmetic (fix b) was deliberately left unchanged, as the scope note directs.",
+   "evidence": "index.html:1598-1608 patternCellShiftType unchanged (fixed cells keep verbatim shiftType, no weekend inference — confirms fix (a)-only scope). index.html:4972 cellLabel appends \" (template — pay type fixed)\" when c.kind==='fixed'. index.html:5178 grid cell renders a `<span className=\"fx\" aria-hidden=\"true\">⚡</span>` marker when c.kind==='fixed'. index.html:5183-5188 hint block is brush-aware: when brush starts with 'tpl:' it renders \"Template cells (⚡) keep the template's pay type as-is — weekend differentials are not inferred for them.\"; otherwise the original \"Weekend days pick up your weekend differentials automatically.\" text. tests/smoke.mjs:1375-1380 — two assertions tagged (#11): line 1377 'council: the grid hint is honest about template cells (#11)' asserts the hint matches /Template cells/ and does NOT match /pick up your weekend differentials automatically/ after selecting a template brush (\"Charge day\"); line 1380 'council: a template-painted cell is marked and says its pay type is fixed (#11)' asserts the painted cell's aria-label matches /template/ (sourced from cellLabel's fixed-cell suffix). Both assertions would fail if the hint/marker/label fix were reverted, i.e. they are genuinely pinning."
+  },
+  "#12": {
+   "ids": [
+    "code-quality-07"
+   ],
+   "what": "applyTemplateTap sets configDirtySinceAdd=false; doSaveTemplate reads shiftType/hours/isOvertime from the last-added shift when untouched",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:4756-4761 applyTemplateTap: adds the tapped template's shift to `list` and sets `configDirtySinceAdd.current = false` (line 4759) with comment \"a tap is an add: 'Save as template' next should capture the tapped shift, not the untouched controls\". index.html:4762-4783 doSaveTemplate: computes `last = list[list.length-1]` and `src = (last && !configDirtySinceAdd.current) ? last : {shiftType, hours:clampedHours, bonusType, customBonus, start, isOvertime}` (lines 4773-4775), then builds `tpl` from `src.shiftType/hours/bonusType/customBonus/isOvertime` (lines 4776-4778) — i.e. reads shiftType/hours/isOvertime (plus bonusType/customBonus/start) from the last-added shift when the live controls are untouched since that add. tests/smoke.mjs:1315-1328: quick-taps the \"Charge day\" OT template (base/8h/OT), confirms the row shows the OT tag (line 1322), then immediately clicks \"Save as template\", names it \"Copy of charge\", and asserts the new template chip reads `/×8h · OT/` (line 1328, named \"council: \\\"Save as template\\\" right after a quick-tap captures the tapped shift, OT included (#12, #9)\"). This assertion would fail without the fix: the live controls default to shiftType='night', hours=12, isOvertime=false (lines 4695-4700), so a doSaveTemplate that read live state instead of `last` would produce \"×12h\" with no OT tag, not matching the regex — confirming the assertion is pinned to the fix."
+  },
+  "#18": {
+   "ids": [
+    "security-03"
+   ],
+   "what": "validShiftMeta() guards doApplyPlan; hours coerced with Number()",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none beyond the scope note's own routing — the server-side jsonb CHECK on swap_posts.shift_meta is explicitly routed to the hardening session and not part of this entry's scope.",
+   "evidence": "docs/council-runs/2026-09-13/findings/security-03.json (read in full). index.html:4677-4685 defines validShiftMeta(m): rejects non-object/array, requires typeof shiftType==='string' (non-empty, ≤40 chars), computes h=Number(m.hours) and requires isFinite(h) && h>0 && h<=24, and validates optional m.start against TIME_RE. index.html:5994-5997 (inside doApplyPlan, found via grep -n \\\"doApplyPlan\\\"): `if(incoming && !validShiftMeta(incoming.shift_meta)){ toast(...); return; }` guards before any push. index.html:6010: the push into the shifts array uses `hours:Number(meta.hours)` — the Number() coercion named in the entry title. tests/smoke.mjs:1288 comment lists #18/security-03 in the bucket-1 group; tests/smoke.mjs:1308-1312 calls the real global `validShiftMeta` with 9 cases (string-numeric hours, valid with start, non-numeric hours, non-string shiftType, hours=0, hours=25, malformed start, array, null) and asserts `ok(\\\"council: another member's shift_meta is validated before it becomes her shift (#18)\\\", JSON.stringify(vm) === '[true,true,false,false,false,false,false,false,false]', ...)` — this would fail if validShiftMeta were removed or its logic reverted, so it pins the fix."
+  },
+  "#19": {
+   "ids": [
+    "security-05",
+    "code-quality-19"
+   ],
+   "what": "blobBytes()/TextEncoder size check inside saveToSupabase; the debounced path and flush share it",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "The server-side CHECK constraint (pg_column_size(data) bound on user_data.data) is not present in any migration (checked 000_core.sql through 005) -- but the scope note routes that server half elsewhere, so its absence is not a failure of this entry. Client half is fully landed: one blobBytes()/TextEncoder check inside saveToSupabase (index.html:1736) that flush() and retrySync() inherit by calling saveToSupabase directly, plus a separate earlier pre-check in the debounced save effect (index.html:3002-3007) that gives the toast/backup UX before ever reaching saveToSupabase.",
+   "evidence": "index.html:677 MAX_BLOB_BYTES=512*1024; index.html:681 blobBytes(data){ try{ return new TextEncoder().encode(JSON.stringify(data)).length; }catch(_){ return JSON.stringify(data).length; } }; index.html:1732-1751 saveToSupabase(userId,data): line 1736 'if(blobBytes(data) > MAX_BLOB_BYTES){ logClientError(...); return null; }  // the ONE size check; flush + retry inherit it', followed by the onConflict:'user_id' upsert. index.html:3002-3007 debounced save effect has its own earlier blobBytes(dataToSave)>MAX_BLOB_BYTES check that toasts 'cloud sync paused', writes the per-user backup and returns before ever calling saveToSupabase. index.html:3048 flush() calls saveToSupabase(snap.user.id, snap.data) directly (inherits the check). index.html:3060-3062 retrySync() calls saveToSupabase(user.id, serializeState()) directly (inherits the check). Server side: grep for 'user_data_data_size'/'pg_column_size' across supabase/migrations/*.sql finds only events.props (000_core.sql:82) and swap_posts.shift_meta (001_swap_board.sql:95) -- no such constraint on user_data.data in any migration, consistent with the scope note's 'server CHECK is routed'. Pin: tests/smoke.mjs, block commented '/* data-integrity-00 (#23), security-05 client half (#19), security-12 (#22). */' (line 1016) contains at line 1032-1039 an evaluate that calls saveToSupabase(uid, {pad:'x'.repeat(MAX_BLOB_BYTES+1)}) directly against a mocked upsert counter and asserts ok('council: saveToSupabase refuses an oversize blob before it reaches the network', size.ts === null && size.upsertsDuring === 0, ...) -- this fails if the size check inside saveToSupabase is removed/weakened, since the mocked upsert would then be invoked (upsertsDuring>0) and/or ts would be non-null."
+  },
+  "#22": {
+   "ids": [
+    "security-12"
+   ],
+   "what": "client_error batch budgeted to ~1,700 chars (ERR_FLUSH_TEXT_BUDGET), oldest entries dropped",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:1926-1953 (flushClientErrors + ERR_FLUSH_TEXT_BUDGET=1700 at 1932, comment at 1928-1931 citing security-12, drop-oldest loop at 1953: `while(errors.length > 1 && JSON.stringify(props).length > ERR_FLUSH_TEXT_BUDGET) errors.shift();`); tests/smoke.mjs:1038-1050, assertion name \"council: client_error batch stays under the events.props size CHECK and keeps the newest entries\" (line 1049-1050), which seeds 8×300-char entries and asserts len<=1700, kept<8 (some dropped), n===8, newestKept==='E7' (oldest-first drop confirmed) — would fail without the budget/shift logic per the finding's own measured arithmetic (8×300 chars = 3,116 bytes, well over 1700)."
+  },
+  "#23": {
+   "ids": [
+    "data-integrity-00",
+    "code-quality-18"
+   ],
+   "what": "pagehide/visibilitychange flush writes the per-user backup on a failed save",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none — the scope note's \"optimistic-backup variant is routed\" elsewhere is not a gap here, it's the explicitly authorized scope boundary; both listed ids describe the same code site and are closed by the same minimal fix.",
+   "evidence": "index.html:3028-3059 (flush effect); the fixed line is 3051: `saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } else { writeBackup(snap.user.id, snap.data); } });` with explanatory comment at 3049-3050 citing \"council 2026-09-13, data-integrity-00\". Debounced-save analog at index.html:3014-3018 (writeBackup on failure) confirms the mirrored pattern. tests/smoke.mjs:1017-1031, assertion at line 1031: `ok('council: a failed pagehide flush keeps the per-user backup', flush.backup === true, ...)` — sets `window.__failSave = true`, dispatches `visibilitychange` hidden, asserts BACKUP_KEY was written; block comment explicitly cites \"data-integrity-00 (#23)\"."
+  },
+  "#24": {
+   "ids": [
+    "code-quality-00",
+    "security-09",
+    "code-quality-11"
+   ],
+   "what": "clearSignedInState() shared by handleSignOut and the SIGNED_OUT branch; clears icalSub/icalUrl/icalSyncedForUser and obStep",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none — the shared clearSignedInState() (index.html:2877-2883) is called from both handleSignOut (index.html:3090) and the SIGNED_OUT branch (index.html:2955), and clears setHydratedUserId(null), setIcalSub(null), setIcalUrl(''), icalSyncedForUser.current=null, resetToDefaults(), and setObStep(0) in one place, closing code-quality-00, security-09, and code-quality-11 together.",
+   "evidence": "index.html:2861-2883 (resetToDefaults + comment naming code-quality-00/security-09/code-quality-11, and clearSignedInState body: hydratedForUser.current=null; lastSeenAt.current=null; setSyncError(false); setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current=null; resetToDefaults(); setObStep(0);); index.html:2939-2958 (onAuthStateChange SIGNED_OUT branch calls clearSignedInState() at line 2955); index.html:3083-3092 (handleSignOut calls clearSignedInState() at line 3090, comment: \"Same routine as the SIGNED_OUT branch (idempotent if that also fires)\"). Pinning assertions: tests/smoke.mjs:981 \"council: a manual sign-out clears the previous account's iCal URL before the next sign-in\" (fills iCal URL as user A, signs out via menu, signs in as user B, asserts the Settings iCal input is empty — would fail without the icalUrl/icalSub clear in handleSignOut's path) and tests/smoke.mjs:999 \"council: sign-out returns onboarding to the welcome screen, not the last step reached\" (finishes onboarding, signs out, asserts welcome screen shows and rate step doesn't — would fail without setObStep(0))."
+  },
+  "#27": {
+   "ids": [
+    "code-quality-22",
+    "code-quality-24"
+   ],
+   "what": "runIcalSync catch console.errors; onImportICS filters toUpdate to changed",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:3815-3854 (runIcalSync): catch block at 3848-3850 reads `}catch(e){\\n      console.error('ical sync failed:', (e && e.message) || String(e));   // mirrored into the ring buffer -> client_error; the URL is never logged\\n      if(manual) toast(...)`. index.html:3669-3704 (onImportICS): line 3698 reads `setIcsImport({ groups, toUpdate:plan.toUpdate.filter(u=>u.changed), toRemove:plan.toRemove, ...})`, mirroring runIcalSync's own `changedUpdates = plan.toUpdate.filter(u=>u.changed)` at line 3833. tests/smoke.mjs:1389 `ok('council: runIcalSync logs a failed background sync (#27)', /catch\\(e\\)\\{\\n\\s*console\\.error\\('ical sync failed:'/.test(src));` and line 1390 `ok('council: manual .ics re-import counts only changed matches (#27)', /setIcsImport\\(\\{ groups, toUpdate:plan\\.toUpdate\\.filter\\(u=>u\\.changed\\)/.test(src));` — both regex-match the exact current source and are in the council section (surrounded by other `council:`/numbered assertions at 1373-1391)."
+  },
+  "#28": {
+   "ids": [
+    "code-quality-05",
+    "code-quality-09"
+   ],
+   "what": "secRef deletes on unmount; setAnchor leaves applyStart alone while the apply panel is open",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "code-quality-05: index.html:4142 `secRef={el=>{ if(el) monthSecRefs.current[mo.key]=el; else delete monthSecRefs.current[mo.key]; }} />)}` — deletes the ref-map entry when a MonthSection unmounts (el is null), matching the entry description. Pinned by tests/smoke.mjs:1391 `ok('council: month section refs are dropped on unmount (#28)', /else delete monthSecRefs\\.current\\[mo\\.key\\]/.test(src))`, a static source-regex assertion that fails if the `else delete` clause is removed. code-quality-09: index.html:5031-5033 `const setAnchor = (v)=>{ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(v) || keyOfDate(parseISODate(v))!==v) return; setDraft(d=>({...d, anchor:v})); if(!applyOpen) setApplyStart(v); setDirty(true); };` — only syncs applyStart to the new anchor when the apply panel is closed, so a customized applyStart survives while the panel is open. Pinned by tests/smoke.mjs:1382-1387, a behavioral assertion: fills the apply-start date input to '2026-10-05', then edits the cycle-anchor date input to '2026-09-21' while the apply panel is open, and asserts the apply-start input still reads '2026-10-05' (`ok('council: editing the cycle anchor leaves a customised apply-start alone (#28)', startAfter === '2026-10-05', ...)`) — this would fail under the pre-fix unconditional `setApplyStart(v)`. Both finding JSONs (docs/council-runs/2026-09-13/findings/code-quality-05.json, code-quality-09.json) have empty detail/failure/fix fields but their `where`/`title` fields match the code and fix located above, and both smoke assertions are explicitly tagged '(#28)' matching this entry."
+  },
+  "#29": {
+   "ids": [
+    "mobile-ux-00"
+   ],
+   "what": "hero footer buttons are className=\"more linklike\" (no .hero)",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:4063-4064 — className=\"more linklike\" on both hero footer buttons (See the full breakdown / Share BadgeBudget), no \"hero\" token, confirmed via `grep -n \"more linklike\" index.html`. tests/smoke.mjs:876-887 — section 11 (post-.hero waitForSelector), assertions `council: exactly one .hero card renders on the dashboard` (heroCount===1) and `council: hero footer links are inline links, not cards` (links.length===2 && each height<40 && transparent background); both would fail if either button still carried className including \"hero\" (heroCount would be 3, link heights would be 59px with the dark .hero background)."
+  },
+  "#30": {
+   "ids": [
+    "mobile-ux-01",
+    "mobile-ux-03",
+    "mobile-ux-05",
+    "mobile-ux-06",
+    "mobile-ux-08",
+    "mobile-ux-10",
+    "mobile-ux-02"
+   ],
+   "what": "tap-target CSS pass: avatar ::after hit-slop, est-banner buttons 44px, pp-chip 32px + ::after slop, .drow .amt 44px, .chip-sel 44px, .pl-grid gap at ≤400px, .danger-link 44px, .cal-vscroll capped at 60dvh",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none — all 7 listed finding ids (mobile-ux-01, -02, -03, -05, -06, -08, -10) have their fix present in index.html and a corresponding pinned assertion in tests/smoke.mjs section 11 that would fail without it.",
+   "evidence": "index.html:86-87 (.avatar/.avatar::after inset:-2px, comment \"council 2026-09-13\"), :147-148 (.est-banner button min-height:44px), :190 (.cal-vscroll max-height:60dvh;min-height:min(420px,60dvh)), :208-209 (.cal-pp-div .pp-chip min-height:32px + ::after inset:-6px 0, comment \"44px hit area\"), :319-320 (.drow .amt / .drow .amt input min-height:44px), :325 (.chip-sel min-height:44px, shared rule), :354-355 (.pl-grid + @media max-width:400px{gap:3px;margin:0 -6px}, comment \"council 2026-09-13, mobile-ux-06\"), :435 (.danger-link min-height:44px). tests/smoke.mjs:1056-1125 (section 11 tap-target pass): 'council: avatar hit area extends past its 40px circle' (1076), 'council: est-banner buttons are 44px tap targets' (1079), 'council: pay-period chip reaches a 44px hit area' (1087), 'council: calendar scroll box fits a landscape viewport' (1092), 'council: Settings amount inputs are 44px tap targets' (1102), 'council: Settings Del links are 44px tap targets' (1103), 'council: shift-type chips are 44px tap targets' (1110), 'council: pattern-grid cells clear 44px at 360px wide' (1122) — each measures the live rendered box (getBoundingClientRect / elementFromPoint hit-testing), not the stylesheet, so each would fail if its corresponding CSS fix were reverted."
+  },
+  "#31": {
+   "ids": [
+    "mobile-ux-09",
+    "code-quality-14",
+    "mobile-ux-12",
+    "code-quality-16"
+   ],
+   "what": "showShare in the body-scroll lock; Enter handlers on the first-run Board name / Invite code inputs",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:3151 `const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare;` and :3154 dependency array includes showShare — closes mobile-ux-09/code-quality-14 (showShare state declared :2750, ShareSheet rendered :4233). index.html:6111-6125 (groups.length===0 first-run block): Board-name input at :6117-6118 and Invite-code input at :6127-6128 both now carry onKeyDown={e=>{ if(e.key==='Enter') doCreateGroup/doJoinGroup(); }}, matching the pre-existing duplicates at :6311/:6329 — closes mobile-ux-12/code-quality-16. tests/smoke.mjs §11 (lines 889-905): 'council: opening the share sheet locks body scroll' (893, asserts overflow==='hidden' after clicking Share), 'council: closing the share sheet releases body scroll' (897), 'council: first-run board-name input submits on Enter' (904) and 'council: first-run invite-code input submits on Enter' (905) — the latter two regex-match the live scratch-copy source for onKeyDown immediately following the aria-label in the groups.length===0 block, so they'd fail if either handler were missing or misplaced."
+  },
+  "#32": {
+   "ids": [
+    "accessibility-10",
+    "accessibility-12",
+    "accessibility-21",
+    "accessibility-02",
+    "accessibility-22",
+    "accessibility-13",
+    "accessibility-25",
+    "accessibility-26"
+   ],
+   "what": "useEscape() hook + _escStack (one document listener, topmost handler only) on AddShift, PatternLab, Settings, Breakdown, Share, Auth, Swaps, Feedback (guarded), ICS import, paystub review, ConfirmHost, AccountMenu; role=\"dialog\" aria-modal aria-label on the seven sheets that lacked it; aria-label=\"Close\" on Breakdown/Settings/Auth/paystub close buttons",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "Focus traps remain unimplemented on PatternLab/SwapsSheet/ConfirmHost (accessibility-13/-25/-26 focus-trap halves) but the scope note explicitly routes that as owner decision #35, not a failure here. Separately, no smoke.mjs assertion actually opens SwapsSheet (it needs live auth, harness:needs-live-auth), so accessibility-25's Escape fix is verified in-code (useEscape(onClose) at index.html:5529, identical hook to every other sheet) and by the shared-stack mechanism test, but not by a dedicated live-browser assertion on SwapsSheet itself.",
+   "evidence": "index.html:625-637 defines _escStack + document keydown listener + useEscape(handler,active) hook (comment at 621-624 explicitly attributes it to 'council 2026-09-13, a11y'). grep -n 'useEscape(' index.html shows 12 call sites: AccountMenu:2465, FeedbackSheet:2514 (guarded: `if(!msg.trim()||msg===lastScaffold.current) onClose()`), ConfirmHost:2633, Breakdown(inline in App):3155, PaystubReview:4260, IcsImportSheet:4374, AddShiftSheet:4753, PatternLab:5053, AuthModal:5238, Settings:5334, SwapsSheet:5529, ShareSheet:6399 -- matching the ENTRY #32 component list. Dialog semantics confirmed present in current code: AddShiftSheet .sheet has role=\"dialog\" aria-modal=\"true\" aria-label=\"Add a shift\" + close button aria-label=\"Close\" [accessibility-10]; PatternLab .modal in both list and edit mode carries role=\"dialog\" aria-modal=\"true\" aria-label=\"Pattern lab\"/\"Edit pattern\"/\"New pattern\" [accessibility-12]; Settings .modal has role=\"dialog\" aria-modal=\"true\" aria-label=\"Settings\" + close aria-label=\"Close\" [accessibility-21]; Breakdown's App-level wrapper (index.html:4194-4201) has role=\"dialog\" aria-modal=\"true\" aria-label=\"Your paycheck math\" + close aria-label=\"Close\", and Settings close button confirmed likewise [accessibility-02]; ShareSheet .sheet has role=\"dialog\" aria-modal=\"true\" aria-label=\"Share BadgeBudget\" [accessibility-22]. tests/smoke.mjs:1128-1131 carries the pinning comment: 'accessibility-00/-02/-03/-05/-06/-08/-09/-10/-11/-12/-14/-16/-18/-19/-21/-22/-23/-24 and the Escape halves of -13/-25/-26 (#32-#34, #36 partial)'. Concrete assertions that would fail if the fix were reverted: 'a11y: add-shift sheet is a labelled dialog' + 'a11y: Escape closes the add-shift sheet' (~1184-1191), 'a11y: pattern lab is a labelled dialog' + 'a11y: Escape closes the pattern lab from its list' (~1215-1217), 'a11y: Settings is a labelled dialog with a named close button' (~1165), 'a11y: breakdown is a labelled dialog with a named close button' + 'a11y: Escape closes the breakdown' (~1156-1159), 'a11y: share sheet is a labelled dialog' + 'a11y: Escape closes the share sheet' (~1149-1151), 'a11y: Escape closes only the confirm dialog on top, Settings stays open' + 'a11y: a second Escape closes Settings' (~1177-1179, pins the shared-stack ordering underlying ConfirmHost/accessibility-26's Escape half and PatternLab/accessibility-13's Escape half), 'a11y: Escape leaves a feedback sheet with typed words open' + 'a11y: Escape closes an empty feedback sheet' (~1249-1252, pins the guarded FeedbackSheet Escape)."
+  },
+  "#33": {
+   "ids": [
+    "accessibility-00",
+    "accessibility-16",
+    "accessibility-01",
+    "accessibility-17"
+   ],
+   "what": "OT tag → var(--money-ink); .tag.est → #8A5A05; --danger → #B03D2E; done-screen gross line → #9A9DAB",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "index.html:335 (.tag.est{color:#8A5A05;background:#FDF3DD}), 4820 (.ot-tag color:'var(--money-ink)' in row list), 4888 (.ot-tag color:'var(--money-ink)' in live preview), 30 (--danger:#B03D2E;--danger-soft:#F3D6D1 with contrast comment), 6556 (gross line color:'#9A9DAB', was #7E8290). tests/smoke.mjs assertions: line 1171 \"a11y: danger red is the darker AA-safe token\" (dangerRgb==='rgb(176, 61, 46)' read from .drow .danger-link), line 1187 \"a11y: OT tag uses the AA-safe money-ink colour\" (ot==='rgb(11, 93, 60)' read from .sheet .ot-tag), line 1256 \"a11y: the ESTIMATED tag colour clears AA on its pill\" (est==='rgb(138, 90, 5)' from a synthesized .tag.est element), line 1283 \"a11y: the done screen's gross line uses the 5.7:1 grey\" (regex /#9A9DAB/ present, /#7E8290/ absent near \"hrs · 6 shifts · gross\" in source)."
+  },
+  "#34": {
+   "ids": [
+    "accessibility-03",
+    "accessibility-14",
+    "accessibility-11",
+    "accessibility-18",
+    "accessibility-23",
+    "accessibility-24",
+    "accessibility-08",
+    "accessibility-05",
+    "accessibility-19",
+    "accessibility-15",
+    "accessibility-07",
+    "accessibility-20"
+   ],
+   "what": "aria-live on the Add-Shift preview, .pl-money and the apply preview; Remove/Del buttons named; differential name input, onboarding back button, done-step name field labelled; year nav \"Previous/Next year\"; \", today\" in the day-cell label; prefers-reduced-motion in animateScrollTop; est-banner dismiss focuses the hero; h1.q onboarding questions; .cal-vscroll tabIndex",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "All 12 fixes are present in index.html as it stands today. Scope note routes accessibility-15's focus-move half to #35 (only the h1-per-step heading half is claimed here, and that half is landed) — no other listed id is open. Three of the twelve lack a dedicated pinning assertion in tests/smoke.mjs: accessibility-07 (Year-view \"Previous year\"/\"Next year\" labels, index.html:4128/4130) and accessibility-20 (done-step name field aria-label=\"Your name\", index.html:6560) are the two lows the entry itself calls \"taken in passing\"; accessibility-14 (the .pl-apply \"Put it on the calendar\" preview's aria-live=\"polite\", index.html:5219) is a medium whose code fix landed but isn't independently pinned — smoke.mjs:1185 only checks `.sheet .preview[aria-live=\"polite\"]`, which doesn't match the Pattern Lab's `.modal`-scoped apply preview. A revert of just those three specific lines would not currently fail the suite.",
+   "evidence": "Code (grep -n, current index.html):\n- accessibility-03: :4886 `<div className=\"preview\" aria-live=\"polite\" aria-atomic=\"true\">` (AddShiftSheet); :5191 `<div className=\"pl-money\" aria-live=\"polite\" aria-atomic=\"true\">` (Pattern Lab readout).\n- accessibility-14: :5219 `<div className=\"preview\" style={{margin:'0 0 14px'}} aria-live=\"polite\" aria-atomic=\"true\">` inside `.pl-apply` (apply-plan preview), confirmed by reading :5203-5220 context (\"This adds\" / applyPlan).\n- accessibility-11: :4823 `aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}`.\n- accessibility-18: :6472 `<button className=\"back\" onClick={()=>setObStep(obStep-1)} aria-label=\"Back\">‹</button>`.\n- accessibility-23: :5373 `<input className=\"nm\" ... aria-label=\"Differential name\" .../>`.\n- accessibility-24: :5375 `aria-label={'Delete '+d.name+' differential'}`; :5461 `aria-label={'Delete '+g.name+' goal'}`.\n- accessibility-08: :4515 `+ (isToday ? ', today' : '')` appended to the cell aria-label (built starting :4508).\n- accessibility-05: :726 `if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches){ el.scrollTop = clamped; return; }` inside `animateScrollTop` (defined :723).\n- accessibility-19: :4046 `onClick={()=>{ setEstimateMode(''); focusHero(); track('estimate_dismissed', ...)` (Got it) and :3559-3560 `setEstimateMode(''); focusHero();` inside `clearSample` (Clear the sample); `focusHero`/`heroRef` defined :2746-2747, `ref={heroRef} tabIndex={-1}` on the hero div :4054.\n- accessibility-15 (heading half only, per scope note): h1 present on every obStep branch — :6451 (step 0, className=\"display\"), :6482 (step1, className=\"q\"), :6504 (step2), :6526 (step3), :6551 (done step, className=\"display\").\n- accessibility-07: :4128 `aria-label=\"Previous year\"`, :4130 `aria-label=\"Next year\"`.\n- accessibility-20: :6560 `aria-label=\"Your name\"` added alongside the existing placeholder.\n- cal-vscroll tabIndex (part of entry): :4135 `tabIndex={0} aria-label=\"Calendar months\"`.\n\ntests/smoke.mjs (council section 11, \"a11y:\" assertions) pinning most of the above:\n:1185 add-shift preview polite live region; :1222 pattern readout (.pl-money) polite live region; :1189 \"Remove buttons name the shift they remove\"; :1281 \"the onboarding back button has an accessible name\" (ob.back === 'Back'); :1169 \"differential name inputs carry an accessible name\"; :1168 \"every Settings Del button names what it deletes\"; :1200 \"today's cell says so in its accessible name\" (/, today$/); :1261 & :1264 animateScrollTop reduced-motion jump vs. animated control; :1208 \"dismissing the estimate banner moves focus to the hero\"; :1275 welcome h1.display, :1280 \"each onboarding question is an h1 with no stray margin\"; :1201 \"the month scroll box is keyboard-focusable\" (cal.tab === '0'). No assertion text matched \"year\" nav labels, \"Your name\", or a `.modal`/`.pl-apply`-scoped aria-live check (searched with grep for those strings across tests/smoke.mjs, no hits)."
+  },
+  "#36": {
+   "ids": [
+    "accessibility-06",
+    "accessibility-09"
+   ],
+   "what": ".viewseg is role=\"group\" with aria-pressed buttons; .cal-vscroll tabIndex=0 + aria-label",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none — accessibility-06 was scoped to dropping the tablist/tab roles in favor of a plain labelled button group with aria-pressed (not implementing the full ARIA tab keyboard pattern; grid semantics were routed separately as accessibility-04), and accessibility-09 was scoped to making .cal-vscroll keyboard-focusable via tabIndex+aria-label (not adding its own arrow/Page-key handler). Both are satisfied as scoped.",
+   "evidence": "index.html:4119-4125 — comment \"A plain labelled button group, not a tablist...\" above `<div className=\"viewseg\" role=\"group\" aria-label=\"Calendar view\">` wrapping two `<button aria-pressed={calView===v} ...>` elements (no role=\"tablist\"/\"tab\" anywhere; grep confirms). index.html:4134-4135 — `<div className=\"cal-vscroll\" ref={monthScrollRef} onScroll={onMonthScroll} tabIndex={0} aria-label=\"Calendar months\">`. tests/smoke.mjs:1194-1201 — computes cal.tablist (querySelector for '.viewseg[role=\"tablist\"], .viewseg [role=\"tab\"]'), cal.pressed (aria-pressed values on .viewseg buttons), cal.tab (tabindex attr on .cal-vscroll); assertion 'a11y: the Month/Year control no longer claims a tablist it never implemented' (line 1199) requires !cal.tablist && pressed includes both 'true' and 'false'; assertion 'a11y: the month scroll box is keyboard-focusable' (line 1201) requires cal.tab === '0'. Both would fail if the fix were reverted to role=\"tablist\"/\"tab\" or if tabIndex were removed."
+  },
+  "#37": {
+   "ids": [
+    "privacy-telemetry-00",
+    "privacy-telemetry-01",
+    "privacy-telemetry-02"
+   ],
+   "what": "privacy.html: email/password sign-in disclosed, anon_id/user_id linkage on events, feedback carries user_id when signed in",
+   "landed": true,
+   "pinned": true,
+   "complete": true,
+   "residual": "none",
+   "evidence": "docs/council-runs/2026-09-13/findings/privacy-telemetry-{00,01,02}.json read in full. privacy.html:89-94 (\"Your account\") now discloses both auth paths (\"You can sign in with an email address and password, or with Google... the password is stored only by the sign-in provider (Supabase Auth), hashed\") — closes privacy-telemetry-00. privacy.html:106-112 (\"Usage analytics\") now reads \"While you are signed in, events also carry your account id, so the device identifier can be associated with your account from that point on\" and no longer contains \"not linked to your name\" — closes privacy-telemetry-01. privacy.html:122-128 (\"Feedback\") now reads \"If you are signed in when you send it, the report also carries your account id, whether or not you fill in a contact\" — closes privacy-telemetry-02. Pinning assertions found in tests/smoke.mjs:1003-1015 (labeled \"privacy-telemetry-00/-01/-02 (#37)\"): three `ok('council: ...')` checks that slice privacy.html by section and assert the exact fixed phrasing is present and the old wrong phrasing (\"not linked to your name\") is absent — these read the file directly and would fail if any of the three fixes were reverted."
+  }
+ },
+ "scores": [
+  {
+   "score": 5,
+   "moved": "Real, verified progress landed: the $0-goal preview fix is complete (Infinity/NaN eliminated from the shift preview and pattern-lab goal line, confirmed floor + confirm-before-delete), and the pattern-lab average caption now qualifies 2 of 3 display sites. But the roadmap's own priority order was not followed: toReachEight's headline fix — \"gate hourlyRate/shiftGross/patternCellShiftType/brushCell everywhere on the differential's active flag\" — landed only as a UI hint/label (wage-math-10 fix a); the arithmetic gating itself was explicitly left untouched (patternCellShiftType still returns cell.shiftType verbatim for fixed cells). All three of the most financially severe confirmed defects remain completely unaddressed, merely routed to a future wage-core session: AddShiftSheet defaults to 'night' even when Night is toggled off (silently overprices a logged shift by ~$120 in the cited scenario, hitting the exact \"what's this shift worth before it's worked\" preview), a blanked multiplier differential coercing to 0x (up to ~$913 swing, no warning), and paystub import writing a negative differential from a premium-only row (collapses a $830 gross night shift to $48 gross). These are properly tracked in BACKLOG.md, not dropped, but they are still live in the shipped app.",
+   "worst": "Three medium-severity, adversarially-confirmed defects still corrupt a live preview or saved-shift price in ordinary use and are completely unfixed: AddShiftSheet's night-default-when-off bug (wage-math-12/03), the blanked-multiplier-coerces-to-0x bug (wage-math-01), and the paystub-import negative-differential bug (wage-math-06) — each can silently misstate a shift's worth by $50-900+ with zero warning, which is the app's entire reason to exist.",
+   "toReachEight": "Land the fixes already specified for wage-math-12/03 (seed AddShiftSheet's shiftType from the first active differential, not the literal 'night'), wage-math-01 (sanitizeData coerces non-finite/≤0 multiplier amounts to 1, not 0; NumInput min raised), and wage-math-06 (applyPaystub treats a rate below base as premium-only rather than subtracting into negative), each with the harness probe the finding already specifies — plus close the two summary-figure findings (wage-math-00/02 uncapped taxes chip, wage-math-04 keepRatio omitting percent withholdings) and the still-missing pattern-card avgNote site (index.html:5097).",
+   "ranAgainst": "Spot-checked three applied entries directly in index.html: (1) avgNote — grep confirmed exactly 3 call sites (5076, 5084, 5192) and read lines 5060-5100 showing the pattern-list card at line 5097 still prints raw periodNet with no avgNote, matching the stated residual; (2) the $0-goal guard — read lines 5335-5350 confirming updGoalTarget floors at Math.max(0,...) and delGoal awaits confirmAsync, and confirmed the pinned smoke.mjs assertions at lines 1336-1352; (3) wage-math-10 — grep + read of patternCellShiftType (lines 1598-1608, fixed cells still return cell.shiftType verbatim, no active-flag gating) and confirmed the UI-only fix (⚡ marker at 5178, '(template — pay type fixed)' label at 4972, brush-aware hint at 5187) landed. Also read the full JSON for the three most severe unaddressed findings (wage-math-12, wage-math-01, wage-math-06) and confirmed their presence in BACKLOG.md's queue (lines 65-71).",
+   "lens": "wage-math",
+   "before": 4
+  },
+  {
+   "score": 3,
+   "moved": "Four fixes landed and verified in index.html: validShiftMeta() (line 4677) now gates doApplyPlan on incoming shift_meta from swap matches (line 5994) before it's written into a user's own shifts; blobBytes()/TextEncoder (line 681) is now the one size check inside saveToSupabase (line 1736), inherited by flush/retrySync, plus an earlier UX-level pre-check (line 3003); client_error batching is budgeted; and clearSignedInState() (lines 2877-2883) is now shared by handleSignOut and the SIGNED_OUT branch, closing the shared-phone iCal-URL leak. These are real, narrow security improvements (input validation on cross-member data, a DoS/cost guard, and a credential-hygiene fix), so the score moves up from 2, but only slightly.",
+   "worst": "security-00 [critical, confirmed, live-verified on the production project]: poster_key — the swap board's entire anonymity mechanism — is still reversible via the public 'scrubpay-swaps' salt plus a readable swap_members.user_id / swap_groups.created_by select. Nothing in this pass touched it; it's explicitly routed to a dedicated session and remains exactly as broken as at the last score. security-01 (propose_swap doesn't check the caller is a party) and security-02 (a raw UPDATE policy bypasses decline_swap_match) sit beside it, also untouched — together they mean the swap board's core promise (\"post anonymously\") is false for any authenticated member willing to run one query, right now, in production.",
+   "toReachEight": "Land the fix this lens already specified: derive poster_key from a private per-deployment secret instead of the public repo-constant salt, and revoke/tighten the swap_members and swap_groups grants so the inputs to that derivation aren't selectable by ordinary members — plus close security-01 (verify caller is a leg in propose_swap) and security-02 (remove or lock down the raw decline UPDATE policy in favor of decline_swap_match). Until poster_key stops being computable by any member, the score cannot cross 8 regardless of how many secondary hardening items land.",
+   "ranAgainst": "Spot-checked three of the four applied entries directly in index.html: validShiftMeta (lines 4677-4684) and its call site in doApplyPlan (lines 5980-6004, esp. 5994-5997); blobBytes/TextEncoder definition (line 681) and its two call sites, saveToSupabase's guard (line 1736) and the earlier debounced-save pre-check (lines 3002-3007, confirmed via grep); and clearSignedInState (lines 2877-2883) plus its two call sites (2955, 3090). Did not re-review the rest of the app; relied on the routing summary (docs/council-runs/2026-09-13/) for the state of security-00/01/02/08/11, all of which are confirmed-but-unfixed per that summary and match my prior review of them.",
+   "lens": "security",
+   "before": 2
+  },
+  {
+   "score": 8,
+   "moved": "The prior worst (mobile-ux-00, the hero-footer-links-inherit-.hero-card bug) is fixed and pinned (index.html:4063-4064 now `className=\"more linklike\"`, no `.hero`; smoke.mjs §11 asserts exactly one `.hero` renders and the two footer links are <40px tall with a transparent background). The systemic sub-44px tap-target pattern that was the \"to reach 8\" item is now closed across 9 of its 11 confirmed instances (mobile-ux-01/02/03/05/06/08/09/10/12), each with a CSS fix in index.html (avatar ::after hit-slop, .est-banner button min-height:44px, .pp-chip 32px+::after slop, .drow .amt 44px, .chip-sel 44px, .pl-grid gap at ≤400px, .danger-link 44px, .cal-vscroll capped 60dvh, ShareSheet added to the scroll-lock effect, Enter handlers on first-run swap inputs) and a corresponding pinned assertion in tests/smoke.mjs §11. mobile-ux-11 ($0 goal guard) also landed with pinned coverage.",
+   "worst": "Three low-severity, marginal tap-target/first-impression papercuts remain unaddressed: mobile-ux-04 (day cells ~42px at ≤360px only, 2px short), mobile-ux-07 (pattern-lab cycle-length presets ~41px, 3px short), and mobile-ux-13 (swap board's display-name step still autoFocuses, reintroducing the exact anti-pattern FeedbackSheet was fixed to avoid). None touch wage math or a core flow — they're all secondary/edge-case controls, and 04/07 are correctly routed to backlog groom as low.",
+   "toReachEight": "Already at 8+. Closing 04/07/13 (autoFocus removal is a one-line fix like FeedbackSheet's; 04/07 need a couple px of padding/gap adjustment) would tighten this to 9, but nothing left is severe enough to hold the score at or below 7.",
+   "ranAgainst": "Spot-checked 3 of the 4 applied entries directly in the working tree: (1) grepped index.html:4063-4064 confirming the hero footer buttons now read `className=\"more linklike\"` with no `.hero`, and read tests/smoke.mjs §11 (lines ~875-887) confirming the pinned `.hero` count + link-height/background assertions; (2) grepped index.html for the #30 tap-target CSS pass and read the matching rules (avatar::after, .est-banner button, .pp-chip/::after, .drow .amt, .chip-sel, .pl-grid @400px, .danger-link, .cal-vscroll max-height:60dvh) plus tests/smoke.mjs lines 1056-1124 confirming each has a corresponding 44px/hit-area assertion; (3) read all remaining mobile-ux findings JSON (04, 07, 13) not covered by the applied/routed list to confirm their severity and scope. Did not re-run the harness or re-review the live app.",
+   "lens": "mobile-ux",
+   "before": 3
+  },
+  {
+   "score": 5,
+   "moved": "The systemic failure that drove the 2/10 — sheets rendering as plain divs with no dialog semantics — is fixed broadly: grep confirms role=\"dialog\" aria-modal=\"true\" aria-label on all 13 overlay sheets (AddShift, Pattern Lab x2, Settings, Share, Feedback, Breakdown, Auth, Swaps x2, paystub review x2, ICS import), a single shared useEscape/_escStack hook gives every sheet correct topmost-only Escape-to-close (verified at 13 call sites including ConfirmHost), close buttons carry aria-label=\"Close\" uniformly, aria-live=\"polite\" regions now cover the money previews including the Pattern Lab apply preview (index.html:5219, present in code though unpinned), and the contrast fixes (--danger:#B03D2E, --money-ink:#0B5D3C, .tag.est:#8A5A05) are real. Most of this is pinned in smoke.mjs and negative-testable.",
+   "worst": "No dialog anywhere in the app traps keyboard focus or places initial focus on open. A whole-file grep for any trap/inert/tabbable/sentinel/shiftKey-tab-wrap mechanism returned nothing — this isn't limited to the three IDs the fix-pass entry names (PatternLab/SwapsSheet/ConfirmHost); Settings, AddShift and every other sheet have the identical gap. A keyboard user opening Settings can still Tab into the visually-obscured calendar behind the scrim, and a screen-reader user gets no automatic entry point into a newly opened sheet since focus never moves. BACKLOG.md #35 confirms this in the project's own words as an app-wide, still-undecided owner call (\"no sheet traps focus has expired at six modal sheets... one small utility reused by every role=\\\"dialog\\\" sheet if yes\") — not a minor residual, but half of what the previous score said was needed to reach 8, and it remains entirely unbuilt.",
+   "toReachEight": "Ship the shared focus-management utility named in BACKLOG #35 (trap Tab/Shift-Tab inside the open dialog, move focus to the dialog or its first control on open, restore focus to the trigger on close) and apply it to every role=\"dialog\" sheet, not just the three called out. Independently verify SwapsSheet's dialog behavior once harness:needs-live-auth is drivable, rather than relying on code-pattern inspection alone. Calendar grid semantics (accessibility-04) can stay session-sized without blocking 8.",
+   "ranAgainst": "Grepped index.html for role=\"dialog\" (13 hits), the useEscape/_escStack implementation and its 13 call sites, aria-label=\"Close\" close buttons, aria-live=\"polite\" regions (5, including Pattern Lab's apply preview), and the AA-safe color tokens (--danger, --money-ink, .tag.est) — all confirmed present as claimed. Searched the full file for any focus-trap/inert/tabbable/sentinel/tab-wrap code and found none anywhere, then cross-checked BACKLOG.md item #35 and docs/council-runs/2026-09-13/findings/accessibility-13.json context, which confirms the gap is app-wide and still an open owner decision, not isolated to the three IDs the fix-pass residual note names. Did not re-drive the app or re-review unrelated surfaces per instructions.",
+   "lens": "accessibility",
+   "before": 2
+  },
+  {
+   "score": 4,
+   "moved": "Nothing moved. Both confirmed mediums (performance-00 and performance-03) were routed to the dedicated-session bucket, not touched in this fix pass, and I verified both are still live in the current index.html exactly as described. Score stays at 4.",
+   "worst": "performance-00 (confirmed, medium), unchanged: the 5 cross-origin CDN <script> tags (index.html:17-21, unpkg x2/cdnjs/jsdelivr, no async/defer) still sit in <head> before the ~460-line <style> block, and #splash still doesn't appear until line 511 in <body> — so on a stalled or filtered connection (the hospital-wifi case this app targets) the tab stays blank white with zero feedback, not even the boot watchdog, until all 5 fetches resolve or the browser gives up.",
+   "toReachEight": "Same as last round, because neither has moved: (1) get the splash (or some inline fallback) painting before/independent of the 5 blocking CDN fetches — inline critical splash markup ahead of the script tags, or defer/async them with a real loading state; (2) stop the pay-period-boundary scroll from firing a real Supabase upsert — either drop payPeriodStart from the debounced-save effect's dependency array (index.html:3024) or apply the same normalize()-style content-equality check the 15s poll already uses at line 3104 before calling saveToSupabase, instead of only using it on the read path.",
+   "ranAgainst": "Re-read docs/council-runs/2026-09-13/findings/performance-{00..04}.json and my prior scores.json entry, then spot-checked the app directly rather than re-reviewing it: (1) index.html:1-25 and :511 — confirmed the 5 CDN <script> tags are still render-blocking in <head> ahead of the <style> block, and #splash is still the first thing after </head>, unchanged from performance-00's citation. (2) index.html:2993-3024 (debounced save effect, payPeriodStart still a bare dependency with no equality guard) and :3100-3106 (the 15s poll's normalize()/content-equality check, confirmed still poll-only, not reused by the save trigger) — unchanged from performance-03's citation. (3) `grep -n \"React.memo\\|memo(\"` across index.html returns zero hits, so performance-01/04's \"no memo boundary anywhere\" claim also still holds. Checked `git log --oneline -- index.html` since the 2026-09-13 council commit (f93015b) for anything that might have incidentally touched these areas: dbad855 (wage-core: integer cents/job record/overtime/meal-break/paystub importer), 56cfee2 (<noscript> fallback — doesn't affect JS render-blocking), 7cfa100 (dashboard) — none of these touch the boot script-tag ordering, the debounced-save dependency array, or add any memoization. The routing note (0 applied, 2 routed to dedicated session) matches what the code shows.",
+   "lens": "performance",
+   "before": 4
+  },
+  {
+   "score": 8,
+   "moved": "The only confirmed data-integrity finding (data-integrity-00: pagehide/visibilitychange flush had no failure branch) is fixed exactly as prescribed and negative-tested. Verified live at index.html: the debounced-save effect (~line 3009-3016) writes writeBackup(user.id, dataToSave) on a falsy saveToSupabase result, and the flush handler (~line 3044) now mirrors it with `.then(ts=>{ if(ts){...} else { writeBackup(snap.user.id, snap.data); } })` instead of the old success-only `if(ts)` branch. tests/smoke.mjs:1016-1031 negative-tests it (forces window.__failSave=true, fires a hidden visibilitychange, asserts the per-user backup key is written) rather than just asserting a passing debounce.",
+   "worst": "The fix ships the minimal writeBackup-on-failure branch inside the .then() continuation, not the synchronous pre-write-before-send variant my prior toReachEight called 'ideal' (a .then() callback isn't guaranteed to run once actual page teardown begins, as opposed to a mere visibilitychange-to-hidden background). That gap is real but was explicitly scoped out as B2 and is tracked in BACKLOG.md ('#23's optimistic-backup-before-send variant... the minimal failure-branch fix shipped 2026-09-16'), not silently dropped -- and it's narrower than the original finding, which required no failure-branch at all.",
+   "toReachEight": "already at 8+",
+   "ranAgainst": "Re-read index.html at the current flush handler (~lines 3029-3055) and the debounced-save effect (~lines 2992-3018) it mirrors; confirmed the writeBackup-on-failure else-branch is present in both. Read tests/smoke.mjs:1016-1031 to confirm the negative test (forced save failure -> assert backup key populated) exists and matches the finding's fix criterion. Cross-checked docs/council-runs/2026-09-13/findings/data-integrity-00.json, scores.json's data-integrity entry (confirmed=1, rejected=6, unverified=0 -- this was the lens's only confirmed finding) and its own toReachEight text, synthesis.md's #23 entry (B1 minimal fix vs B2 optimistic-backup variant), and BACKLOG.md's tracked follow-up item to confirm the residual variant was routed, not lost.",
+   "lens": "data-integrity",
+   "before": 5
+  },
+  {
+   "score": 8,
+   "moved": "The recurring duplicated-logic pattern that held the score at 4 is now closed at its two highest-stakes sites: clearSignedInState is a real shared function called by both handleSignOut and the SIGNED_OUT listener (closing 00/11), and blobBytes is a single size-check both saveToSupabase and the debounced pre-check share (closing 19). The $0-goal guard, template-tap dirty tracking, and four other duplication/state-bug findings also landed and were pinned in smoke.mjs.",
+   "worst": "The pattern-lab goal-line filter (index.html:5004) duplicates the AddShiftSheet preview's $0-goal filter (4890-4891) verbatim rather than sharing a helper — same logic, two sites, so a future edit to one can still drift from the other; low severity since it's presently identical and has no wage impact, but it's the same root-cause shape the lens exists to catch.",
+   "toReachEight": "already at 8+",
+   "ranAgainst": "Spot-checked 3 of the 8 applied entries directly in index.html via grep+read: clearSignedInState (lines 2877-2883, 2955, 3090), blobBytes (681, 1736, 3003), and the $0-goal guard/delGoal/updGoalTarget (1342 area was a miss, actually 4890-4891, 5003-5004, 5341-5344). Also reviewed the task's summary of the other 5 applied entries and the 5 routed-not-applied items with their destinations. Did not re-review the app beyond these spots, per instructions.",
+   "lens": "code-quality",
+   "before": 4
+  },
+  {
+   "score": 4,
+   "moved": "Two of the five findings I said would reach 8 are now fully and verifiably fixed in ordinary-use paths: templates/quick-tap/quick-fill carry isOvertime end-to-end (product-design-02), and the $0-goal guard plus delGoal confirm are in place everywhere a goal renders (product-design-07). A third (product-design-04, the pattern-lab average-shown-as-certain) is only 2/3 fixed — the comparison table and edit-mode readout now caption \"avg.\" but the \"YOUR PATTERNS\" list card (index.html:5097) still prints the raw multi-paycheck figure with zero qualifier, reproducing the exact defect at the most-visible site. The other two named findings (00 hero tax-chip cap, 06 clear-the-sample) are untouched, merely routed. My previous single worst finding, product-design-08 (swap board shows no pay figure at all, contradicting the app's own \"know your real take-home before you pick up the shift\" promise), is completely unaddressed — SwapsSheet's signature is unchanged (no baseRate/keepRatio/taxes) — and this round didn't even route it anywhere; it just sits in BACKLOG.md as a known open item.",
+   "worst": "product-design-08 (confirmed, high, unchanged): SwapsSheet's call site (index.html:3643) and signature (index.html:5525: `{user, shifts, dayEvents, notes, saveDayShifts, differentials, onClose, onOpenAuth, onPendingCount, pendingInvite, onInviteResolved}`) still carry no baseRate/keepRatio/taxes. Every \"SUGGESTED FOR YOU\" card and open board post shows date + shift-type + hours only — a nurse can accept a pickup/trade with zero indication of what it pays, directly contradicting the welcome-screen and share-sheet copy (\"know your real take-home before you pick up the shift\"). Nothing in this round touched or even routed it — BACKLOG.md:131 still lists it as open.",
+   "toReachEight": "Land product-design-08 itself: pass baseRate/keepRatio into SwapsSheet and render an estimated take-home (or at minimum $/hr) on every suggestion card and post before the Propose button — this is the single highest-impact \"no surprises\" violation left and it's a first-class, ordinarily-used surface, not an edge case. Finish product-design-04 at the one site it missed (index.html:5097, the pattern-card \"$X / paycheck\" line) so the primary pattern list doesn't still show an unqualified multi-paycheck average. Then actually land 00 (cap the hero tax chip) rather than leaving it perpetually routed to \"a future wage-core session\" — three of the five originally-named fixes plus the previous worst finding all still need code to change, not just a routing decision, before ordinary use stops producing a number that means something other than what it appears to.",
+   "ranAgainst": "Spot-checked the three applied entries in index.html: `grep -n avgNote index.html` (hits at 4963 def, 5076 comparison table, 5084 footnote hint, 5192 edit-mode) plus reading 5085-5100, which shows the \"YOUR PATTERNS\" card at line 5097 (`<b className=\"num\">{fmt(m.periodNet)}</b> / paycheck ·`) still has no avgNote qualifier — confirming the reported residual gap in product-design-04. Read applyTemplateTap (4757), doSaveTemplate (4762-4784) and the template row markup (4795-4804) confirming isOvertime flows through quick-tap, save-as-template and the row's \"· OT\" label (product-design-02). Grepped and read the $0-goal guards: AddShiftSheet preview filter (4890-4891), pattern-lab goalLine (5003-5004), updGoalTarget's floor (5341) and delGoal's confirmAsync gate (5342-5346) (product-design-07). Went beyond the three-item budget only to re-check my own previous \"worst\": grepped SwapsSheet's call site (3643) and signature (5525) to confirm product-design-08 is unchanged, and grepped BACKLOG.md to confirm it's still listed open and wasn't routed this round. Did not re-review the rest of the app; relied on the synthesis/findings JSON for 00/01/03/05/06's routed status.",
+   "lens": "product-design",
+   "before": 3
+  },
+  {
+   "score": 8,
+   "moved": "All three confirmed findings (privacy-telemetry-00/01/02) were documentation-accuracy fixes to privacy.html and PR #37 lands all three: the \"Your account\" section now discloses the email/password path and corrects the false \"stores no password\" claim, the Usage analytics section now states the anon_id is associated with the account once signed in, and the Feedback section now states a signed-in submission always carries the account id regardless of the contact field.",
+   "worst": "No confirmed privacy-telemetry finding remains open. The residual soft spot is that privacy.html's disclosures are now accurate but still coarse (e.g. it doesn't name that user_id lets the owner join a nurse's device to her email/name via auth.users, only that the two are \"associated\") -- true but not misleading, so it doesn't hold the score down.",
+   "toReachEight": "Already at 8+.",
+   "ranAgainst": "privacy.html lines 89-132 (grepped for Sign-in/password/Google/email, then read the full account/analytics/feedback/calendar sections); the three finding JSONs at docs/council-runs/2026-09-13/findings/privacy-telemetry-{00,01,02}.json for what each required; confirmed no other privacy-telemetry-* findings exist in that directory. Did not re-review index.html or re-run the harness, per instructions.",
+   "lens": "privacy-telemetry",
+   "before": 4
+  },
+  {
+   "score": 4,
+   "moved": "Nothing moved on the one high-severity finding that was set as the path to 8: keepRatio (index.html:3382) is byte-identical to before — still `Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview)/100)`, still omitting percent customWithholdings, so the Add-Shift preview, both calendar day-cell figures, the Settings goal-shifts line and the weekend-night pickup card still overstate take-home versus the hero/pattern-lab whenever a nurse has a percent custom withholding set — it was correctly triaged and routed to the wage-core bucket rather than silently dropped, but routing isn't fixing. Of the two lower-severity findings actually touched this pass: cross-surface-05 (low) landed cleanly and complete as scoped (patternCellShiftType at 1598-1608 still returns cell.shiftType verbatim for fixed cells by design, matching the narrowed scope note). cross-surface-02 (medium) landed at 2 of its 3 named sites — the side-by-side table (5076/5084) and the edit-mode readout (5192) both got the avg. caption — but the pattern-list card's inline figure at index.html:5097 (`<b className=\"num\">{fmt(m.periodNet)}</b> / paycheck ·`) still prints the raw multi-paycheck average with zero qualifier, reproducing the original defect for anyone browsing \"YOUR PATTERNS.\" Two other medium/low cross-surface findings (Add-Shift night-default over-differential; uncapped Taxes chip) are also still open, routed to the same future bucket.",
+   "worst": "cross-surface-00 (high, confirmed, unchanged): keepRatio at index.html:3382 still omits percent-type customWithholdings, so four separate money surfaces a nurse actually uses to decide whether to pick up a shift (Add-Shift preview, calendar day cells, Settings goal-shifts-to-reach, weekend-night pickup card) still overstate take-home relative to the hero and pattern lab by exactly her withholding percentage — this is the same defect at the same line as last score, now explicitly deferred rather than fixed.",
+   "toReachEight": "Fold percent customWithholdings into keepRatio at index.html:3382 (per the finding's exact patch: sum type:'percent' customWithholdings and add to the federal+state+FICA denominator) so all five downstream consumers agree with computeNet at the margin — run through the wage-core skill's Invariant 3 protocol (baseline probes, a new assertion, deployed-build equality). Secondarily, extend the cross-surface-02 avgNote fix to the third site (index.html:5097, the pattern-list card) so the \"YOUR PATTERNS\" list stops showing an unqualified multi-paycheck average.",
+   "ranAgainst": "Spot-checked in index.html: (1) `grep -n \"avgNote\" index.html` → hits only at 4963 (def), 5076, 5084, 5192 — read 5060-5100 and 5180-5200 to confirm the pattern-list card at 5097 has no avgNote check, matching the reported residual exactly. (2) Read patternCellShiftType/patternCellToShift at 1590-1615 — confirmed fixed-kind cells still return cell.shiftType verbatim (fix (a)-only scope holds). (3) `grep -n \"keepRatio\" index.html` and read line 3382 — confirmed the formula is unchanged from the prior review and still excludes percent customWithholdings. Did not re-drive the app or re-review unrelated surfaces.",
+   "lens": "cross-surface",
+   "before": 4
+  }
+ ],
+ "synthesis": "## 2026-09-18 — council re-check after PR #101: 21 of 22 entries landed, one landed short\n\nRe-check of the 2026-09-13 fix pass (PR #101, squash-merged 2026-09-16, live marker `_escStack`;\n#111 has landed since and touches none of this). Each applied synthesis entry was traced to the\ncurrent source and to the `council:`/`a11y:` assertion meant to pin it; each lens was re-scored\nagainst what is still live. Detail per entry: `docs/council-runs/2026-09-13/`.\n\n**Defects in the fix pass — these go first.**\n- **#7 did not land completely** (`product-design-04`, `wage-math-09`, `cross-surface-02`). The\n  \"avg. over N paychecks\" caption reached the comparison table (`index.html:5076`, hint 5084) and\n  the edit-mode readout (5192) but not the third site all three findings named: the pattern-list\n  card at 5097 still prints the raw `periodNet` as `$X / paycheck`. Commit 84a161a's message names\n  only \"the readout and the comparison table\". The pin (`tests/smoke.mjs:1363`) reads `.pl-money .k`\n  only, so it passes with the card wrong. One-line fix, one assertion, nightly-safe.\n- **Landed but not fully pinned** — a revert of these lines would not fail the suite: #9 quick-fill\n  (`toggleQuickFillDay`, 3484 — nothing drives quick-fill); #10 the pattern-lab goal line (5004,\n  duplicates the pinned AddShiftSheet filter); #32 SwapsSheet's Escape (5529, needs live auth);\n  #34 year-nav labels (4128/4130), the done-step name field (6560), the apply-preview live region\n  (5219 — the existing check is scoped to `.sheet .preview`, the lab is `.modal`).\n  Everything else: landed, pinned, negative-testable.\n\n| lens | before | after | what still holds it below 8 |\n|---|---|---|---|\n| wage-math | 4 | 5 | `wage-math-12/03` night default priced when Night is off; `-01` blank multiplier → 0×; `-06` paystub writes a negative differential; `-00/02`, `-04`; 5097 |\n| security | 2 | 3 | `security-00` poster_key reversible in production; `-01` propose_swap unchecked; `-02` raw decline UPDATE |\n| mobile-ux | 3 | 8 | cleared (`-04/-07/-13` lows remain) |\n| accessibility | 2 | 5 | no sheet traps or places focus — app-wide, not just the three IDs (#35) |\n| performance | 4 | 4 | `performance-00` blank tab behind 5 blocking CDN scripts; `-03` pay-period scroll fires an upsert |\n| data-integrity | 5 | 8 | cleared |\n| code-quality | 4 | 8 | cleared |\n| product-design | 3 | 4 | `product-design-08` swap cards show no pay figure; `-04` at 5097; `-00` hero tax chip; `-06` clear-the-sample |\n| privacy-telemetry | 4 | 8 | cleared |\n| cross-surface | 4 | 4 | `cross-surface-00` `keepRatio` (3382) omits percent withholdings — five surfaces over-promise; `-02` at 5097 |\n\n**Which BACKLOG.md session clears each lens still below 8.**\n- wage-math, cross-surface → **wage-core session (bucket 3)**. Both lenses' worst findings are the\n  same arithmetic (`keepRatio`, the night default, the multiplier coercion); nothing else moves them.\n- security → **dedicated session (bucket 2)**, the swap-board + infra hardening item. Only step 1\n  (revoke the grants) and step 2 (per-group secret in `swap_board()`) can move `security-00`.\n- performance → **dedicated session (bucket 2)** — two items there (boot splash before the CDN\n  scripts; save-path follow-ups for `-03`). Neither is one nightly.\n- accessibility → not a session: the **owner product call** (#35). Until \"no sheet traps focus\"\n  is reversed, no amount of labelling gets past 5.\n- product-design → no single session. `-00` and the 5097 site go with **wage-core (bucket 3)**;\n  `-06` and `-08` are **owner product calls**, and BACKLOG.md's line on `-08` (\"revisit only if the\n  board is re-emphasised\") is a decision to leave the lens below 8 — say so rather than re-routing it.\n\n**Did the re-check earn its cost.** Yes, narrowly: it found the missing 5097 site and six unpinned\npaths that a green CI could never have surfaced, because CI only proves the assertions that exist.\nWhat it could not do is what a full run does — re-read the 56 cells for defects the fix pass\n*introduced* (#101 touched ~40 sites in one file; `_escStack` and the shared `clearSignedInState`\nare new code no finding has reviewed) or verify the 34 lows, so every \"after\" score is bounded\nabove by the old finding set and says nothing about regressions. The smoke suite is the only thing\nstanding in for that, and it was written by the same pass it now vouches for."
+}
