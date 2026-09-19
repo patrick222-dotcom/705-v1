@@ -100,7 +100,8 @@ the 47-day outage it exists to catch.
    indistinguishable from a CDN outage. **Blast** without it a CDN compromise runs arbitrary JS with
    the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
-   hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`, and the
+   hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`,
+   `patternCellToShift`, **`sampleNet`**, **`keepRatio`**, `firstActiveShiftType`, and the
    rate/differential coercions in `sanitizeData`): touch only in a dedicated session, with the
    wage-math probes **and the hero/breakdown equality assertion against the deployed build**, never in
    a nightly build. Adding a sanitizer branch for a *new* data shape (as #62 did for `goals`) is fine
@@ -364,6 +365,23 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   stable per group, so a colleague identified via one confirmed match can recognize that person's
   later posts (disclosed in-app since 2026-08-11; key rotation parked). Everything else:
   `docs/swap-board.md`.
+- **`active:false` on a differential means "don't offer me this", never "stop paying it"
+  (owner-delegated call, 2026-09-19).** The council filed this as two surfaces disagreeing
+  (`wage-math-12`); re-reading the code, they never disagreed about *payment*. `hourlyRate` /
+  `shiftGross` pay a differential whatever its switch says, and the pattern lab's
+  `patternCellShiftType` reads `active` only to decide which type to **infer** for an unfixed
+  cell — a `kind:'fixed'` cell returns its `shiftType` verbatim. Both surfaces already treat the
+  toggle as a picker filter. **Why it must stay that way:** every historical shift is priced
+  through `shiftGross(baseRate, differentials[s.shiftType], …)`, so "stop paying" would
+  retroactively re-price every night shift she ever logged the moment she flipped a switch —
+  her pay history, year view and goal progress all changing silently, with no undo. A picker
+  filter cannot do that. The real defect was narrower than the framing: `AddShiftSheet` seeded
+  `useState('night')` without consulting `active`, so with Night off **no chip was lit and the
+  preview still charged the Night differential** ($720 vs $600 on a 12h shift at $50 — reproduced
+  in the negative test). Fixed by `firstActiveShiftType()` plus a re-seed effect, because the 15s
+  sync poll can deactivate the selected type mid-sheet. The rule now: **the lit chip is always
+  what is priced.** Pinned by `tests/smoke.mjs` §15, which drives the sheet rather than probing
+  the helper — probing the helper alone passed with the bug still present.
 - **Product surfaces.** Month-first scrolling calendar with a scroll-following pay period; a hero
   take-home figure with Gross / Taxes / Keep-% chips; an Add-Shift sheet with shift templates,
   quick-fill, day events (PTO paid at base rate) and a live preview — gross, take-home, ≈$/hr
@@ -673,6 +691,19 @@ the sandbox browser at `/opt/pw-browsers/...` when present and falls back to Pla
 registry on a GitHub runner. **Every assertion was negative-tested** — the gate was confirmed to
 FAIL when each invariant is deliberately broken, because a gate that has only ever passed proves
 nothing.
+
+**The deployed-build equality assertion is in git as of 2026-09-19** — `tests/equality.mjs`.
+Invariant 3 step 4 (render identical seeded state against **badgebudget.com** and the working
+tree, then diff every hero figure, hero chip and Breakdown row) was previously done ad hoc and
+left nothing behind, which is how `sampleNet` and `keepRatio` drifted out of the protocol
+unnoticed. It fetches the live build itself, rebuilds it through the same `buildScratch`, and
+refuses to run against a short body or a page without exactly 5 SRI scripts — the old github.io
+URL 301s to a 162-byte body, so a naive check would pass against nothing. **Deliberately not in
+`smoke.mjs` and not a CI job:** it needs egress to badgebudget.com, and the point is to compare
+against what is actually live, which a runner with no network cannot do. Run it by hand in a
+wage-core session, and name every intended difference *before* running. Ten seeded cases, the
+five the #65 harness covered plus percent-and-dollar withholdings together, an all-at-once case
+and the deductions-exceed-gross case.
 
 **Still not in git:** the 27-assertion swap-matching suite (`te_swap_p2_algo.js`) and the RLS audit
 (`rls_audit.js`, which mints throwaway confirmed users via the admin API). Those figures in the Done

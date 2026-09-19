@@ -23,7 +23,15 @@ displayed value. **Also `sampleNet`** (the onboarding done-screen figure) **and 
 cells): both build a tax model *beside* `computeNet` and had drifted from it when the council
 looked on 2026-09-13 (`wage-math-04`, `-06`). They were outside this list, which is how they
 drifted; a surface that prints a dollar figure from its own arithmetic is wage core whatever
-it is called.
+it is called. Both were folded back into `computeNet` on 2026-09-19 — `sampleNet` now calls it,
+`keepRatio` now includes percent custom withholdings.
+
+**And `firstActiveShiftType`** — which shift type the Add-Shift draft opens on. It decides which
+differential a preview prices, so it moves a dollar figure even though it returns a string.
+`active:false` means "don't offer me this in a picker" and NEVER "stop paying a shift already
+tagged with it": every saved shift is priced through `shiftGross(baseRate,
+differentials[s.shiftType], …)`, so the other reading would retroactively re-price her whole
+logged history the moment she flipped a switch. **The lit chip is always what is priced.**
 
 Adding a *sanitizer branch for a new data shape* (as #62 did for `goals`) is not wage core
 and is fine in a nightly, provided it ships with a unit test and the existing probes stay green.
@@ -67,7 +75,10 @@ node scripts/check_build.mjs && node tests/smoke.mjs
 ```
 
 **4. The equality assertion against the DEPLOYED build.** This is the step Invariant 3 exists
-for and the one that is easy to skip. Probes prove the functions are self-consistent; they do
+for and the one that is easy to skip. **It is now a script — `node tests/equality.mjs`** (needs
+network; not in `smoke.mjs`, not in CI, on purpose). Name every intended difference before you
+run it; a case that DIFFERS is either one you named or the bug, and "probably rounding" is not
+a third option. Probes prove the functions are self-consistent; they do
 not prove the *rendered* figures are unchanged for cases you did not think about.
 
 Render the same seeded state against both the local build and `https://badgebudget.com/index.html`,

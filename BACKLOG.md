@@ -95,26 +95,20 @@ _(none)_
   numbers in CLAUDE.md and `docs/history.md` rather than leaving two sets in circulation. Dedicated
   because it rewrites published figures and wants a human to agree the new ones are the honest ones.
 
-- [ ] **Wage-core session — council 2026-09-13 bucket 3 (NEVER auto-applies; `/wage-core` protocol)** —
-  `harness:drivable`. Every item here changes a displayed dollar figure or an Invariant-3 coercion; none
-  is nightly work however small the diff. One session: baseline probes, one new assertion per change, then
-  the hero/breakdown equality assertion against the **deployed** build naming each intended difference.
-  Cheapest first — synthesis #1 Add-Shift seeds `'night'` even when Night is switched off and prices it
-  (`wage-math-12`; underneath it the `active:false` product call — "stop paying" vs "hide from the
-  picker", the lab and the calendar answer differently); #2 hero "Taxes & deductions" chip shows
-  `round(gross) − round(net)` (`wage-math-00`); #4 `ficaWithholdingType` allowlist in `sanitizeData`
-  (`wage-math-02`); #3 multiplier coercion (`wage-math-01`); #6 the onboarding done-screen `sampleNet`
-  builds its own tax model beside `computeNet` (`wage-math-04`); #8 percent withholdings are missing from
-  `keepRatio`, so the Add-Shift preview, the goal reverse view and the calendar cells over-promise
-  (`wage-math-06`); #14 paystub-import floor (`wage-math-15`); `code-quality-02` (make `calc`/`yearMonths`
-  call `statOf`/`ptoStatOf` — zero behaviour change, and the equality assertion is exactly its test);
-  optionally #7's min/max paycheck range in `patternMetrics`; and the group-7 leftover — the pattern lab's
-  **template brush still drops `isOvertime`** because `patternCellToShift` (1261) hard-codes it false
-  (templates carry the flag everywhere else since 2026-09-16). Also worth taking while there:
-  `wage-math-08`/`cross-surface-04` (raw float "36.900000000000006 hrs" in the hero chip), `wage-math-13`
-  (≈$/hr from the rounded net), `wage-math-05` (year view prints gross unlabeled beside take-home cells),
-  `wage-math-11` ("about 1 years"). Findings: `docs/council-runs/2026-09-13/findings/<id>.json`; the
-  skill's "what counts as wage core" list now names `sampleNet` and `keepRatio`.
+- [x] ~~**Wage-core session — council 2026-09-13 bucket 3**~~ — SHIPPED 2026-09-19 (see Done log).
+  Seven of the eight items landed under the `/wage-core` protocol with 24 new assertions in
+  `tests/smoke.mjs` §15, every one negative-tested, and the Invariant 3 equality assertion run
+  against the live build: **9 of 10 seeded cases byte-identical, the 1 difference being the
+  intended tax-chip fix.** #14 (the paystub floor) needed nothing — `differentialsFromStub`
+  already reads `rate >= b ? rate - b : rate`, fixed in #108. **Still open, deliberately
+  deferred:** #7's min/max paycheck range in `patternMetrics` (optional, and the "avg. over N
+  paychecks" caption already tells the truth); `code-quality-02` (make `calc`/`yearMonths` call
+  `statOf`/`ptoStatOf` — zero behaviour change, worth its own session since the equality
+  assertion is its only real test); and the money-surface string nits `wage-math-08`/
+  `cross-surface-04` (raw float "36.900000000000006 hrs"), `wage-math-13` (≈$/hr from the
+  rounded net), `wage-math-05` (year view prints gross unlabeled), `wage-math-11`
+  ("about 1 years") — all four are display strings, each needs its own assertion, and none was
+  worth widening a session already touching seven money paths.
 - [ ] **Swap-board + infra hardening session, against the production project — council 2026-09-13 bucket 2
   (security scored 2/10 on verified findings)** — `harness:needs-live-auth`. In this order: (1) port
   `rls_audit.js` into `tests/` *first* so the probes exist, adding two: as member A, `select user_id from
