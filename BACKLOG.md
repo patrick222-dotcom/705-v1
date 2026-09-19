@@ -23,6 +23,20 @@ _(none)_
 ## Queue
 
 ### P1
+- [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
+  an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
+  compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
+  (1) the dashboard `.whatif mob-only` card at ~index.html:4077-4080 — **remove it**, it sits on the
+  first screen beside "Pattern lab" and "Pick up a weekend night?", the two things that work for one
+  nurse alone; (2) the Settings "Shift swaps" card (~4169-4172) — **keep** as the durable route in,
+  it is where someone who already swaps would look; (3) the topnav "Swaps" link (~4012) — keep, it is
+  desktop-only (`.topnav` is `display:none` below 920px) and cheap; (4) the subtitle copy "Trade with
+  your unit, anonymously" (4078) and "Trade shifts with your unit — anonymously" (4170) — the
+  anonymity claim is **untrue until the hardening session lands** (`security-00`), so drop the word
+  from both rather than repeating a promise the board does not keep. **Do not touch** `swapPendingCount`
+  or its badge anywhere: someone mid-swap must still be able to finish, and the badge is the only
+  signal a leg is waiting on her. Assertions: the mob-only card is gone at 390px, Settings still opens
+  the board, an existing group with a pending match still shows its badge — each negative-tested.
 - [ ] **Pattern-list card still prints the multi-paycheck average unqualified** — `harness:drivable` —
   the 2026-09-18 council re-check found synthesis #7 landed at two of its three sites: the comparison
   table and the edit-mode readout carry "avg. over N paychecks — checks will vary", but the "YOUR
@@ -60,6 +74,17 @@ _(none)_
   above the swap suggestion cards.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+
+- **OWNER ACTION, 5 minutes, blocks the positioning claim — confirm the real NurseGrid .ics host.**
+  `supabase/functions/ical-proxy/index.ts:23-25` allowlists `/^([a-z0-9-]+\.)?nursegrid\.com$/i`
+  behind a `TODO(owner)`: nobody has ever seen a real NurseGrid secret feed URL, so the pattern is a
+  guess and may not match the host they actually serve from (a CDN or a HealthStream domain would
+  both miss). Until it is confirmed, "no more need for NurseGrid" (CLAUDE.md → Positioning) is a claim
+  the product cannot cash, and the failure mode is silent-ish: the proxy rejects the host and she sees
+  a sync error, having already pasted a bearer credential. **What is needed from the owner:** one real
+  NurseGrid secret iCal address (Courtney's own), or just its hostname — that is the whole blocker.
+  Then: pin the exact host, redeploy the function, and run one real end-to-end sync. Everything after
+  the hostname is automatable; the hostname is not.
 
 - **Re-baseline the cohorts after the harness contamination** `harness:drivable` — `scripts/dashboard_snapshot.sql:52`
   reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
@@ -144,6 +169,17 @@ _(none)_
   `role="dialog"` sheet if yes; `product-design-08` swap suggestion cards show no pay figure — the feature
   that would make the board consistent with the app's promise, but it cuts against the de-emphasis
   decision; revisit only if the board is re-emphasised, and then via the wage-core protocol.
+- [ ] **Amend the council charter: a recorded owner decision is out of scope for a lens** —
+  `docs/council.md`. Twice now a lens has scored the app down for a choice made on purpose:
+  `product-design-08` (swap suggestion cards show no pay figure) is product-design's *stated* path to
+  8/10, and it directly contradicts the 2026-09-19 positioning. A lens should be able to say "this
+  surface is inconsistent with the app's promise" and have the run record it as **decided, not
+  defective**, without the score treating it as an open defect. Concretely: a `decided` verdict
+  alongside confirmed/rejected, fed from a short decision register the charter points at (positioning,
+  the no-nudge rule, "no sheet traps focus" until #35 is answered, the swap-board de-emphasis), and a
+  lens score that excludes them. Otherwise every future run re-litigates the same calls and
+  product-design is capped around 6 forever for doing the right thing. This is meta-goal work, not app
+  work — it makes the council reusable by someone whose decisions differ.
 - [ ] **Council 2026-09-13 lows and rejected worth a groom** — never agent-verified; candidates, not
   action items. `mobile-ux-04/-07` (tap-target pair), `mobile-ux-13` (display-name `autoFocus` — the
   anti-pattern already removed from FeedbackSheet), `security-06` (differential `color` unvalidated into
