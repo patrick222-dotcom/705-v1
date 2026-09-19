@@ -1113,7 +1113,12 @@ function sanitizeData(d){
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
   if(d.posttaxDeductions!=null) setNum('posttaxDeductions', d.posttaxDeductions);
-  if(typeof d.ficaWithholdingType==='string') out.ficaWithholdingType = d.ficaWithholdingType;
+  /* Whitelisted like estimateMode and workPeriod two lines down. computeNet only knows
+     'standard' and 'percent'; any other string fell through to fica = 0, overstating take-home
+     by ~7.65% of gross with nothing shown to say so (~$184 on a $2,400 period). The <select>
+     cannot produce a third value, so this only bites a corrupt or hand-edited blob — which is
+     exactly what this function exists for (council #4 / code-quality-01). */
+  if(d.ficaWithholdingType==='standard' || d.ficaWithholdingType==='percent') out.ficaWithholdingType = d.ficaWithholdingType;
   if(d.ficaWithholdingPercent!=null) setNum('ficaWithholdingPercent', d.ficaWithholdingPercent);
   if(typeof d.payPeriodStart==='string') out.payPeriodStart = d.payPeriodStart;
   /* Employer pay policy. Whitelisted like estimateMode, so a corrupt or hostile blob can only
@@ -1205,9 +1210,17 @@ function sanitizeData(d){
     const dd = {};
     Object.entries(d.differentials).forEach(([k,v])=>{
       if(!v || typeof v!=='object' || Array.isArray(v)) return;
+      const type = (v.type==='dollar'||v.type==='multiplier'||v.type==='percent') ? v.type : 'dollar';
       const amt = Number(v.amount);
-      dd[k] = {...v, amount: isFinite(amt) ? amt : 0,
-        type: (v.type==='dollar'||v.type==='multiplier'||v.type==='percent') ? v.type : 'dollar'};
+      /* A multiplier is a coefficient, so the safe fallback is 1 (pay the base rate), not 0 —
+         0 prices the shift at $0. NumInput commits its `min` on a select-all-then-tap-away, so
+         a blanked Holiday field used to persist 0x and show ~$0 for a Christmas shift forever,
+         with nothing to repair it (council #3 / wage-math-01). Dollar/percent keep 0, where
+         "no differential" is the correct reading of an empty box. */
+      const safe = type==='multiplier'
+        ? (isFinite(amt) && amt > 0 ? amt : 1)
+        : (isFinite(amt) ? amt : 0);
+      dd[k] = {...v, amount: safe, type};
     });
     out.differentials = dd;
   }
@@ -1269,6 +1282,7 @@ function sanitizeData(d){
           if(typeof c.start==='string' && TIME_RE.test(c.start)) o.start = c.start;
           if(typeof c.bonusType==='string' && bonusKeys.indexOf(c.bonusType)>=0 && c.bonusType!=='none') o.bonusType = c.bonusType;
           if(o.bonusType==='custom'){ const cb=Number(c.customBonus); o.customBonus = isFinite(cb)?cb:0; }
+          if(c.isOvertime===true) o.isOvertime = true;
           return o;
         }),
       }));
@@ -1587,13 +1601,26 @@ function patternCellEq(a,b){
   if(!a || !b) return !a && !b;
   return a.kind===b.kind && Number(a.hours)===Number(b.hours) && (a.start||'')===(b.start||'')
     && (a.shiftType||'')===(b.shiftType||'') && (a.bonusType||'none')===(b.bonusType||'none')
-    && Number(a.customBonus||0)===Number(b.customBonus||0);
+    && Number(a.customBonus||0)===Number(b.customBonus||0) && !!a.isOvertime===!!b.isOvertime;
 }
 /* 'day' | 'night' for any cell — fixed cells are classified by their differential key. */
 function patternCellClass(cell){
   if(!cell) return null;
   if(cell.kind!=='fixed') return cell.kind;
   return /night|eve/.test(String(cell.shiftType||'')) ? 'night' : 'day';
+}
+/* The shift type the Add-Shift draft opens on. `active:false` means "don't offer me this in a
+   picker" and NEVER "stop paying a shift already tagged with it" — nothing here re-prices a saved
+   shift, and shiftGross/hourlyRate deliberately still pay a differential whose switch is off, so
+   toggling one in Settings can never silently rewrite her logged pay history. This only chooses a
+   starting chip. Prefers 'night' when it is on, so the default path is byte-identical to the old
+   hard-coded 'night' (council #1 / wage-math-12: with Night switched off no chip was lit, yet the
+   preview and the saved shift still carried the Night differential). */
+function firstActiveShiftType(differentials){
+  const d = differentials || {};
+  const keys = Object.keys(d).filter(k => k!=='overtime' && d[k] && d[k].active);
+  if(!keys.length) return 'base';
+  return keys.indexOf('night')>=0 ? 'night' : keys[0];
 }
 function patternCellShiftType(cell, dateObj, differentials){
   if(!cell) return null;
@@ -1610,7 +1637,10 @@ function patternCellShiftType(cell, dateObj, differentials){
 function patternCellToShift(cell, dateObj, differentials){
   const st = patternCellShiftType(cell, dateObj, differentials);
   if(!st) return null;
-  const s = { shiftType:st, hours:Number(cell.hours), bonusType:cell.bonusType||'none', customBonus:Number(cell.customBonus||0), isOvertime:false };
+  /* isOvertime was hard-coded false, so a rotation painted with a "Mandatory OT night" template
+     priced ~31% under what the same template produces on the calendar — templates have carried
+     the flag everywhere else since 2026-09-16 (council group-7 leftover). */
+  const s = { shiftType:st, hours:Number(cell.hours), bonusType:cell.bonusType||'none', customBonus:Number(cell.customBonus||0), isOvertime:!!cell.isOvertime };
   if(cell.start) s.start = cell.start;
   return s;
 }
@@ -3379,7 +3409,15 @@ function App(){
 
   /* effective per-shift take-home ratio (for live previews) */
   const ficaForPreview = ficaType==='standard'?7.65:(ficaType==='percent'?(parseFloat(ficaPct)||0):0);
-  const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview)/100);
+  /* Percent custom withholdings are a marginal rate exactly like fed/state, and computeNet
+     subtracts them (1243). Leaving them out here made the Add-Shift preview, both calendar
+     day-cell figures, the goal "≈N shifts" line and the weekend-pickup card over-promise
+     against the hero and the pattern lab — $467 vs $437 on the council's repro. Flat-dollar
+     withholdings stay out on purpose: they are a per-paycheck amount, not a rate, so they
+     cannot be expressed as a per-shift ratio (council #8 / cross-surface-00). */
+  const pctWithholdings = (customWithholdings||[]).reduce((a,w)=>
+    a + (w && w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0);
+  const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+pctWithholdings)/100);
 
   /* ---- handlers ---- */
   const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };
@@ -3989,10 +4027,12 @@ function App(){
         const sample=[ {shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},{shiftType:'night',hours:12,bonusType:'none'},
           {shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'weekend-day',hours:12,bonusType:'none'},{shiftType:'base',hours:12,bonusType:'none'} ];
         let g=0,h=0; sample.forEach(s=>{ g+=shiftGross(baseRate,differentials[s.shiftType],s); h+=s.hours; });
-        const ficaBase=g; const incomeTaxBase=Math.max(0,g-pretaxDeductions);
-        const fica=ficaType==='percent'?ficaBase*((parseFloat(ficaPct)||0)/100):ficaBase*0.0765;
-        const net=Math.max(0, g-(pretaxDeductions+fica+incomeTaxBase*(federalTaxRate/100)+incomeTaxBase*(stateTaxRate/100)+posttaxDeductions));
-        return {net,gross:g,hours:h}; }
+        /* Was a second, hand-rolled copy of the tax model living outside Invariant 3 — and it had
+           drifted: it never subtracted customWithholdings and rounded differently from the
+           integer-cents core, so the onboarding figure disagreed with the hero the nurse landed
+           on moments later. One model, one answer (council #6 / product-design-05). */
+        const r = computeNet(g, taxInputs);
+        return {net:r.net, gross:r.gross, hours:h}; }
     }} />
       {paystub && <PaystubReview paystub={paystub} differentials={differentials} onApply={applyPaystub} onCancel={()=>setPaystub(null)} />}
       {/* Signing in here hydrates the cloud blob, which sets setupComplete and drops a returning
@@ -4056,7 +4096,14 @@ function App(){
               <div className="num num">{fmt(calc.net)}</div>
               <div className="chips">
                 <span className="chip">Gross {fmt(calc.gross)}</span>
-                <span className="chip">Taxes & deductions –{fmt(calc.ded)}</span>
+                {/* Gross − net, NOT calc.ded. computeNet caps the displayed pre/post rows so the
+                    Breakdown sums, but `ded` is the uncapped figure and never caps flat custom
+                    withholdings at all — so a paystub scan that set a pretax amount printed
+                    "Gross $0 · Taxes −$260 · $0" on a fresh pay period, disagreeing with the
+                    Breakdown one tap away. Deriving it from the two figures beside it also
+                    closes the $1 rounding drift, since all three now round once, together
+                    (council #2 / wage-math-00, wage-math-02). */}
+                <span className="chip">Taxes &amp; deductions –{fmt(Math.max(0, Math.round(calc.gross) - Math.round(calc.net)))}</span>
                 {calc.hours>0 && <span className="chip">Keep {calc.pct}%</span>}
                 {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
@@ -4692,7 +4739,7 @@ function giveMetaLine(meta, differentials){
 /* ---------- Add Shift Sheet ---------- */
 function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,goals,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave,job}){
   const [list,setList] = useState(existing.map(s=>({...s})));
-  const [shiftType,setType] = useState('night');
+  const [shiftType,setType] = useState(()=>firstActiveShiftType(differentials));
   const [hours,setHours] = useState(12);
   const [bonusType,setBonus] = useState('none');
   const [customBonus,setCustomBonus] = useState(0);
@@ -4716,6 +4763,10 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   // top of the chosen differential (was a mutually-exclusive chip that dropped the differential).
   // Mirrors the settings differentials editor, which already filters 'overtime' out.
   const active = Object.entries(differentials).filter(([k,d])=>d.active && k!=='overtime');
+  // The 15s sync poll can replace `differentials` while this sheet is open, so a type that was
+  // active when the draft opened can go inactive under it. Re-seed rather than leave no chip lit
+  // while the preview still prices that differential — the lit chip must always be what is priced.
+  useEffect(()=>{ const d=differentials[shiftType]; if(d && !d.active) setType(firstActiveShiftType(differentials)); },[differentials]);   // eslint-disable-line react-hooks/exhaustive-deps
   const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
   const dateLabel = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
@@ -4969,7 +5020,9 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   const cellLabel = c => {
     if(!c) return 'off';
     const nm = c.kind==='fixed' ? ((differentials[c.shiftType]&&differentials[c.shiftType].name)||c.shiftType) : (c.kind==='night'?'Night':'Day');
-    return `${nm} ${c.hours}h${c.start?' from '+fmtTime12(c.start):''}${c.kind==='fixed' ? ' (template — pay type fixed)' : ''}`;
+    // OT is priced into the readout now, so it has to be readable on the cell too — appended
+    // only when set, so a non-OT cell's label is unchanged.
+    return `${nm} ${c.hours}h${c.start?' from '+fmtTime12(c.start):''}${c.isOvertime?' · OT':''}${c.kind==='fixed' ? ' (template — pay type fixed)' : ''}`;
   };
   const weekendShort = m => {
     if(!m.weekendEvery || !m.weekendsWorked) return 'none';
@@ -5013,6 +5066,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
       const c = {kind:'fixed', shiftType:t.shiftType, hours:t.hours};
       if(t.start) c.start = t.start;
       if(t.bonusType && t.bonusType!=='none'){ c.bonusType=t.bonusType; if(t.bonusType==='custom') c.customBonus=t.customBonus||0; }
+      if(t.isOvertime) c.isOvertime = true;
       return c;
     }
     const b = PATTERN_BRUSHES.find(x=>x.key===brush);
@@ -5371,7 +5425,7 @@ function Settings(props){
             <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
             <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
             <input className="nm" value={d.name} disabled={k==='base'} aria-label="Differential name" onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
-            <span className="amt">{d.type==='multiplier'?<><NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' multiplier'} style={{width:34}}/>×</>:<>+$<NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' amount'}/></>}</span>
+            <span className="amt">{d.type==='multiplier'?<><NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0.1} ariaLabel={d.name+' multiplier'} style={{width:34}}/>×</>:<>+$<NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' amount'}/></>}</span>
             {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}} aria-label={'Delete '+d.name+' differential'}>Del</button>}
           </div>
         ))}
@@ -6443,6 +6497,7 @@ function Onboarding(props){
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
 
   /* 0 — welcome */
+  const obSample = sampleNet();
   if(obStep===0) return (
     <div className="ob">
       <div className="brand">badgebudget<span className="b-dot"></span></div>
@@ -6451,8 +6506,12 @@ function Onboarding(props){
       <h1 className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</h1>
       <div className="help">Nights, weekends, holidays, that charge bonus — we do the messy math so the number's never a surprise.</div>
       <div className="hero" style={{marginTop:22}}>
-        <div className="lbl">Sample · 72 hrs this period</div>
-        <div className="num" style={{fontSize:38,margin:'6px 0 4px'}}>$3,951</div>
+        {/* Both figures come from sampleNet() — the same function the done screen uses — rather
+            than a literal. The figure that used to be hard-coded here had drifted from what the
+            app actually computes for this exact schedule, so the first number a nurse ever saw
+            was one the product could not reproduce (council #6 / product-design-05). */}
+        <div className="lbl">Sample · {obSample.hours} hrs this period</div>
+        <div className="num" style={{fontSize:38,margin:'6px 0 4px'}}>{fmt(obSample.net)}</div>
         <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
       </div>
       <div className="spacer"></div>
