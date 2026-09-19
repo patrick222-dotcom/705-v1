@@ -2,7 +2,8 @@
 
 Take-home pay planner for bedside nurses, built for the owner's wife and her unit. Logs shifts +
 differentials, shows what a shift is worth *before* it's worked, imports/exports .ics schedules, and
-hosts an anonymous shift-swap board.
+plans toward savings goals. It also carries an anonymous shift-swap board, kept deliberately quiet —
+see Positioning.
 
 - **Live:** https://badgebudget.com (custom domain since 2026-09-02). The old
   `https://patrick222-dotcom.github.io/705-v1/` URL 301-redirects there. **Verify deploys against
@@ -11,6 +12,26 @@ hosts an anonymous shift-swap board.
   .ics UID scheme and the swap salt still say `scrubpay` on purpose (Invariants 5–7). The `scrubpay.*`
   domains belong to other parties; never present them as ours. Why the name changed:
   `docs/session-2026-09-02-domain-and-naming.md`.
+- **Positioning (owner decision, 2026-09-19).** One sentence: **replace NurseGrid for schedule,
+  then do the thing NurseGrid never did — tell her what the paycheck will be and whether the goal is
+  reachable.** Calendar sync is the *substitution* half (she stops opening NurseGrid); the pay
+  estimate and goal planning are the half nothing else on her phone does. Both are single-nurse value
+  and need no colleague to adopt anything, which is why they lead.
+  **The swap board is an Easter egg, not the growth engine.** It is the one feature that needs a
+  critical mass of her unit before it is worth anything, and density has been zero since it shipped;
+  Courtney asked for it off entirely. The call is to *quiet its CTAs*, not delete it: the board keeps
+  working for anyone holding an invite link, and it stops competing for attention on the first screen
+  with the two things that work for one nurse alone. Practical consequences, all load-bearing:
+  (a) growth copy and any invite/QR framing lead with sync + paycheck, never with swapping;
+  (b) `security-00` stops being a ship-blocker and becomes a **promotion-blocker** — the hardening
+  session must land before the board is ever re-emphasised or its invite links go out at scale, and
+  the in-app "your unit sees it anonymously" copy stays untrue until it does;
+  (c) a lens that scores the app down for under-serving the swap board is scoring against a recorded
+  decision — see `docs/council.md` and the council-charter item in `BACKLOG.md`;
+  (d) **the positioning is one unverified string away from being true**: `ical-proxy`'s NurseGrid
+  host entry (`index.ts:23-25`) is a *guessed* regex behind a `TODO(owner)`, so "no more need for
+  NurseGrid" is a claim the product cannot yet cash. Confirming it needs one real NurseGrid secret
+  feed address — owner action, nothing else unblocks it.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
@@ -325,14 +346,18 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   static `about.html` to point the home-page field at, would fix it. Neither is built.
   **Testing the wall needs an account that has never signed in.** Signing in with an existing account
   proves nothing — it was already on the test-user list and would have worked before publishing.
-- **Swap board.** Invite-code unit groups, anonymous posts, client-computed
+- **Swap board — deliberately quiet since 2026-09-19 (see Positioning).** Fully functional, reachable
+  by anyone who has it, but not promoted: it is the only feature that requires a colleague to adopt
+  something, and it is not the growth story. Invite-code unit groups, anonymous posts, client-computed
   pickup/handoff/trade/3-cycle suggestions, names revealed only after every leg accepts. Anonymity is
   *meant* to be enforced in Postgres (column grants + security-definer RPCs); the 2026-07-30 audit
   (29/29 + 5/5) proved `author` can't be selected but never tried rebuilding the key, and it can be
   rebuilt — see Invariant 7 and `security-00` (2026-09-13). Two more verified holes sit beside it:
   `propose_swap` never checks the caller is a party to the match (`security-01`) and a raw UPDATE
   policy lets a decline bypass `decline_swap_match` (`security-02`). All three wait on the hardening
-  session in `BACKLOG.md`; until then the in-app "anonymously" copy overstates the board. Invite links `https://badgebudget.com/?join=CODE` go through the native
+  session in `BACKLOG.md`; until then the in-app "anonymously" copy overstates the board. Under the
+  2026-09-19 positioning that session is a **promotion-blocker, not a ship-blocker** — nothing else
+  waits on it, and nothing may re-emphasise the board until it lands. Invite links `https://badgebudget.com/?join=CODE` go through the native
   share sheet; the recipient always confirms; the code survives the OAuth redirect via a 1h
   localStorage stash. The 🛠️ "not set up yet" screen (`tablesMissing`) is a defensive fallback,
   unreachable in normal operation and not doc-sized to remove. Known gap by design: `poster_key` is
