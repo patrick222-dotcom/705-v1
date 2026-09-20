@@ -560,12 +560,38 @@ so it is named, not hidden. Real mobile numbers as of 2026-09-07: 48 devices, 8 
 
 ## Autonomous nightly loop
 
-**Routine** `ScrubPay nightly (dedicated lean session)` — id `trig_019zkn8Z6Xu18t1B46iNMuwP`, cron
-`0 8 * * *` UTC (≈04:0x ET). It fires into a **persistent, authorized session**
-(`session_01GGWUJsjTww44sqB58U5Ahp`) where `git push` and the Supabase MCP both work — *not* a fresh
-session per fire, which is why every nightly commit carries the same `Claude-Session:` trailer.
-Nothing in the repo represents the Routine; delete it and the loop stops silently. Its prompt says
-to read this file and `BACKLOG.md` first, so keep both self-sufficient.
+**Routine** `BadgeBudget nightly (fresh session, fail-loud)` — id `trig_016Q4eZdanDoaVWzydPcGKpZ`,
+cron `0 8 * * *` UTC (≈04:0x ET), model pinned to `claude-opus-5`, **rebuilt 2026-09-20**. It fires
+a **fresh session per run** and carries `notifications: {push, email}` at the Routine level. Its
+prompt says to read this file and `BACKLOG.md` first, so keep both self-sufficient.
+
+**Why it was rebuilt, and what the old one got wrong** — the predecessor
+(`trig_019zkn8Z6Xu18t1B46iNMuwP`, `ScrubPay nightly (dedicated lean session)`) **sat silently
+disabled from 2026-09-16 to 2026-09-20 and nobody noticed for three days.** Both `ended_reason` and
+`suspension_reason` were empty, which means user-paused, not auto-disabled — it was almost certainly
+caught in a sweep while other Routines were being reorganised the same evening. That is this
+section's own warning coming true: *nothing in the repo represents the Routine.* The four design
+changes all follow from it:
+
+1. **Fresh session per fire, not a persistent one.** A Routine bound to a persistent session cannot
+   carry server-side notifications — the old one relied on the agent remembering to call
+   `PushNotification` itself, which is exactly what does not happen when a run dies early. Push +
+   email now fire from the Routine, so a failed run reports even if the agent never gets that far.
+   (The old design also meant every nightly commit carried the same `Claude-Session:` trailer.)
+2. **Always commit, even on a quiet night.** The git history is the loop's heartbeat: a night with
+   no commit is indistinguishable from the Routine being switched off, which is precisely why the
+   outage was invisible. Look for a dated `BACKLOG.md` line every single day.
+3. **Verify against `badgebudget.com`.** The old prompt curled the github.io URL, which 301s to a
+   ~162-byte empty body — a content check against it can never fail, so it "verified" every deploy
+   it ever made without once seeing one. This was a known open item for weeks.
+4. **Run the committed suites.** The old prompt predated `tests/` landing in git (2026-09-07) and
+   still walked through hand-rolling the vendoring and CDN rewriting. It now runs
+   `check_build.mjs` + `test_groom_seed.mjs` + `smoke.mjs` with expected counts.
+
+It also refuses wage core by name, respects the Positioning decision (never re-add a swap-board CTA
+or the untrue "anonymously" copy), and skips a queue item that overlaps an open PR's region of
+`index.html`. It honours a `DRY RUN` string in the fire input by stopping after the gate — used to
+verify the whole path on 2026-09-20 before the first live run.
 
 Each run is **groom → build → gate → deploy → notify**:
 
@@ -592,7 +618,8 @@ Each run is **groom → build → gate → deploy → notify**:
 4. **Deploy** only on green: commit with the dated Done-log line, push the work branch
    (`--force-with-lease`), PR to the deploy branch, squash-merge, confirm live at badgebudget.com. If
    push is denied, put `git format-patch` output in the summary rather than losing the work.
-5. **Notify** the owner by push with 1–2 lines.
+5. **Notify** — push + email fire from the Routine itself now; the run still ends with 1–2 lines
+   saying what shipped (or why not) and the live-confirmation result.
 
 **Queue shape.** `## Queue` holds only work one run can finish *and verify*. Anything needing a live
 repro, a design call, or delicate surgery lives under `## Needs a dedicated session (NOT for the
@@ -766,9 +793,10 @@ name='client_error' order by created_at desc;`
   is also a one-visit account: `last_sign_in_at` equals `created_at` to the millisecond, so they
   signed in once and never came back. Nobody noticed for a day, which is the case the ops console
   exists for.
-- **The nightly Routine's prompt still curls the github.io URL** for its live check (a 301 with no
-  body, so it can never see the change it verifies) — change it to
-  `https://badgebudget.com/index.html?cb=N`. The `ship` skill already encodes the correct check.
+- **The nightly Routine was rebuilt 2026-09-20** (see Autonomous nightly loop). The github.io live
+  check is fixed, and the three-day silent outage that prompted the rebuild is recorded there. Open
+  question left behind: nothing in the repo still represents the Routine, so a second silent pause is
+  possible — the daily `BACKLOG.md` commit is the only detection, and nothing watches for its absence.
 - **Anonymous users and the domain move:** checked 2026-09-02 — no device that saved a shift or
   completed setup without also signing in, so nobody lost data. Every phone did mint a fresh `anon_id`
   on the new origin, so distinct-device counts are inflated across the cutover.
