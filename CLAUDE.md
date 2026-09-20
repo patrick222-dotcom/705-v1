@@ -48,10 +48,10 @@ see Positioning.
 Applies to every session in this repo — nightly loop, council run, ad-hoc, subagent summaries.
 
 - **Be direct. Keep answers short, in everyday language, unless I ask for detail.** No preamble, no
-  restating my question, no closing recap. First sentence is the answer or the recommendation.
-- **Short by default, depth on request.** Past ~200 words, give the short version and offer the long
-  one. "Explain", "detail", "stress-test", "explore" or "vision" are the switches that turn depth on;
-  until one of those, assume I'm executing, not studying.
+  restating my question, no closing recap — first sentence is the answer or the recommendation. Past
+  ~200 words, give the short version and offer the long one. "Explain", "detail", "stress-test",
+  "explore" or "vision" are the switches that turn depth on; until one of those, assume I'm
+  executing, not studying.
 - **Plain words over repo jargon.** This file is dense on purpose, but a *reply* shouldn't be. Say
   "the deploy check" before `check_build.mjs`, "the pay math" before Invariant 3 — name the file or
   invariant once for precision, then keep going in English.
@@ -63,9 +63,6 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 - **No sycophancy, no validation, no hedging.** Disagree when I'm wrong and say so plainly. If a
   finding is uncertain, say "unverified" and name what would verify it — this repo has been burned by
   confident doc claims that turned out false (three of them in the 2026-09-13 council run).
-- **Report what actually happened.** Tests failed → show the output. Step skipped → say which. Done
-  and verified → say it plainly without padding. A guess labelled as a guess is fine; a guess phrased
-  as a fact is the failure mode that costs days here.
 
 ## Where things are
 
