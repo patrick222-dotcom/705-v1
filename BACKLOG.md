@@ -18,11 +18,52 @@ with a dated line in the Done log.
   **One build item per run.**
 
 ## In progress
-_(none)_
+- [~] **Quiet the swap-board CTAs** — **BUILT 2026-09-20, full gate green, NOT SHIPPED.** The commit
+  exists on `claude/clause-md-review-9tqlj8` locally only: this session could not push (see the P0
+  below). Apply the patch in the run summary, or re-run the nightly once push works. Nothing is live.
 
 ## Queue
 
+### P0
+- [ ] **The nightly loop cannot push from a fresh session — the heartbeat commit is unwritable**
+  (found 2026-09-20, the rebuilt Routine's first live run). `git clone` and `git fetch` work; `git
+  push` is refused by the git proxy: *"patrick222-dotcom/705-v1 is not in this session's authorized
+  repository set, so the proxy will not inject a credential for it"* (403). The GitHub API refuses
+  the same way — *"GitHub access to this repository is not enabled for this session"* — so
+  `mcp__github__*` PR creation and merge are unavailable too, and no MCP servers loaded at all
+  (Supabase included; GROOM fell back to the Management API, which works).
+  **This is a direct consequence of the 2026-09-20 rebuild**, which moved the Routine from a
+  persistent authorized session to **fresh-session-per-fire** to gain server-side push/email
+  notifications. Environment notes below already recorded that fresh-session fires could not push
+  (2026-08-04, 2026-08-09) and called it "historical, not current" — it is current again.
+  **The bite:** design change #2 of the rebuild is "always commit, even on a quiet night — the git
+  history is the loop's heartbeat," and that is precisely what a fresh session cannot do. The
+  detection mechanism built to catch the last three-day silent outage is itself disabled by the fix
+  for it, and it fails the same silent way: a night with no commit still looks like a night that
+  didn't run. **Owner action:** add `patrick222-dotcom/705-v1` to the Routine's session sources with
+  push access (Routine → sources; the API hint is `add_repo` with `access:"push"`). Until then every
+  nightly run can groom, build and gate but ships nothing and records nothing.
+
 ### P1
+- [ ] **Decide whether Settings should carry the durable route into the swap board** — `harness:drivable`
+  — found while building the de-emphasis, 2026-09-20. The item below called entry point (2) "the
+  Settings 'Shift swaps' card … the durable route in, it is where someone who already swaps would
+  look." **It is not in Settings.** `Settings` (the component at ~index.html:5388) contains no swap
+  entry at all; that card is a second *dashboard* card in `.dash`'s second column, and `.col` is not
+  `desk-only`, so on a phone it stacks below the fold on the same screen. The de-emphasis still lands
+  — below the fold is not the first screen, and the board stays reachable — but the plan's premise
+  was wrong, so the "durable route" the positioning assumed does not exist. Either move/duplicate the
+  entry into Settings (where the note says someone would look) or amend the positioning note to say
+  the dashboard's second column is the route. One-line product call; do not guess it.
+- [~] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — **BUILT 2026-09-20, gate green, NOT
+  SHIPPED (push denied — see P0).** Done as specified except entry point (2), whose location the item
+  got wrong (see the item above). Shipped-in-the-patch: the `.whatif mob-only` dashboard card removed;
+  the second-column card and the desktop topnav link kept; "anonymously" dropped from both entry-point
+  subtitles because `poster_key` is reversible until the hardening session lands (Invariant 7 /
+  `security-00`). `swapPendingCount` and its badge untouched at both remaining sites. 8 new assertions
+  in `tests/smoke.mjs` §16, every one negative-tested — including the one that first *aborted* rather
+  than failed when the card was deleted outright, which is the failure mode the `harness` skill warns
+  about. Original scoping kept below:
 - [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
   compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
@@ -295,6 +336,16 @@ _(none)_
   tool when a row can be marked handled. Needs a write path into `feedback` and a column; a write path
   is a bigger decision than a read one, hence last.
 
+- [ ] **The swap pending badge cannot fire before the board is opened** — `harness:needs-live-auth` —
+  found 2026-09-20 while de-emphasising the board. `swapPendingCount` is `App` state fed only by
+  `SwapsSheet`'s `onPendingCount`, and `SwapsSheet` is mounted only while `showSwaps` is true
+  (index.html ~4276). So on every fresh load the count is 0 and **no badge renders at any of its
+  sites** until she opens the board — at which point she is already looking at the matches. The
+  backlog has been treating the badge as "the only signal a leg is waiting on her"; it is not a
+  signal at all on arrival. Fixing it means a cheap count on load (a `swap_pending_count()` RPC, or
+  hoisting the existing board fetch), which is a live-auth change on the anonymity boundary — hence
+  a dedicated session, and it belongs with the hardening work rather than ahead of it. **Until then,
+  do not lean on the badge in any de-emphasis reasoning.**
 - [ ] **Adversarially audit the ops RPCs** — `harness:needs-live-auth` — the swap board's anonymity
   boundary got 29/29 + 5/5 on 2026-07-30 because someone tried to break it. The ops functions deserve
   the same, and the questions are known: can a non-admin call any `ops_*` function; can an admin reach
@@ -611,6 +662,12 @@ here so the loop's queue contains only work it can actually finish; pick these u
   after; an unresolved ownership question found late ends a handoff rather than repricing it.
 
 ## Environment notes (for the nightly loop — updated 2026-09-02)
+- **OUT OF DATE as of 2026-09-20 — read the P0 at the top first.** The Routine was rebuilt that day
+  to fire a **fresh session per run**, and in a fresh session `git push` is 403 and no MCP servers
+  load (Supabase included — use the Management API fallback, which works). The paragraph below
+  describes the *previous* persistent-session Routine and is kept because it documents what has to
+  be restored: authorized repo access for the session. Its own last sentence turned out to be the
+  prophecy that mattered.
 - **Where it runs:** the Routine fires into a persistent, authorized session (CLAUDE.md → Autonomous
   nightly loop), where `git push` and the typed Supabase MCP tools both work — every build since
   2026-08-10 shipped that way, and GROOM has read `feedback`/`events` live via MCP since 2026-08-27.
@@ -647,12 +704,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - [ ] **Agreed swaps fall apart last-minute** (P3 · source:reddit-seed · shift-swapping · needs-live-auth) — A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Nurses want to negotiate swaps in a channel managers can't see until the trade is final** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Units coordinate swaps in Facebook groups, GroupMe, or Teams that managers also belong to, letting a manager block an already-agreed trade after the fact. The prevailing advice is to find the partner in a management-free channel and bring only the finished trade for sign-off. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: 1 dedicated r/nursing thread (~1y, 855 up / 99 comments) with broad independent corroboration); groom to confirm priority/scope before build.
 - [ ] **Swaps get denied by hidden eligibility rules (no-overtime, skill/seniority tier match)** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Facilities require trades to be even in hours so nobody triggers overtime, and to preserve skill mix so a charge-qualified slot only goes to another charge-qualified nurse. These constraints are invisible until a swap is rejected, which reads as arbitrary even when it is a stated policy. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: same r/nursing thread plus scattered one-line confirmations elsewhere); groom to confirm priority/scope before build.
-- [ ] **Travel/contract nurses compare take-home against staff roles** (P3 · source:reddit-seed · pay-differentials · unscoped) — Contract and travel nurses want to compare net pay of a contract vs. a staff position, factoring stipends and differentials. Maps to `new` (harness:unscoped — maps to no existing surface; a feature to design, not a one-run build). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Managers contacting nurses off shift, on PTO, or on leave to chart or cover** (P3 · source:reddit-owner · manager-conflicts · unscoped) — Managers reach out about documentation fixes or coverage during vacation, leave, or days off, occasionally escalating to a write-up for not responding off the clock. A boundary/communication-norms complaint distinct from schedule-change or PTO-denial themes. Out of scope for a pay planner; recorded for completeness. Maps to `new` (harness:unscoped — maps to no existing surface; a feature to design, not a one-run build). Auto-surfaced from owner-gathered Reddit signal (observed: 1 r/nursing thread (~2mo, 29 up / 22 comments); could NOT be independently corroborated — signal downgraded from the reporter's 'occasional'); groom to confirm priority/scope before build.
 
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-20 (nightly, first live run of the rebuilt Routine) — **GROOM + one build item, gated
+  green, SHIPPED NOTHING: this session cannot push.** Filed as the P0 at the top — `clone`/`fetch`
+  work, `push` is a 403 from the git proxy ("not in this session's authorized repository set") and
+  the GitHub API refuses identically, so no PR, no merge, no live confirmation, and **this Done-log
+  line itself could not be committed to origin.** The cause is the 2026-09-20 rebuild's move to
+  fresh-session-per-fire; Environment notes had recorded that exact failure for fresh sessions on
+  2026-08-04/09 and marked it historical. The heartbeat commit that the rebuild introduced to detect
+  a silent outage is the one thing a fresh session cannot write.
+  **Built anyway so the work is not lost** (patch in the run summary): the swap-board de-emphasis,
+  the top P1. Gate: `check_build` 11/11, `test_groom_seed` 33/0, `smoke` **262 passed / 0 failed**
+  (254 baseline → 8 new in §16, each negative-tested by breaking it in the tree and confirming the
+  right assertion FAILED, then restoring).
+  **Groom, from live `feedback` + `events`:** 0 new feedback since 2026-09-14 (11 rows total, last
+  is the `broken` tile on the swap board), `auth.users` still **4** — no signup since 2026-09-12.
+  Traffic is thin but real: 15 rows/5 devices on 09-17, 16/7 on 09-18, 12/6 on 09-19, 5/2 so far on
+  09-20. No `client_error` since 2026-09-16, across the 09-18/09-19 council + wage-core ships.
+  **The new signal is `session_end`, and it is bleak:** of the 9 exit rows ever recorded, **8 end at
+  `ob_step` stage 0 with `setup:false, shifts:0` after 2–15 seconds** — a bounce off the welcome
+  screen before anything is entered. The 9th (09-17, `via:'qr'`) reached `setup:true` and
+  `estimate_sharpened` over 114 seconds and still saved no shift. That is the funnel stage 0 was
+  fixed on 2026-09-16 to make visible, and the first four days of it say the welcome screen is where
+  everyone leaves. **No activation rate is quoted on purpose** — the device classifier is still
+  broken (`dashboard_snapshot.sql:52`) and every figure since 2026-09-07 is inflated; counts only
+  until the re-baseline item lands.
+  **Three things found while grooming, each filed above or below:** the "Settings Shift swaps card"
+  in the de-emphasis plan is not in Settings (P1); `swapPendingCount` can never be non-zero on a
+  fresh load because `SwapsSheet` only mounts while the sheet is open, so the pending badge cannot
+  signal anything until she opens the board (Needs a dedicated session); and `groom_seed --apply`
+  silently dropped the `travel/contract take-home comparison` candidate this run — the known
+  keyword-coverage erosion defect, now with a second live example. `--apply` run, block refreshed,
+  12 candidates.
+  **Housekeeping noted, not done:** PRs #113–#117 (the 09-18 council re-check, the 09-19 wage-core
+  ship, the positioning decision, the CLAUDE.md "How to talk to me" section) are recorded in
+  CLAUDE.md and in the dedicated-session notes but **have no Done-log entries** — the log jumps
+  2026-09-16 → 2026-09-20. Worth backfilling by whoever ran them; this run did not invent history it
+  wasn't present for.
 - 2026-09-16 (dedicated session, same PR #111) — **the feedback inbox links to the device trail**
   (migration 007). 005 put `anon_id` on `feedback` and 006 built the trail; the inbox sat between
   them returning eight columns, none of them the join key, so the console could show what a nurse
