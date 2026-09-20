@@ -86,6 +86,28 @@ _(none)_
   Then: pin the exact host, redeploy the function, and run one real end-to-end sync. Everything after
   the hostname is automatable; the hostname is not.
 
+- **CLAUDE.md's "Open PRs" line is stale, and Invariant 11 depends on it** `harness:drivable` — it names
+  only #46. **Six** are open as of 2026-09-20, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
+  **#70** `claude/siri-inbox`, **#72** `claude/siri-session-b`, **#82** `claude/rust-app-consideration-q78j8b`,
+  **#112** and **#116** both on branches still live.
+  Invariant 11 says never delete an open PR head — deleting one closes the PR and loses the work — and
+  its verification is "cross-check `git branch -r` against open PRs". Anyone doing the branch cleanup
+  from CLAUDE.md alone would read three of those four heads as fair game. Fix the line, and while there
+  refresh the "Merged branches to delete" list: 24 remote branches exist, of which the deploy branch and
+  the six open heads are protected; the listed eight are a subset of what is actually stale
+  (`ci-ruleset-probe`, `ci-ruleset-probe-revert`, `claude/app-usage-inquiry-iqjzeq`,
+  `claude/badgebudget-architecture-review-fz3hlp`, `claude/brand-bb-lettermark`,
+  `claude/brand-favicon-black`, `claude/capture-core-schema`, `claude/claud-md-cleanup-xn61wa`,
+  `claude/commercialization-scaling-strategy-i1t1du`, `claude/creative-app-brainstorm-u7495n` are not on it).
+  **The branches themselves are harmless** — `deploy.yml` fires only on `main`/`master`/the deploy branch,
+  so a stale branch can never ship, and `ci.yml` pushes only on two named branches, so no Actions minutes
+  burn. The cost is Invariant 10: with no `main` and the deploy branch sitting in a list of 22 near-identical
+  `claude/*` names, branching from the wrong ref gets likelier, and that failure is silent (14 commits
+  reverted once). GitHub auto-deletes a head on merge, so the backlog only grows when a branch is
+  re-used for follow-up work — as `claude/live-dashboard-insights-r31se3` was, after #111 merged and
+  deleted it. Dedicated because it is a doc-accuracy fix whose whole value is being right, and this
+  item has already drifted once (it was written on 2026-09-16 and its own figures were stale by the 20th).
+
 - **Re-baseline the cohorts after the harness contamination** `harness:drivable` — `scripts/dashboard_snapshot.sql:52`
   reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
   "The real users" without any engagement check. Between UA-spoofing bots and the test harness that
