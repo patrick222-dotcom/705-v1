@@ -23,9 +23,36 @@ _(none)_
 ## Queue
 
 ### P1
-_(empty — promote from the candidate lists below with judgment)_
+- [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
+  an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
+  compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
+  (1) the dashboard `.whatif mob-only` card at ~index.html:4077-4080 — **remove it**, it sits on the
+  first screen beside "Pattern lab" and "Pick up a weekend night?", the two things that work for one
+  nurse alone; (2) the Settings "Shift swaps" card (~4169-4172) — **keep** as the durable route in,
+  it is where someone who already swaps would look; (3) the topnav "Swaps" link (~4012) — keep, it is
+  desktop-only (`.topnav` is `display:none` below 920px) and cheap; (4) the subtitle copy "Trade with
+  your unit, anonymously" (4078) and "Trade shifts with your unit — anonymously" (4170) — the
+  anonymity claim is **untrue until the hardening session lands** (`security-00`), so drop the word
+  from both rather than repeating a promise the board does not keep. **Do not touch** `swapPendingCount`
+  or its badge anywhere: someone mid-swap must still be able to finish, and the badge is the only
+  signal a leg is waiting on her. Assertions: the mob-only card is gone at 390px, Settings still opens
+  the board, an existing group with a pending match still shows its badge — each negative-tested.
+- [ ] **Pattern-list card still prints the multi-paycheck average unqualified** — `harness:drivable` —
+  the 2026-09-18 council re-check found synthesis #7 landed at two of its three sites: the comparison
+  table and the edit-mode readout carry "avg. over N paychecks — checks will vary", but the "YOUR
+  PATTERNS" card (`<b className="num">{fmt(m.periodNet)}</b> / paycheck`, ~index.html:5097) does not,
+  so a saved 8- or 28-day pattern still shows one flat figure there. Label only (`avgNote(p.cells)`
+  already exists — reuse it), one assertion that opens the lab with a saved 8-day pattern and reads the
+  card, negative-tested. No arithmetic.
 
 ### P2
+- [ ] **Pin the six council fixes a revert would not fail** — `harness:drivable` — the re-check found
+  these landed but unpinned: quick-fill carrying `isOvertime` (`toggleQuickFillDay`; nothing drives
+  quick-fill at all), the pattern-lab goal line's `$0` filter (duplicates the pinned Add-Shift one),
+  the year-nav "Previous/Next year" labels, the done-step name field's `aria-label`, the apply
+  preview's `aria-live` (the existing check is scoped to `.sheet .preview`; the lab is `.modal`), and
+  SwapsSheet's Escape (needs live auth — stub the client the way §11's `fakeAuth` does). One section-11
+  block, each assertion negative-tested.
 - [x] ~~**Paystub review sheet: say so when 0 differential rows were detected**~~ — SHIPPED
   2026-09-06 (see Done log). `PaystubReview` now shows a note when a paystub parses a base rate but
   zero differential rows.
@@ -48,14 +75,26 @@ _(empty — promote from the candidate lists below with judgment)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- **OWNER ACTION, 5 minutes, blocks the positioning claim — confirm the real NurseGrid .ics host.**
+  `supabase/functions/ical-proxy/index.ts:23-25` allowlists `/^([a-z0-9-]+\.)?nursegrid\.com$/i`
+  behind a `TODO(owner)`: nobody has ever seen a real NurseGrid secret feed URL, so the pattern is a
+  guess and may not match the host they actually serve from (a CDN or a HealthStream domain would
+  both miss). Until it is confirmed, "no more need for NurseGrid" (CLAUDE.md → Positioning) is a claim
+  the product cannot cash, and the failure mode is silent-ish: the proxy rejects the host and she sees
+  a sync error, having already pasted a bearer credential. **What is needed from the owner:** one real
+  NurseGrid secret iCal address (Courtney's own), or just its hostname — that is the whole blocker.
+  Then: pin the exact host, redeploy the function, and run one real end-to-end sync. Everything after
+  the hostname is automatable; the hostname is not.
+
 - **CLAUDE.md's "Open PRs" line is stale, and Invariant 11 depends on it** `harness:drivable` — it names
-  only #46. Four are open as of 2026-09-16, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
-  **#70** `claude/siri-inbox`, **#72** `claude/siri-session-b`, **#82** `claude/rust-app-consideration-q78j8b`.
+  only #46. **Six** are open as of 2026-09-20, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
+  **#70** `claude/siri-inbox`, **#72** `claude/siri-session-b`, **#82** `claude/rust-app-consideration-q78j8b`,
+  **#112** and **#116** both on branches still live.
   Invariant 11 says never delete an open PR head — deleting one closes the PR and loses the work — and
   its verification is "cross-check `git branch -r` against open PRs". Anyone doing the branch cleanup
   from CLAUDE.md alone would read three of those four heads as fair game. Fix the line, and while there
-  refresh the "Merged branches to delete" list: 22 remote branches exist, of which the deploy branch and
-  those four heads are protected; the listed eight are a subset of what is actually stale
+  refresh the "Merged branches to delete" list: 24 remote branches exist, of which the deploy branch and
+  the six open heads are protected; the listed eight are a subset of what is actually stale
   (`ci-ruleset-probe`, `ci-ruleset-probe-revert`, `claude/app-usage-inquiry-iqjzeq`,
   `claude/badgebudget-architecture-review-fz3hlp`, `claude/brand-bb-lettermark`,
   `claude/brand-favicon-black`, `claude/capture-core-schema`, `claude/claud-md-cleanup-xn61wa`,
@@ -64,8 +103,10 @@ _(empty — promote from the candidate lists below with judgment)_
   so a stale branch can never ship, and `ci.yml` pushes only on two named branches, so no Actions minutes
   burn. The cost is Invariant 10: with no `main` and the deploy branch sitting in a list of 22 near-identical
   `claude/*` names, branching from the wrong ref gets likelier, and that failure is silent (14 commits
-  reverted once). Note `claude/live-dashboard-insights-r31se3` auto-deleted on merge, so the backlog
-  stops growing from here. Dedicated because it is a doc-accuracy fix whose whole value is being right.
+  reverted once). GitHub auto-deletes a head on merge, so the backlog only grows when a branch is
+  re-used for follow-up work — as `claude/live-dashboard-insights-r31se3` was, after #111 merged and
+  deleted it. Dedicated because it is a doc-accuracy fix whose whole value is being right, and this
+  item has already drifted once (it was written on 2026-09-16 and its own figures were stale by the 20th).
 
 - **Re-baseline the cohorts after the harness contamination** `harness:drivable` — `scripts/dashboard_snapshot.sql:52`
   reads `case when is_mobile then 'mobile'`, so a user agent *claiming* to be an iPhone is counted as
@@ -76,26 +117,20 @@ _(empty — promote from the candidate lists below with judgment)_
   numbers in CLAUDE.md and `docs/history.md` rather than leaving two sets in circulation. Dedicated
   because it rewrites published figures and wants a human to agree the new ones are the honest ones.
 
-- [ ] **Wage-core session — council 2026-09-13 bucket 3 (NEVER auto-applies; `/wage-core` protocol)** —
-  `harness:drivable`. Every item here changes a displayed dollar figure or an Invariant-3 coercion; none
-  is nightly work however small the diff. One session: baseline probes, one new assertion per change, then
-  the hero/breakdown equality assertion against the **deployed** build naming each intended difference.
-  Cheapest first — synthesis #1 Add-Shift seeds `'night'` even when Night is switched off and prices it
-  (`wage-math-12`; underneath it the `active:false` product call — "stop paying" vs "hide from the
-  picker", the lab and the calendar answer differently); #2 hero "Taxes & deductions" chip shows
-  `round(gross) − round(net)` (`wage-math-00`); #4 `ficaWithholdingType` allowlist in `sanitizeData`
-  (`wage-math-02`); #3 multiplier coercion (`wage-math-01`); #6 the onboarding done-screen `sampleNet`
-  builds its own tax model beside `computeNet` (`wage-math-04`); #8 percent withholdings are missing from
-  `keepRatio`, so the Add-Shift preview, the goal reverse view and the calendar cells over-promise
-  (`wage-math-06`); #14 paystub-import floor (`wage-math-15`); `code-quality-02` (make `calc`/`yearMonths`
-  call `statOf`/`ptoStatOf` — zero behaviour change, and the equality assertion is exactly its test);
-  optionally #7's min/max paycheck range in `patternMetrics`; and the group-7 leftover — the pattern lab's
-  **template brush still drops `isOvertime`** because `patternCellToShift` (1261) hard-codes it false
-  (templates carry the flag everywhere else since 2026-09-16). Also worth taking while there:
-  `wage-math-08`/`cross-surface-04` (raw float "36.900000000000006 hrs" in the hero chip), `wage-math-13`
-  (≈$/hr from the rounded net), `wage-math-05` (year view prints gross unlabeled beside take-home cells),
-  `wage-math-11` ("about 1 years"). Findings: `docs/council-runs/2026-09-13/findings/<id>.json`; the
-  skill's "what counts as wage core" list now names `sampleNet` and `keepRatio`.
+- [x] ~~**Wage-core session — council 2026-09-13 bucket 3**~~ — SHIPPED 2026-09-19 (see Done log).
+  Seven of the eight items landed under the `/wage-core` protocol with 24 new assertions in
+  `tests/smoke.mjs` §15, every one negative-tested, and the Invariant 3 equality assertion run
+  against the live build: **9 of 10 seeded cases byte-identical, the 1 difference being the
+  intended tax-chip fix.** #14 (the paystub floor) needed nothing — `differentialsFromStub`
+  already reads `rate >= b ? rate - b : rate`, fixed in #108. **Still open, deliberately
+  deferred:** #7's min/max paycheck range in `patternMetrics` (optional, and the "avg. over N
+  paychecks" caption already tells the truth); `code-quality-02` (make `calc`/`yearMonths` call
+  `statOf`/`ptoStatOf` — zero behaviour change, worth its own session since the equality
+  assertion is its only real test); and the money-surface string nits `wage-math-08`/
+  `cross-surface-04` (raw float "36.900000000000006 hrs"), `wage-math-13` (≈$/hr from the
+  rounded net), `wage-math-05` (year view prints gross unlabeled), `wage-math-11`
+  ("about 1 years") — all four are display strings, each needs its own assertion, and none was
+  worth widening a session already touching seven money paths.
 - [ ] **Swap-board + infra hardening session, against the production project — council 2026-09-13 bucket 2
   (security scored 2/10 on verified findings)** — `harness:needs-live-auth`. In this order: (1) port
   `rls_audit.js` into `tests/` *first* so the probes exist, adding two: as member A, `select user_id from
@@ -150,6 +185,17 @@ _(empty — promote from the candidate lists below with judgment)_
   `role="dialog"` sheet if yes; `product-design-08` swap suggestion cards show no pay figure — the feature
   that would make the board consistent with the app's promise, but it cuts against the de-emphasis
   decision; revisit only if the board is re-emphasised, and then via the wage-core protocol.
+- [ ] **Amend the council charter: a recorded owner decision is out of scope for a lens** —
+  `docs/council.md`. Twice now a lens has scored the app down for a choice made on purpose:
+  `product-design-08` (swap suggestion cards show no pay figure) is product-design's *stated* path to
+  8/10, and it directly contradicts the 2026-09-19 positioning. A lens should be able to say "this
+  surface is inconsistent with the app's promise" and have the run record it as **decided, not
+  defective**, without the score treating it as an open defect. Concretely: a `decided` verdict
+  alongside confirmed/rejected, fed from a short decision register the charter points at (positioning,
+  the no-nudge rule, "no sheet traps focus" until #35 is answered, the swap-board de-emphasis), and a
+  lens score that excludes them. Otherwise every future run re-litigates the same calls and
+  product-design is capped around 6 forever for doing the right thing. This is meta-goal work, not app
+  work — it makes the council reusable by someone whose decisions differ.
 - [ ] **Council 2026-09-13 lows and rejected worth a groom** — never agent-verified; candidates, not
   action items. `mobile-ux-04/-07` (tap-target pair), `mobile-ux-13` (display-name `autoFocus` — the
   anti-pattern already removed from FeedbackSheet), `security-06` (differential `color` unvalidated into
