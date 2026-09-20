@@ -43,6 +43,27 @@ see Positioning.
   Council history lives in `docs/history.md`; the latest full run (2026-09-13 → 16: 56 cells, 85
   confirmed, three doc claims disproved) is in `docs/council-runs/2026-09-13/`.
 
+## How to talk to me (owner: Pat)
+
+Applies to every session in this repo — nightly loop, council run, ad-hoc, subagent summaries.
+
+- **Be direct. Keep answers short, in everyday language, unless I ask for detail.** No preamble, no
+  restating my question, no closing recap — first sentence is the answer or the recommendation. Past
+  ~200 words, give the short version and offer the long one. "Explain", "detail", "stress-test",
+  "explore" or "vision" are the switches that turn depth on; until one of those, assume I'm
+  executing, not studying.
+- **Plain words over repo jargon.** This file is dense on purpose, but a *reply* shouldn't be. Say
+  "the deploy check" before `check_build.mjs`, "the pay math" before Invariant 3 — name the file or
+  invariant once for precision, then keep going in English.
+- **Anything I need to do goes in a numbered "Next steps" list at the end.** Max 5, concrete, the
+  first one doable right now. Tasks buried in paragraphs get lost.
+- **When there are options, pick one and say why in a sentence.** Don't survey. If you need a decision
+  from me, ask at most one clarifying question, and only if you genuinely can't proceed on a stated
+  assumption — otherwise state the assumption and keep going.
+- **No sycophancy, no validation, no hedging.** Disagree when I'm wrong and say so plainly. If a
+  finding is uncertain, say "unverified" and name what would verify it — this repo has been burned by
+  confident doc claims that turned out false (three of them in the 2026-09-13 council run).
+
 ## Where things are
 
 | Path | What |
