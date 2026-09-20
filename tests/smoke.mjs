@@ -1597,6 +1597,136 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 15. wage-core, council 2026-09-13 bucket 3 ------------------------------------
+     Every assertion here pins a figure a nurse reads as money. Each was negative-tested by
+     reverting its fix and confirming this section reports FAIL. The pure-function probes run
+     through page.evaluate against the real top-level declarations, same as the §1 wage block. */
+  if (want(15)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#root > *', { timeout: 20000 });
+
+    const wc = await page.evaluate(() => {
+      const t = { ficaType: 'standard', federalTaxRate: 12, stateTaxRate: 5,
+        pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+      const diffs = { base: { amount: 0, type: 'dollar', active: true },
+        night: { amount: 10, type: 'dollar', active: true },
+        'weekend-day': { amount: 11.5, type: 'dollar', active: true } };
+      const nightOff = { ...diffs, night: { ...diffs.night, active: false } };
+      return {
+        // #1 -- the Add-Shift draft seeds from what is actually switched on.
+        seedDefault: firstActiveShiftType(diffs),
+        seedNightOff: firstActiveShiftType(nightOff),
+        seedAllOff: firstActiveShiftType({ base: { amount: 0, type: 'dollar', active: false } }),
+        // #1 -- and `active:false` still PAYS a shift already tagged with it: the toggle is a
+        // picker filter, never a retroactive re-pricing of her logged history.
+        inactiveStillPaid: shiftGross(50, nightOff.night, { hours: 12, bonusType: 'none' }),
+        // #3 -- a blanked multiplier is a coefficient: 1, not 0.
+        multBlank: sanitizeData({ differentials: { holiday: { amount: '', type: 'multiplier' } } })
+          .differentials.holiday.amount,
+        multZero: sanitizeData({ differentials: { holiday: { amount: 0, type: 'multiplier' } } })
+          .differentials.holiday.amount,
+        multGood: sanitizeData({ differentials: { holiday: { amount: 1.5, type: 'multiplier' } } })
+          .differentials.holiday.amount,
+        dollarBlank: sanitizeData({ differentials: { night: { amount: '', type: 'dollar' } } })
+          .differentials.night.amount,
+        // #4 -- an unknown ficaWithholdingType must not reach computeNet and zero FICA.
+        ficaJunk: sanitizeData({ ficaWithholdingType: 'nonsense' }).ficaWithholdingType,
+        ficaStd: sanitizeData({ ficaWithholdingType: 'standard' }).ficaWithholdingType,
+        ficaPct: sanitizeData({ ficaWithholdingType: 'percent' }).ficaWithholdingType,
+        // group-7 leftover -- a template-brushed cell carries its OT flag into the priced shift.
+        otCell: patternCellToShift({ kind: 'fixed', shiftType: 'night', hours: 12, isOvertime: true },
+          new Date(2026, 0, 5), diffs),
+        plainCell: patternCellToShift({ kind: 'fixed', shiftType: 'night', hours: 12 },
+          new Date(2026, 0, 5), diffs),
+        otSurvivesSave: (sanitizeData({ patterns: [{ id: 1, name: 'ot', anchor: '2026-01-05',
+          cells: [{ kind: 'fixed', shiftType: 'night', hours: 12, isOvertime: true },
+            null, null, null, null, null, null] }] })
+          .patterns[0].cells[0] || {}).isOvertime,
+        // #2 -- the chip must equal what the two figures beside it imply, even when the
+        // uncapped `ded` runs past gross (a paystub scan sets pretax on an empty period).
+        capped: computeNet(0, { ...t, pretaxDeductions: 260 }),
+      };
+    });
+
+    ok('wage-core #1: the seed helper prefers Night while Night is on', wc.seedDefault === 'night', wc.seedDefault);
+    ok('wage-core #1: with nothing active it falls back to base, never undefined',
+      wc.seedAllOff === 'base', String(wc.seedAllOff));
+    ok('wage-core #1: an inactive differential still PAYS a shift already tagged with it',
+      wc.inactiveStillPaid === 720, `expected 720 (60*12), got ${wc.inactiveStillPaid}`);
+    ok('wage-core #3: a blanked multiplier coerces to 1x, not 0x', wc.multBlank === 1, String(wc.multBlank));
+    ok('wage-core #3: an explicit 0x multiplier is repaired too', wc.multZero === 1, String(wc.multZero));
+    ok('wage-core #3: a valid multiplier is untouched', wc.multGood === 1.5, String(wc.multGood));
+    ok('wage-core #3: a blanked DOLLAR differential still means $0', wc.dollarBlank === 0, String(wc.dollarBlank));
+    ok('wage-core #4: an unknown ficaWithholdingType is dropped, not passed through',
+      wc.ficaJunk === undefined, String(wc.ficaJunk));
+    ok('wage-core #4: both legal FICA types survive the allowlist',
+      wc.ficaStd === 'standard' && wc.ficaPct === 'percent', `${wc.ficaStd}/${wc.ficaPct}`);
+    ok('wage-core group-7: a template cell carries its OT flag into the priced shift',
+      wc.otCell.isOvertime === true, JSON.stringify(wc.otCell));
+    ok('wage-core group-7: a cell without the flag is still not OT',
+      wc.plainCell.isOvertime === false, JSON.stringify(wc.plainCell));
+    ok('wage-core group-7: the OT flag survives a save/reload of the pattern',
+      wc.otSurvivesSave === true, String(wc.otSurvivesSave));
+    ok('wage-core #2: gross-minus-net is what the chip can safely print',
+      Math.max(0, Math.round(wc.capped.gross) - Math.round(wc.capped.net)) === 0 && wc.capped.ded > 0,
+      `gross=${wc.capped.gross} net=${wc.capped.net} ded=${wc.capped.ded}`);
+
+    /* #8 -- keepRatio drives the Add-Shift preview, the calendar day cells and the goal line.
+       Pinned at the source: a percent custom withholding has to be in the denominator, or those
+       surfaces over-promise against the hero. */
+    const src15 = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    ok('wage-core #8: keepRatio folds in percent custom withholdings',
+      /const keepRatio = Math\.max\(0, 1 - \(federalTaxRate\+stateTaxRate\+ficaForPreview\+pctWithholdings\)\/100\)/.test(src15));
+    ok('wage-core #8: it sums only the percent-typed ones (a flat $ is not a rate)',
+      /w && w\.type==='percent' \? \(parseFloat\(w\.amount\)\|\|0\) : 0/.test(src15));
+    /* #6 -- one tax model. sampleNet must call computeNet rather than rebuild it. */
+    ok('wage-core #6: sampleNet prices through computeNet', /const r = computeNet\(g, taxInputs\);/.test(src15));
+    ok('wage-core #6: the welcome figure is derived, not a literal',
+      !/\$3,951/.test(src15) && /\{fmt\(obSample\.net\)\}/.test(src15));
+
+    ok('wage-core: no page errors across the section', errors.length === 0, errors[0] || '');
+    await ctx.close();
+
+    /* #1 END TO END -- the assertion that actually matters. Probing firstActiveShiftType() alone
+       passes even with the old hard-coded useState('night') still in place (confirmed: that
+       revert was MISSED until this drive existed). So switch Night OFF in the seeded blob, open
+       the real Add-Shift sheet, and read what the preview prices. Bug: 12h x ($50+$10) = $720
+       with no chip lit. Fixed: 12h x $50 = $600, and the lit chip matches. */
+    const nightOffState = { setupComplete: true, baseRate: 50,
+      differentials: { base: { name: 'Day (regular)', amount: 0, type: 'dollar', active: true, color: '#8A93A6' },
+        night: { name: 'Night', amount: 10, type: 'dollar', active: false, color: '#5B4FE9' } } };
+    const off = await newPage(browser, url, { seed: nightOffState });
+    await off.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await off.page.waitForSelector('.fab', { timeout: 20000 });
+    await off.page.locator('.fab').click();
+    await off.page.waitForSelector('.sheet .preview', { timeout: 5000 });
+    const priced = await off.page.locator('.sheet .preview .v').innerText();
+    const litChips = await off.page.evaluate(() =>
+      [...document.querySelectorAll('.sheet .chip-sel')].map((c) => ({ t: c.textContent.trim(), on: c.className.includes('on') })));
+    const lit = litChips.filter((c) => c.on);
+    ok('wage-core #1: with Night switched off the preview prices at base, not the Night rate',
+      /\+\$600 gross/.test(priced), `${priced} | chips=${JSON.stringify(litChips)}`);
+    ok('wage-core #1: and exactly one chip is lit, matching what is priced',
+      lit.length === 1 && !/Night/.test(lit[0].t), JSON.stringify(litChips));
+    ok('wage-core #1: no page error driving the Night-off sheet', off.errors.length === 0, off.errors[0] || '');
+    await off.ctx.close();
+
+    /* The welcome screen is the first money figure anyone ever sees -- drive it for real.
+       Needs its own UNSEEDED context: newPage's addInitScript re-seeds STORAGE_KEY on every
+       navigation, so a localStorage.clear() + reload lands back on the planner, not step 0. */
+    const fresh = await newPage(browser, url, { seed: false });
+    await fresh.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await fresh.page.waitForSelector('.ob .hero .num', { timeout: 20000 });
+    const welcome = await fresh.page.locator('.ob .hero .num').innerText();
+    const welcomeHrs = await fresh.page.locator('.ob .hero .lbl').innerText();
+    ok('wage-core #6: the welcome screen renders a real derived figure',
+      /^\$[\d,]+$/.test(welcome) && welcome !== '$3,951', welcome);
+    ok('wage-core #6: its hours line is derived from the same sample', /72 hrs/.test(welcomeHrs), welcomeHrs);
+    ok('wage-core #6: no page error on the welcome screen', fresh.errors.length === 0, fresh.errors[0] || '');
+    await fresh.ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
