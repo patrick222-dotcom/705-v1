@@ -25,24 +25,28 @@ with a dated line in the Done log.
 ## Queue
 
 ### P0
-- [ ] **The nightly loop cannot push from a fresh session — the heartbeat commit is unwritable**
-  (found 2026-09-20, the rebuilt Routine's first live run). `git clone` and `git fetch` work; `git
-  push` is refused by the git proxy: *"patrick222-dotcom/705-v1 is not in this session's authorized
-  repository set, so the proxy will not inject a credential for it"* (403). The GitHub API refuses
-  the same way — *"GitHub access to this repository is not enabled for this session"* — so
-  `mcp__github__*` PR creation and merge are unavailable too, and no MCP servers loaded at all
-  (Supabase included; GROOM fell back to the Management API, which works).
-  **This is a direct consequence of the 2026-09-20 rebuild**, which moved the Routine from a
-  persistent authorized session to **fresh-session-per-fire** to gain server-side push/email
-  notifications. Environment notes below already recorded that fresh-session fires could not push
-  (2026-08-04, 2026-08-09) and called it "historical, not current" — it is current again.
-  **The bite:** design change #2 of the rebuild is "always commit, even on a quiet night — the git
-  history is the loop's heartbeat," and that is precisely what a fresh session cannot do. The
-  detection mechanism built to catch the last three-day silent outage is itself disabled by the fix
-  for it, and it fails the same silent way: a night with no commit still looks like a night that
-  didn't run. **Owner action:** add `patrick222-dotcom/705-v1` to the Routine's session sources with
-  push access (Routine → sources; the API hint is `add_repo` with `access:"push"`). Until then every
-  nightly run can groom, build and gate but ships nothing and records nothing.
+_(none)_
+
+#### Resolved, kept for the lesson
+- [x] **The nightly loop could not push from a fresh session — the heartbeat commit was unwritable**
+  (found 2026-09-20, the rebuilt Routine's first live run; **fixed by the owner 2026-09-20 ~18:55
+  UTC, confirmed 2026-09-21**). `clone`/`fetch` worked; `push` was a 403 from the git proxy —
+  *"patrick222-dotcom/705-v1 is not in this session's authorized repository set, so the proxy will
+  not inject a credential for it"* — and the GitHub API refused identically, so no PR, no merge, and
+  not even the `BACKLOG.md` heartbeat commit. That run's work was recovered only because it emitted
+  a patch: it is PR #118.
+  **Cause:** the 2026-09-20 rebuild moved the Routine from a persistent authorized session to
+  fresh-session-per-fire to gain server-side push/email notifications, and the repo was not among
+  the new sessions' sources. Environment notes had recorded the same failure for fresh sessions on
+  2026-08-04 and 2026-08-09 and called it historical; it was current again.
+  **Fix:** the owner added `patrick222-dotcom/705-v1` to the Routine's sources with push access.
+  **Confirmed by the 2026-09-21 run**, which pushed, opened PR #119 and squash-merged it at 08:22
+  UTC — the first fresh-session run to leave a commit behind.
+  **Why this stays written down:** design change #2 of that rebuild is *"always commit, even on a
+  quiet night — the git history is the loop's heartbeat,"* and for one night the detection mechanism
+  built to catch a silent outage was disabled by the fix for it, failing the same silent way. Any
+  future change to how the Routine fires must re-verify push before it is trusted; a run that
+  reports SUCCEEDED while writing nothing is the signature.
 
 ### P1
 - [ ] **Decide whether Settings should carry the durable route into the swap board** — `harness:drivable`
@@ -55,15 +59,11 @@ with a dated line in the Done log.
   was wrong, so the "durable route" the positioning assumed does not exist. Either move/duplicate the
   entry into Settings (where the note says someone would look) or amend the positioning note to say
   the dashboard's second column is the route. One-line product call; do not guess it.
-- [~] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — **BUILT 2026-09-20, gate green, NOT
-  SHIPPED (push denied — see P0).** Done as specified except entry point (2), whose location the item
-  got wrong (see the item above). Shipped-in-the-patch: the `.whatif mob-only` dashboard card removed;
-  the second-column card and the desktop topnav link kept; "anonymously" dropped from both entry-point
-  subtitles because `poster_key` is reversible until the hardening session lands (Invariant 7 /
-  `security-00`). `swapPendingCount` and its badge untouched at both remaining sites. 8 new assertions
-  in `tests/smoke.mjs` §16, every one negative-tested — including the one that first *aborted* rather
-  than failed when the card was deleted outright, which is the failure mode the `harness` skill warns
-  about. Original scoping kept below:
+- [~] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — **BUILT AND PUSHED: open draft PR #118**
+  (`claude/live-dashboard-insights-r31se3`, opened 2026-09-20). Do NOT rebuild it — the nightly skipped
+  this item on 2026-09-21 for that reason. It is a draft awaiting the owner's review, and its branch also
+  carries a P0 claiming the nightly cannot push; that P0 **did not reproduce on 2026-09-21** (see Done log).
+  Original scoping kept below:
 - [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
   compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
@@ -78,7 +78,11 @@ with a dated line in the Done log.
   or its badge anywhere: someone mid-swap must still be able to finish, and the badge is the only
   signal a leg is waiting on her. Assertions: the mob-only card is gone at 390px, Settings still opens
   the board, an existing group with a pending match still shows its badge — each negative-tested.
-- [ ] **Pattern-list card still prints the multi-paycheck average unqualified** — `harness:drivable` —
+- [x] ~~**Pattern-list card still prints the multi-paycheck average unqualified**~~ — SHIPPED 2026-09-21
+  (see Done log). The YOUR PATTERNS card now carries the same `avgNote()` qualifier the comparison table
+  and the edit readout have, plus a footnote explaining it (a `title=` tooltip is unreachable on a phone).
+  Original note below:
+- [ ] ~~**Pattern-list card still prints the multi-paycheck average unqualified**~~ — `harness:drivable` —
   the 2026-09-18 council re-check found synthesis #7 landed at two of its three sites: the comparison
   table and the edit-mode readout carry "avg. over N paychecks — checks will vary", but the "YOUR
   PATTERNS" card (`<b className="num">{fmt(m.periodNet)}</b> / paycheck`, ~index.html:5097) does not,
@@ -709,6 +713,46 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-21 (nightly) — **The saved-pattern card stops printing a multi-paycheck average as if it
+  were a paycheck.** `patternMetrics()` prices a rotation over `lcm(cycle,14)` days, so for any cycle
+  that doesn't divide a fortnight the "take-home / paycheck" figure is an average and real checks
+  alternate around it. The comparison table and the edit-mode readout have said so since the
+  2026-09-18 council synthesis; the YOUR PATTERNS card was the third site and never got it — and it is
+  the site a nurse reads *first*, because the side-by-side table only renders once she has saved two
+  patterns. A saved 4-on/4-off now reads `$3,689 avg. / paycheck` with a footnote spelling out why;
+  a 14-day cycle is untouched and still reads flat, because its figure really is one check.
+  **Label only — no arithmetic, no wage-core** (`avgNote()` is the existing helper, reused; the only
+  other change is adding `.pl-card` to the `.avg` CSS selector so the marker inherits the muted style
+  it already has in the other two places). The footnote is not decoration: the table's version of
+  this marker explains itself in a `title=` tooltip, and a phone has no hover.
+  Gate: `check_build` **11/11**, `test_groom_seed` **33/0**, `smoke` **262 passed / 0 failed**
+  (254 baseline → 8 new in §16). **Negative-tested three ways**, each confirmed to FAIL the right
+  assertions: reverting the card to the bare figure (2 FAIL), deleting the footnote (1 FAIL), and
+  making the qualifier unconditional so a 14-day cycle gets a caveat it must not have (3 FAIL). The
+  first attempt at the third test silently didn't apply — its anchor string matched the table's
+  conditional too, so nothing was written and the "negative test" re-ran the good file and passed.
+  Caught only because a passing negative test is the thing this repo has been burned by; re-run with
+  a unique anchor. Each case seeds exactly ONE pattern on purpose: the comparison table appears at
+  two and carries a footnote of its own, so at two the footnote assertion couldn't tell the sites
+  apart and would pass with the fix reverted.
+  **Skipped the top P1 (quiet the swap-board CTAs) — it is already built and open as draft PR #118**,
+  so rebuilding it would have collided with a live PR. Flagged in the Queue above. Note that #118's
+  branch carries a P0 saying the nightly cannot push from a fresh session; **that did not reproduce
+  today** — `git push` authenticated fine and both the Supabase and GitHub MCP servers loaded. So the
+  2026-09-20 failure was either transient or fixed out of band; do not treat the loop as push-broken,
+  but do not assume it is fixed for good either — this run is one data point.
+  **Groom, from live `feedback` + `events`:** no new feedback since 2026-09-14 (11 rows total),
+  `auth.users` still **4** with nothing new since 2026-09-12, 15 devices in the last 3 days, and
+  **one `client_error` in 7 days** (2026-09-16, nothing since the council/wage-core/positioning ships).
+  `session_end` still tells the same bleak story it told on 09-20 and has not improved: **8 of the 9
+  exit rows ever recorded end at `ob_step` stage 0 with `setup:false, shifts:0` after 2–15 seconds** —
+  a bounce off the welcome screen before anything is typed. The 9th (09-17, `via:'qr'`) reached
+  `setup:true` over 114 seconds and still saved no shift. **No activation rate is quoted on purpose:**
+  the device classifier is still broken (`dashboard_snapshot.sql:52`) and every figure since
+  2026-09-07 is inflated — counts only until the re-baseline item lands.
+  `groom_seed --apply` run, block refreshed, 12 candidates — and it **again** dropped the
+  `travel/contract take-home comparison` candidate, the same one it dropped on 09-20. That is the
+  known keyword-coverage erosion defect with a third live instance and a stable repro, not a flake.
 - 2026-09-20 (nightly, first live run of the rebuilt Routine) — **GROOM + one build item, gated
   green, SHIPPED NOTHING: this session cannot push.** Filed as the P0 at the top — `clone`/`fetch`
   work, `push` is a 403 from the git proxy ("not in this session's authorized repository set") and

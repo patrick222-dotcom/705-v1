@@ -1727,7 +1727,82 @@ const run = async () => {
     await fresh.ctx.close();
   }
 
-  /* ---- 16. the swap board goes quiet (Positioning, 2026-09-19) ---------------------------
+  /* ---- 16. the saved-pattern card tells the truth about a multi-paycheck average ---------
+     patternMetrics() prices a rotation over lcm(cycle,14) days, so for any cycle that does not
+     divide a fortnight the "take-home / paycheck" figure is an AVERAGE and real checks alternate
+     around it. The comparison table and the edit-mode readout already say so; the YOUR PATTERNS
+     card printed the same figure flat -- and that card is the one place a nurse reads it before
+     she has a second pattern to compare, because the table needs two. Label only: avgNote() is
+     the same helper the other two sites call, and no arithmetic moved.
+     Negative-tested three ways -- reverting the card to the bare figure (A1/A2 FAIL), deleting
+     the footnote (A3 FAIL), and making the qualifier unconditional (B1/B2 FAIL). Each case seeds
+     exactly ONE pattern on purpose: the side-by-side table renders only at allMetrics.length>=2
+     and carries a footnote of its own, so with two seeded the hint count could not tell the two
+     sites apart and a "footnote present" assertion would pass with this fix reverted. */
+  if (want(16)) {
+    const night = () => ({ kind: 'night', hours: 12, start: '19:00' });
+    /* 4 on / 4 off: lcm(8,14) = 56 days = 4 paychecks, so this one MUST be qualified. */
+    const cells8 = [night(), night(), night(), night(), null, null, null, null];
+    /* Three 12s a week on a 14-day cycle: a fortnight divides a fortnight, so it must NOT be. */
+    const cells14 = [night(), null, night(), null, night(), null, null,
+                     night(), null, night(), null, night(), null, null];
+    const patSeed = (name, cells) => ({
+      setupComplete: true, baseRate: 50, payPeriodStart: '2026-09-07',
+      federalTaxRate: 12, stateTaxRate: 5, ficaType: 'percent', ficaWithholdingPercent: 7.65,
+      pretaxDeductions: 0, posttaxDeductions: 0,
+      differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+      patterns: [{ id: 'p1', name, anchor: '2026-09-07', cells }],
+    });
+
+    const readCard = async (seed, name) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.wrap .whatif', { timeout: 20000 });
+      await page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")').click();
+      const opened = await page.waitForSelector('.modal[aria-label="Pattern lab"]', { timeout: 8000 })
+        .then(() => true).catch(() => false);
+      /* Read the DOM by pattern NAME rather than with a text locator: the preset rotations use
+         .pl-card too, so a bare :has-text() would match one of those and an assertion written
+         that way could still pass with the saved card missing entirely. Every field is optional-
+         chained and reported -- a card that vanished must report FAIL, not throw and abort the
+         section, which is the failure mode the `harness` skill warns about. */
+      const got = opened ? await page.evaluate((n) => {
+        const lab = document.querySelector('.modal[aria-label="Pattern lab"]');
+        const card = [...lab.querySelectorAll('.pl-card')]
+          .find((c) => c.querySelector('.t')?.textContent.trim() === n);
+        return {
+          found: !!card,
+          money: card?.querySelector('.s')?.textContent.trim() || '',
+          avgTitle: card?.querySelector('.avg')?.getAttribute('title') || '',
+          notes: [...lab.querySelectorAll('.hint')]
+            .filter((h) => /^avg\./.test(h.textContent.trim())).length,
+        };
+      }, name) : { found: false, money: '', avgTitle: '', notes: 0 };
+      const clean = errors.filter((e) => !isExpectedNetwork(e));
+      await ctx.close();
+      return { opened, ...got, clean };
+    };
+
+    const a = await readCard(patSeed('Four on four off', cells8), 'Four on four off');
+    ok('pattern card: the saved 8-day pattern renders on the lab list', a.opened && a.found,
+      JSON.stringify({ opened: a.opened, money: a.money }));
+    ok('pattern card: an 8-day cycle no longer prints its average unqualified',
+      / avg\./.test(a.money) && /\/ paycheck/.test(a.money), a.money);
+    ok('pattern card: the qualifier says how many paychecks it averaged',
+      /avg\. over 4 paychecks/.test(a.avgTitle), a.avgTitle);
+    ok('pattern card: a footnote explains "avg." where there is no hover to reveal it',
+      a.notes === 1, `${a.notes} footnotes`);
+    ok('pattern card: no page errors driving the lab list', a.clean.length === 0, a.clean[0] || '');
+
+    const b = await readCard(patSeed('Three twelves', cells14), 'Three twelves');
+    ok('pattern card: the saved 14-day pattern renders on the lab list', b.opened && b.found,
+      JSON.stringify({ opened: b.opened, money: b.money }));
+    ok('pattern card: a 14-day cycle is NOT qualified -- its check is the figure shown',
+      b.found && !/avg\./.test(b.money) && /\/ paycheck/.test(b.money), b.money);
+    ok('pattern card: and it gets no footnote', b.notes === 0, `${b.notes} footnotes`);
+  }
+
+  /* ---- 17. the swap board goes quiet (Positioning, 2026-09-19) ---------------------------
      The board is an Easter egg, not the growth engine: fully functional for anyone holding an
      invite link, absent from the first screen where it competed with the pattern lab and the
      pickup prompt -- the two things that work for one nurse alone. Three things have to hold at
@@ -1735,7 +1810,7 @@ const run = async () => {
      card is GONE, the durable route in (Settings -> Shift swaps) still OPENS THE BOARD, and the
      word "anonymously" is gone from both entry points because poster_key is reversible until the
      hardening session lands (Invariant 7 / security-00) -- an untrue promise is worse than none. */
-  if (want(16)) {
+  if (want(17)) {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.wrap .whatif', { timeout: 20000 });
