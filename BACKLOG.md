@@ -23,6 +23,11 @@ _(none)_
 ## Queue
 
 ### P1
+- [~] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — **BUILT AND PUSHED: open draft PR #118**
+  (`claude/live-dashboard-insights-r31se3`, opened 2026-09-20). Do NOT rebuild it — the nightly skipped
+  this item on 2026-09-21 for that reason. It is a draft awaiting the owner's review, and its branch also
+  carries a P0 claiming the nightly cannot push; that P0 **did not reproduce on 2026-09-21** (see Done log).
+  Original scoping kept below:
 - [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
   compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
@@ -37,7 +42,11 @@ _(none)_
   or its badge anywhere: someone mid-swap must still be able to finish, and the badge is the only
   signal a leg is waiting on her. Assertions: the mob-only card is gone at 390px, Settings still opens
   the board, an existing group with a pending match still shows its badge — each negative-tested.
-- [ ] **Pattern-list card still prints the multi-paycheck average unqualified** — `harness:drivable` —
+- [x] ~~**Pattern-list card still prints the multi-paycheck average unqualified**~~ — SHIPPED 2026-09-21
+  (see Done log). The YOUR PATTERNS card now carries the same `avgNote()` qualifier the comparison table
+  and the edit readout have, plus a footnote explaining it (a `title=` tooltip is unreachable on a phone).
+  Original note below:
+- [ ] ~~**Pattern-list card still prints the multi-paycheck average unqualified**~~ — `harness:drivable` —
   the 2026-09-18 council re-check found synthesis #7 landed at two of its three sites: the comparison
   table and the edit-mode readout carry "avg. over N paychecks — checks will vary", but the "YOUR
   PATTERNS" card (`<b className="num">{fmt(m.periodNet)}</b> / paycheck`, ~index.html:5097) does not,
@@ -647,12 +656,51 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - [ ] **Agreed swaps fall apart last-minute** (P3 · source:reddit-seed · shift-swapping · needs-live-auth) — A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Nurses want to negotiate swaps in a channel managers can't see until the trade is final** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Units coordinate swaps in Facebook groups, GroupMe, or Teams that managers also belong to, letting a manager block an already-agreed trade after the fact. The prevailing advice is to find the partner in a management-free channel and bring only the finished trade for sign-off. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: 1 dedicated r/nursing thread (~1y, 855 up / 99 comments) with broad independent corroboration); groom to confirm priority/scope before build.
 - [ ] **Swaps get denied by hidden eligibility rules (no-overtime, skill/seniority tier match)** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Facilities require trades to be even in hours so nobody triggers overtime, and to preserve skill mix so a charge-qualified slot only goes to another charge-qualified nurse. These constraints are invisible until a swap is rejected, which reads as arbitrary even when it is a stated policy. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: same r/nursing thread plus scattered one-line confirmations elsewhere); groom to confirm priority/scope before build.
-- [ ] **Travel/contract nurses compare take-home against staff roles** (P3 · source:reddit-seed · pay-differentials · unscoped) — Contract and travel nurses want to compare net pay of a contract vs. a staff position, factoring stipends and differentials. Maps to `new` (harness:unscoped — maps to no existing surface; a feature to design, not a one-run build). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Managers contacting nurses off shift, on PTO, or on leave to chart or cover** (P3 · source:reddit-owner · manager-conflicts · unscoped) — Managers reach out about documentation fixes or coverage during vacation, leave, or days off, occasionally escalating to a write-up for not responding off the clock. A boundary/communication-norms complaint distinct from schedule-change or PTO-denial themes. Out of scope for a pay planner; recorded for completeness. Maps to `new` (harness:unscoped — maps to no existing surface; a feature to design, not a one-run build). Auto-surfaced from owner-gathered Reddit signal (observed: 1 r/nursing thread (~2mo, 29 up / 22 comments); could NOT be independently corroborated — signal downgraded from the reporter's 'occasional'); groom to confirm priority/scope before build.
 
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-21 (nightly) — **The saved-pattern card stops printing a multi-paycheck average as if it
+  were a paycheck.** `patternMetrics()` prices a rotation over `lcm(cycle,14)` days, so for any cycle
+  that doesn't divide a fortnight the "take-home / paycheck" figure is an average and real checks
+  alternate around it. The comparison table and the edit-mode readout have said so since the
+  2026-09-18 council synthesis; the YOUR PATTERNS card was the third site and never got it — and it is
+  the site a nurse reads *first*, because the side-by-side table only renders once she has saved two
+  patterns. A saved 4-on/4-off now reads `$3,689 avg. / paycheck` with a footnote spelling out why;
+  a 14-day cycle is untouched and still reads flat, because its figure really is one check.
+  **Label only — no arithmetic, no wage-core** (`avgNote()` is the existing helper, reused; the only
+  other change is adding `.pl-card` to the `.avg` CSS selector so the marker inherits the muted style
+  it already has in the other two places). The footnote is not decoration: the table's version of
+  this marker explains itself in a `title=` tooltip, and a phone has no hover.
+  Gate: `check_build` **11/11**, `test_groom_seed` **33/0**, `smoke` **262 passed / 0 failed**
+  (254 baseline → 8 new in §16). **Negative-tested three ways**, each confirmed to FAIL the right
+  assertions: reverting the card to the bare figure (2 FAIL), deleting the footnote (1 FAIL), and
+  making the qualifier unconditional so a 14-day cycle gets a caveat it must not have (3 FAIL). The
+  first attempt at the third test silently didn't apply — its anchor string matched the table's
+  conditional too, so nothing was written and the "negative test" re-ran the good file and passed.
+  Caught only because a passing negative test is the thing this repo has been burned by; re-run with
+  a unique anchor. Each case seeds exactly ONE pattern on purpose: the comparison table appears at
+  two and carries a footnote of its own, so at two the footnote assertion couldn't tell the sites
+  apart and would pass with the fix reverted.
+  **Skipped the top P1 (quiet the swap-board CTAs) — it is already built and open as draft PR #118**,
+  so rebuilding it would have collided with a live PR. Flagged in the Queue above. Note that #118's
+  branch carries a P0 saying the nightly cannot push from a fresh session; **that did not reproduce
+  today** — `git push` authenticated fine and both the Supabase and GitHub MCP servers loaded. So the
+  2026-09-20 failure was either transient or fixed out of band; do not treat the loop as push-broken,
+  but do not assume it is fixed for good either — this run is one data point.
+  **Groom, from live `feedback` + `events`:** no new feedback since 2026-09-14 (11 rows total),
+  `auth.users` still **4** with nothing new since 2026-09-12, 15 devices in the last 3 days, and
+  **one `client_error` in 7 days** (2026-09-16, nothing since the council/wage-core/positioning ships).
+  `session_end` still tells the same bleak story it told on 09-20 and has not improved: **8 of the 9
+  exit rows ever recorded end at `ob_step` stage 0 with `setup:false, shifts:0` after 2–15 seconds** —
+  a bounce off the welcome screen before anything is typed. The 9th (09-17, `via:'qr'`) reached
+  `setup:true` over 114 seconds and still saved no shift. **No activation rate is quoted on purpose:**
+  the device classifier is still broken (`dashboard_snapshot.sql:52`) and every figure since
+  2026-09-07 is inflated — counts only until the re-baseline item lands.
+  `groom_seed --apply` run, block refreshed, 12 candidates — and it **again** dropped the
+  `travel/contract take-home comparison` candidate, the same one it dropped on 09-20. That is the
+  known keyword-coverage erosion defect with a third live instance and a stable repro, not a flake.
 - 2026-09-16 (dedicated session, same PR #111) — **the feedback inbox links to the device trail**
   (migration 007). 005 put `anon_id` on `feedback` and 006 built the trail; the inbox sat between
   them returning eight columns, none of them the join key, so the console could show what a nurse

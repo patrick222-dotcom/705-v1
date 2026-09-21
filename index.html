@@ -363,7 +363,7 @@
   .pl-cell .h{font-size:9.5px;font-weight:700;color:var(--ink)}
   .pl-cell{position:relative}
   .pl-cell .fx{position:absolute;top:2px;right:3px;font-size:8px;line-height:1}
-  .pl-money .avg,.pl-cmp .avg{font-weight:500;font-size:10.5px;color:var(--muted-2)}
+  .pl-money .avg,.pl-cmp .avg,.pl-card .avg{font-weight:500;font-size:10.5px;color:var(--muted-2)}
   .pl-money{background:var(--ink);border-radius:16px;padding:16px 18px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
   .pl-money .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
   .pl-money .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em;line-height:1.1;margin-top:2px}
@@ -5148,7 +5148,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
                 <button type="button" className="pl-card-main" onClick={()=>open(p)}>
                   <div className="t">{p.name}</div>
                   <div className="pl-mini" aria-hidden="true">{p.cells.map((c,i)=><i key={i} style={{background:cellColor(c)}}></i>)}</div>
-                  <div className="s"><b className="num">{fmt(m.periodNet)}</b> / paycheck · {fmtHrs(m.hoursPerWeek)} hrs/wk · {m.longestRun} in a row max · {weekendShort(m)} weekends</div>
+                  <div className="s"><b className="num">{fmt(m.periodNet)}</b>{avgNote(p.cells) ? <span className="avg" title={avgNote(p.cells)}> avg.</span> : null} / paycheck · {fmtHrs(m.hoursPerWeek)} hrs/wk · {m.longestRun} in a row max · {weekendShort(m)} weekends</div>
                 </button>
                 {fc>0 &&
                   <div className="pl-card-foot">
@@ -5157,6 +5157,8 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
                   </div>}
               </div>);
           })}
+          {allMetrics.some(({p})=>avgNote(p.cells)) &&
+            <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:2}}>avg. — that cycle doesn't divide a fortnight, so the figure is averaged over several paychecks; individual checks will vary.</div>}
 
           <div className="sec-lab" style={{marginTop:patterns.length?18:4}}>START FROM A ROTATION NURSES USE</div>
           {PATTERN_PRESETS.map(pr=>
