@@ -1802,6 +1802,168 @@ const run = async () => {
     ok('pattern card: and it gets no footnote', b.notes === 0, `${b.notes} footnotes`);
   }
 
+  /* ---- 17. council 2026-09-18 re-check: the six fixes nothing pinned -----------------------
+     The re-check (docs/council-runs/2026-09-13/recheck.json) traced all 22 synthesis entries to
+     the current source and then asked the harder question: would a revert FAIL? For six of them
+     the answer was no -- the code landed, the assertion never existed, and CI only ever proves
+     the assertions that exist. Those six are pinned here: #9 quick-fill dropping the template's
+     OT flag, #10 the pattern-lab goal line's $0 filter, #32 SwapsSheet's Escape, and the three
+     #34 a11y lines (year-nav labels, the done-step name field, the apply-preview live region --
+     the existing live-region check reads `.sheet .preview`, and the lab is a `.modal`).
+
+     Each block drives the real surface. Two notes on how, because both were nearly got wrong:
+     - #32 was filed "needs live auth", but `useEscape(onClose)` sits above SwapsSheet's `if(!user)`
+       early return, so it runs identically for a signed-out visitor. Deleting that line fails the
+       signed-out drive too -- no session to stub, and the assertion is no weaker for it.
+     - #10 cannot be reached by seeding a $0 goal: `sanitizeData` drops `target<=0` on load, so the
+       only way to hold one is to zero an existing goal in Settings, which is exactly the path a
+       nurse takes. The drive does that.
+     Every assertion negative-tested -- see the Done log for the six breaks and what each failed. */
+  if (want(17)) {
+    /* -- #9: quick-fill carries the template's overtime flag ------------------------------
+       Nothing in this suite drove quick-fill at all, so `isOvertime:qfTemplate.isOvertime===true`
+       (index.html, toggleQuickFillDay) could go back to being dropped silently. Assert on the day
+       cell's own accessible name rather than on localStorage: that is where a nurse learns the
+       shift is OT, and it does not depend on when the save debounce happens to fire. */
+    {
+      const seed = {
+        setupComplete: true, baseRate: 50,
+        differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+        templates: [{ id: 't-ot', name: 'OT night', shiftType: 'night', hours: 12, bonusType: 'none', isOvertime: true }],
+      };
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.cell[data-date]', { timeout: 20000 });
+      await page.locator('button:has-text("Quick fill")').first().click();
+      const chip = page.locator('.qf-chips .chip-sel:has-text("OT night")');
+      const picked = await chip.waitFor({ timeout: 6000 }).then(() => true).catch(() => false);
+      ok('council: quick-fill offers the saved template as a brush', picked);
+      if (picked) await chip.click();
+      const day = await page.locator('.cell[data-date]').first().getAttribute('data-date');
+      await page.locator(`.cell[data-date="${day}"]`).click();
+      const cell = page.locator(`.cell[data-date="${day}"]`);
+      await page.waitForTimeout(500);
+      const label = await cell.getAttribute('aria-label');
+      const badge = (await cell.locator('.d').innerText()).replace(/\s+/g, '');
+      ok('council: a quick-filled day really gets the shift', / 1 shift/.test(label || ''), label || '');
+      ok("council: quick-fill carries the template's overtime flag to the day it fills",
+        /includes overtime/.test(label || '') && /OT$/.test(badge), `${label} | badge=${badge}`);
+      ok('council: no page errors driving quick-fill', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- #34 year nav, #10 goal line, #34 apply preview: one drive, one saved pattern ------ */
+    {
+      const night = () => ({ kind: 'night', hours: 12, start: '19:00' });
+      const seed = {
+        setupComplete: true, baseRate: 50, payPeriodStart: '2026-09-07',
+        federalTaxRate: 12, stateTaxRate: 5, ficaType: 'percent', ficaWithholdingPercent: 7.65,
+        pretaxDeductions: 0, posttaxDeductions: 0,
+        differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } },
+        goals: [{ id: 'g-keep', name: 'Vacation', target: 3000 }, { id: 'g-zero', name: 'New car', target: 1200 }],
+        patterns: [{ id: 'p1', name: 'Four on four off', anchor: '2026-09-07',
+          cells: [night(), night(), night(), night(), null, null, null, null] }],
+      };
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+
+      /* #34a: the year-view arrows are bare chevrons -- without the labels a screen reader
+         announces "button" twice and the only way to tell them apart is which side they are on. */
+      await page.locator('.viewseg button:text-is("Year")').click();
+      await page.waitForSelector('.calnav', { timeout: 6000 });
+      const yearNav = await page.evaluate(() => [...document.querySelectorAll('.calnav button')]
+        .map((b) => b.getAttribute('aria-label')));
+      ok('council: the year-view arrows name the year they move to',
+        yearNav.includes('Previous year') && yearNav.includes('Next year'), JSON.stringify(yearNav));
+      await page.locator('.viewseg button:text-is("Month")').click();
+
+      /* #10: zero a goal the way Settings allows (updGoalTarget floors at 0, it does not delete),
+         then read the lab's goal line. Without the target>0 filter the zeroed goal reads
+         "New car: 1 paycheck" -- Math.max(1, Math.ceil(0/net)) -- a promise of a goal already met. */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      const target = page.locator('input[aria-label="New car target amount"]');
+      await target.waitFor({ timeout: 8000 });
+      await target.fill('0');
+      await target.press('Enter');
+      await page.waitForTimeout(300);
+      await page.locator('.sheet-h button.back').first().click();
+      await page.waitForSelector('.hero', { timeout: 8000 });
+
+      await page.locator('.whatif:has-text("Pattern lab") button:text-is("Open")').click();
+      await page.waitForSelector('.modal[aria-label="Pattern lab"]', { timeout: 8000 });
+      await page.locator('.pl-card-main:has-text("Four on four off")').click();
+      await page.waitForSelector('.modal[aria-label="Edit pattern"]', { timeout: 8000 });
+      const money = (await page.locator('.modal .pl-money').innerText()).replace(/\s+/g, ' ');
+      ok('council: the pattern-lab goal line still names a funded goal',
+        /If every paycheck went to it/.test(money) && /Vacation/.test(money), money);
+      ok('council: a goal zeroed out in Settings is not promised in N paychecks',
+        !/New car/.test(money), money);
+
+      /* #34b: the apply-plan preview is the only live region scoped to .modal, which is why the
+         .sheet-scoped check in section 11 passed with it reverted. */
+      await page.locator('.modal button:text-is("Put it on the calendar")').click();
+      await page.waitForSelector('.modal .pl-apply', { timeout: 6000 });
+      const live = await page.evaluate(() => {
+        const p = document.querySelector('.modal .pl-apply .preview');
+        return p ? { live: p.getAttribute('aria-live'), atomic: p.getAttribute('aria-atomic'),
+          txt: p.textContent.trim().slice(0, 20) } : null;
+      });
+      ok('council: the apply-plan preview announces the plan it just recomputed',
+        !!live && live.live === 'polite' && live.atomic === 'true', JSON.stringify(live));
+      ok('council: no page errors across the year-nav / goal-line / apply drive',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- #34c: the done step's name field ---------------------------------------------------
+       Reached only by the long onboarding road (welcome -> rate -> differentials -> taxes); the
+       short road finishes at rough and never renders this screen, which is why no drive had ever
+       landed on it. The input has a placeholder and no visible <label>, so the aria-label is the
+       only accessible name it has. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#root > *', { timeout: 20000 });
+      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.getByRole('button', { name: /add my differentials/i }).click();
+      await page.getByRole('button', { name: /^continue$/i }).click();
+      await page.getByRole('button', { name: /see my estimate/i }).click();
+      const onDone = await page.waitForSelector('h1:has-text("all set")', { timeout: 8000 })
+        .then(() => true).catch(() => false);
+      ok('council: the long onboarding road still ends on the done step', onDone);
+      const named = await page.locator('input[aria-label="Your name"]').count();
+      ok('council: the done step\'s name field has an accessible name, not just a placeholder',
+        named === 1, `${named} labelled inputs`);
+      ok('council: no page errors walking the long onboarding road',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- #32: Escape closes the swap sheet -------------------------------------------------- */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.locator('button:text-is("Open swap board")').click();
+      const opened = await page.waitForSelector('.sheet[aria-label="Shift swaps"]', { timeout: 8000 })
+        .then(() => true).catch(() => false);
+      ok('council: the Settings swap-board route still opens the sheet', opened);
+      await page.keyboard.press('Escape');
+      const closed = await page.waitForSelector('.sheet[aria-label="Shift swaps"]',
+        { state: 'detached', timeout: 5000 }).then(() => true).catch(() => false);
+      ok('council: Escape closes the swap sheet', closed);
+      ok('council: no page errors opening and dismissing the swap sheet',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
