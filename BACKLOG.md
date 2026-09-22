@@ -91,7 +91,15 @@ _(none)_
   card, negative-tested. No arithmetic.
 
 ### P2
-- [ ] **Pin the six council fixes a revert would not fail** — `harness:drivable` — the re-check found
+- [x] ~~**Pin the six council fixes a revert would not fail**~~ — SHIPPED 2026-09-22 (see Done log).
+  All six are now pinned in `tests/smoke.mjs` §17 (15 assertions, each negative-tested by breaking the
+  fix in `index.html` and confirming the right assertion — and only that one — FAILs). Two of the
+  item's own assumptions were wrong and are worth keeping: SwapsSheet's Escape needs **no** live auth
+  (`useEscape(onClose)` sits above the `if(!user)` early return, so the signed-out drive pins the same
+  line), and the `$0` goal filter **cannot** be reached by seeding a zero-target goal — `sanitizeData`
+  drops `target<=0` on load, so the drive zeroes a funded goal through Settings instead, which is the
+  only path a nurse has to one. Original note below:
+- [ ] ~~**Pin the six council fixes a revert would not fail**~~ — `harness:drivable` — the re-check found
   these landed but unpinned: quick-fill carrying `isOvertime` (`toggleQuickFillDay`; nothing drives
   quick-fill at all), the pattern-lab goal line's `$0` filter (duplicates the pinned Add-Shift one),
   the year-nav "Previous/Next year" labels, the done-step name field's `aria-label`, the apply
@@ -161,6 +169,14 @@ _(none)_
   — the `iPhone OS 15_0` + `Version/18.0` pair — rather than inventing a second one), then restate the
   numbers in CLAUDE.md and `docs/history.md` rather than leaving two sets in circulation. Dedicated
   because it rewrites published figures and wants a human to agree the new ones are the honest ones.
+  **Groom 2026-09-22 adds a second contaminated signal to restate at the same time: `ob_step` stage 0
+  now fires for crawlers.** Stage 0 was fixed on 2026-09-16 to fire from an effect on arrival rather
+  than on the first tap — which means any bot that executes JS reaches it. Of the 8 `session_end` rows
+  ending at stage 0, the user agents are `meta-externalagent/1.1`, Firefox 102 and 128 on Linux/Windows,
+  Chrome 61 and 95 on Linux/Mac, and Chrome 149/150 — **not one is a phone.** So "bounced off the
+  welcome screen", the headline abandonment finding, is currently measuring crawler traffic, and the
+  onboarding funnel needs the same mobile+engagement filter as the cohorts. Don't quote the stage-0
+  bounce either until this lands.
 
 - [x] ~~**Wage-core session — council 2026-09-13 bucket 3**~~ — SHIPPED 2026-09-19 (see Done log).
   Seven of the eight items landed under the `/wage-core` protocol with 24 new assertions in
@@ -713,6 +729,52 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-22 (nightly) — **Six council fixes that a revert would not have caught are now pinned.**
+  The 2026-09-18 re-check traced all 22 synthesis entries into `index.html` and then asked the harder
+  question — would a revert FAIL? For six it would not: the code had landed and no assertion anywhere
+  named it, and CI only ever proves the assertions that exist. `tests/smoke.mjs` §17 is those six, all
+  driven through the real surface rather than grepped out of the source: **#9** quick-fill carrying the
+  template's OT flag (nothing had ever driven quick-fill at all — the assertion reads the day cell's
+  accessible name and its `OT` badge, not localStorage, so it doesn't depend on when the save debounce
+  fires); **#10** the pattern-lab goal line's `$0` filter; **#32** SwapsSheet's Escape; and the three
+  **#34** a11y lines — the year-nav labels, the done-step name field's `aria-label`, and the apply-plan
+  preview's live region.
+  **Two of the item's own assumptions were wrong, and that is the reusable part.** #32 was filed
+  "needs live auth", but `useEscape(onClose)` sits *above* SwapsSheet's `if(!user)` early return, so a
+  signed-out drive pins the identical line with no session to stub — the cheaper test is also the
+  stronger one. And #10 cannot be reached by seeding a zero-target goal at all: `sanitizeData` drops
+  `target<=0` on load, so a seeded `$0` goal never exists by the time the lab renders and the
+  "assertion" would have passed against a filter that does nothing. The drive zeroes a *funded* goal
+  through Settings instead (`updGoalTarget` floors at 0, it does not delete), which is the only path a
+  nurse has to one — and the negative test confirms it, printing `New car: 1 paycheck (under 2 months)`
+  with the filter removed: a goal already met, promised as still ahead.
+  **Test-only — `index.html` is byte-identical to `origin` (`git diff --stat index.html` empty after the
+  negative-test restore).** No index/ops/privacy bytes changed, so there is deliberately **no live
+  marker to confirm**; the deploy publishes nothing new and badgebudget.com was verified unchanged
+  rather than changed. Also chosen partly because the top P1 (quiet the swap-board CTAs) is still open
+  as draft PR #118 on `claude/live-dashboard-insights-r31se3` and rebuilding it would collide.
+  Gate: `check_build` **11/11**, `test_groom_seed` **33/0**, `smoke` **277 passed / 0 failed**
+  (262 baseline → 15 new in §17). **Each of the six negative-tested individually**, patching a
+  restored-from-backup copy of `index.html` with an anchor-count guard that aborts on a no-op patch
+  (the 2026-09-21 lesson: a negative test whose patch silently didn't apply re-runs the good file and
+  "passes"). Every break failed exactly one assertion and no other: OT flag → `isOvertime:false`;
+  goal filter → `goals.slice(0,3)`; `aria-label="Previous year"` deleted; `aria-label="Your name"`
+  deleted; the apply preview's `aria-live`/`aria-atomic` deleted; `useEscape(onClose)` commented out.
+  **Groom, from live `feedback` + `events`:** still **no new feedback since 2026-09-14** (11 rows
+  total), `user_data` still **4** rows with nothing written since 2026-09-16, and **no `client_error`
+  in 6 days**. The app itself has been silent since 2026-09-16 — the last `shift_saved`,
+  `pattern_lab_opened`, `template_saved` and `day_event_added` are all that day, and the last event of
+  any kind is an `app_open` on 2026-09-21. What *is* moving is arrivals: **352 `app_open` from 315
+  devices in 14 days**, and 26 of those devices fired `ob_step` — which on inspection is the finding
+  below. **No activation rate quoted, on purpose:** the classifier is still broken, and stage 0 is now
+  contaminated too.
+  **New groom finding — the stage-0 bounce is measuring crawlers, not nurses.** All 8 `session_end`
+  rows that end at `ob_step` stage 0 come from `meta-externalagent/1.1`, desktop Firefox 102/128,
+  Chrome 61/95/149/150 — **not one phone among them.** Stage 0 was fixed on 2026-09-16 to fire from an
+  effect on arrival rather than on the first tap, which is exactly what makes any JS-executing bot
+  reach it. The one genuinely mobile exit row is still the 2026-09-17 `via:'qr'` iPhone that reached
+  `setup:true` in 114 seconds and saved no shift. Folded into the re-baseline item rather than opened
+  as its own: it is the same fix (mobile + engagement filter) on the same afternoon's work.
 - 2026-09-21 (nightly) — **The saved-pattern card stops printing a multi-paycheck average as if it
   were a paycheck.** `patternMetrics()` prices a rotation over `lcm(cycle,14)` days, so for any cycle
   that doesn't divide a fortnight the "take-home / paycheck" figure is an average and real checks
