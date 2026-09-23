@@ -27,6 +27,12 @@ _(none)_
   (`claude/live-dashboard-insights-r31se3`, opened 2026-09-20). Do NOT rebuild it — the nightly skipped
   this item on 2026-09-21 for that reason. It is a draft awaiting the owner's review, and its branch also
   carries a P0 claiming the nightly cannot push; that P0 **did not reproduce on 2026-09-21** (see Done log).
+  **OWNER DECISION, 2026-09-23 — the nightly has now skipped this three nights running (09-21, 09-22,
+  09-23) and the queue behind it is empty.** #118 has not moved since 09-22 and is the only thing
+  standing between the loop and its top P1. Either review and merge it, or say it is abandoned so the
+  work can be rebuilt on a fresh branch; a draft that blocks the queue indefinitely costs a build item
+  every night. Nothing else in `## Queue` is buildable, which is why 09-22 shipped tests and 09-23
+  shipped copy — both worth doing, neither the top priority.
   Original scoping kept below:
 - [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
@@ -55,6 +61,24 @@ _(none)_
   card, negative-tested. No arithmetic.
 
 ### P2
+- [ ] **Audit the rest of the shipped copy against the positioning decision** — `harness:drivable` —
+  2026-09-23 found the `<meta name="description">` and the `<noscript>` fallback still selling "an
+  anonymous shift-swap board" four days after the decision that retired both claims, because the
+  de-emphasis work went looking for CTAs and these carry none. Same question, unasked, for the rest:
+  `privacy.html` and `ops.html` each contain "anonymous" twice (may well be correct — they describe
+  *analytics* anonymity, which is true — but nobody has checked), the share-sheet and QR copy, and
+  the 19 "anonymous" occurrences in `index.html` (Invariant 7's own text is fine; in-app board copy
+  at ~5062 is the known-untrue one #118 covers). One pass, one assertion per surface that survives.
+  Cheap, and the class of miss is now proven rather than theoretical.
+- [ ] **Nothing watches for the app going silent** — `harness:unscoped` — this run found **two days
+  with zero `events` rows** and had to establish by hand that the site was up, the bytes were the
+  deployed ones and the insert policy was intact before it could call it "no visitors" rather than
+  "telemetry broken". Those are the same two days' worth of silence that would follow a real break,
+  and the only reason it was noticed is that a human-written groom step reads `max(created_at)` every
+  night. That is Invariant 4's lesson (a 47-day outage nobody could see) pointed at the analytics
+  path itself. Cheap version: the nightly asserts "an event newer than N hours OR the site is
+  provably healthy" and says which. Real version belongs in ops console phase 2. Unscoped because
+  the threshold is a judgement call at this traffic level — 4 events/day makes any alarm noisy.
 - [x] ~~**Pin the six council fixes a revert would not fail**~~ — SHIPPED 2026-09-22 (see Done log).
   All six are now pinned in `tests/smoke.mjs` §17 (15 assertions, each negative-tested by breaking the
   fix in `index.html` and confirming the right assertion — and only that one — FAILs). Two of the
@@ -677,6 +701,55 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-23 (nightly) — **The most public copy in the product stopped making the one promise the
+  positioning decision retired — and the no-JS fallback became reachable by a human.** Two findings,
+  one fix, both in the `<head>`/`<noscript>` region that the 2026-09-19 de-emphasis work never
+  touched because it carries no CTA.
+  **(1) The search snippet and the crawler-visible text both ended on "runs an anonymous shift-swap
+  board."** That is growth copy leading with swapping, which CLAUDE.md → Positioning (a) forbids,
+  *and* the word "anonymous", which the same file records as untrue until the `security-00`
+  hardening session lands. It was the single most widely-read string the product has — the Google
+  search result, and the only text a crawler or a brand-verification reviewer ever sees — and it
+  had been repeating the retired promise for four days. Both now lead with sync + paycheck:
+  *"Know what a shift is worth before you pick it up. BadgeBudget syncs your nursing schedule and
+  projects take-home pay — differentials, overtime, PTO and taxes."*
+  **(2) CLAUDE.md's "Neither is built" was a stale doc claim, and the thing that *was* built only
+  half worked.** A `<noscript>` fallback had shipped at some point, unrecorded — so the file was
+  wrong. But `#splash` is `position:fixed;inset:0`, opaque, `z-index:9999`, and nothing removes it
+  without JS, so **with scripting off the fallback sat under a spinner that can never stop**: a
+  crawler reading the DOM saw the text, a human looking at the page saw a spinner. "Your home page
+  is behind a login page" is exactly what Google's brand verification filed, so the half that was
+  broken is the half the reviewer is. One `<noscript><style>#splash{display:none}</style></noscript>`
+  in the `<head>` fixes it — the rule applies only when scripting is disabled, so the boot path,
+  the 8s watchdog and the blocked-Babel error screen are all untouched (Invariant 1 intact, gate
+  confirms). A JS-disabled visitor now gets 385 characters of real content and a working privacy
+  link instead of one word.
+  **Copy and one CSS rule only — no JS, no wage core, no invariant weakened, publish set unchanged.**
+  Gate: `check_build` **11/11**, `test_groom_seed` **33/0**, `smoke` **289 passed / 0 failed**
+  (277 baseline → 12 new in §18). §18 is driven with `javaScriptEnabled:false` rather than grepping
+  the source, which is the only way to see finding (2) at all — the DOM assertion a grep would have
+  written passes against the broken page. **Negative-tested three ways**, each failing exactly its
+  own assertions and no others, through an anchor-count guard that aborts on a no-op patch:
+  restoring the old meta description (2 FAIL), restoring the old fallback paragraph (2 FAIL), and
+  deleting the head rule so the splash buries the fallback again (1 FAIL — and note the other 11
+  still passed, which is precisely why the splash assertion had to exist).
+  **Skipped the top P1 (quiet the swap-board CTAs) for the third night running** — still open as
+  draft PR #118 on `claude/live-dashboard-insights-r31se3`, untouched since 09-22. This change is
+  in a different region of `index.html` (head + noscript, ~lines 8/57/498-512) than #118's JSX CTA
+  sites (~4012/4077-4080/4169-4172), so it will not collide. **#118 now needs an owner decision, not
+  another night** — see the Queue note.
+  **Groom, from live `feedback` + `events`:** **the app has gone completely silent.** No events of
+  any kind since **2026-09-21 02:53 UTC** — two full days, zero rows, where the preceding days ran
+  4–5 events from 2 devices. Investigated rather than assumed: badgebudget.com returns **200 with
+  5 SRI scripts and 421,710 bytes**, the deployed file is **byte-identical to the branch head**, and
+  the `events` insert policy for `anon`/`authenticated` is intact — so this is an absence of
+  visitors, not a broken telemetry path. Still no new feedback since 2026-09-14 (11 rows), `auth.users`
+  still **4** with nothing since 2026-09-12, `user_data` still **4** with nothing written since
+  2026-09-16, and **no new `client_error` since 2026-09-16** (the "12 in 14 days" a rolling window
+  reports are all pre-09-16 rows). Arrivals over 14 days: 338 `app_open` from 305 devices, nearly all
+  of it the 09-13 and 09-16 crawler spikes. **No activation rate quoted, on purpose** — the device
+  classifier is still broken and stage 0 is still crawler-contaminated.
+  `groom_seed --apply` run, block refreshed, 12 candidates.
 - 2026-09-22 (nightly) — **Six council fixes that a revert would not have caught are now pinned.**
   The 2026-09-18 re-check traced all 22 synthesis entries into `index.html` and then asked the harder
   question — would a revert FAIL? For six it would not: the code had landed and no assertion anywhere

@@ -22,7 +22,11 @@ see Positioning.
   Courtney asked for it off entirely. The call is to *quiet its CTAs*, not delete it: the board keeps
   working for anyone holding an invite link, and it stops competing for attention on the first screen
   with the two things that work for one nurse alone. Practical consequences, all load-bearing:
-  (a) growth copy and any invite/QR framing lead with sync + paycheck, never with swapping;
+  (a) growth copy and any invite/QR framing lead with sync + paycheck, never with swapping — **and
+      that includes the copy with no CTA attached to it**: the `<meta name="description">` search
+      snippet and the `<noscript>` fallback both still ended on "runs an anonymous shift-swap board"
+      four days after the decision, because the de-emphasis work went looking for buttons. Fixed
+      2026-09-23 and pinned by `tests/smoke.mjs` §18;
   (b) `security-00` stops being a ship-blocker and becomes a **promotion-blocker** — the hardening
   session must land before the board is ever re-emphasised or its invite links go out at scale, and
   the in-app "your unit sees it anonymously" copy stays untrue until it does;
@@ -361,11 +365,17 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   **Brand verification is a separate track from publishing status** and is currently failing with two
   issues; neither gates sign-in for basic scopes, so it is optional polish. (1) `badgebudget.com` is
   not verified as owned — needs a Search Console DNS TXT record at Porkbun under the same Google
-  account. (2) "Your home page is behind a login page" — mechanically true: **`curl` of
-  badgebudget.com yields exactly one word of body text, `badgebudget`, and the page carries no
-  `<noscript>`.** The whole app is JS-rendered, so any reviewer or crawler without JS sees an empty
-  shell. That also explains why crawler traffic never fires a second event. A `<noscript>` block, or a
-  static `about.html` to point the home-page field at, would fix it. Neither is built.
+  account. (2) "Your home page is behind a login page" — **the `<noscript>` half is fixed as of
+  2026-09-23; this file said "Neither is built" until then, which was stale.** A `<noscript>`
+  fallback had in fact shipped (real copy, a privacy link, no external resources), but it was only
+  ever reachable by something that reads the DOM: `#splash` is `position:fixed;inset:0` and opaque
+  at `z-index:9999`, so with scripting off it covered the fallback with a spinner that can never
+  stop — a crawler saw the text, a human reviewer saw a spinner, which is the case the fallback
+  exists for. One `<noscript><style>#splash{display:none}</style></noscript>` in the `<head>` closes
+  it; the rule applies only when scripting is disabled, so the boot path, the watchdog and the
+  blocked-Babel error screen are untouched. A JS-disabled visitor now gets ~385 characters of real
+  content. `about.html` is still not built and no longer needed for this. Pinned by
+  `tests/smoke.mjs` §18, driven with `javaScriptEnabled:false`.
   **Testing the wall needs an account that has never signed in.** Signing in with an existing account
   proves nothing — it was already on the test-user list and would have worked before publishing.
 - **Swap board — deliberately quiet since 2026-09-19 (see Positioning).** Fully functional, reachable
@@ -805,7 +815,8 @@ name='client_error' order by created_at desc;`
 - **Google consent screen — done 2026-09-07, wall confirmed down.** Branded and **In production**, so
   any Google account can now sign in (see Auth). The supabase.co string remains and needs a paid
   Supabase custom domain to remove. Brand verification is failing on two issues but does not gate
-  basic-scope sign-in; the `<noscript>` half of that is worth fixing on its own merits. **Watch for the
+  basic-scope sign-in; **the `<noscript>` half shipped 2026-09-23** (see Auth — the fallback existed
+  but the splash buried it), leaving only the DNS TXT ownership record, which is owner-side. **Watch for the
   payoff:** `sign_in_attempted` vs `signed_in` vs new rows in `auth.users`. First
   `sign_in_attempted` landed 2026-09-07 21:16 — the deferred queue survives the OAuth redirect in
   production, not just in the harness. **The baseline was beaten: a 4th `auth.users` row landed
