@@ -1964,6 +1964,69 @@ const run = async () => {
     }
   }
 
+  /* == 18. The public copy: what a crawler, a search result and a JS-disabled human see =========
+     This is the most public text the product has and the least driven. Two things were wrong.
+     (a) The <meta name="description"> and the <noscript> fallback both ended on "runs an anonymous
+         shift-swap board" - the one promise the 2026-09-19 positioning decision says to stop
+         making (growth copy leads with sync + paycheck, never swapping) and the one word
+         CLAUDE.md records as untrue until the security-00 hardening session lands. The in-app
+         de-emphasis work never reached the <head>, because the head carries no CTA.
+     (b) The fallback was unreachable to a human anyway: #splash is fixed, opaque and z-index 9999,
+         so with scripting off it covered the fallback with a spinner that can never stop. A
+         crawler reading the DOM saw the text; a brand-verification reviewer looking at the page
+         saw a spinner - and "your home page is behind a login page" is exactly what Google filed.
+     Driven with javaScriptEnabled:false, which is the real condition, not a grep of the source. */
+  if (want(18)) {
+    /* -- the no-JS fallback, as a human with scripting off actually sees it ------------------ */
+    {
+      const ctx = await browser.newContext({ ...devices['iPhone 13'], javaScriptEnabled: false });
+      const page = await ctx.newPage();
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+      const splashShown = await page.locator('#splash').isVisible().catch(() => false);
+      ok('public copy: the splash is hidden when scripting is off, so the fallback is reachable',
+        splashShown === false);
+
+      const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim();
+      ok('public copy: a JS-disabled visitor gets real content, not an empty shell',
+        body.length > 200, `${body.length} chars of visible text`);
+      ok('public copy: the fallback leads with the paycheck promise',
+        /take-home pay/i.test(body), body.slice(0, 80));
+      ok('public copy: the fallback names calendar sync, the substitution half of the positioning',
+        /syncs your nursing schedule/i.test(body));
+      ok('public copy: the fallback makes no swap-board claim (positioning 2026-09-19)',
+        !/swap/i.test(body), (body.match(/.{0,30}swap.{0,30}/i) || [''])[0]);
+      ok('public copy: the fallback does not call the board anonymous (untrue until security-00)',
+        !/anonymous/i.test(body), (body.match(/.{0,30}anonymous.{0,30}/i) || [''])[0]);
+
+      const href = await page.locator('noscript a').first().getAttribute('href').catch(() => null);
+      ok('public copy: the fallback still offers a reachable privacy notice',
+        href === '/privacy.html', String(href));
+      await ctx.close();
+    }
+
+    /* -- the search snippet, read off the live DOM ------------------------------------------- */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+
+      const desc = await page.locator('meta[name="description"]').getAttribute('content');
+      ok('public copy: the search snippet leads with take-home pay', /take-home pay/i.test(desc || ''), desc || '');
+      ok('public copy: the search snippet makes no swap-board claim', !/swap/i.test(desc || ''));
+      ok('public copy: the search snippet does not call the board anonymous', !/anonymous/i.test(desc || ''));
+
+      /* With scripting ON the fallback must stay invisible - it sits above #root in the body, so a
+         regression here would print a paragraph of marketing copy over the app on every load. */
+      const fallbackShown = await page.locator('noscript div').isVisible().catch(() => false);
+      ok('public copy: the fallback stays invisible when the app boots normally', fallbackShown === false);
+      ok('public copy: the app still boots with the no-JS rule in the head',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
