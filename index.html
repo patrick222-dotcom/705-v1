@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://accounts.google.com; img-src 'self' data: https:;">
 <title>BadgeBudget — Shift Pay Planner</title>
-<meta name="description" content="Know what a shift is really worth before you pick it up. BadgeBudget projects take-home pay for nurses — differentials, overtime, PTO and taxes — and runs an anonymous shift-swap board.">
+<meta name="description" content="Know what a shift is worth before you pick it up. BadgeBudget syncs your nursing schedule and projects take-home pay — differentials, overtime, PTO and taxes.">
 <meta name="theme-color" content="#F6F5F1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2316181F'/%3E%3Ctext x='3.5' y='23' font-family='Verdana,sans-serif' font-size='17' font-weight='bold' fill='%23ffffff'%3Ebb%3C/text%3E%3Ccircle cx='27.5' cy='21' r='3' fill='%2311A86B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -54,6 +54,11 @@
   ::-webkit-scrollbar-thumb{background:#dcdacf;border-radius:6px;border:3px solid var(--paper)}
 
   /* loading splash */
+  /* #splash is fixed, opaque and z-index 9999, so with scripting off it covers the <noscript>
+     fallback below with a spinner that can never stop - the fallback was in the DOM for a
+     crawler but invisible to a human (and to a brand-verification reviewer, which is the case
+     it exists for). A <noscript> rule only applies when scripting is disabled, so the boot
+     path, the watchdog and the blocked-Babel error screen are all untouched. */
   #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--paper);z-index:9999;transition:opacity .35s}
   #splash .logo{display:flex;align-items:center;gap:10px}
   #splash .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--money);margin-left:3px;vertical-align:2px}
@@ -494,16 +499,22 @@
     .iconbtn,.calnav button,.back,.period{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
   }
 </style>
+<noscript><style>#splash{display:none}</style></noscript>
 </head>
 <body>
 <!-- No-JS fallback: the whole app is JS-rendered, so without this a crawler or a JS-disabled
      browser sees an empty shell (one word of body text) — which is also why Google's brand
      verification flagged the home page as "behind a login page". Real content + a working link,
-     self-contained (no external resources, CSP-safe). Copy mirrors the <meta name="description">. -->
+     self-contained (no external resources, CSP-safe). Copy mirrors the <meta name="description">.
+     Both lead with sync + paycheck and say nothing about the swap board, per the 2026-09-19
+     positioning decision (CLAUDE.md -> Positioning): growth copy never leads with swapping, and
+     the word "anonymous" is untrue for the board until the security-00 hardening session lands.
+     This is the most public copy the product has - it is the search snippet and the only text a
+     crawler or a brand-verification reviewer ever sees - so do not reinstate either claim here. -->
 <noscript>
   <div style="max-width:640px;margin:0 auto;padding:48px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#16181F;line-height:1.6">
     <h1 style="font-size:26px;margin:0 0 12px">BadgeBudget</h1>
-    <p style="font-size:16px;margin:0 0 16px">Know what a shift is really worth before you pick it up. BadgeBudget projects take-home pay for nurses — differentials, overtime, PTO and taxes — and runs an anonymous shift-swap board.</p>
+    <p style="font-size:16px;margin:0 0 16px">Know what a shift is worth before you pick it up. BadgeBudget syncs your nursing schedule and projects take-home pay — differentials, overtime, PTO and taxes — so you can see what a pick-up is really worth and whether a savings goal is in reach.</p>
     <p style="font-size:15px;color:#52514e;margin:0 0 16px">This is an interactive app and needs JavaScript. Please enable JavaScript, then reload this page to get started.</p>
     <p style="font-size:14px;margin:0"><a href="/privacy.html" style="color:#1F7A55">Privacy policy</a></p>
   </div>
