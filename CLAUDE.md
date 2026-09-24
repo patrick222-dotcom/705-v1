@@ -29,7 +29,10 @@ see Positioning.
       2026-09-23 and pinned by `tests/smoke.mjs` §18;
   (b) `security-00` stops being a ship-blocker and becomes a **promotion-blocker** — the hardening
   session must land before the board is ever re-emphasised or its invite links go out at scale, and
-  the in-app "your unit sees it anonymously" copy stays untrue until it does;
+  in-app copy may not call the board anonymous until it does — the last four such strings, the
+  post toast `Posted — your unit sees it anonymously.` among them, were removed 2026-09-24 and
+  pinned by `tests/smoke.mjs` §19, along with `privacy.html`'s claim that the database enforces
+  the anonymity (it enforces the *reveal gate*, which is a different and true thing);
   (c) a lens that scores the app down for under-serving the swap board is scoring against a recorded
   decision — see `docs/council.md` and the council-charter item in `BACKLOG.md`;
   (d) **the positioning is one unverified string away from being true**: `ical-proxy`'s NurseGrid
@@ -76,7 +79,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `pdf.worker.min.js` | pdf.js worker, served same-origin next to `index.html` |
 | `CNAME` | `badgebudget.com` — load-bearing, see Deployment |
 | `ops.html` | the ops console — a live feedback inbox for the two admins, served at `/ops.html`. In the publish set. Plain JS, no React/Babel/fonts, supabase-js only (same SRI pin as the app). Borrows the app's session (same origin = same localStorage), so it has no auth UI of its own. `noindex`, and deliberately **unlinked from the app** — the gate is `is_ops_admin()` in Postgres, not this page. Design: `docs/ops-console-scope.md` |
-| `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings |
+| `privacy.html` | the privacy notice, served at `/privacy.html`. In the publish set. Self-contained — no fonts, scripts or styles from anywhere else, so it can't break and makes no third-party requests. Linked from Settings. Served by the harness (copied verbatim) and asserted off its own DOM since 2026-09-24 — `tests/smoke.mjs` §19 |
 | `.github/workflows/deploy.yml` | the deploy workflow: 5-file publish to GitHub Pages. (`ci.yml` is the PR gate — see Deployment) |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
@@ -387,7 +390,9 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   rebuilt — see Invariant 7 and `security-00` (2026-09-13). Two more verified holes sit beside it:
   `propose_swap` never checks the caller is a party to the match (`security-01`) and a raw UPDATE
   policy lets a decline bypass `decline_swap_match` (`security-02`). All three wait on the hardening
-  session in `BACKLOG.md`; until then the in-app "anonymously" copy overstates the board. Under the
+  session in `BACKLOG.md`. **The in-app and privacy-notice copy no longer claims anonymity at all**
+  (2026-09-24, §19) — what it still says, and what stays true, is that names are revealed only
+  after every leg accepts. Under the
   2026-09-19 positioning that session is a **promotion-blocker, not a ship-blocker** — nothing else
   waits on it, and nothing may re-emphasise the board until it lands. Invite links `https://badgebudget.com/?join=CODE` go through the native
   share sheet; the recipient always confirms; the code survives the OAuth redirect via a 1h
@@ -620,7 +625,7 @@ changes all follow from it:
    `check_build.mjs` + `test_groom_seed.mjs` + `smoke.mjs` with expected counts.
 
 It also refuses wage core by name, respects the Positioning decision (never re-add a swap-board CTA
-or the untrue "anonymously" copy), and skips a queue item that overlaps an open PR's region of
+or restore any "anonymously" copy), and skips a queue item that overlaps an open PR's region of
 `index.html`. It honours a `DRY RUN` string in the fire input by stopping after the gate — used to
 verify the whole path on 2026-09-20 before the first live run.
 

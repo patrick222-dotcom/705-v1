@@ -2027,6 +2027,85 @@ const run = async () => {
     }
   }
 
+
+  /* == 19. The in-app and privacy-notice copy, audited against the positioning decision ========
+     §18 fixed the <head>. It did not ask the same question of everything else the product says
+     about the swap board, and three more sites were still making the claim CLAUDE.md records as
+     untrue until the security-00 hardening session lands — poster_key is reversible by any
+     signed-in member of the same board, so "anonymous" is a promise the board does not keep.
+
+     The one that matters most is not in the app at all: privacy.html said "Swap posts are
+     anonymous to the rest of your unit" and "Anonymity is enforced by the database rather than
+     by the app". That is a privacy notice asserting a security property a recorded critical
+     finding disproves, which is a different class of wrong from marketing copy.
+
+     What is deliberately KEPT: the reveal gate ("names shown only after everyone accepts") is
+     true and stays; swapPendingCount and every route into the board are untouched; ops.html's
+     "anonymous" tag (signed-in vs not, a device fact) and index.html's code comments and
+     analytics wording are about ANALYTICS anonymity, which is true, and were audited and left.
+
+     Driven off the real DOM of both pages, not grepped. PR #118 owns the dashboard card and the
+     Settings subtitle (~4132/4230); this section deliberately never asserts on those lines. */
+  if (want(19)) {
+    /* -- the signed-out swap board, which is the pitch a first-time visitor reads -------------- */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      await page.locator('button:text-is("Open swap board")').click();
+      const sheet = page.locator('.sheet[aria-label="Shift swaps"]');
+      const opened = await sheet.waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
+      ok('copy audit: the swap board still opens for a signed-out visitor', opened);
+      const body = opened ? (await sheet.innerText()).replace(/\s+/g, ' ') : '';
+      ok('copy audit: the signed-out board pitch makes no anonymity claim',
+        opened && !/anonymous/i.test(body), (body.match(/.{0,40}anonymous.{0,40}/i) || [''])[0]);
+      ok('copy audit: the signed-out board still states the reveal gate, which is true',
+        /only after everyone accepts/i.test(body), body.slice(0, 160));
+      ok('copy audit: no page errors reading the signed-out board', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- privacy.html, read off its own DOM ---------------------------------------------------
+       A notice nobody drives is a notice nobody checks; this is the first assertion on it. */
+    {
+      const { ctx, page } = await newPage(browser, url, { seed: false });
+      await page.goto(url.replace(/\/$/, '') + '/privacy.html', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('h2', { timeout: 20000 });
+      const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+
+      ok('copy audit: the privacy notice no longer calls swap posts anonymous',
+        !/posts are anonymous|anonymous to the rest/i.test(text),
+        (text.match(/.{0,40}anonymous.{0,40}/i) || [''])[0]);
+      ok('copy audit: the privacy notice no longer claims the database enforces anonymity',
+        !/anonymity is enforced/i.test(text));
+      ok('copy audit: the privacy notice still explains what the board actually does',
+        /per-group handle/i.test(text) && /revealed only after everyone/i.test(text));
+      ok('copy audit: the privacy notice discloses that a handle can be linked back to an account',
+        /link a handle back to an account/i.test(text));
+      ok('copy audit: the privacy notice keeps the stable-handle limitation it already had',
+        /recognise your later posts/i.test(text));
+      await ctx.close();
+    }
+
+    /* -- the two board strings that need a signed-in session -----------------------------------
+       The post toast and the display-name step sit behind live auth, which this sandbox cannot
+       reach (harness:needs-live-auth). Asserting them off the source is weaker than a drive and
+       is named as such rather than dressed up: it catches a re-introduction, which is the actual
+       risk for a string a future edit might "restore" from an older copy. */
+    {
+      const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+      const jsx = src.slice(src.indexOf('swap board (Phase 1'));
+      ok('copy audit (source, not driven): the post toast no longer says "sees it anonymously"',
+        !/sees it anonymously/i.test(jsx));
+      ok('copy audit (source, not driven): the display-name step no longer says posts are anonymous',
+        !/Posts are anonymous/i.test(jsx));
+      /* The routes into the board and the pending badge are load-bearing for anyone mid-swap and
+         are explicitly out of scope for the de-emphasis work. Assert they survived this edit. */
+      ok('copy audit: the pending-swap badge survives the copy pass', /swapPendingCount>0/.test(src));
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
