@@ -133,11 +133,16 @@
     and synced between devices, and it is never written to logs.</p>
 
   <h2>The shift-swap board</h2>
-  <p>Swap posts are anonymous to the rest of your unit. Names are revealed only after everyone
-    involved in a swap has accepted it. Anonymity is enforced by the database rather than by the app.</p>
-  <p>One honest limitation, also stated inside the app: each poster has a stable anonymous handle
-    within a group. If a colleague learns who you are through one completed swap, they can recognise
-    your later posts in that same group.</p>
+  <p>Swap posts are shown to the rest of your unit under a per-group handle rather than under your
+    name. Names are revealed only after everyone involved in a swap has accepted it, and that reveal
+    step is enforced by the database rather than by the app.</p>
+  <p>Two honest limitations. The handle is stable within a group, so if a colleague learns who you
+    are through one completed swap, they can recognise your later posts in that same group. And the
+    handle is not proof against a colleague who deliberately goes looking: it is derived from values
+    that other signed-in members of the same board can read, so someone technical enough to try
+    could link a handle back to an account. That is why this notice does not call the board
+    anonymous. A fix is queued; until it ships, treat a post as visible to your unit rather than
+    hidden from it.</p>
 
   <h2>Who else can see any of this</h2>
   <ul>

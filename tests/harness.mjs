@@ -104,6 +104,10 @@ export function buildScratch(root, outDir, { dev = false } = {}) {
      paystub path silently degrades and every import test fails for the wrong reason. */
   copyFileSync(join(root, 'pdf.worker.min.js'), join(outDir, 'pdf.worker.min.js'));
   buildOpsScratch(root, outDir);
+  /* privacy.html is the third published page and needs no rewriting at all: it is deliberately
+     self-contained (no fonts, scripts or styles from anywhere else), which is the whole point of
+     it. Copy it verbatim so its text can be asserted off the real DOM rather than grepped. */
+  copyFileSync(join(root, 'privacy.html'), join(outDir, 'privacy.html'));
   return join(outDir, 'index.html');
 }
 
