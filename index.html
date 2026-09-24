@@ -5841,7 +5841,9 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
     const {error} = await insertSwapPost(user.id, payload);
     setPosting(false);
     if(error){ toast("Couldn't post — try again.",'error'); return; }
-    toast('Posted — your unit sees it anonymously.','success');
+    /* Not "anonymously": poster_key is reversible until the security-00 hardening session
+       lands (Invariant 7), so the claim CLAUDE.md names as untrue does not go in a toast. */
+    toast("Posted to your unit's board.",'success');
     track('swap_posted', {kind:composerKind}, user.id);
     setComposerOpen(false);
     await refreshBoardAndMatches();
@@ -6120,7 +6122,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:20}}>
               {inviteCode
                 ? <React.Fragment>Sign in and we'll take you straight to it. Your invite code is <b className="num">{inviteCode}</b>.</React.Fragment>
-                : 'Post shifts you want to give up or pick up — anonymously, until everyone accepts a swap.'}</div>
+                : 'Post shifts you want to give up or pick up. Names are shown only after everyone accepts a swap.'}</div>
             <button className="btn btn-primary" onClick={onOpenAuth}>{inviteCode ? 'Sign in to join' : 'Sign in to use swaps'}</button>
           </div>
         </div>
@@ -6154,7 +6156,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
         {!loading && !loadError && !tablesMissing && !profile &&
           <div>
             <div className="display" style={{fontWeight:700,fontSize:18,lineHeight:1.3,marginBottom:8}}>What should colleagues call you when a swap is confirmed?</div>
-            <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Only shown AFTER everyone accepts a swap. Posts are anonymous until then.</div>
+            <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>Only shown AFTER everyone accepts a swap.</div>
             <div className="inp" style={{marginBottom:14}}>
               <input value={dnDraft} onChange={e=>setDnDraft(e.target.value.slice(0,40))} placeholder="e.g. Sam R." maxLength={40} autoFocus
                 aria-label="Display name" onKeyDown={e=>{ if(e.key==='Enter') saveDisplayName(); }}/>

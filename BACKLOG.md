@@ -97,7 +97,16 @@ _(none)_
   card, negative-tested. No arithmetic.
 
 ### P2
-- [ ] **Audit the rest of the shipped copy against the positioning decision** — `harness:drivable` —
+- [x] ~~**Audit the rest of the shipped copy against the positioning decision**~~ — SHIPPED 2026-09-24
+  (see Done log). Every "anonymous" in the three published files was read and classified. Four were
+  untrue and are gone (three in-app swap strings plus the privacy notice's claim that the database
+  enforces anonymity); the analytics ones in `ops.html` and `index.html` are true and were left, and
+  the share/QR copy carries no swap framing at all. One assumption in the note below was **wrong**:
+  it said the in-app board copy was "the known-untrue one #118 covers". #118 covers the dashboard
+  card and the Settings subtitle only — the toast CLAUDE.md names by name, `Posted — your unit sees
+  it anonymously.`, was in neither and would have survived #118 merging. Pinned by `tests/smoke.mjs`
+  §19. Original note below:
+- [ ] ~~**Audit the rest of the shipped copy against the positioning decision**~~ — `harness:drivable` —
   2026-09-23 found the `<meta name="description">` and the `<noscript>` fallback still selling "an
   anonymous shift-swap board" four days after the decision that retired both claims, because the
   de-emphasis work went looking for CTAs and these carry none. Same question, unasked, for the rest:
@@ -106,6 +115,22 @@ _(none)_
   the 19 "anonymous" occurrences in `index.html` (Invariant 7's own text is fine; in-app board copy
   at ~5062 is the known-untrue one #118 covers). One pass, one assertion per surface that survives.
   Cheap, and the class of miss is now proven rather than theoretical.
+- [ ] **`session_end` is the only event that ever loses its `anon_id`** — `harness:drivable` — groom
+  2026-09-24: across all 994 rows and 31 event names, **exactly one name has ever carried a null
+  `anon_id`, and it is `session_end` — 2 of its 10 rows, 20%.** Every other name is 0/984. That is
+  the one event whose entire purpose is saying how a visit *ended*, and `anon_id` is the only key
+  `ops_device_list()`/`ops_device()` group a trail by, so a null row is an ending that attaches to no
+  device: the Devices tab shows the visit stopping nowhere. Both null rows are `Firefox/128.0` on
+  Windows with byte-identical props (`n:2, secs:15, last:ob_step`), and — this is the part that rules
+  out the obvious answer — **the same device's `app_open` fifteen seconds earlier carried an id
+  fine.** So "localStorage blocked, `anonId()` returned null" does not explain it on its own;
+  something about the `pagehide` path does. Unverified, and worth one drive to find out: block
+  storage access at unload only and see whether `beaconInsert`'s `eventRow()` is where the id is
+  lost. Whatever the cause, a device that cannot supply an id should still join its own load's rows
+  to each other rather than emit null — but note that changing this moves device counts, which are
+  already known-inflated, so land it with the cohort re-baseline in mind. `tests/smoke.mjs` §12
+  asserts `session_end` carries the device's `anon_id` and passes, so the harness does not reproduce
+  it; production does, 20% of the time.
 - [ ] **Nothing watches for the app going silent** — `harness:unscoped` — this run found **two days
   with zero `events` rows** and had to establish by hand that the site was up, the bytes were the
   deployed ones and the insert policy was intact before it could call it "no visitors" rather than
@@ -753,6 +778,60 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-24 (nightly) — **The privacy notice was telling nurses the database enforces an anonymity
+  the database does not enforce.** §18 fixed the `<head>` on 09-23 and stopped there; this run asked
+  the same question of every other published string and read all 23 occurrences of "anonymous" across
+  `index.html`, `privacy.html` and `ops.html`. Four were untrue.
+  **The worst one is not in the app.** `privacy.html` said *"Swap posts are anonymous to the rest of
+  your unit"* and *"Anonymity is enforced by the database rather than by the app."* That is a privacy
+  notice asserting a security property that `security-00` (critical, 2026-09-13) disproves: any
+  signed-in member of the same board can read the values `poster_key` is derived from, the salt is a
+  constant in a public repo, and md5 is a one-liner. A nurse reading that page was being given a
+  guarantee, not a description. It now says posts carry a **per-group handle**, keeps the reveal gate
+  (which is true and *is* database-enforced), keeps the stable-handle limitation it already
+  disclosed, and adds the one it did not: the handle can be linked back to an account by a colleague
+  who goes looking, so treat a post as visible to your unit rather than hidden from it.
+  **Three in-app strings went the same way:** the post-success toast `Posted — your unit sees it
+  anonymously.` — *the exact sentence CLAUDE.md names as untrue* — now reads "Posted to your unit's
+  board."; the signed-out board pitch drops "anonymously" and keeps the true half ("names are shown
+  only after everyone accepts a swap"); and the display-name step drops "Posts are anonymous until
+  then."
+  **A queue assumption was wrong and is worth recording.** This item's own note said the in-app board
+  copy was "the known-untrue one #118 covers". It is not: #118 covers the dashboard card and the
+  Settings subtitle only, so the toast CLAUDE.md names by name would have survived #118 merging and
+  nobody would have looked again. Read the diff, not the backlog's summary of it.
+  **Audited and deliberately left alone:** `ops.html`'s "anonymous" tag (signed-in vs not — a device
+  fact), `index.html`'s analytics comments and the `anonId()` wording (analytics anonymity, which is
+  true), Invariant 7's own text, and the share/QR sheet, which carries no swap framing at all and
+  needed nothing. `swapPendingCount` and every route into the board are untouched, and there is an
+  assertion that they stayed that way — someone mid-swap can still finish.
+  **Copy only — no JS logic, no wage core, no invariant weakened, publish set unchanged.** Gate:
+  `check_build` **11/11**, `test_groom_seed` **33/0**, `smoke` **301 passed / 0 failed** (289
+  baseline → 12 new in §19). The harness now serves `privacy.html` too (it is self-contained, so it
+  is copied verbatim), which is the first time any assertion has ever read that page. **Negative-tested
+  four ways**, each failing its own assertions and no others, through an anchor-count guard that
+  aborts on a no-op patch: restoring the old signed-out pitch (2 FAIL — the anonymity claim and the
+  reveal-gate wording, which the old string phrased differently), restoring the old privacy paragraphs
+  (4 FAIL, and the fifth correctly passed because the old copy carried that sentence too), restoring
+  the toast and display-name strings (2 FAIL), and disabling the pending-swap badge (1 FAIL).
+  **Skipped the top P1 (quiet the swap-board CTAs) for the fourth night running** — still open as
+  draft PR #118, untouched since 09-23. This change never touches #118's lines (~4132/4230); it is
+  the copy #118 does *not* cover. **The owner decision asked for on 09-23 has not come and the cost
+  is now concrete:** #118 has been sitting for four days, and tonight's run found that the single
+  string CLAUDE.md flags as untrue was never in #118's scope anyway.
+  **Groom, from live `feedback` + `events`:** **the two-day silence ended** — events resumed
+  2026-09-23 after nothing between 09-21 02:53 and 09-23 09:18, which confirms last night's read
+  that it was an absence of visitors, not a broken path. But **not one arriving device is a phone**:
+  across the 11 rows since 09-21 the user agents are Googlebot's Nexus 5X smartphone profile,
+  desktop Mac and Windows Chrome, Firefox 128 on Windows, and a generic crawler string. Every one
+  stopped at `ob_step` stage 0. No new feedback since 2026-09-14 (still 11 rows, none joinable —
+  all predate migration 005), `auth.users` still **4** with nothing since 09-12, `user_data` still
+  **4** with nothing written since 09-16, no `client_error` since 09-16. `events` now **994** rows.
+  **No activation rate quoted, on purpose** — the classifier is still broken and stage 0 is still
+  crawler-contaminated. One new finding queued: `session_end` is the only event name in the table
+  that has ever carried a null `anon_id` (2 of 10; every other name is 0 of 984), which makes an
+  exit row that attaches to no device trail — see the Queue.
+  `groom_seed --apply` run, block refreshed, 12 candidates.
 - 2026-09-23 (nightly) — **The most public copy in the product stopped making the one promise the
   positioning decision retired — and the no-JS fallback became reachable by a human.** Two findings,
   one fix, both in the `<head>`/`<noscript>` region that the 2026-09-19 de-emphasis work never
