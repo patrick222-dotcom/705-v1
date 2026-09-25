@@ -724,6 +724,16 @@ here so the loop's queue contains only work it can actually finish; pick these u
 - **Sandbox network:** CDNs and Supabase's REST/auth endpoints are blocked from Playwright, so the
   harness vendors deps from `registry.npmjs.org` and stubs Supabase in-page for swap flows; the
   Management API and the MCP server are reachable.
+- **The container's `sleep` does not track wall-clock time (learned the hard way 2026-09-25).** A
+  chain of background `sleep`s that should have spanned ~25 minutes advanced the container clock by
+  about 4, so the run concluded a healthy CI job was hung and **cancelled it at 2m42s** — the log
+  showed it passing through §16 of 20 on pace, with no assertion failed. It cost one re-run and
+  nothing else, but the general rule matters: **judge elapsed time with `date -u`, never by counting
+  sleeps**, and read the job log before cancelling anything. For reference, `ci.yml` on this repo
+  takes ~10s for `gate` and **~3m45s** for `smoke` (309 assertions, 2026-09-25); anything under five
+  minutes is normal. A second trap sits next to it: `get_job_logs` returns 404 while a job is in
+  progress, and the check-run API can report `in_progress` for a while after a job has really
+  finished, so neither is evidence of a hang on its own.
 
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
