@@ -1831,12 +1831,35 @@ async function submitFeedback({message, kind, contact, userId}){
 /* ---------- lightweight product analytics (events table, insert-only RLS) ---------- */
 /* Stable per-device id so we can count distinct anonymous users without any PII. */
 const ANON_ID_KEY = 'scrubpay_anon_id';
+function freshAnonId(){
+  return (window.crypto&&crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2));
+}
+/* Resolved once per load, then held in module scope. Production is why, and it is specific:
+   `session_end` is the ONLY event name that has ever written a null anon_id — 2 of its 10 rows,
+   where every other name is 0 of 984 — and both times the same device's `app_open` fifteen
+   seconds earlier carried an id fine (Firefox 128 on Windows, twice, 2026-09-17 and 09-23). So
+   the id existed; the difference is WHERE the call happens. Every other event is built while the
+   page is alive; the exit row is built inside a `pagehide` handler, and a localStorage read there
+   is not guaranteed to still succeed. Reading once up front takes the unload path off storage
+   altogether — otherwise the one event whose entire job is saying how a visit ended is the one
+   event that attaches to no device trail, and the Devices tab shows the visit stopping nowhere. */
+let anonIdMemo = null;
 function anonId(){
+  if(anonIdMemo) return anonIdMemo;
   try{
     let id = localStorage.getItem(ANON_ID_KEY);
-    if(!id){ id = (window.crypto&&crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)); localStorage.setItem(ANON_ID_KEY, id); }
-    return id;
-  }catch(_){ return null; }
+    if(!id){ id = freshAnonId(); localStorage.setItem(ANON_ID_KEY, id); }
+    anonIdMemo = id;
+    return anonIdMemo;
+  }catch(_){
+    /* Storage unreadable from the first call (private mode, blocked site data). This used to
+       return null, which filed rows with no device to hang them on — not one trail but none.
+       A per-load id at least joins this load's own rows to each other. Prefixed on purpose: it
+       does NOT persist, so it must never be read as a returning device, and a cohort query can
+       exclude it by name (`anon_id not like 'nostore-%'`) instead of guessing. */
+    anonIdMemo = 'nostore-' + freshAnonId();
+    return anonIdMemo;
+  }
 }
 /* One row shape, two senders. The unload sender below cannot go through supabase-js, so this
    exists to stop the two from drifting — a column added to one and not the other breaks the

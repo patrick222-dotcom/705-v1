@@ -115,7 +115,17 @@ _(none)_
   the 19 "anonymous" occurrences in `index.html` (Invariant 7's own text is fine; in-app board copy
   at ~5062 is the known-untrue one #118 covers). One pass, one assertion per surface that survives.
   Cheap, and the class of miss is now proven rather than theoretical.
-- [ ] **`session_end` is the only event that ever loses its `anon_id`** — `harness:drivable` — groom
+- [x] ~~**`session_end` is the only event that ever loses its `anon_id`**~~ — SHIPPED 2026-09-25 (see
+  Done log). The hypothesis in the note below was right and is now **verified rather than
+  unverified**: `anonId()` read localStorage on every call, so a read that succeeded at load could
+  fail inside the `pagehide` handler, and the exit row went to the table with no device to hang it
+  on. It is resolved once per load and held in module scope now, and a load whose storage is blocked
+  from the first call gets one `nostore-`prefixed id for the load instead of a null. The pre-fix code,
+  restored verbatim in a scratch copy, reproduces the production row exactly. `tests/smoke.mjs` §20,
+  8 assertions, negative-tested three ways. **Carry one fact into the cohort re-baseline:** a
+  storage-blocked load now mints a fresh `nostore-` id per load, so it is a *visit*, never a
+  returning device — exclude it with `anon_id not like 'nostore-%'`. Original note below:
+- [ ] ~~**`session_end` is the only event that ever loses its `anon_id`**~~ — `harness:drivable` — groom
   2026-09-24: across all 994 rows and 31 event names, **exactly one name has ever carried a null
   `anon_id`, and it is `session_end` — 2 of its 10 rows, 20%.** Every other name is 0/984. That is
   the one event whose entire purpose is saying how a visit *ended*, and `anon_id` is the only key
@@ -140,6 +150,14 @@ _(none)_
   path itself. Cheap version: the nightly asserts "an event newer than N hours OR the site is
   provably healthy" and says which. Real version belongs in ops console phase 2. Unscoped because
   the threshold is a judgement call at this traffic level — 4 events/day makes any alarm noisy.
+  **Third occurrence, 2026-09-25 — and it is now the item the groom keeps re-finding by hand.**
+  `events` has not moved since 2026-09-23 14:57 (still 994 rows), so tonight was another two-day gap,
+  and the run again had to prove health itself: badgebudget.com returned **200, 422,879 bytes, 5
+  SRI-pinned scripts**, so the site is up and serving the deployed bytes. Every device on the last
+  active day was a crawler or a desktop browser. Promote this the next time nothing drivable remains:
+  three hand-runs of the same check is the definition of something to automate, and the cheap version
+  (assert "an event newer than N hours OR the site is provably healthy", and say which) needs no answer
+  to the threshold question, because it reports rather than alarms.
 - [x] ~~**Pin the six council fixes a revert would not fail**~~ — SHIPPED 2026-09-22 (see Done log).
   All six are now pinned in `tests/smoke.mjs` §17 (15 assertions, each negative-tested by breaking the
   fix in `index.html` and confirming the right assertion — and only that one — FAILs). Two of the
@@ -226,6 +244,12 @@ _(none)_
   welcome screen", the headline abandonment finding, is currently measuring crawler traffic, and the
   onboarding funnel needs the same mobile+engagement filter as the cohorts. Don't quote the stage-0
   bounce either until this lands.
+  **A third thing to filter, added 2026-09-25:** the anon-id fix shipped tonight means a load whose
+  localStorage is blocked now reports under a `nostore-<uuid>` id minted per load, where it previously
+  reported null. Those rows were invisible to `count(distinct anon_id)` before (null is not counted)
+  and are now counted as one device each, so the new classifier must read them as **one visit, never a
+  return** — `anon_id not like 'nostore-%'` for any device or retention count. Zero such rows exist as
+  of tonight; the filter belongs in the query before the first one arrives, not after.
 
 - [x] ~~**Wage-core session — council 2026-09-13 bucket 3**~~ — SHIPPED 2026-09-19 (see Done log).
   Seven of the eight items landed under the `/wage-core` protocol with 24 new assertions in
@@ -752,6 +776,16 @@ here so the loop's queue contains only work it can actually finish; pick these u
 - **Sandbox network:** CDNs and Supabase's REST/auth endpoints are blocked from Playwright, so the
   harness vendors deps from `registry.npmjs.org` and stubs Supabase in-page for swap flows; the
   Management API and the MCP server are reachable.
+- **The container's `sleep` does not track wall-clock time (learned the hard way 2026-09-25).** A
+  chain of background `sleep`s that should have spanned ~25 minutes advanced the container clock by
+  about 4, so the run concluded a healthy CI job was hung and **cancelled it at 2m42s** — the log
+  showed it passing through §16 of 20 on pace, with no assertion failed. It cost one re-run and
+  nothing else, but the general rule matters: **judge elapsed time with `date -u`, never by counting
+  sleeps**, and read the job log before cancelling anything. For reference, `ci.yml` on this repo
+  takes ~10s for `gate` and **~3m45s** for `smoke` (309 assertions, 2026-09-25); anything under five
+  minutes is normal. A second trap sits next to it: `get_job_logs` returns 404 while a job is in
+  progress, and the check-run API can report `in_progress` for a while after a job has really
+  finished, so neither is evidence of a hang on its own.
 
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
@@ -778,6 +812,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-25 (nightly) — **The one event whose job is saying how a visit ended was the one event that
+  could lose the device it ended for — and the cause is now proven rather than guessed.** Of 994 rows
+  across 31 event names, exactly one name has ever written a null `anon_id`: `session_end`, 2 of its 10
+  rows. Every other name is 0 of 984. `anon_id` is the only key `ops_device_list()`/`ops_device()` group
+  a trail by, so those two rows are endings attached to no device — the Devices tab shows the visit
+  stopping nowhere.
+  **What it actually was.** `anonId()` re-read `localStorage` on *every* call. Every other event is
+  built while the page is alive; the exit row is built inside a `pagehide` handler, where that read is
+  not guaranteed to still succeed. Both null rows are Firefox 128 on Windows (2026-09-17 and 09-23,
+  byte-identical props), and **in both cases the same load's `app_open` fifteen seconds earlier carried
+  a real id** — so the id existed and the unload path lost it. The backlog filed this as *unverified*;
+  it is verified now. Restoring the pre-fix function verbatim in a scratch copy and breaking the
+  anon-id read at unload only reproduces the production row exactly: `session_end` with
+  `anon_id: null` on a load that had a perfectly good id.
+  **The fix, both halves.** The id is resolved once per load and held in module scope, which takes the
+  unload sender off storage altogether. And a load whose storage is blocked from the *first* call no
+  longer reports null for everything — it gets one `nostore-<uuid>` id for that load, so the rows at
+  least join to each other. The prefix is deliberate and load-bearing: that id does **not** persist, so
+  it must never be read as a returning device, and a cohort query can exclude it by name
+  (`anon_id not like 'nostore-%'`) instead of guessing. Noted on the cohort re-baseline item, which is
+  where the device counts get restated. Zero such rows exist yet — the filter is in the notes before
+  the first one arrives, not after.
+  **No wage core, no invariant weakened, no publish-set change, no new storage key** (`scrubpay_anon_id`
+  is untouched — Invariant 5 intact). Gate: `check_build` **11/11**, `test_groom_seed` **33/0**,
+  `smoke` **309 passed / 0 failed** (301 baseline → 8 new in §20). **Negative-tested three ways**, each
+  failing its own assertions and no others, through an anchor-count guard that aborts on a no-op patch:
+  removing only the memoisation (3 FAIL — the unload row falls back to a per-call id and the load's rows
+  stop sharing one), returning null instead of the per-load id (2 FAIL, and the unload assertion
+  correctly still passes), and restoring the pre-fix function verbatim (3 FAIL — the production shape).
+  **Skipped the top P1 (quiet the swap-board CTAs) for the fifth night running** — still open as draft
+  PR #118, untouched since 2026-09-24. Tonight's item touches none of its lines.
+  **Groom, from live `feedback` + `events`:** **another two-day silence** — nothing since 2026-09-23
+  14:57, `events` still **994** rows, and the run again had to establish health by hand
+  (badgebudget.com: 200, 422,879 bytes, 5 SRI-pinned scripts — up, serving the deployed bytes). That is
+  the **third** time the groom has hand-run that check; the silence-watch item now says so and should be
+  promoted the next time nothing drivable remains. No new feedback since 2026-09-14 (still **11** rows,
+  none joinable — all predate migration 005), `auth.users` still **4** with nothing since 09-12,
+  `user_data` still **4** with nothing written since 09-16, no `client_error` since 09-16, 469 distinct
+  `anon_id` devices. **No activation rate quoted, on purpose** — the classifier is still broken and
+  `ob_step` stage 0 is still crawler-contaminated. `groom_seed --apply` run, block already current, 12
+  candidates.
 - 2026-09-24 (nightly) — **The privacy notice was telling nurses the database enforces an anonymity
   the database does not enforce.** §18 fixed the `<head>` on 09-23 and stopped there; this run asked
   the same question of every other published string and read all 23 occurrences of "anonymous" across

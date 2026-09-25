@@ -2106,7 +2106,98 @@ const run = async () => {
     }
   }
 
-  /* ---- 20. the swap board goes quiet (Positioning, 2026-09-19) ---------------------------
+
+  /* ---- 20. the exit row keeps its device id when storage fails at unload ------------------
+     Found in production, not theorised: of 994 event rows across 31 names, exactly one name has
+     ever carried a null anon_id — `session_end`, 2 of its 10 rows — and both times the same
+     device's `app_open` fifteen seconds earlier carried an id fine (Firefox 128 on Windows,
+     2026-09-17 and 2026-09-23, byte-identical props). anon_id is the only key ops_device_list()
+     and ops_device() group a trail by, so a null exit row is an ending that attaches to no
+     device: the visit stops nowhere. The difference between the rows that carry an id and the
+     ones that do not is where the call happens — inside a `pagehide` handler — so these drive
+     exactly that: break the anon-id read at unload only, and at load only, and watch the wire. */
+  if (want(20)) {
+    /* -- storage fails at unload, which is the shape production actually produced ------------- */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      const posted = [];
+      await page.route('**/rest/v1/events*', async (route) => {
+        try { posted.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { posted.push(null); }
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+      });
+      /* This listener is registered at document-start, so it runs BEFORE the app's own pagehide
+         handler and the storage read is already broken by the time the exit row is built. Only
+         the anon-id key throws: killing localStorage wholesale would take the app down with it
+         and test boot hardening instead of this. */
+      await page.addInitScript(() => {
+        window.addEventListener('pagehide', () => {
+          const get = localStorage.getItem.bind(localStorage);
+          localStorage.getItem = (k) => {
+            if (k === 'scrubpay_anon_id') throw new Error('storage unavailable at unload');
+            return get(k);
+          };
+        });
+      });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+      /* Read the id while the page is still readable — after the dispatch below this throws. */
+      const devId = await page.evaluate(() => localStorage.getItem('scrubpay_anon_id'));
+      ok('anon_id: the load minted a device id to compare against', !!devId, devId ? `${String(devId).slice(0, 8)}…` : 'none');
+
+      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+      await page.waitForTimeout(400);
+
+      const flat = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean);
+      const end = flat.find((r) => r && r.name === 'session_end');
+      ok('anon_id: an exit row is still written when the storage read throws at unload', !!end,
+        end ? '' : `saw: ${flat.map((r) => r && r.name).join(',') || 'nothing'}`);
+      ok('anon_id: the exit row carries the device id anyway (it was resolved while the page was alive)',
+        !!end && !!end.anon_id && end.anon_id === devId,
+        end ? JSON.stringify(end.anon_id) : '(no row)');
+      ok('anon_id: no page error across the broken-storage unload path',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- storage fails from the first call: a load must still join its own rows ---------------
+       The other half of the finding. This used to return null for every row of the load, so a
+       private-mode visit reported things happening to nobody. It now gets one id for the load,
+       marked `nostore-` because it does not persist and must never be counted as a return. */
+    {
+      const { ctx, page } = await newPage(browser, url);
+      const posted = [];
+      await page.route('**/rest/v1/events*', async (route) => {
+        try { posted.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { posted.push(null); }
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+      });
+      await page.addInitScript(() => {
+        const get = localStorage.getItem.bind(localStorage);
+        const set = localStorage.setItem.bind(localStorage);
+        localStorage.getItem = (k) => { if (k === 'scrubpay_anon_id') throw new Error('storage blocked'); return get(k); };
+        localStorage.setItem = (k, v) => { if (k === 'scrubpay_anon_id') throw new Error('storage blocked'); return set(k, v); };
+      });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+      await page.waitForTimeout(400);
+
+      const rows = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter((r) => r && r.name);
+      const ids = [...new Set(rows.map((r) => r.anon_id))];
+      ok('anon_id: a storage-blocked load still reports rows at all', rows.length > 0,
+        rows.map((r) => r.name).join(',') || 'nothing');
+      ok('anon_id: none of them is null, so the visit attaches to something',
+        rows.length > 0 && rows.every((r) => !!r.anon_id), JSON.stringify(ids));
+      ok('anon_id: every row of the load shares one id, so the trail is one visit',
+        ids.length === 1, JSON.stringify(ids));
+      ok('anon_id: the non-persistent id is labelled as such, so cohort counts can exclude it',
+        ids.length === 1 && /^nostore-/.test(String(ids[0])), JSON.stringify(ids));
+      await ctx.close();
+    }
+  }
+
+  /* ---- 21. the swap board goes quiet (Positioning, 2026-09-19) ---------------------------
      The board is an Easter egg, not the growth engine: fully functional for anyone holding an
      invite link, absent from the first screen where it competed with the pattern lab and the
      pickup prompt -- the two things that work for one nurse alone. Three things have to hold at
@@ -2114,7 +2205,7 @@ const run = async () => {
      card is GONE, the durable route in (Settings -> Shift swaps) still OPENS THE BOARD, and the
      word "anonymously" is gone from both entry points because poster_key is reversible until the
      hardening session lands (Invariant 7 / security-00) -- an untrue promise is worse than none. */
-  if (want(20)) {
+  if (want(21)) {
     const { ctx, page, errors } = await newPage(browser, url);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.wrap .whatif', { timeout: 20000 });
