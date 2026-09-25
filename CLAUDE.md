@@ -294,6 +294,14 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   by kind order by 2 desc;`
 - **Analytics.** `track(name, props)` → `events` (insert-only RLS). Coarse names only — **never wage or
   goal figures** — plus the same `page` + `user_agent` columns and a stable per-device `anon_id`.
+  **`anonId()` resolves once per load and is then held in module scope (2026-09-25).** It used to read
+  `localStorage` on every call, which is why `session_end` — built inside a `pagehide` handler, where
+  that read is not guaranteed to still succeed — was the *only* event name that ever wrote a null
+  `anon_id` (2 of its 10 rows; every other name 0 of 984), twice on a load whose `app_open` carried an
+  id fine. A load whose storage is blocked from the first call now gets one **`nostore-<uuid>`** id
+  instead of null, so its rows join to each other; that id does **not** persist, so it is a *visit* and
+  never a returning device — exclude it with `anon_id not like 'nostore-%'` in any device or retention
+  count. Pinned by `tests/smoke.mjs` §20.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
   `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 41 through `track()` plus one
   (`session_end`) that is sent only by the unload path below and so never appears in that grep —
