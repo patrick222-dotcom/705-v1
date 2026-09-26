@@ -141,6 +141,19 @@ _(none)_
   already known-inflated, so land it with the cohort re-baseline in mind. `tests/smoke.mjs` §12
   asserts `session_end` carries the device's `anon_id` and passes, so the harness does not reproduce
   it; production does, 20% of the time.
+- [x] ~~**Nothing watches for the app going silent**~~ — SHIPPED 2026-09-26 (see Done log). The cheap
+  version the note below asked for is `scripts/silence_watch.mjs`: one command that answers "is the
+  app silent because nobody came, or because telemetry is broken?" and always says which side it
+  could establish. Four verdicts — `FRESH`, `SILENT_BUT_HEALTHY`, `SILENT_AND_UNHEALTHY`, `UNKNOWN`
+  — and it **reports rather than alarms**, so the threshold question the item deliberately left open
+  stays open: only a silence that arrives *with* a failed health check exits non-zero. The health
+  side is exactly the three things the groom hand-ran three nights running (site 200, deployed bytes
+  by size + 5 SRI pins, `events` INSERT policy present, read not exercised). `UNKNOWN` exists
+  because an unreadable check is not a passing check. 36 assertions in
+  `scripts/test_silence_watch.mjs`, in the CI gate, each negative-tested by eight deliberate breaks.
+  **The suite found a real bug while being written:** Postgres returns `+00`, which `Date.parse`
+  rejects, so every age came back null and read as "no events at all" — the watch would have
+  reported silence on a perfectly fresh table. Original note below:
 - [ ] **Nothing watches for the app going silent** — `harness:unscoped` — this run found **two days
   with zero `events` rows** and had to establish by hand that the site was up, the bytes were the
   deployed ones and the insert policy was intact before it could call it "no visitors" rather than
@@ -186,6 +199,18 @@ _(none)_
   the avatar costs. Pinned by a smoke assertion on scrollWidth at 360px.
 
 ### P3
+- [ ] **`silence_watch` says "bytes" where it means "characters"** — `harness:drivable` (script-level)
+  — found minutes after shipping it on 2026-09-26, by the one check that could find it: the live run
+  printed `423,397 bytes` against the same fetch `curl` reported as **424,411 bytes**. The gap is
+  UTF-8 — `res.text().length` counts UTF-16 code units and `index.html` is full of em-dashes. **No
+  functional impact whatsoever**: the floor is 50,000 against a real ~423k, and the check it backs
+  (is this the app or a ~162-byte redirect stub?) cannot be changed by a 1,014-unit difference.
+  Recorded anyway because a label that says one thing and measures another is the exact class of
+  confident-but-false claim this repo has been burned by three times. Fix is one word in two places
+  (`scripts/silence_watch.mjs` — the `siteVerdict` detail string and the `MIN_BODY_BYTES` name) plus
+  the assertion text; do it inside whatever run next touches that file rather than spending a PR on
+  it. **Do not "fix" it by switching to a byte count** — characters are the cheaper measure and the
+  guard does not care which; only the noun is wrong.
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
   2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
   "Enter the 6-character code a colleague shared with you." line the "Join another board" card has.
@@ -812,6 +837,62 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-26 (nightly) — **The groom stopped hand-running the check it had hand-run three nights in
+  a row.** Three separate runs (09-23, 09-25, 09-26) hit a multi-day gap in `events` and each had to
+  establish by hand that the site was up, that the bytes served were the deployed ones and that the
+  insert policy was intact — before any of them could honestly write "no visitors" rather than
+  "telemetry broken". Those two look identical from the database side, and telling them apart is
+  Invariant 4's lesson pointed at the analytics path itself.
+  **What shipped:** `scripts/silence_watch.mjs`, one command, four verdicts. `FRESH` (an event
+  inside the window — and it then skips the site probe entirely, because a fresh event already
+  answers the question), `SILENT_BUT_HEALTHY` (nothing recent, but the site serves the deployed
+  bytes and the `events` INSERT policy is present — quiet, not broken), `SILENT_AND_UNHEALTHY` (the
+  one combination a human has to look at) and `UNKNOWN` (the telemetry side could not be read at
+  all — an unreadable check is never reported as a passing one).
+  **It reports; it does not alarm.** The item was filed `harness:unscoped` because the threshold is
+  a judgement call at four events a day. That question is still open on purpose: the window is a
+  `--stale-hours` knob, the verdict always states which window it used, and a quiet day exits 0. The
+  only non-zero exit is silence *with* a failed check. Nothing new can page the owner.
+  **The health side is the hand-check, written down:** HTTP 200, a body over a 50,000-byte floor,
+  exactly 5 SRI-pinned scripts, and the `events` INSERT policy read from `pg_policies`. The floor
+  and the SRI count are the same two guards `tests/equality.mjs` uses, for the same reason — the
+  retired github.io URL 301s to a ~162-byte body, so a content check pointed at it can never fail.
+  The script refuses to grade a `*.github.io` URL at all rather than returning a green that means
+  nothing. **It does not insert a probe row:** the harness wrote 291 junk rows into production
+  analytics once (2026-09-16) and this runs nightly, so it reads the policy instead of exercising it.
+  **The suite found a real bug while it was being written**, which is the argument for writing it:
+  Postgres hands back `2026-09-26 00:37:41.5765+00`, and `Date.parse` rejects a bare two-digit
+  offset. Every age came back `null`, and a null age reads as "no events at all" — so the watch
+  would have reported silence against a table that had just been written to. Caught by an assertion
+  on the real Postgres string shape, not by the happy path.
+  **Verified live both ways on this run:** `FRESH` against the real table (newest event 7.7h old),
+  and `SILENT_BUT_HEALTHY` by forcing a 1h window — which printed the full health block
+  (badgebudget.com **200, 423,397 bytes, 5 SRI scripts**, insert policy `anon,authenticated`
+  intact). That is the third hand-check, run by machine.
+  **No app change.** `index.html` is untouched: no wage core, no invariant weakened, no publish-set
+  change, no new storage key, no new event name. Gate: `check_build` **11/11**, `test_groom_seed`
+  **33/0**, new `test_silence_watch` **36/0**, `smoke` **309/0** (unchanged — the app did not move).
+  **Negative-tested eight ways**, each break failing its own assertions and no others, through an
+  anchor-count guard that aborts on a no-op patch: dropping the github.io refusal, lowering the
+  byte floor, ignoring the telemetry error, restoring the broken date parse, dropping the SRI
+  requirement, making a quiet day alarm, accepting a missing INSERT policy, and ignoring the window.
+  One assertion was found riding on a second net during that pass (the 162-byte stub was being
+  caught by the SRI check rather than the floor) and a floor-only assertion was added.
+  **Skipped the top P1 (quiet the swap-board CTAs) for the sixth night running** — still open as
+  draft PR #118, untouched since 2026-09-25. Tonight's item touches no line of `index.html`.
+  **Groom, from live `feedback` + `events`:** **the silence broke** — `events` moved 994 → **1003**,
+  newest row 2026-09-26 00:37 UTC, 473 distinct `anon_id` devices. Nine rows arrived over 09-25/26
+  across four devices, and **every one was a desktop browser or a declared crawler** (Firefox 128 on
+  Windows, headless-looking Chrome 95/96/99 on macOS and Windows, Googlebot) — no mobile device, so
+  no nurse. **First production evidence that last night's `session_end` fix works:** the 09-26 device
+  is the same Firefox-128-on-Windows profile that produced both historical null-`anon_id` exit rows,
+  and this time its `session_end` carried the device id. Null count across `session_end` is still 2
+  of 11, both pre-fix; every other event name remains 0 of 992. One datapoint, not proof, but it is
+  the right one. No new feedback since 2026-09-14 (still **11** rows, none joinable — all predate
+  migration 005), `auth.users` still **4** with nothing since 09-12, `user_data` still **4** with
+  nothing written since 09-16, no `client_error` since 09-16. **No activation rate quoted, on
+  purpose** — the device classifier is still broken and `ob_step` stage 0 is still crawler-
+  contaminated. `groom_seed --apply` run, block already current, 12 candidates.
 - 2026-09-25 (nightly) — **The one event whose job is saying how a visit ended was the one event that
   could lose the device it ended for — and the cause is now proven rather than guessed.** Of 994 rows
   across 31 event names, exactly one name has ever written a null `anon_id`: `session_end`, 2 of its 10

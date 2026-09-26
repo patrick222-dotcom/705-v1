@@ -88,6 +88,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
 | `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 65 assertions on an iPhone 13 profile. `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
+| `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/ops-console-scope.md` | the ops console design record — why an artifact can never be live, the three read-path shapes and why security-definer functions won, the wedge that shipped, phases 2–4, and the written-down line on what the console may never show |
@@ -640,7 +641,9 @@ verify the whole path on 2026-09-20 before the first live run.
 Each run is **groom → build → gate → deploy → notify**:
 
 1. **Groom.** Read `feedback` + `events` (Supabase MCP `execute_sql`, or the Management API fallback
-   below), review the app, add/reprioritize P0–P3 in `BACKLOG.md` with a one-line rationale, dedupe
+   below) and run `node scripts/silence_watch.mjs` — a gap in `events` is ambiguous between "no
+   visitors" and "telemetry broken", and the groom hand-ran that distinction three nights running
+   (09-23, 09-25, 09-26) before it was written down. Quote its verdict, not a guess. Review the app, add/reprioritize P0–P3 in `BACKLOG.md` with a one-line rationale, dedupe
    against Done/Blocked. Run `node scripts/groom_seed.mjs --apply` to refresh the source-tagged
    "Reddit-seeded candidates" managed block (`docs/reddit-persona-pipeline.md`): those are candidates
    to promote with judgment, never auto-built. Seed sources: `seed` (curated 2026-08-13);
