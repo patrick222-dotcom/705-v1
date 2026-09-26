@@ -4155,10 +4155,15 @@ function App(){
               <button onClick={openPatternLab}>Open</button>
             </div>
 
-            <div className="whatif mob-only">
-              <div style={{flex:1}}><div className="t">Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</div><div className="s">Trade with your unit, anonymously</div></div>
-              <button onClick={()=>setShowSwaps(true)}>Open</button>
-            </div>
+            {/* The swap board is deliberately quiet (CLAUDE.md -> Positioning, 2026-09-19). The
+                dashboard card that used to sit here is gone: it is the one feature that needs a
+                colleague to adopt something, and it was competing on the first screen with the
+                pattern lab and the pickup prompt, which both work for one nurse alone. The board
+                itself is untouched and still fully reachable: the "Shift swaps" card lower down in
+                `.dash`'s second column (NOT in Settings -- Settings carries no swap entry), the
+                topnav link (desktop-only), and an invite link, which still opens it directly.
+                swapPendingCount and its badge are deliberately left in place at the remaining sites
+                so someone mid-swap can still finish. */}
 
             {shiftCount>0 && baseRate>0 &&
               <div className="whatif">
@@ -4248,7 +4253,10 @@ function App(){
               </div>}
             <div className="card">
               <h3 style={{display:'flex',alignItems:'center',gap:8}}>{Ic.swap}Shift swaps{swapPendingCount>0 && <span className="count-badge" aria-label={`${swapPendingCount} swap${swapPendingCount===1?'':'s'} awaiting your accept`}>{swapPendingCount}</span>}</h3>
-              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:14}}>Trade shifts with your unit — anonymously</div>
+              {/* "anonymously" is dropped here on purpose: poster_key is reversible until the
+                  hardening session lands (Invariant 7 / security-00), so the claim is untrue.
+                  Do not restore it before that ships. */}
+              <div style={{fontSize:13,color:'var(--muted)',lineHeight:1.5,marginBottom:14}}>Trade shifts with your unit</div>
               <button className="btn btn-soft" onClick={()=>setShowSwaps(true)}>Open swap board</button>
             </div>
             <div className="card desk-only">

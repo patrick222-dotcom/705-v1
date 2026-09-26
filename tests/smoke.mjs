@@ -2197,6 +2197,77 @@ const run = async () => {
     }
   }
 
+  /* ---- 21. the swap board goes quiet (Positioning, 2026-09-19) ---------------------------
+     The board is an Easter egg, not the growth engine: fully functional for anyone holding an
+     invite link, absent from the first screen where it competed with the pattern lab and the
+     pickup prompt -- the two things that work for one nurse alone. Three things have to hold at
+     once, which is why this drives the real DOM rather than grepping the source: the dashboard
+     card is GONE, the durable route in (Settings -> Shift swaps) still OPENS THE BOARD, and the
+     word "anonymously" is gone from both entry points because poster_key is reversible until the
+     hardening session lands (Invariant 7 / security-00) -- an untrue promise is worse than none. */
+  if (want(21)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.wrap .whatif', { timeout: 20000 });
+
+    /* Scoped to the dashboard's own cards. A bare :has-text("Shift swaps") would also match the
+       Settings card and the sheet header, so a "gone" assertion written that way could never pass
+       and a "still there" one could never fail. */
+    const dashCards = await page.evaluate(() =>
+      [...document.querySelectorAll('.wrap .whatif')].map((c) => c.querySelector('.t')?.textContent.trim() || ''));
+    ok('positioning: the dashboard swap card is gone at 390px',
+      !dashCards.some((t) => /Shift swaps/.test(t)), JSON.stringify(dashCards));
+    /* Guard against "passing" by having removed the wrong card, or all of them. */
+    ok('positioning: the pattern-lab card is still on the dashboard',
+      dashCards.some((t) => /Pattern lab/.test(t)), JSON.stringify(dashCards));
+
+    /* The durable route in still works end to end -- de-emphasised, never unreachable. NOTE: this
+       card is NOT in Settings, though BACKLOG.md called it "the Settings Shift swaps card". It is a
+       second dashboard card in `.dash`'s second column, which stacks BELOW the fold on a phone
+       (`.col` is not desk-only). Settings contains no swap entry at all. That is still the right
+       outcome -- below the fold is not the first screen -- but the test says where the thing
+       actually is, because the next session reads this. */
+    /* Every step below is guarded and reported, never awaited bare. Negative-testing this section
+       by deleting the card outright made the first draft THROW on .innerText() and take the whole
+       section with it -- an aborted run is not a failed assertion, and it would have hidden exactly
+       the regression that matters here (de-emphasis that quietly became removal). */
+    const card = page.locator('.dash .card:has(h3:has-text("Shift swaps"))');
+    const cardCount = await card.count();
+    ok('positioning: the swap card survives in the dashboard\'s second column', cardCount === 1, `${cardCount} found`);
+
+    const cardSub = cardCount === 1 ? await card.locator('> div').first().innerText().catch(() => '') : '';
+    ok('positioning: the remaining swap card no longer claims the board is anonymous',
+      cardCount === 1 && !/anonymously/i.test(cardSub), cardSub);
+
+    let opened = false;
+    if (cardCount === 1) {
+      const openBtn = card.locator('button:has-text("Open swap board")');
+      await openBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await openBtn.click().catch(() => {});
+      opened = await page.waitForSelector('[role="dialog"][aria-label="Shift swaps"]', { timeout: 8000 })
+        .then(() => true).catch(() => false);
+    }
+    ok('positioning: the board is still reachable on a phone after the de-emphasis', opened);
+    ok('positioning: no page errors driving the quieted board',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+
+    /* swapPendingCount is App state fed by SwapsSheet's onPendingCount, and SwapsSheet only mounts
+       while the sheet is open -- so on a fresh load the count is 0 and no badge can render at any
+       site. That makes a DOM-driven "badge still shows" assertion impossible without a live
+       authenticated board, so this asserts the machinery survived at the two remaining sites
+       instead (topnav + the remaining dashboard card), and says plainly that that is what it is. The
+       de-emphasis must not strand someone
+       mid-swap. */
+    const src16 = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+    const badgeSites = (src16.match(/swapPendingCount>0 && <span className="count-badge"/g) || []).length;
+    ok('positioning: the pending badge survives at the topnav and the dashboard card (source)',
+      badgeSites === 2, `${badgeSites} sites`);
+    ok('positioning: "anonymously" is gone from both entry-point subtitles (source)',
+      !/Trade with your unit, anonymously/.test(src16) && !/Trade shifts with your unit — anonymously/.test(src16));
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
