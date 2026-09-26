@@ -43,6 +43,13 @@ jobs:
       - name: Reddit groom-seed suite
         run: node scripts/test_groom_seed.mjs
 
+      # Pure logic only — the live probes in silence_watch.mjs need network and a Supabase token,
+      # but the classifier does not, and the classifier is the part that must not drift. It holds
+      # the 162-byte-redirect guard, so a regression there is caught here rather than by a nightly
+      # "verifying" a deploy against an empty body.
+      - name: Silence-watch classifier suite
+        run: node scripts/test_silence_watch.mjs
+
   # Separate job on purpose: the parse gate above must report in seconds, and should not wait on
   # a browser download. This one drives the real app on an iPhone 13 profile and asserts the four
   # gate clauses from CLAUDE.md plus the wage-math probes.
