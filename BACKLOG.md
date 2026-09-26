@@ -163,6 +163,18 @@ _(none)_
   the avatar costs. Pinned by a smoke assertion on scrollWidth at 360px.
 
 ### P3
+- [ ] **`silence_watch` says "bytes" where it means "characters"** — `harness:drivable` (script-level)
+  — found minutes after shipping it on 2026-09-26, by the one check that could find it: the live run
+  printed `423,397 bytes` against the same fetch `curl` reported as **424,411 bytes**. The gap is
+  UTF-8 — `res.text().length` counts UTF-16 code units and `index.html` is full of em-dashes. **No
+  functional impact whatsoever**: the floor is 50,000 against a real ~423k, and the check it backs
+  (is this the app or a ~162-byte redirect stub?) cannot be changed by a 1,014-unit difference.
+  Recorded anyway because a label that says one thing and measures another is the exact class of
+  confident-but-false claim this repo has been burned by three times. Fix is one word in two places
+  (`scripts/silence_watch.mjs` — the `siteVerdict` detail string and the `MIN_BODY_BYTES` name) plus
+  the assertion text; do it inside whatever run next touches that file rather than spending a PR on
+  it. **Do not "fix" it by switching to a byte count** — characters are the cheaper measure and the
+  guard does not care which; only the noun is wrong.
 - [x] ~~**First-run "Join with a code" card lacks the helper line the second one has**~~ — SHIPPED
   2026-09-07 (see Done log). The zero-groups "Join with a code" card now carries the same
   "Enter the 6-character code a colleague shared with you." line the "Join another board" card has.
