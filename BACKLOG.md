@@ -69,6 +69,11 @@ _(none)_
   work can be rebuilt on a fresh branch; a draft that blocks the queue indefinitely costs a build item
   every night. Nothing else in `## Queue` is buildable, which is why 09-22 shipped tests and 09-23
   shipped copy — both worth doing, neither the top priority.
+  **2026-09-27: eight days open, last touched 09-26, and the queue behind it is now genuinely dry.**
+  Tonight the only unblocked Queue item left was a P3 one-word label fix, which is what shipped. The
+  ask has not changed and has not been answered in four nights: **review and merge #118, or say it is
+  abandoned** so the work can be rebuilt on a fresh branch. Until one of those happens the loop has no
+  P1 to take, and a nightly with no P1 ships polish.
   Original scoping kept below:
 - [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
@@ -199,7 +204,14 @@ _(none)_
   the avatar costs. Pinned by a smoke assertion on scrollWidth at 360px.
 
 ### P3
-- [ ] **`silence_watch` says "bytes" where it means "characters"** — `harness:drivable` (script-level)
+- [x] ~~**`silence_watch` says "bytes" where it means "characters"**~~ — SHIPPED 2026-09-27 (see
+  Done log). `MIN_BODY_BYTES` is `MIN_BODY_CHARS`, the detail string and the `SILENT_BUT_HEALTHY`
+  reason say "characters", and `siteVerdict()` returns `chars` instead of `bytes`. The measure is
+  unchanged — still `body.length`, still a 50,000 floor — only the noun, exactly as the note asked.
+  Three assertions in `scripts/test_silence_watch.mjs` (39 now, was 36) pin the label, each
+  negative-tested by restoring the old noun and field name and confirming those three — and only
+  those three — FAIL. Original note below:
+- [ ] ~~**`silence_watch` says "bytes" where it means "characters"**~~ — `harness:drivable` (script-level)
   — found minutes after shipping it on 2026-09-26, by the one check that could find it: the live run
   printed `423,397 bytes` against the same fetch `curl` reported as **424,411 bytes**. The gap is
   UTF-8 — `res.text().length` counts UTF-16 code units and `index.html` is full of em-dashes. **No
@@ -218,8 +230,42 @@ _(none)_
   "Names stay hidden until everyone accepts." line now sits under the SUGGESTED FOR YOU header,
   above the swap suggestion cards.
 
+### P2 (new, groom 2026-09-27)
+- [ ] **One load can emit two `session_end` rows, and nothing in the schema says which is real** —
+  `harness:drivable` — groom 2026-09-27 caught the first instance in production. Device
+  `c2fb3aa8` (DuckDuckGo on iOS 18.6) sent `session_end` at 01:35:41 with `secs:71` and again at
+  01:41:00 with `secs:390` — **same load**, byte-identical otherwise (`n:4, ob:null, via:link,
+  last:shift_saved, shifts:2`), no `app_open` between them. That is a bfcache restore firing
+  `pagehide` a second time with no new activity in between. The two rows even carry *different*
+  user agents for the same load (`Ddg/26.6` and `DuckDuckGo/7`), so a UA-based device classifier
+  sees two devices where there was one — which lands squarely on the cohort re-baseline item below.
+  CLAUDE.md → Analytics already says "the row to read is the LAST per load", so the workaround
+  exists; the cost is that every consumer has to remember it, and `ops_device()` groups by
+  `anon_id` alone. 1 duplicate in 15 `session_end` rows, so it is rare but not a one-off risk.
+  **Shape of the fix (not yet decided, which is why this is a note and not a build):** suppress the
+  beacon when nothing has happened since the last one (the event counter `n` and `last` are both
+  unchanged), rather than firing once per load — firing once per load would lose a genuine second
+  session after a bfcache restore where the nurse *did* do something. Needs one drive that restores
+  from bfcache twice, so it is drivable but wants its own run.
+- [ ] **`estimate_dismissed` fired on 2 of 2 real phones last night, both within 35s of finishing
+  setup** — `harness:unscoped`, and deliberately **not** an action item yet. n=2 is an anecdote, and
+  "dismissed" may simply mean "closed the card to see the app underneath" rather than "did not want
+  this". Recorded so the next run with real traffic can add to the denominator instead of
+  rediscovering it. Do not build against this until it holds across more devices; if it does, the
+  question is whether the estimate card is a result or an obstacle, which is a design call.
+
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- **Move off the indigo/purple brand accent (owner call, 2026-09-27).** `harness:drivable`. The
+  owner agrees indigo `#5B4FE9` plus the purple-tinted ambient gradients reads as a stock
+  AI-generated palette. Scope: pick one accent (money green is already semantic, so it may be the
+  accent itself), retire `--violet` and `--amber` (2 uses), re-tint the `--indigo*`/`--glass-indigo*`
+  tokens and the three ambient radial gradients, redraw the favicon if needed, recheck contrast on
+  the glass panels. Inputs: the owner has concepts in Claude Design to bring. Do this *before* dark
+  mode so the dark tokens are derived once.
+- **Dark mode (2026-09-27).** `harness:drivable`. No `prefers-color-scheme` anywhere; night-shift
+  nurses open the app at 3am. Every glass surface, the `@supports not` fallback and the hero need
+  dark tokens; money figures must stay legible (smoke §legibility). After the accent change.
 - **OWNER ACTION, 5 minutes, blocks the positioning claim — confirm the real NurseGrid .ics host.**
   `supabase/functions/ical-proxy/index.ts:23-25` allowlists `/^([a-z0-9-]+\.)?nursegrid\.com$/i`
   behind a `TODO(owner)`: nobody has ever seen a real NurseGrid secret feed URL, so the pattern is a
@@ -837,6 +883,46 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-27 (nightly) — **First non-silent groom in four days, and the first share-to-arrival chain
+  in the data.** `silence_watch` returned **FRESH** (newest event 6.6h old, 48h window), so for once
+  the run did not have to prove the site was up before it could read the table. `events` is at 1,023
+  rows, up from 994 — it had not moved since 09-23.
+  **What the new rows actually are: two real iPhones, back to back, and they are linked.** Device
+  `8e0e32fe` (Chrome on iOS 27) arrived 01:29:43 UTC, cleared onboarding, finished setup in `rough`
+  mode, dismissed the estimate, opened the pattern lab, and hit share — `share_sent {via:'share',
+  surface:'topbar'}` at 01:32:06, 143s after landing, 0 shifts logged. **Forty-eight seconds later**
+  device `c2fb3aa8` (DuckDuckGo on iOS 18.6) opened with `app_open {via:'link'}`, completed setup,
+  reloaded, and saved two shifts. That is the share path working end to end, observed rather than
+  assumed, and it is the first time the events table has shown one. Caveat stated plainly: at 21:30
+  ET on two phones 48 seconds apart, the likeliest explanation is the owner and Courtney, not
+  acquisition — the mechanism is verified, the demand is not.
+  **What shipped (thin, and the queue is why).** The single open unblocked Queue item was the P3
+  label fix filed on 09-26: `silence_watch` printed "bytes" while measuring `body.length`, which
+  counts UTF-16 code units — the live run said 423,397 where `curl` said 424,411, the gap being
+  em-dashes. `MIN_BODY_BYTES` → `MIN_BODY_CHARS`, the detail string and the `SILENT_BUT_HEALTHY`
+  reason now say "characters", and `siteVerdict()` returns `chars`. **The measure is untouched** —
+  still `body.length`, still a 50,000 floor, per the note's explicit warning not to "fix" it by
+  switching to a byte count. Three new assertions in `scripts/test_silence_watch.mjs` (39, was 36),
+  negative-tested by restoring the old noun and field name: exactly those three fail, nothing else.
+  **Groomed, not built.** Two new P2 notes from the rows above: a load that emits *two* `session_end`
+  rows after a bfcache restore (1 in 15 rows, and the duplicates carry different user agents for the
+  same load, which feeds the cohort re-baseline), and `estimate_dismissed` firing on 2 of 2 phones
+  within 35s of setup — recorded at n=2 as an anecdote, explicitly not an action item.
+  **Skipped the top P1 again (quiet the swap-board CTAs): still open as draft PR #118**, last touched
+  09-26, eight days old. Rebuilding it would collide. The 09-23 escalation has now gone four nights
+  unanswered and the queue behind it is empty, so this is the second night running where the honest
+  report is "nothing of consequence was available to build".
+  Gate: check_build 11/11, groom_seed 33/33, silence_watch 39/0, smoke 0 failed.
+- 2026-09-27 (owner-directed, interactive) — **Three low-risk polish items from a taste-skill review.**
+  (1) Fixed-width digits (`tabular-nums`) on every money figure that lacked them — `.stat .v`,
+  `.takehome .v`, `.pl-money .v`, breakdown values, calendar cell amounts, differential amounts,
+  pattern-lab compare cells, the add-shift preview. Both fonts ship a `tnum` feature (checked in the
+  served woff2). CSS only, no arithmetic touched, so not wage core. (2) `text-wrap:balance` on
+  headings, `pretty` on paragraphs. (3) Dropped the exclamation marks from 7 toasts/labels ("Link
+  copied", "Board created", the signup confirmation, the boot script's "Copied"). Gate: check_build
+  11/11, groom_seed 33/33, smoke 309/0. Rejected from the same review: font swap, grain/motion, the
+  em-dash ban, the beige-background rule. Dark mode and the accent-color change are queued as
+  dedicated sessions.
 - 2026-09-26 (nightly) — **The groom stopped hand-running the check it had hand-run three nights in
   a row.** Three separate runs (09-23, 09-25, 09-26) hit a multi-day gap in `events` and each had to
   establish by hand that the site was up, that the bytes served were the deployed ones and that the

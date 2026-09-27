@@ -27,13 +27,28 @@ ok('url: http is refused', urlIsGradeable('http://badgebudget.com/index.html').o
 ok('url: garbage is refused', urlIsGradeable('not a url').ok === false);
 
 // 2. site verdict: the real deployed shape passes
-ok('site: 200 + long body + 5 SRI scripts is healthy', healthySite.ok, `${healthySite.bytes} bytes, ${healthySite.sri} SRI`);
+ok('site: 200 + long body + 5 SRI scripts is healthy', healthySite.ok, `${healthySite.chars} characters, ${healthySite.sri} SRI`);
 
 // 3. site verdict: the 162-byte redirect stub is caught — THE case this file exists for
 const stub = siteVerdict({ url: 'https://badgebudget.com/index.html', status: 200, body: 'x'.repeat(162) });
 ok('site: a 162-byte body is not the app', stub.ok === false);
 ok('site: and it says which check failed',
   stub.checks.some((c) => !c.ok && c.name.includes('redirect stub')));
+
+// 3a. the size check must NAME the unit it actually measures. `body.length` counts UTF-16 code
+//     units, not bytes, and index.html is full of em-dashes — the live run printed "423,397
+//     bytes" against a fetch curl reported as 424,411. No functional impact (the floor is 50,000
+//     against a real ~423k), but a label that says one thing and measures another is the exact
+//     class of confident-but-false claim this repo has been burned by three times.
+const sizeCheck = healthySite.checks.find((c) => c.name.includes('redirect stub'));
+ok('site: the size check says "characters", the unit it measures',
+  /\bcharacters\b/.test(sizeCheck.detail),
+  `detail was: ${sizeCheck.detail}`);
+ok('site: the size check never calls UTF-16 code units "bytes"',
+  !/\bbytes?\b/.test(sizeCheck.detail),
+  `detail was: ${sizeCheck.detail}`);
+ok('site: the healthy verdict exposes the count as `chars`, not `bytes`',
+  typeof healthySite.chars === 'number' && healthySite.bytes === undefined);
 
 // 3b. the size floor has to hold on its own. A short body that DOES carry 5 SRI tags — a
 //     truncated response, or a stub built to look right — must fail on size, not be rescued by
