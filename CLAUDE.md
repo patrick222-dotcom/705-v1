@@ -132,8 +132,12 @@ the 47-day outage it exists to catch.
    the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
    hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`,
-   `patternCellToShift`, **`sampleNet`**, **`keepRatio`**, `firstActiveShiftType`, and the
-   rate/differential coercions in `sanitizeData`): touch only in a dedicated session, with the
+   `patternCellToShift`, **`sampleNet`**, **`keepRatio`**, `firstActiveShiftType`, the
+   rate/differential coercions in `sanitizeData`, the `BONUS`/`BONUS_LABEL` tables, and the helpers
+   the public names wrap — `shiftGrossCents`, `hourlyRateCents`, `paidHoursOf`,
+   `overtimePremiumCents`, `toCents`/`fromCents`/`roundCents`. The list is examples; the test is
+   whether a change can move a displayed dollar figure, including arithmetic in a UI component
+   that prints one): touch only in a dedicated session, with the
    wage-math probes **and the hero/breakdown equality assertion against the deployed build**, never in
    a nightly build. Adding a sanitizer branch for a *new* data shape (as #62 did for `goals`) is fine
    in a nightly if it comes with a unit test and the existing probes stay green.

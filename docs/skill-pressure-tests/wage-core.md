@@ -177,10 +177,13 @@ chose the wrong option, so there was no violation to interrogate.
   the real GROOM step rather than a prompt; behaviour with `tests/smoke.mjs` runnable (no
   Playwright in these worktrees, so no agent could run the probes).
 
-## Follow-ups (not done — outside this change)
+## Follow-ups
 
-- CLAUDE.md's Invariant 3 list should gain `BONUS`/`BONUS_LABEL` and the `*Cents` /
-  `paidHoursOf` / `overtimePremiumCents` helpers, to match the skill.
+- Done in this PR: CLAUDE.md's Invariant 3 list now names `BONUS`/`BONUS_LABEL`, the
+  `*Cents` helpers, `paidHoursOf` and `overtimePremiumCents`, and states the dollar-figure test.
+
+Not done (outside this change):
+
 - The RED agents' BACKLOG entries contain real findings worth keeping for a wage-core session
   (they were discarded with the worktrees): the one-field pre-tax model can't express Section
   125 vs 403(b); `setNum`'s `NaN` drop for `"$52.50"` is real and the obvious fix mis-parses
