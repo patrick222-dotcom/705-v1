@@ -8,7 +8,7 @@ import { analyze, validateInsight, renderBlock, applyBlock, stripManagedBlock, s
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const seed = JSON.parse(readFileSync(join(ROOT, 'docs', 'reddit_seed.json'), 'utf8'));
 const backlogRaw = readFileSync(join(ROOT, 'BACKLOG.md'), 'utf8');
-const knownText = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8') + '\n' + stripManagedBlock(backlogRaw);
+const knownText = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8') + '\n' + readFileSync(join(ROOT, 'docs', 'project-notes.md'), 'utf8') + '\n' + stripManagedBlock(backlogRaw);
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => { (cond ? pass++ : fail++); console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
@@ -79,7 +79,7 @@ ok('apply: hand-authored content preserved', twice.includes('existing item') && 
 // 9. cross-run idempotency: analyzing the KNOWN corpus with our own block already applied must not
 // erode candidates (the managed block is stripped before dedup). Simulate a prior --apply.
 const withBlock = applyBlock(stripManagedBlock(backlogRaw), block);
-const knownAfterApply = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8') + '\n' + stripManagedBlock(withBlock);
+const knownAfterApply = readFileSync(join(ROOT, 'CLAUDE.md'), 'utf8') + '\n' + readFileSync(join(ROOT, 'docs', 'project-notes.md'), 'utf8') + '\n' + stripManagedBlock(withBlock);
 const resultsAfter = analyze(seed, knownAfterApply);
 ok('cross-run: candidate count stable after our block is in BACKLOG',
   resultsAfter.filter(r => r.status === 'candidate').length === candidates.length,

@@ -24,6 +24,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SEED_PATH = join(ROOT, 'docs', 'reddit_seed.json');
 const BACKLOG_PATH = join(ROOT, 'BACKLOG.md');
 const CLAUDEMD_PATH = join(ROOT, 'CLAUDE.md');
+// CLAUDE.md was split on 2026-09-27; the moved sections still count as KNOWN.
+const NOTES_PATH = join(ROOT, 'docs', 'project-notes.md');
 
 const PRIORITY_MAP = { loud: 'P1', recurring: 'P2', occasional: 'P3', 'one-off': 'P3' };
 
@@ -175,7 +177,7 @@ function main() {
     process.exit(1);
   }
 
-  const knownText = readFileSync(CLAUDEMD_PATH, 'utf8') + '\n' + stripManagedBlock(readFileSync(BACKLOG_PATH, 'utf8'));
+  const knownText = readFileSync(CLAUDEMD_PATH, 'utf8') + '\n' + readFileSync(NOTES_PATH, 'utf8') + '\n' + stripManagedBlock(readFileSync(BACKLOG_PATH, 'utf8'));
   const results = analyze(seed, knownText);
   const candidates = results.filter(r => r.status === 'candidate');
   const covered = results.filter(r => r.status === 'covered');
