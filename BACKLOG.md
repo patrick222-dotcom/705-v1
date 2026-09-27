@@ -184,6 +184,16 @@ _(none)_
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- **Move off the indigo/purple brand accent (owner call, 2026-09-27).** `harness:drivable`. The
+  owner agrees indigo `#5B4FE9` plus the purple-tinted ambient gradients reads as a stock
+  AI-generated palette. Scope: pick one accent (money green is already semantic, so it may be the
+  accent itself), retire `--violet` and `--amber` (2 uses), re-tint the `--indigo*`/`--glass-indigo*`
+  tokens and the three ambient radial gradients, redraw the favicon if needed, recheck contrast on
+  the glass panels. Inputs: the owner has concepts in Claude Design to bring. Do this *before* dark
+  mode so the dark tokens are derived once.
+- **Dark mode (2026-09-27).** `harness:drivable`. No `prefers-color-scheme` anywhere; night-shift
+  nurses open the app at 3am. Every glass surface, the `@supports not` fallback and the hero need
+  dark tokens; money figures must stay legible (smoke §legibility). After the accent change.
 - **OWNER ACTION, 5 minutes, blocks the positioning claim — confirm the real NurseGrid .ics host.**
   `supabase/functions/ical-proxy/index.ts:23-25` allowlists `/^([a-z0-9-]+\.)?nursegrid\.com$/i`
   behind a `TODO(owner)`: nobody has ever seen a real NurseGrid secret feed URL, so the pattern is a
@@ -785,6 +795,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-27 (owner-directed, interactive) — **Three low-risk polish items from a taste-skill review.**
+  (1) Fixed-width digits (`tabular-nums`) on every money figure that lacked them — `.stat .v`,
+  `.takehome .v`, `.pl-money .v`, breakdown values, calendar cell amounts, differential amounts,
+  pattern-lab compare cells, the add-shift preview. Both fonts ship a `tnum` feature (checked in the
+  served woff2). CSS only, no arithmetic touched, so not wage core. (2) `text-wrap:balance` on
+  headings, `pretty` on paragraphs. (3) Dropped the exclamation marks from 7 toasts/labels ("Link
+  copied", "Board created", the signup confirmation, the boot script's "Copied"). Gate: check_build
+  11/11, groom_seed 33/33, smoke 309/0. Rejected from the same review: font swap, grain/motion, the
+  em-dash ban, the beige-background rule. Dark mode and the accent-color change are queued as
+  dedicated sessions.
 - 2026-09-26 (nightly) — **The groom stopped hand-running the check it had hand-run three nights in
   a row.** Three separate runs (09-23, 09-25, 09-26) hit a multi-day gap in `events` and each had to
   establish by hand that the site was up, that the bytes served were the deployed ones and that the
