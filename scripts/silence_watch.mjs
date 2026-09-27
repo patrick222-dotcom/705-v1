@@ -32,7 +32,7 @@ const DEFAULT_STALE_HOURS = 48;
    so anything short means the check is pointed at the redirect and would "pass" against nothing
    — the exact mistake that let the old nightly "verify" every deploy it ever made without once
    seeing one. Keep this floor in step with tests/equality.mjs. */
-const MIN_BODY_BYTES = 50000;
+const MIN_BODY_CHARS = 50000;
 const EXPECTED_SRI = 5;
 
 /* ---------------------------------------------------------------- pure logic (unit-tested) */
@@ -57,11 +57,11 @@ export function siteVerdict({ url, status, body }) {
 
   checks.push({ name: 'HTTP 200', ok: status === 200, detail: `HTTP ${status}` });
 
-  const bytes = typeof body === 'string' ? body.length : 0;
+  const chars = typeof body === 'string' ? body.length : 0;
   checks.push({
     name: 'served the app, not a redirect stub',
-    ok: bytes >= MIN_BODY_BYTES,
-    detail: `${bytes.toLocaleString('en-US')} bytes (floor ${MIN_BODY_BYTES.toLocaleString('en-US')})`,
+    ok: chars >= MIN_BODY_CHARS,
+    detail: `${chars.toLocaleString('en-US')} characters (floor ${MIN_BODY_CHARS.toLocaleString('en-US')})`,
   });
 
   const sri = (typeof body === 'string' ? body.match(/integrity="sha384-/g) || [] : []).length;
@@ -71,7 +71,7 @@ export function siteVerdict({ url, status, body }) {
     detail: `${sri} found`,
   });
 
-  return { ok: checks.every((c) => c.ok), checks, bytes, sri };
+  return { ok: checks.every((c) => c.ok), checks, chars, sri };
 }
 
 /* Hours between the newest event row and now. null when there is no row or no readable date.
@@ -112,7 +112,7 @@ export function classify({ latestEventAt, now, staleHours = DEFAULT_STALE_HOURS,
   const healthy = site?.ok === true && insertPolicy?.ok === true;
   if (healthy) {
     return { verdict: 'SILENT_BUT_HEALTHY', exitCode: 0, ageHours, staleHours, site, insertPolicy,
-      reason: `newest event is ${age}, but the site serves ${site.bytes.toLocaleString('en-US')} bytes with ${site.sri} SRI scripts and the events insert policy is intact — quiet, not broken` };
+      reason: `newest event is ${age}, but the site serves ${site.chars.toLocaleString('en-US')} characters with ${site.sri} SRI scripts and the events insert policy is intact — quiet, not broken` };
   }
   const broken = [
     ...(site?.checks || []).filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`),
@@ -152,7 +152,7 @@ async function probeSite(url) {
     const res = await fetch(bust);
     return siteVerdict({ url, status: res.status, body: await res.text() });
   } catch (e) {
-    return { ok: false, bytes: 0, sri: 0, checks: [{ name: 'reachable', ok: false, detail: String(e.message || e) }] };
+    return { ok: false, chars: 0, sri: 0, checks: [{ name: 'reachable', ok: false, detail: String(e.message || e) }] };
   }
 }
 
