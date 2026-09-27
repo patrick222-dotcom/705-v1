@@ -50,6 +50,11 @@
   button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
   input,select{font-family:inherit}
   .num{font-variant-numeric:tabular-nums}
+  /* Fixed-width digits on every money figure, so totals don't shift sideways as they update */
+  .stat .v,.takehome .v,.pl-money .v,.bd-row .lh .vv,.cell .amt,.drow .amt,.pl-cmp td.v,.preview .v{font-variant-numeric:tabular-nums}
+  /* Headings wrap in even lines instead of leaving one word alone on the last line */
+  h1,h2,h3,.display,.sheet-h .t,.cdlg .ct,.ob .q,.cal-head .ttl{text-wrap:balance}
+  p{text-wrap:pretty}
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:#dcdacf;border-radius:6px;border:3px solid var(--paper)}
 
@@ -610,7 +615,7 @@
   window.__copyErrorLog = function(btn){
     var text;
     try { text = localStorage.getItem(ERR_KEY) || '[]'; } catch(_){ text = '[]'; }
-    var done = function(ok){ if(btn){ var o=btn.textContent; btn.textContent = ok?'Copied!':'Copy failed'; setTimeout(function(){ btn.textContent=o; }, 1600); } };
+    var done = function(ok){ if(btn){ var o=btn.textContent; btn.textContent = ok?'Copied':'Copy failed'; setTimeout(function(){ btn.textContent=o; }, 1600); } };
     try {
       if(navigator.clipboard && navigator.clipboard.writeText){
         navigator.clipboard.writeText(text).then(function(){done(true);}, function(){done(false);});
@@ -5345,7 +5350,7 @@ function AuthModal({mode:initialMode,onClose}){
         : await supabase.auth.signInWithPassword({email,password});
       if(err) setError(err.message);
       else {
-        if(mode==='signup') toast('Check your email to confirm your account!','success');
+        if(mode==='signup') toast('Check your email to confirm your account.','success');
         onClose();
       }
     }catch(e2){
@@ -5806,11 +5811,11 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
         if(e && e.name==='AbortError') return;   // user backed out — leave it be
       }
     }
-    copyText(text + '\n' + link, 'Invite link copied!');
+    copyText(text + '\n' + link, 'Invite link copied');
     track('swap_invite_shared', {via:'copy'}, user.id);
   };
 
-  const copyCode = (code)=> copyText(code, 'Code copied!');
+  const copyCode = (code)=> copyText(code, 'Code copied');
 
   /* ---- composer ---- */
   const upcomingShifts = useMemo(()=>{
@@ -6060,7 +6065,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
   };
 
   const copyPlan = (text)=>{
-    copyText(text, 'Swap plan copied!');
+    copyText(text, 'Swap plan copied');
   };
 
   /* "Apply to my calendar": removes the shift I gave (matched by date + shift_meta) and/or adds
@@ -6194,7 +6199,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
 
         {!loading && !loadError && !tablesMissing && profile && !inviteCode && justCreated &&
           <div style={{textAlign:'center',padding:'8px 4px 4px'}}>
-            <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created!</div>
+            <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created</div>
             <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Send your unit the link — it drops them straight onto this board.</div>
             <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
             <button className="btn btn-primary" style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}} onClick={()=>shareInvite(justCreated.invite_code, justCreated.name)}>{Ic.share}<span>Invite your unit</span></button>
@@ -6500,7 +6505,7 @@ function ShareSheet({onClose, userId, surface}){
         if(e && e.name==='AbortError') return;   // backed out of the share sheet — not a failure
       }
     }
-    copyText(blurb + '\n' + SHARE_LINK_URL, 'Link copied!');
+    copyText(blurb + '\n' + SHARE_LINK_URL, 'Link copied');
     track('share_sent', {via:'copy',surface}, userId);
   };
   return (
@@ -6520,7 +6525,7 @@ function ShareSheet({onClose, userId, surface}){
           <div className="qr-url">badgebudget.com</div>
         </div>
         <button className="btn btn-primary" onClick={sendLink}>Send a link instead</button>
-        <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>copyText(SHARE_LINK_URL,'Link copied!')}>Copy link</button>
+        <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>copyText(SHARE_LINK_URL,'Link copied')}>Copy link</button>
       </div>
     </div>
   );
