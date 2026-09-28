@@ -91,7 +91,10 @@ const fetchDeployed = async () => {
   const sri = (html.match(/integrity="sha384-/g) || []).length;
   if (sri !== 5) throw new Error(`deployed build has ${sri} SRI scripts, expected 5 — not the app`);
   writeFileSync(join(root, 'index.html'), html);
-  for (const f of ['pdf.worker.min.js', 'ops.html']) copyFileSync(join(ROOT, f), join(root, f));
+  /* Everything else buildScratch needs beside index.html. privacy.html joined that list on
+     2026-09-24 and this one did not, which broke the equality check silently -- it is not in
+     CI by design, so nothing ran it until the next wage-core session went looking. */
+  for (const f of ['pdf.worker.min.js', 'ops.html', 'privacy.html']) copyFileSync(join(ROOT, f), join(root, f));
   console.log(`fetched ${LIVE} — ${html.length} bytes, ${sri} SRI scripts\n`);
   return root;
 };

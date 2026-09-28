@@ -20,8 +20,12 @@
 const ALLOWLIST: RegExp[] = [
   /^calendar\.google\.com$/i,          // Google Calendar secret iCal address
   /^www\.google\.com$/i,               // Google's /calendar/ical/... alternate host
-  // TODO(owner): confirm NurseGrid's actual .ics feed host from a real feed URL, then pin it here.
-  // Example placeholder — REPLACE with the verified host, do not ship a broad wildcard:
+  // CONFIRMED 2026-09-28 against a real feed: NurseGrid's "Generate Nursegrid Calendar Feed"
+  // hands out webcal://app.nursegrid.com/calendars/<id>/<uuid>, served as text/calendar over
+  // https with no redirects. The guess below already matched it.
+  // Deliberately NOT narrowed to /^app\.nursegrid\.com$/i yet: that is one account's feed, and a
+  // narrow pin that misses the subdomain a real nurse's feed uses fails closed on the one user
+  // this exists for. Narrow it when a second real feed agrees.
   /^([a-z0-9-]+\.)?nursegrid\.com$/i,
 ];
 

@@ -863,14 +863,57 @@ function parseVEventProps(block){
   return props;
 }
 
-/* Parse a DTSTART/DTEND property value into local wall-clock parts. Per product spec, ALL
-   forms (bare, TZID-qualified, trailing Z) are treated as local time — no timezone math. */
+/* How far `tz`'s wall clock runs ahead of UTC at instant `ts`, in ms. Derived by formatting the
+   instant IN that zone and reading the clock back, which is the only way to get a zone's offset
+   without shipping a tz database. Throws (RangeError) on a zone Intl does not know. */
+function icsZoneOffsetMs(ts, tz){
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12:false,
+    year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const p = {};
+  dtf.formatToParts(new Date(ts)).forEach(x=>{ p[x.type] = x.value; });
+  const hh = p.hour === '24' ? 0 : +p.hour;          // some engines render midnight as hour 24
+  return Date.UTC(+p.year, +p.month-1, +p.day, hh, +p.minute, +p.second) - ts;
+}
+
+/* A wall-clock reading in `tz` -> the UTC instant it names. Two passes, because the first guess
+   uses the offset in force at the WRONG instant and can land on the far side of a DST change;
+   the second uses the offset actually in force where the first pass landed. */
+function icsZonedWallToMs(y,mo,d,hh,mm,ss,tz){
+  const naive = Date.UTC(y,mo-1,d,hh,mm,ss);
+  const once  = naive - icsZoneOffsetMs(naive, tz);
+  return naive - icsZoneOffsetMs(once, tz);
+}
+
+/* Parse a DTSTART/DTEND property value into LOCAL wall-clock parts.
+   A trailing Z is UTC and a TZID= names a zone: both are converted to the viewer's local clock.
+   A bare value is "floating" per RFC 5545 §3.3.5 and is already local, so it is left alone.
+
+   This used to treat all three forms as local with no timezone math. That is correct only when a
+   feed's times already sit in the viewer's zone, and NurseGrid's does not: its feed emits honest
+   UTC (`...T041500Z` for a shift its own UI shows as 00:15 in Philadelphia), so every synced shift
+   landed 4 hours late. Start time picks the differential, so the error surfaced as a wrong
+   take-home figure with nothing thrown — Invariant 3's blast radius with Detect: none.
+   Verified against a real NurseGrid feed 2026-09-28.
+
+   An unparsable or unknown TZID falls back to wall-clock-as-written — the old behaviour — rather
+   than dropping the event: a shift at a possibly-wrong hour is recoverable in the stepper, a
+   silently missing shift is not. */
 function parseICSDateTime(prop){
   if(!prop) return null;
   const isDateOnly = /VALUE=DATE(?!-TIME)/i.test(prop.left);
   const v = prop.value.trim();
-  let m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
-  if(m && !isDateOnly) return { y:+m[1], mo:+m[2], d:+m[3], hh:+m[4], mm:+m[5], allDay:false };
+  let m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if(m && !isDateOnly){
+    const y=+m[1], mo=+m[2], d=+m[3], hh=+m[4], mm=+m[5], ss=+m[6], isUTC=!!m[7];
+    const tzidRaw = (prop.left.match(/;TZID=([^;:]+)/i)||[])[1];
+    const tzid = tzidRaw ? tzidRaw.trim().replace(/^"|"$/g,'') : '';
+    let ms = null;
+    if(isUTC) ms = Date.UTC(y,mo-1,d,hh,mm,ss);
+    else if(tzid){ try{ ms = icsZonedWallToMs(y,mo,d,hh,mm,ss,tzid); }catch(_){ ms = null; } }
+    if(ms==null || !isFinite(ms)) return { y, mo, d, hh, mm, allDay:false };   // floating / unknown zone
+    const lo = new Date(ms);
+    return { y:lo.getFullYear(), mo:lo.getMonth()+1, d:lo.getDate(), hh:lo.getHours(), mm:lo.getMinutes(), allDay:false };
+  }
   m = v.match(/^(\d{4})(\d{2})(\d{2})/);
   if(m) return { y:+m[1], mo:+m[2], d:+m[3], hh:null, mm:null, allDay:true };
   return null;
