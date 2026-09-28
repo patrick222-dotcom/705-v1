@@ -35,10 +35,13 @@ see Positioning.
   the anonymity (it enforces the *reveal gate*, which is a different and true thing);
   (c) a lens that scores the app down for under-serving the swap board is scoring against a recorded
   decision — see `docs/council.md` and the council-charter item in `BACKLOG.md`;
-  (d) **the positioning is one unverified string away from being true**: `ical-proxy`'s NurseGrid
-  host entry (`index.ts:23-25`) is a *guessed* regex behind a `TODO(owner)`, so "no more need for
-  NurseGrid" is a claim the product cannot yet cash. Confirming it needs one real NurseGrid secret
-  feed address — owner action, nothing else unblocks it.
+  (d) **the NurseGrid host is confirmed (2026-09-28)** — the owner generated a real feed from the
+  app (Calendar Settings → Generate Nursegrid Calendar Feed) and it serves from `app.nursegrid.com`,
+  which the existing allowlist regex already matched: the guess was right. The regex is deliberately
+  **not** narrowed to that exact host yet — one account is one sample, and a narrow pin that misses
+  Courtney's subdomain would break the one user this app exists for. Narrow it when a second real
+  feed agrees. What "no more need for NurseGrid" still lacks is **one end-to-end sync on a real
+  phone**; everything up to that point is now verified.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
@@ -275,7 +278,14 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
 - **Top bar.** The avatar is the only route to Settings and Sign out below 920px — never hide it at
   any width.
 - **Calendar sync** never silently rewrites wage-affecting shifts: feed results go through the same
-  import stepper. `ical-proxy` is host-allowlisted (Google only; NurseGrid is a guessed TODO).
+  import stepper. `ical-proxy` is host-allowlisted (Google + `nursegrid.com`, confirmed 2026-09-28).
+  **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
+  `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
+  written; an unknown zone falls back to as-written rather than dropping the shift. It did not used
+  to — "no timezone math" was the written spec, which is correct only when a feed's times already
+  sit in the viewer's zone. NurseGrid's do not, so every synced shift landed 4 hours late and the
+  error surfaced as a wrong take-home figure. Pinned by `tests/smoke.mjs` §22, which sets its own
+  `timezoneId` because CI runners are UTC, where the conversion is the identity.
 
 ## Skills
 

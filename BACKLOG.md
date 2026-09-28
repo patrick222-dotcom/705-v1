@@ -266,16 +266,15 @@ _(none)_
 - **Dark mode (2026-09-27).** `harness:drivable`. No `prefers-color-scheme` anywhere; night-shift
   nurses open the app at 3am. Every glass surface, the `@supports not` fallback and the hero need
   dark tokens; money figures must stay legible (smoke §legibility). After the accent change.
-- **OWNER ACTION, 5 minutes, blocks the positioning claim — confirm the real NurseGrid .ics host.**
-  `supabase/functions/ical-proxy/index.ts:23-25` allowlists `/^([a-z0-9-]+\.)?nursegrid\.com$/i`
-  behind a `TODO(owner)`: nobody has ever seen a real NurseGrid secret feed URL, so the pattern is a
-  guess and may not match the host they actually serve from (a CDN or a HealthStream domain would
-  both miss). Until it is confirmed, "no more need for NurseGrid" (CLAUDE.md → Positioning) is a claim
-  the product cannot cash, and the failure mode is silent-ish: the proxy rejects the host and she sees
-  a sync error, having already pasted a bearer credential. **What is needed from the owner:** one real
-  NurseGrid secret iCal address (Courtney's own), or just its hostname — that is the whole blocker.
-  Then: pin the exact host, redeploy the function, and run one real end-to-end sync. Everything after
-  the hostname is automatable; the hostname is not.
+- [x] **RESOLVED 2026-09-28 — the NurseGrid host is confirmed, and the guess was right.** The owner
+  generated a real feed (Calendar Settings → Generate Nursegrid Calendar Feed); it serves from
+  **`app.nursegrid.com`** over https, `text/calendar`, no redirects, which the existing allowlist
+  regex already matched. The allowlist is deliberately left as the subdomain wildcard rather than
+  pinned to `app.` — one account is one sample, and a narrow pin that misses the subdomain a real
+  nurse's feed uses fails closed on the one user this exists for. **Finding that came out of it:**
+  NurseGrid's share link (`calendar.nursegrid.com/#/<token>`) is NOT a feed — it is a JSON viewer
+  whose token lives in the URL fragment, so it can never be fetched server-side. The feed is a
+  separate thing behind a different menu item. **Remaining:** one end-to-end sync on a real phone.
 
 - **CLAUDE.md's "Open PRs" line is stale, and Invariant 11 depends on it** `harness:drivable` — it names
   only #46. **Six** are open as of 2026-09-20, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
@@ -807,9 +806,11 @@ here so the loop's queue contains only work it can actually finish; pick these u
   publication) or exponential backoff on an idle board. `harness:needs-live-auth`.
 
 ## Blocked
-- [ ] **iCal proxy allowlist: the real NurseGrid feed host** + a smoke test with a real secret iCal
-  address — owner-side (the allowlist in `supabase/functions/ical-proxy/index.ts` covers Google
-  Calendar's hosts; the NurseGrid entry is a marked TODO). Redeploy the function after editing.
+- [x] **UNBLOCKED 2026-09-28 — the NurseGrid feed host is confirmed** (`app.nursegrid.com`), already
+  matched by the allowlist, so **no redeploy of the Edge Function is needed**: the only change to
+  `ical-proxy/index.ts` was the comment recording the verification. What is left is not owner-blocked
+  any more — it is one end-to-end sync on a real phone, which belongs in a dedicated session because
+  the import stepper's pay-type questionnaire has never been driven against a real NurseGrid feed.
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
@@ -883,6 +884,32 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-28 (dedicated session, wage-core protocol) — **Imported shift times now honour the feed's
+  timezone; they used to land 4 hours late.** The owner supplied a real NurseGrid feed, which is the
+  first one this project has ever seen. It emits honest UTC — `DTSTART:20261005T041500Z` for a shift
+  NurseGrid's own app displays as **0:15–12:45** in Philadelphia. `parseICSDateTime` stripped the `Z`
+  and read the digits as local ("no timezone math" was the written spec), so that shift would have
+  imported as 04:15. **Start time picks the differential**, so the defect surfaced as a wrong
+  take-home figure with nothing thrown — Invariant 3's blast radius, Detect: none.
+  Fixed for both forms: a trailing `Z` is UTC and a `TZID=` names a zone, both converted to the
+  viewer's clock via `Intl` (no tz database shipped); a bare value is floating per RFC 5545 §3.3.5
+  and is left as written, which is the old behaviour deliberately kept; an unknown zone falls back to
+  as-written rather than dropping the shift, because a shift at a wrong hour is fixable in the
+  stepper and a missing one is not.
+  **Verified the whole way down:** the live feed's own values parse to 00:15 and 12:45, matching
+  NurseGrid's UI exactly. `tests/smoke.mjs` §22, 11 assertions, **sets its own `timezoneId`** — CI
+  runners are UTC, where converting `Z` to local is the identity, so an assertion written without it
+  passes with the bug still in. 10 of the 11 negative-tested across six deliberate breaks behind an
+  anchor guard; break 1 (restore the old behaviour) reproduces the defect exactly — 04:15 instead of
+  00:15, and the shift on the wrong calendar date.
+  **Two things found on the way.** (1) `tests/equality.mjs` had been broken since 2026-09-24: its
+  deployed-root staged `pdf.worker.min.js` and `ops.html` but not `privacy.html`, which joined
+  `buildScratch` that day. It is outside CI on purpose, so nothing ran it and nothing noticed — the
+  Invariant 3 step was quietly unavailable for four days. One word, fixed here. (2) NurseGrid's share
+  link is a JSON viewer, not a feed; the feed is behind a different menu item.
+  Gate: check_build 11/11, groom_seed 33/0, silence_watch 39/0, smoke **328/0** (317 baseline + 11),
+  wage probes 34/34, and **`tests/equality.mjs` 10 identical / 0 differ** against the live build —
+  zero differences predicted before the run, zero found.
 - 2026-09-27 (nightly) — **First non-silent groom in four days, and the first share-to-arrival chain
   in the data.** `silence_watch` returned **FRESH** (newest event 6.6h old, 48h window), so for once
   the run did not have to prove the site was up before it could read the table. `events` is at 1,023

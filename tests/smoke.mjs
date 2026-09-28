@@ -2268,6 +2268,84 @@ const run = async () => {
       !/Trade with your unit, anonymously/.test(src16) && !/Trade shifts with your unit — anonymously/.test(src16));
   }
 
+  /* ---- 22. imported shift times honour the feed's timezone -------------------------------
+     NurseGrid's live feed emits honest UTC: `20261005T041500Z` for a shift its own app shows as
+     00:15 in Philadelphia. parseICSDateTime used to strip the Z and read the digits as local, so
+     every synced shift landed 4 hours late. Start time is what picks the differential, so the
+     error surfaced as a wrong take-home figure with nothing thrown -- Invariant 3's blast radius
+     with Detect: none. Verified against the real feed 2026-09-28.
+
+     This context pins timezoneId on purpose. CI runners are UTC, where converting Z to local is
+     the identity, so an assertion written without it passes with the bug still in -- exactly the
+     "a gate that has only ever passed proves nothing" trap the harness skill names. */
+  if (want(22)) {
+    const ctx = await browser.newContext({ ...devices['iPhone 13'], timezoneId: 'America/New_York' });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof parseICSDateTime === 'function', null, { timeout: 20000 });
+
+    const tz = await page.evaluate(() => {
+      const fmt = (r) => !r ? 'null'
+        : r.allDay ? 'allDay'
+        : r.y + '-' + String(r.mo).padStart(2, '0') + '-' + String(r.d).padStart(2, '0')
+          + ' ' + String(r.hh).padStart(2, '0') + ':' + String(r.mm).padStart(2, '0');
+      return {
+        utcStart: fmt(parseICSDateTime({ left: 'DTSTART', value: '20261005T041500Z' })),
+        utcEnd:   fmt(parseICSDateTime({ left: 'DTEND',   value: '20261005T164500Z' })),
+        floating: fmt(parseICSDateTime({ left: 'DTSTART', value: '20261005T070000' })),
+        sameZone: fmt(parseICSDateTime({ left: 'DTSTART;TZID=America/New_York', value: '20261005T070000' })),
+        otherZone: fmt(parseICSDateTime({ left: 'DTSTART;TZID=America/Chicago', value: '20261005T070000' })),
+        quoted:   fmt(parseICSDateTime({ left: 'DTSTART;TZID="America/Chicago"', value: '20261005T070000' })),
+        unknown:  fmt(parseICSDateTime({ left: 'DTSTART;TZID=Eastern Standard Time', value: '20261005T070000' })),
+        dateOnly: fmt(parseICSDateTime({ left: 'DTSTART;VALUE=DATE', value: '20261005' })),
+      };
+    });
+
+    /* The defect itself, both ends, in the exact values the real feed serves. */
+    ok('ics tz: a UTC start converts to the viewer\'s local clock', tz.utcStart === '2026-10-05 00:15', tz.utcStart);
+    ok('ics tz: a UTC end converts too', tz.utcEnd === '2026-10-05 12:45', tz.utcEnd);
+    /* A floating time is already local per RFC 5545 3.3.5 -- the old behaviour, deliberately kept. */
+    ok('ics tz: a floating time is still read as written', tz.floating === '2026-10-05 07:00', tz.floating);
+    ok('ics tz: a TZID in the viewer\'s own zone does not move', tz.sameZone === '2026-10-05 07:00', tz.sameZone);
+    ok('ics tz: a TZID in another zone converts', tz.otherZone === '2026-10-05 08:00', tz.otherZone);
+    ok('ics tz: a quoted TZID is unquoted before use', tz.quoted === '2026-10-05 08:00', tz.quoted);
+    /* Fail-safe: a zone Intl cannot resolve falls back to as-written rather than dropping the
+       shift. A shift at a possibly-wrong hour is fixable in the stepper; a missing one is not. */
+    ok('ics tz: an unknown TZID falls back to as-written, not dropped', tz.unknown === '2026-10-05 07:00', tz.unknown);
+    ok('ics tz: a date-only value is still all-day', tz.dateOnly === 'allDay', tz.dateOnly);
+
+    /* End to end through the real entry point, on a date inside the import window so the result
+       is not hostage to the calendar. Duration must survive the conversion: both ends shift by
+       the same offset, so a 12.5-hour shift stays 12.5 hours. */
+    const e2e = await page.evaluate(() => {
+      /* 02:15 UTC deliberately: in America/New_York that is the PREVIOUS calendar day (21:15 or
+         22:15 depending on DST), so a parser that ignores the Z lands the shift on the wrong DATE
+         and this assertion catches it. At 04:15Z the two dates coincide and it would not. */
+      const start = new Date(Date.now() + 7 * 86400000);
+      start.setUTCHours(2, 15, 0, 0);
+      const end = new Date(start.getTime() + 12.5 * 3600000);
+      const z = (d) => d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0')
+        + String(d.getUTCDate()).padStart(2, '0') + 'T' + String(d.getUTCHours()).padStart(2, '0')
+        + String(d.getUTCMinutes()).padStart(2, '0') + '00Z';
+      const text = ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:shift1@app.nursegrid.com',
+        'DTSTART:' + z(start), 'DTEND:' + z(end), 'END:VEVENT', 'END:VCALENDAR'].join('\n');
+      const localKey = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0')
+        + '-' + String(start.getDate()).padStart(2, '0');
+      const out = parseICSSchedule(text);
+      const ev = out && out.events && out.events[0];
+      return { got: ev ? ev.dateKey : 'none', want: localKey, hours: ev ? ev.hours : null };
+    });
+    ok('ics tz: end to end, the shift lands on its LOCAL date', e2e.got === e2e.want, e2e.got + ' vs ' + e2e.want);
+    ok('ics tz: and the 12.5-hour duration survives the conversion', e2e.hours === 12.5, String(e2e.hours));
+    ok('ics tz: no page errors parsing timezoned feeds',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
