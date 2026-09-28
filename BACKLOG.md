@@ -18,9 +18,13 @@ with a dated line in the Done log.
   **One build item per run.**
 
 ## In progress
-- [~] **Quiet the swap-board CTAs** — **BUILT 2026-09-20, full gate green, NOT SHIPPED.** The commit
-  exists on `claude/clause-md-review-9tqlj8` locally only: this session could not push (see the P0
-  below). Apply the patch in the run summary, or re-run the nightly once push works. Nothing is live.
+_(none)_
+
+**Cleared 2026-09-28:** this slot held "Quiet the swap-board CTAs — BUILT, NOT SHIPPED" since
+2026-09-20. **PR #118 was merged by the owner on 2026-09-27 at 20:30 ET** (commit `6ea400e` on the
+deploy branch), eight days after it opened and four nights after the backlog started asking for a
+merge-or-abandon call. The note it replaced was doubly stale — the work had been pushed on 09-20
+and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
@@ -59,7 +63,15 @@ _(none)_
   was wrong, so the "durable route" the positioning assumed does not exist. Either move/duplicate the
   entry into Settings (where the note says someone would look) or amend the positioning note to say
   the dashboard's second column is the route. One-line product call; do not guess it.
-- [~] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — **BUILT AND PUSHED: open draft PR #118**
+- [x] ~~**Quiet the swap-board CTAs (positioning, 2026-09-19)**~~ — **SHIPPED 2026-09-27**, merged by
+  the owner as `6ea400e`. It blocked the queue's top P1 slot for eight days and cost the nightly a
+  build item on four separate nights (09-21 through 09-24, then 09-27); the loop skipped it correctly
+  each time rather than rebuilding work that already existed. **The lesson worth keeping is about the
+  queue, not the feature:** an item parked in `## Queue` awaiting a human decision reads as available
+  work to every run that opens the file, and the only thing that stops a rebuild is a note explaining
+  why not. Park the next one under `## Blocked` instead, where it cannot occupy the top of a band.
+  The stale note is kept below for its history.
+- [~] ~~**Quiet the swap-board CTAs (positioning, 2026-09-19)**~~ — **BUILT AND PUSHED: open draft PR #118**
   (`claude/live-dashboard-insights-r31se3`, opened 2026-09-20). Do NOT rebuild it — the nightly skipped
   this item on 2026-09-21 for that reason. It is a draft awaiting the owner's review, and its branch also
   carries a P0 claiming the nightly cannot push; that P0 **did not reproduce on 2026-09-21** (see Done log).
@@ -231,7 +243,17 @@ _(none)_
   above the swap suggestion cards.
 
 ### P2 (new, groom 2026-09-27)
-- [ ] **One load can emit two `session_end` rows, and nothing in the schema says which is real** —
+- [x] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~
+  — SHIPPED 2026-09-28 (see Done log). The note below called the fix shape undecided; one look at
+  the code decided it, because the guard in `endSession` **already deduped** and the production row
+  pair fits its escape hatch exactly. The guard re-armed on *either* a changed event count *or* a
+  full minute elapsed since the last beacon, and the two rows are 319s apart with an identical
+  `n:4` — so the minute clause, not a missing guard, wrote the duplicate. The minute clause is gone;
+  `last` and `n` are now the only things that re-arm it, which is what the note asked for in words.
+  The alternative it warned against (fire once per load, losing a genuine post-restore session) is
+  pinned against by an assertion of its own. `tests/smoke.mjs` §12, 3 new assertions, both halves
+  negative-tested. Original note below:
+- [ ] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~ —
   `harness:drivable` — groom 2026-09-27 caught the first instance in production. Device
   `c2fb3aa8` (DuckDuckGo on iOS 18.6) sent `session_end` at 01:35:41 with `secs:71` and again at
   01:41:00 with `secs:390` — **same load**, byte-identical otherwise (`n:4, ob:null, via:link,
@@ -884,6 +906,50 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-28 (nightly) — **The owner merged #118, so the queue has a top slot again; the run spent
+  it on the duplicate-`session_end` bug and found the fix already half-written.**
+  **Groom.** `silence_watch` → **FRESH** (newest event 18.7h old, 48h window), so no health proof
+  was needed. `events` is at **1,027 rows, up 4** from 1,023; `feedback` is unchanged at 11 rows and
+  has not moved since 2026-09-14. All four new rows are two desktop browsers landing at 13:30:57 UTC
+  on 09-27, ten seconds apart, each firing `app_open` + `ob_step {step:0}` and nothing else —
+  Windows Chrome 96 and macOS Chrome 95, both years out of date. That is crawler shape, not nurse
+  shape, and it is a third kind of non-user in the table after the Playwright profile and the
+  `nostore-` visits. No new human traffic, no new feedback: **nothing in the data generated a new
+  backlog item tonight**, which is worth saying plainly rather than inventing one.
+  **Backlog reconciliation, which was the larger part of the groom.** `## In progress` still read
+  "Quiet the swap-board CTAs — BUILT, NOT SHIPPED … this session could not push", a note that was
+  wrong in both halves for eight days: the work was pushed on 09-20, the push failure was fixed the
+  same day, and **the owner merged #118 last night at 20:30 ET** (`6ea400e`). Both that slot and the
+  P1 entry are now marked shipped. The loop lost a build item on five separate nights to an item
+  parked in `## Queue` pending a human decision; the fix recorded for next time is to park such
+  items under `## Blocked`, where they cannot sit at the top of a band and read as available work.
+  **What shipped: one load can no longer write two `session_end` rows that say the same thing.**
+  The 09-27 groom filed this as "shape of the fix not yet decided". Reading the code decided it in
+  one pass, and the interesting part is that `endSession` **already had a dedupe guard**:
+  `sent && n === sentN && now - sentAt < 60000`. Production device `c2fb3aa8` sent its two rows
+  **319 seconds apart** with an identical `n:4` and `last:shift_saved` — so the *minute clause*, the
+  half of the guard meant to catch a nurse who came back and kept using the app, is precisely what
+  let the duplicate through. It re-armed on elapsed time alone, and a bfcache restore with no
+  activity is exactly elapsed time alone. The second row carried nothing the first had not except a
+  larger `secs`, and the two rows reported **different user agents for one load** (`Ddg/26.6` and
+  `DuckDuckGo/7`), so a UA-based classifier reads one device as two.
+  The minute clause is removed; `sentLast` joins `sentN`, and only a changed `n`/`last` re-arms the
+  beacon — literally what the note asked for ("suppress when `n` and `last` are both unchanged").
+  `sentAt` is deleted rather than left unread, so nobody reading this in three months thinks the
+  time-based path still exists. A genuine second session after a restore still gets its own row,
+  because doing anything at all moves both fields.
+  **Verification.** 3 new assertions in `tests/smoke.mjs` §12, and the first of them is the one the
+  existing duplicate check structurally could not make: it skews the page clock forward five minutes
+  before hiding again, rather than hiding twice in 300ms. Negative-tested **both ways**, because
+  this fix has two ways to be wrong: restoring the minute clause fails the five-minute assertion and
+  **only** that one (9 passed / 1 failed), and replacing the guard with `if(sessionMeta.sent) return;`
+  — the "fire once per load" alternative the 09-27 note explicitly warned would lose a real
+  post-restore session — fails the two activity assertions and neither dedupe one (8 passed /
+  2 failed). Full gate green: check_build 11/11, groom_seed 33/33, smoke 0 failed.
+  **Not touched:** wage core (Invariant 3), the .ics parse region (open draft PR #131 sits there),
+  the swap board. Caveat carried forward: this changes what lands in `events`, so the already-known
+  device-count inflation gets a fourth contributor to subtract when the cohort re-baseline happens
+  — historical `session_end` duplicates stay in the table and are not retroactively removed.
 - 2026-09-28 (dedicated session, wage-core protocol) — **Imported shift times now honour the feed's
   timezone; they used to land 4 hours late.** The owner supplied a real NurseGrid feed, which is the
   first one this project has ever seen. It emits honest UTC — `DTSTART:20261005T041500Z` for a shift
