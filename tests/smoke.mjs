@@ -1452,6 +1452,37 @@ const run = async () => {
     ok('session_end: a second hide with nothing new does not write a duplicate', after === before,
       `${before} -> ${after}`);
 
+    /* The production case the assertion above could never catch, because it hides again
+       immediately. Device c2fb3aa8 sent two `session_end` rows for ONE load — 01:35:41 secs:71
+       and 01:41:00 secs:390, byte-identical otherwise, no `app_open` between them — because the
+       guard used to re-arm on a full minute elapsing as well as on the session moving. A bfcache
+       restore five minutes later therefore billed a second, ambiguous ending, and its row even
+       carried a different user agent (Ddg/26.6 vs DuckDuckGo/7), so a UA-based classifier read
+       one device as two. Skew the page clock past that old minute rather than waiting it out. */
+    await page.evaluate(() => { const real = Date.now; Date.now = () => real() + 5 * 60 * 1000; });
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(300);
+    const afterSkew = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean)
+      .filter((r) => r && r.name === 'session_end').length;
+    ok('session_end: a hide five minutes later, with nothing done, still writes no duplicate',
+      afterSkew === before, `${before} -> ${afterSkew}`);
+
+    /* And the other half, which is what stops the fix above from being "never fire twice": a
+       restore where she actually DID something must still record its own ending. Anything the
+       app tracks moves both `last` and `n`, which is the whole re-arm condition now. */
+    await page.evaluate(() => track('pattern_lab_opened'));
+    await page.waitForTimeout(150);
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await page.waitForTimeout(300);
+    const ends = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean)
+      .filter((r) => r && r.name === 'session_end');
+    ok('session_end: a hide after real activity does write the second row', ends.length === afterSkew + 1,
+      `${afterSkew} -> ${ends.length}`);
+    ok('session_end: and that second row reports the activity that re-armed it',
+      ends.length > afterSkew && ends[ends.length - 1].props
+        && ends[ends.length - 1].props.last === 'pattern_lab_opened',
+      ends.length > afterSkew ? JSON.stringify(ends[ends.length - 1].props) : '(no second row)');
+
     ok('session_end: no page error across the unload path', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();

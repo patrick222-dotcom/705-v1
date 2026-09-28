@@ -1932,7 +1932,7 @@ function beaconInsert(rows){
 
 /* What this page load has done so far. Module scope, not React state: the unload handler must
    be able to read it without a render having happened. */
-const sessionMeta = { t0: Date.now(), last: 'app_open', n: 0, sent: 0, sentN: -1, sentAt: 0 };
+const sessionMeta = { t0: Date.now(), last: 'app_open', n: 0, sent: 0, sentN: -1, sentLast: null };
 const SESSION_END_MAX = 4;   // hard cap per load — an app-switching phone must not bill the free tier
 
 function endSession(userId, extra){
@@ -1942,15 +1942,26 @@ function endSession(userId, extra){
     /* Re-fire only when the session actually moved. A phone backgrounded and reopened five
        times must not write five identical rows; but a nurse who comes back and finally saves
        a shift must not stay on record as having left before she did, so a changed event count
-       (or a full minute of further use) re-arms it. Read the LAST row for a load, not the first. */
-    if(sessionMeta.sent && sessionMeta.n === sessionMeta.sentN && now - sessionMeta.sentAt < 60000) return;
+       (or a changed `last`) re-arms it. Read the LAST row for a load, not the first.
+
+       There used to be a second way to re-arm: a full minute since the previous beacon, on the
+       theory that more time on the page was itself worth a row. It is not, and production
+       showed why. Device c2fb3aa8 (DuckDuckGo on iOS 18.6) sent `session_end` at 01:35:41 with
+       secs:71 and again at 01:41:00 with secs:390 — 319s apart, so the minute clause re-armed —
+       byte-identical otherwise (n:4, last:shift_saved, ob:null, via:link, shifts:2) with no
+       `app_open` between them. One bfcache restore, two exit rows for one load, and the two
+       rows carried DIFFERENT user agents (Ddg/26.6 and DuckDuckGo/7), so a UA-based device
+       classifier counts one device twice. The second row said nothing the first had not except
+       a larger `secs`, which is not worth an ambiguous ending. A genuine second session after a
+       restore still writes its own row, because doing anything at all moves `n` and `last`. */
+    if(sessionMeta.sent && sessionMeta.n === sessionMeta.sentN && sessionMeta.last === sessionMeta.sentLast) return;
     const props = Object.assign({
       secs: Math.min(Math.max(Math.round((now - sessionMeta.t0)/1000), 0), 86400),
       last: sessionMeta.last,
       n: sessionMeta.n
     }, extra || {});
     if(ARRIVED_VIA) props.via = ARRIVED_VIA;
-    sessionMeta.sent++; sessionMeta.sentN = sessionMeta.n; sessionMeta.sentAt = now;
+    sessionMeta.sent++; sessionMeta.sentN = sessionMeta.n; sessionMeta.sentLast = sessionMeta.last;
     beaconInsert([eventRow('session_end', props, userId)]);
   }catch(_){ /* diagnostics must never break the app they diagnose */ }
 }
