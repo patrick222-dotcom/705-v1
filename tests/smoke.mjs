@@ -2377,6 +2377,102 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 23. a webcal:// feed URL reaches the proxy as https -------------------------------
+     The night of 2026-09-28 is the whole reason this section exists. A real phone, signed in,
+     pasted the feed NurseGrid actually hands out -- `webcal://app.nursegrid.com/calendars/…` --
+     and every sync came back `400 https_only`: five 400s and a 422 in the function's edge log,
+     six `client_error` rows, zero shifts imported. Calendar sync is the substitution half of the
+     positioning, so this was the product's headline feature failing on its headline provider.
+
+     The trap is a WHATWG URL rule, not a typo. `webcal:` is a NON-SPECIAL scheme, and the
+     `protocol` setter refuses to turn a non-special scheme into a special one, so the proxy's
+     `target.protocol = "https:"` was a silent no-op and its own `https_only` guard then rejected
+     the URL it had just tried to fix. The fix swaps the scheme on the STRING instead, in the app,
+     at the boundary -- so the row that gets saved and every proxy call both carry https, and the
+     already-saved webcal row is repaired on read without a migration.
+
+     Writing this section turned up a second reason the string swap is mandatory, and it is worse
+     than the first: THE TWO ENGINES DISAGREE. Node 22 and Deno both parse URLs to the WHATWG spec
+     (Ada and rust-url respectively), where the setter is the no-op that caused the outage --
+     but Chromium accepts it and returns `https:`. So the app's own browser would have made the
+     setter look like it worked while the proxy's Deno rejected the same URL. Both halves are
+     asserted below, each labelled by engine: if they ever converge, the assertion that flips says
+     so out loud instead of leaving a stale comment nobody can check. */
+  if (want(23)) {
+    const { ctx, page } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof normalizeFeedUrl === 'function', null, { timeout: 20000 });
+
+    const n = await page.evaluate(() => {
+      /* The exact shape NurseGrid serves, per the 2026-09-28 confirmation in CLAUDE.md. */
+      const NG = 'webcal://app.nursegrid.com/calendars/12345/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+      const setterInChromium = (() => {
+        const u = new URL(NG);
+        u.protocol = 'https:';          // works HERE, and nowhere the proxy runs
+        return u.protocol;
+      })();
+      return {
+        setterInChromium,
+        ng: normalizeFeedUrl(NG),
+        ngProto: new URL(normalizeFeedUrl(NG)).protocol,
+        ngHost: new URL(normalizeFeedUrl(NG)).hostname,
+        secure: normalizeFeedUrl('webcals://app.nursegrid.com/x.ics'),
+        upper: normalizeFeedUrl('WEBCAL://app.nursegrid.com/x.ics'),
+        https: normalizeFeedUrl('https://calendar.google.com/calendar/ical/a/basic.ics'),
+        padded: normalizeFeedUrl('  webcal://app.nursegrid.com/x.ics  '),
+        midword: normalizeFeedUrl('https://calendar.google.com/webcal://not-a-scheme.ics'),
+        empty: normalizeFeedUrl(''),
+        nullish: normalizeFeedUrl(null),
+      };
+    });
+
+    /* The hazard itself, in the engine that actually runs the proxy. Node 22 and Deno share the
+       WHATWG behaviour (Ada / rust-url), so this is the production no-op reproduced locally. */
+    const setterInNode = (() => { const u = new URL('webcal://app.nursegrid.com/x.ics'); u.protocol = 'https:'; return u.protocol; })();
+    ok('feed url: [node/deno] the protocol setter CANNOT fix webcal — the production 400, reproduced',
+      setterInNode === 'webcal:', setterInNode);
+    /* And the divergence that would have hidden it: the browser says the setter is fine. */
+    ok('feed url: [chromium] the same setter DOES work, so engine parity was never safe to assume',
+      n.setterInChromium === 'https:', n.setterInChromium);
+    /* The fix, on the exact URL that failed in production. */
+    ok('feed url: a NurseGrid webcal feed normalizes to https', n.ngProto === 'https:', n.ng);
+    ok('feed url: and keeps its host, so the proxy allowlist still matches',
+      n.ngHost === 'app.nursegrid.com', n.ngHost);
+    ok('feed url: webcals:// normalizes too', n.secure === 'https://app.nursegrid.com/x.ics', n.secure);
+    ok('feed url: the scheme match is case-insensitive',
+      n.upper === 'https://app.nursegrid.com/x.ics', n.upper);
+    /* Google feeds are already https and must come through byte-identical -- they were the only
+       provider that ever worked, and this fix must not be the thing that breaks them. */
+    ok('feed url: an https Google feed is untouched',
+      n.https === 'https://calendar.google.com/calendar/ical/a/basic.ics', n.https);
+    ok('feed url: surrounding whitespace is trimmed (pasted links carry it)',
+      n.padded === 'https://app.nursegrid.com/x.ics', n.padded);
+    /* Anchored on purpose: only a LEADING scheme is a scheme. */
+    ok('feed url: "webcal://" inside the path is left alone',
+      n.midword === 'https://calendar.google.com/webcal://not-a-scheme.ics', n.midword);
+    ok('feed url: empty stays empty, so the "paste a link first" guard still fires', n.empty === '', n.empty);
+    ok('feed url: null does not throw', n.nullish === '', String(n.nullish));
+
+    /* A correct helper nothing calls is the six-fixes-a-revert-would-not-catch problem again
+       (BACKLOG 2026-09-22). Both write paths are signed-in-only, so the harness cannot drive them
+       end to end -- pin the wiring in the source instead. */
+    const src = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('feed url: runIcalSync normalizes before invoking ical-proxy',
+      /const url = normalizeFeedUrl\(\(opts && opts\.url\)/.test(src));
+    ok('feed url: onSaveIcalUrl saves the normalized form',
+      /const url = normalizeFeedUrl\(icalUrl\);/.test(src));
+    ok('feed url: providerOf classifies the normalized host',
+      /new URL\(normalizeFeedUrl\(url\)\)\.hostname/.test(src));
+    /* The half-fix this replaced: providerOf normalized for its own regex and threw the result
+       away, which is exactly why the app accepted the link and then never synced it. */
+    ok('feed url: no call site re-implements the scheme swap inline',
+      !/replace\(\/\^webcal:\/i,'https:'\)/.test(src));
+    /* The rejection copy named Google only, three weeks after NurseGrid support shipped. */
+    ok('feed url: the unsupported-link toast names both supported providers',
+      src.includes("Google Calendar or NurseGrid") && !src.includes('(Google Calendar for now)'));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -59,7 +59,22 @@ Deno.serve(async (req: Request) => {
   try { target = new URL(raw); } catch { return bad(400, "bad_url"); }
 
   // webcal:// is how calendars are often shared — treat it as https.
-  if (target.protocol === "webcal:") target.protocol = "https:";
+  //
+  // BUG, found 2026-09-28 from production: `target.protocol = "https:"` is a SILENT NO-OP here.
+  // `webcal:` is a non-special scheme per the WHATWG URL spec and the protocol setter refuses to
+  // turn a non-special scheme into a special one, so the guard below then rejected the very URL
+  // this line had just tried to fix — every real NurseGrid feed (`webcal://app.nursegrid.com/…`)
+  // came back `400 https_only`. Swap the scheme on the string and re-parse.
+  //
+  // NOTE: the DEPLOYED function still carries the broken line. It is unreachable in practice
+  // because index.html now normalizes the scheme before it ever calls this proxy (the app is the
+  // only caller), so no redeploy is needed for the fix to work — but this file is the source of
+  // truth and must not keep code that cannot do what its comment claims. Deploy it from a session
+  // that can actually exercise Deno; see BACKLOG.md.
+  if (target.protocol === "webcal:" || target.protocol === "webcals:") {
+    try { target = new URL(raw.replace(/^webcals?:\/\//i, "https://")); }
+    catch { return bad(400, "bad_url"); }
+  }
   if (target.protocol !== "https:") return bad(400, "https_only");
   if (!ALLOWLIST.some((re) => re.test(target.hostname))) return bad(403, "host_not_allowed");
 
