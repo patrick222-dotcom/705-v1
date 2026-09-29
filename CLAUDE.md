@@ -41,7 +41,16 @@ see Positioning.
   **not** narrowed to that exact host yet — one account is one sample, and a narrow pin that misses
   Courtney's subdomain would break the one user this app exists for. Narrow it when a second real
   feed agrees. What "no more need for NurseGrid" still lacks is **one end-to-end sync on a real
-  phone**; everything up to that point is now verified.
+  phone**.
+  **Corrected 2026-09-29:** this line used to end "everything up to that point is now verified",
+  which was one step too generous. That real phone *did* try to sync, and it **failed six times** —
+  NurseGrid hands out `webcal://app.nursegrid.com/…`, and `webcal:` is a non-special scheme whose
+  `protocol` setter cannot be reassigned to `https:`, so `ical-proxy` rejected every feed with
+  `400 https_only`. **No real NurseGrid feed had ever synced** since the subscription shipped on
+  2026-09-03. What 09-28 verified was the feed's *host and shape*, not that the app could read it.
+  Fixed in the app 2026-09-29 (`normalizeFeedUrl`, pinned by `tests/smoke.mjs` §23); the deployed
+  Edge Function still carries the broken line but can no longer be reached by it, because the app is
+  its only caller and now normalizes first.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
@@ -279,6 +288,11 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   any width.
 - **Calendar sync** never silently rewrites wage-affecting shifts: feed results go through the same
   import stepper. `ical-proxy` is host-allowlisted (Google + `nursegrid.com`, confirmed 2026-09-28).
+  **A feed URL is normalized to `https:` in the app before the proxy ever sees it** (2026-09-29):
+  `webcal://` and `webcals://` are swapped on the *string*, because `webcal:` is a non-special scheme
+  and the WHATWG `protocol` setter refuses to reassign it — Node and Deno enforce that, **Chromium
+  does not**, so a browser test of the setter passes while production returns `400`. Never rely on
+  the setter; `tests/smoke.mjs` §23 pins both engines.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used

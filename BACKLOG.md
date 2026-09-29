@@ -29,7 +29,14 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P0
-_(none)_
+- [x] ~~**Every real NurseGrid feed failed to sync — `webcal://` never reached the proxy as https**~~
+  — SHIPPED 2026-09-29 (see Done log). Found in the groom, not the queue: one real iPhone, signed
+  in, pasted the feed NurseGrid actually hands out and got **six `ical sync failed` rows and zero
+  shifts**. Root cause is a WHATWG URL rule — `webcal:` is a non-special scheme, so the proxy's
+  `target.protocol = "https:"` was a silent no-op and its own `https_only` guard then rejected the
+  URL it had just tried to fix (`400`, five times, in the function's edge log). Fixed in the app,
+  which is the proxy's only caller, so no redeploy was needed to make sync work. `tests/smoke.mjs`
+  §23, 16 assertions, five deliberate breaks.
 
 #### Resolved, kept for the lesson
 - [x] **The nightly loop could not push from a fresh session — the heartbeat commit was unwritable**
@@ -53,6 +60,22 @@ _(none)_
   reports SUCCEEDED while writing nothing is the signature.
 
 ### P1
+- [ ] **`ical sync failed` says nothing about WHY, and the only log that did expires in 24h** —
+  `harness:drivable` — filed 2026-09-29 by the run that shipped the webcal fix, because it very
+  nearly could not. The app's `client_error` row is the string `ical sync failed: Edge Function
+  returned a non-2xx status code` — supabase-js's generic message, with **no status and no error
+  body**. A `400 https_only`, a `403 host_not_allowed`, a `502 fetch_failed` and a `422
+  not_a_calendar` are all indistinguishable from the app's own telemetry, and the proxy already
+  returns a precise machine-readable `{error}` for each. The root cause was only findable because
+  the Edge Function's edge log still held the status codes — **and that log retains 24 hours.** The
+  failures were at 12:24–12:27 UTC on 09-28 and this run read them at 08:15 UTC on 09-29, 19h49m
+  later. Four hours' more delay and the single most important finding of the week would have been
+  an unexplained error string. Fix: read the failure body in `runIcalSync`'s catch (`error.context`
+  carries the Response on a FunctionsHttpError) and put the status plus the proxy's own `error` code
+  into the ring-buffer message. **It must stay money-and-credential-redacted** — the status and the
+  code, never the URL (Invariant 13). Drivable: stub the invoke to reject with each shape and assert
+  the buffered message. This is Invariant 4's lesson aimed at the sync path: a break nobody can see
+  ran 47 days, and this one was 19 hours from being invisible.
 - [ ] **Decide whether Settings should carry the durable route into the swap board** — `harness:drivable`
   — found while building the de-emphasis, 2026-09-20. The item below called entry point (2) "the
   Settings 'Shift swaps' card … the durable route in, it is where someone who already swaps would
@@ -242,6 +265,20 @@ _(none)_
   "Names stay hidden until everyone accepts." line now sits under the SUGGESTED FOR YOU header,
   above the swap suggestion cards.
 
+### P2 (new, groom 2026-09-29)
+- [ ] **One of the 09-28 sync attempts returned `422 not_a_calendar`, and nothing explains it** —
+  `harness:unscoped`, and deliberately recorded as **unverified** rather than diagnosed. The edge
+  log for that phone reads five `400`s (the webcal bug, now fixed), then a single **`422` at
+  12:26:32**, then a `400` and a `200` 0.7s apart at 12:27:18. A `422` means the proxy fetched the
+  target successfully and got a body with no `BEGIN:VCALENDAR` in it — i.e. an allowlisted host
+  answered `2xx` with something that was not a calendar, most likely an HTML login or error page.
+  The obvious reading is that the owner hand-edited the URL to `https://` mid-session and NurseGrid
+  served HTML to a request carrying no session cookie, but **the proxy never logs the URL
+  (Invariant 13, correctly), so that is a guess.** Do not build against it. What would settle it:
+  the P1 above, which would have put `422 not_a_calendar` in the client error row and told us which
+  URL shape produced it. If the real end-to-end sync comes back clean, this was transient and can
+  be closed.
+
 ### P2 (new, groom 2026-09-27)
 - [x] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~
   — SHIPPED 2026-09-28 (see Done log). The note below called the fix shape undecided; one look at
@@ -277,6 +314,18 @@ _(none)_
   question is whether the estimate card is a result or an obstacle, which is a design call.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+- [ ] **Redeploy `ical-proxy` — the deployed copy still carries the webcal no-op** (filed
+  2026-09-29). The fix that makes sync work shipped in `index.html`, which is the proxy's only
+  caller, so **nothing is broken by leaving this** — the deployed function simply never sees a
+  `webcal:` URL any more. The repo source is fixed and commented; the deployed bytes are not, so
+  they now differ from the file by more than the comment the 09-28 session left behind. Why the
+  nightly did not just deploy it: there is no Deno in the container and the harness cannot reach the
+  function, so a deploy would have been an **untested change to production infra on the sync path**
+  — and a mistake there would break the Google feeds that are the only ones that have ever worked.
+  Do it from a session that can exercise the function directly (a `curl` with a real JWT against
+  each of: a webcal NurseGrid URL, an https Google URL, a non-allowlisted host, and a plain-`http`
+  URL, expecting 200/200/403/400). Pair it with the `security-08` `role === 'authenticated'` check
+  from the hardening session so the function is deployed once, not twice.
 
 - **Move off the indigo/purple brand accent (owner call, 2026-09-27).** `harness:drivable`. The
   owner agrees indigo `#5B4FE9` plus the purple-tinted ambient gradients reads as a stock
@@ -906,6 +955,60 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-29 (nightly) — **The one feature the whole positioning rests on had never worked on a real
+  NurseGrid feed, and the groom caught it 19 hours before the evidence expired.**
+  **Groom.** `silence_watch` → **FRESH** (newest event 13.7h old, 48h window), so no health proof was
+  needed. `events` is at **1,039 rows, up 12** from 1,027; `feedback` is unchanged at **11 rows** and
+  has still not moved since 2026-09-14. No activation figure is quoted, and none should be — the
+  device classifier is still broken and every figure since 2026-09-07 is inflated. `groom_seed
+  --apply` produced **no diff**: the managed block was already current at 12 candidates.
+  Two devices in the 12 new rows, and one of them is the whole report. `a4db03b3` is Firefox 102 on
+  Linux/X11 doing `app_open` + `ob_step {step:0}` + `session_end {secs:2}` — crawler shape, the
+  fourth kind of non-user now in the table. **`8e0e32fe` is a real iPhone** (iOS 27.2, Chrome 154),
+  signed in with Google at 12:22 UTC on 09-28, 7 shifts, an `ics_exported` — the owner doing the
+  NurseGrid work CLAUDE.md records for that date. It also emitted **six `client_error` rows, every
+  one of them `ical sync failed: Edge Function returned a non-2xx status code`**, and not a single
+  shift came in from the feed.
+  **What shipped: a `webcal://` feed URL now reaches the proxy as `https://`.** The Edge Function's
+  own log gave the statuses the app's telemetry did not: **five `400`s and one `422`** between
+  12:24:34 and 12:26:32. A `400` from `ical-proxy` has exactly four causes and only one of them can
+  happen to a saved link — `https_only`. The cause is a WHATWG URL rule, not a typo: `webcal:` is a
+  **non-special scheme**, and the `protocol` setter *refuses* to turn a non-special scheme into a
+  special one, so the proxy's `target.protocol = "https:"` was a **silent no-op** and the
+  `https_only` guard on the next line rejected the URL that line had just tried to fix. NurseGrid's
+  "Generate Nursegrid Calendar Feed" hands out `webcal://app.nursegrid.com/calendars/…`, so **every
+  real NurseGrid feed failed, every time, since the subscription shipped on 2026-09-03** — while the
+  app said "Calendar link saved." and then failed silently on each app open.
+  Fixed in `index.html`, not in the function: the app is the proxy's only caller, so one
+  `normalizeFeedUrl` at the boundary makes sync work with no production infra touched. It swaps the
+  scheme on the **string**, before anything parses it, and runs in all three places that matter —
+  what `onSaveIcalUrl` persists, what `runIcalSync` sends (so the row already saved as `webcal://`
+  is repaired on read, with no migration), and what `providerOf` classifies. `providerOf` had been
+  doing this swap *for its own regex* since day one and throwing the result away, which is precisely
+  why the link validated and then never synced. The rejection toast, which still said "(Google
+  Calendar for now)" three weeks after NurseGrid support landed, now names both.
+  **The assertion found something the fix did not: the two engines disagree.** Node 22 and Deno both
+  parse to the WHATWG spec (Ada, rust-url) and give the no-op that caused the outage — **Chromium
+  accepts the setter and returns `https:`**. So a browser-side test of the original code would have
+  passed while production failed, and any future reliance on the setter is a bet on engine parity.
+  Both halves are now asserted, each labelled by engine, so a convergence announces itself.
+  `tests/smoke.mjs` §23 — **16 assertions, negative-tested five ways** (helper stops swapping; each
+  of the three call sites un-wired in turn; the stale toast copy restored), each break failing its
+  own assertions and no others. Full suite **347 passed / 0 failed**; gate 11/11; groom_seed 33/33.
+  **What this does NOT mean.** CLAUDE.md said on 09-28 that "everything up to that point is now
+  verified" and only the real-phone sync was missing. That was too generous by one step: the real
+  phone *had* tried, and it failed — what 09-28 verified was the feed's host and shape, not that the
+  app could read it. Corrected in CLAUDE.md tonight. The end-to-end sync on a real phone is still
+  the open item, and it is now worth far more than it was yesterday, because for the first time
+  there is reason to believe it will succeed.
+  **Two items filed from the diagnosis, and the P1 matters more than tonight's build.** The app's
+  error row carries no status and no body — `400`, `403`, `422` and `502` are indistinguishable from
+  the app's own telemetry, and the only log that held the difference **retains 24 hours**. The
+  failures were 19h49m old when this run read them. Four hours later and the most important finding
+  of the week would have been an unexplained string. Also filed: the unexplained `422` (recorded as
+  **unverified**, with what would settle it) and the `ical-proxy` redeploy, which is deliberately
+  *not* a nightly job — no Deno in the container, and an untested deploy on the sync path risks the
+  Google feeds that are the only ones that have ever worked.
 - 2026-09-28 (nightly) — **The owner merged #118, so the queue has a top slot again; the run spent
   it on the duplicate-`session_end` bug and found the fix already half-written.**
   **Groom.** `silence_watch` → **FRESH** (newest event 18.7h old, 48h window), so no health proof

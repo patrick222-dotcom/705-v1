@@ -2099,6 +2099,17 @@ async function loadCloudRow(userId){
    It therefore lives in its OWN table (ical_subscriptions), NEVER in the user_data blob (which is
    exported by "Export data", mirrored to localStorage, and echoed through the 15s sync poll). RLS is
    owner-only; analytics/events never touch it. Signed-in users only. */
+/* A secret feed URL is very often handed out as `webcal://…` — NurseGrid's "Generate Nursegrid
+   Calendar Feed" does exactly that (confirmed against a real feed 2026-09-28). `webcal:` is a
+   NON-SPECIAL scheme in the WHATWG URL spec, and the `protocol` setter REFUSES to change a
+   non-special scheme into a special one, so `u.protocol='https:'` is a SILENT NO-OP on a webcal
+   URL. ical-proxy did exactly that and then rejected anything still not https, which is why every
+   NurseGrid sync on 2026-09-28 came back `400 https_only` — six client_error rows from one real
+   phone, and not one working sync, on the feature the whole positioning rests on.
+   Swap the scheme on the STRING, before anything parses it, and do it once at the boundary so the
+   saved row and every proxy call both carry https. `webcals://` is the same idea, spelled secure. */
+const normalizeFeedUrl = (url) => String(url == null ? '' : url).trim().replace(/^webcals?:\/\//i, 'https://');
+
 async function loadIcalSub(userId){
   if(!supabase || !userId) return null;
   const {data,error} = await supabase
@@ -3937,7 +3948,7 @@ function App(){
      `manual` distinguishes a user-tapped "Sync now" (toasts on every outcome) from the silent
      once-per-app-open background sync (stays quiet unless there's something to confirm). */
   const providerOf = (url)=>{
-    try{ const h=new URL(String(url).replace(/^webcal:/i,'https:')).hostname.toLowerCase();
+    try{ const h=new URL(normalizeFeedUrl(url)).hostname.toLowerCase();
       if(/(^|\.)google\.com$/.test(h)) return 'google';
       if(/(^|\.)nursegrid\.com$/.test(h)) return 'nursegrid';
     }catch(_){}
@@ -3945,7 +3956,8 @@ function App(){
   };
   const runIcalSync = async (opts)=>{
     const manual = !!(opts && opts.manual);
-    const url = (opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl;
+    // normalizeFeedUrl here, not only on save: a row saved before this fix still holds webcal://.
+    const url = normalizeFeedUrl((opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl);
     if(!supabase || !user || hydratedForUser.current!==user.id || !url) return;
     if(icalInFlight.current) return;
     icalInFlight.current = true; setIcalBusy(true);
@@ -3985,10 +3997,10 @@ function App(){
   };
   const onSaveIcalUrl = async ()=>{
     if(!user){ toast('Sign in to sync your schedule.','info'); return; }
-    const url = (icalUrl||'').trim();
+    const url = normalizeFeedUrl(icalUrl);
     if(url.length<12){ toast('Paste your calendar link first.','error'); return; }
     if(providerOf(url)===null){
-      toast("That link isn't from a supported calendar yet (Google Calendar for now).",'error'); return;
+      toast("That link isn't from a supported calendar yet — Google Calendar or NurseGrid.",'error'); return;
     }
     setIcalBusy(true);
     try{
