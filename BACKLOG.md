@@ -60,7 +60,15 @@ and the push P0 it pointed at was fixed the same day.
   reports SUCCEEDED while writing nothing is the signature.
 
 ### P1
-- [ ] **`ical sync failed` says nothing about WHY, and the only log that did expires in 24h** —
+- [x] ~~**`ical sync failed` says nothing about WHY, and the only log that did expires in 24h**~~ —
+  SHIPPED 2026-09-30 (see Done log). `icalFailureDetail` reads the Response off `error.context` and
+  the row now reads `ical sync failed: 422 not_a_calendar` instead of one generic sentence.
+  **The groom proved the item's own premise a second time while building it:** with the webcal fix
+  live, the real phone got a `422` at 11:53:07 on 09-29 and the app's record of it was — again — the
+  undiagnosable string, so this run had to read the 24-hour ClickHouse edge log for the second night
+  running to learn something the app already knew and threw away. `tests/smoke.mjs` §24, 24
+  assertions, five deliberate breaks. Original note below:
+- [ ] ~~**`ical sync failed` says nothing about WHY, and the only log that did expires in 24h**~~ —
   `harness:drivable` — filed 2026-09-29 by the run that shipped the webcal fix, because it very
   nearly could not. The app's `client_error` row is the string `ical sync failed: Edge Function
   returned a non-2xx status code` — supabase-js's generic message, with **no status and no error
@@ -265,6 +273,18 @@ and the push P0 it pointed at was fixed the same day.
   "Names stay hidden until everyone accepts." line now sits under the SUGGESTED FOR YOU header,
   above the swap suggestion cards.
 
+### P2 (new, groom 2026-09-30)
+- [ ] **`ics_sync_done` and `ics_import_done` carry no provider, so the metric that matters cannot
+  be counted** — `harness:drivable` — found while confirming the first real NurseGrid sync. The two
+  events that prove the substitution half of the positioning is working (`ics_sync_done {events:N}`,
+  `ics_import_done {added,updated,skipped,removed,shown}`) say nothing about WHICH provider the feed
+  came from, and `providerOf` has the answer in hand at the call site. So "how many NurseGrid syncs
+  succeeded" is not answerable from `events` — tonight's count came from cross-referencing an edge
+  log that expires in 24 hours against a `session_end` row's shift count. Adding `provider` to both
+  event props is coarse, non-identifying and carries no wage figure, so it is inside the analytics
+  rules (CLAUDE.md → Analytics). Cheap, and it makes the one number the positioning rests on a
+  query instead of an excavation. Drivable: stub the sync and assert the tracked props.
+
 ### P2 (new, groom 2026-09-29)
 - [ ] **One of the 09-28 sync attempts returned `422 not_a_calendar`, and nothing explains it** —
   `harness:unscoped`, and deliberately recorded as **unverified** rather than diagnosed. The edge
@@ -278,6 +298,21 @@ and the push P0 it pointed at was fixed the same day.
   the P1 above, which would have put `422 not_a_calendar` in the client error row and told us which
   URL shape produced it. If the real end-to-end sync comes back clean, this was transient and can
   be closed.
+  **2026-09-30 — the closing condition was tested and it did NOT close. Do not treat this as
+  transient.** The real end-to-end sync did come back clean (see the Done log: `ics_sync_done` →
+  `ics_import_done`, 3 shifts), **and the 422 happened again in the very same session, on the fixed
+  build.** The edge log for 09-29 reads `POST 422` at 11:53:07.977, then `POST 200` at 11:53:31.672
+  — twenty-four seconds apart — then another `POST 200` at 11:56:49. Zero 400s, so the webcal fix
+  is sound and this is a separate fault. Two sessions, two 422s, both as the FIRST proxy call of the
+  load, both followed by a success on retry: that is a pattern, not a blip, and the reading that it
+  was a hand-edited URL no longer fits, because nobody hand-edits a URL twice on two days and gets
+  the same shape. Leading hypothesis, still **unverified**: NurseGrid answers the first request of a
+  session with an HTML interstitial (cold cache, rate limit, or a cookie it only sets on the first
+  hit) and the real calendar on the second. What would settle it: the P1 shipped tonight now puts
+  `422 not_a_calendar` in `client_error`, so the next occurrence is legible from the app's own data
+  with no 24-hour deadline. **Do not build a blind retry against this yet** — one silent retry of
+  every sync doubles the load on a provider we do not control, and the hypothesis is a guess. Read
+  one more real occurrence first.
 
 ### P2 (new, groom 2026-09-27)
 - [x] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~
@@ -882,6 +917,15 @@ here so the loop's queue contains only work it can actually finish; pick these u
   `ical-proxy/index.ts` was the comment recording the verification. What is left is not owner-blocked
   any more — it is one end-to-end sync on a real phone, which belongs in a dedicated session because
   the import stepper's pay-type questionnaire has never been driven against a real NurseGrid feed.
+  **CLOSED 2026-09-30 — that sync happened, on 2026-09-29 at 11:53 UTC.** The owner's iPhone synced
+  a real NurseGrid feed and imported 3 shifts through the stepper (`ics_sync_done {events:3}` →
+  `ics_import_done {added:3, updated:0, skipped:0, removed:0}`, `session_end` shift count 7 → 10),
+  3h18m after the webcal fix deployed. So the pay-type questionnaire HAS now been driven against a
+  real NurseGrid feed. **What is still unverified is whether the imported shifts are CORRECT** — the
+  times, the inferred pay types and therefore the dollar figures. Nothing in the app reports that,
+  and the only channel that would is the *A number looks wrong* feedback tile (Invariant 3, Detect:
+  none automated). Three shifts on a real schedule is a small enough set for the owner to eyeball
+  once; that check is the last thing between "sync works" and "sync is trustworthy".
 - [ ] **Feedback → email (Resend)** — Edge Function formats each new `feedback` row + sends via
   Resend `onboarding@resend.dev` → owner email; DB webhook on `feedback` INSERT calls it.
   **BLOCKED** on a Resend API key (`re_...`) + destination email from the owner.
@@ -955,6 +999,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-09-30 (nightly) — **The first real NurseGrid sync in the app's life succeeded, and the run
+  shipped the diagnostic that made it legible.**
+  **Groom.** `silence_watch` → **FRESH** (newest event 19.3h old, 48h window), so no health proof was
+  owed. `events` **1050 rows, up from 994** — the first movement since 09-23, and all of it worth
+  reading. `feedback` unchanged at 11 rows, newest 2026-09-14, nothing in 7 days. Activation
+  deliberately **not** quoted: the device classifier is still broken (CLAUDE.md → Ops dashboard).
+  **The headline is in the data, not the queue.** On 2026-09-29 at 11:53 UTC the owner's iPhone
+  (iOS 27_2_0) ran `ics_sync_done {events:3}` → `ics_import_done {added:3, updated:0, skipped:0,
+  removed:0}`, and its `session_end` shift count went 7 → 10. The function's edge log agrees:
+  `POST 200` at 11:53:31 and again at 11:56:49, and **zero 400s** — the webcal fix shipped at 08:35
+  UTC that morning held on the feed that had failed six times the day before. That closes the one
+  gap CLAUDE.md named for "no more need for NurseGrid": **one end-to-end sync on a real phone.** The
+  import stepper's pay-type questionnaire has now been driven against a real NurseGrid feed too.
+  Not claimed: that the 3 imported shifts are *right*. No channel reports that (Invariant 3).
+  **And the 422 is not transient — the item's own closing condition was tested and failed.** The same
+  session shows `POST 422` at 11:53:07.977, 24 seconds before the success. Two sessions, two 422s,
+  both the first proxy call of the load, both followed by a retry that worked. The hand-edited-URL
+  reading no longer fits. Recorded as a pattern with an explicit "do not build a blind retry yet".
+  **Built: `ical sync failed` now says why** (P1, filed by last night's run). `icalFailureDetail`
+  reads the Response supabase-js hands back on `error.context` and logs **status + the proxy's own
+  machine-readable `{error}` code**, so `400 https_only`, `403 host_not_allowed`, `422
+  not_a_calendar` and `502 fetch_failed` are four different rows instead of one generic sentence.
+  Invariant 13 is the other half: the code is **whitelisted** to `/^[a-z][a-z0-9_]{0,31}$/` rather
+  than trusted, so an HTML login page, an over-long value or a URL in the `error` field degrades to
+  the bare status instead of echoing itself into `client_error`. A statusless failure (the 12s
+  timeout, a relay error) keeps its own message.
+  **Why this was the right item tonight:** this run had to read a **24-hour** ClickHouse edge log for
+  the **second consecutive night** to diagnose a sync failure the app had already seen and discarded.
+  Last night's margin was 19h49m; tonight's was 19.3h. That is Invariant 4's lesson — a break nobody
+  can see ran 47 days — twice, on the feature the positioning rests on.
+  **Gate.** `check_build` 11/11; `test_groom_seed` 33/33; `smoke` **371 passed / 0 failed**
+  (was 347 — `tests/smoke.mjs` §24 adds 24). **Five deliberate breaks, each caught by exactly the
+  right assertions:** reverting the catch → the 2 wiring pins; removing the whitelist → all 5
+  Invariant-13 assertions, printing the leaked feed URL; never reading the body → the 5 naming
+  assertions plus the ring-buffer one; restoring the pre-fix helper wholesale → 15 of 24; dropping
+  the `await` (which would log `[object Promise]`) → the wiring pin. `index.html` restored
+  byte-identically after each, confirmed by md5.
+  **One pre-existing assertion earned its keep:** council #27 pins the source shape
+  `catch(e){\n  console.error('ical sync failed:'`, and a comment inserted inside the catch block
+  broke it. Fixed by moving the comment *above* the `catch` rather than loosening someone else's
+  regex — and the comment now says why that line must stay first.
 - 2026-09-29 (nightly) — **The one feature the whole positioning rests on had never worked on a real
   NurseGrid feed, and the groom caught it 19 hours before the evidence expired.**
   **Groom.** `silence_watch` → **FRESH** (newest event 13.7h old, 48h window), so no health proof was

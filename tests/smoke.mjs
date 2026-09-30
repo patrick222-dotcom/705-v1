@@ -2473,6 +2473,141 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 24. a failed sync says WHY, in the only record that outlives the day --------------------
+     Filed by the run that shipped §23, because it very nearly could not diagnose it. The app's
+     `client_error` row for every sync failure was one fixed string -- supabase-js's generic
+     "Edge Function returned a non-2xx status code" -- carrying no status and no body. A `400
+     https_only` (the webcal bug), a `403 host_not_allowed`, a `422 not_a_calendar` and a `502
+     fetch_failed` were therefore INDISTINGUISHABLE in the app's own telemetry, even though the
+     proxy already returns a precise machine-readable `{error}` for each one.
+     The 2026-09-28 root cause was findable only because the Edge Function's edge log still held the
+     status codes, and that log retains 24 HOURS. The failures were at 12:24-12:27 UTC on 09-28; the
+     groom read them at 08:15 UTC on 09-29, 19h49m later. Four more hours and the single most
+     important finding of the week would have been an unexplained error string.
+     The 2026-09-29 groom then proved the point twice over: with the webcal fix live, a real phone
+     got a `422` at 11:53:07 and a clean `200` twenty-four seconds later, and the app's own row for
+     that 422 was -- again -- the same generic sentence. Two consecutive nights of reading a
+     24-hour ClickHouse log to learn something the app already knew and threw away.
+
+     The other half of this is what a failure may NOT say. The feed URL is a bearer credential
+     (Invariant 13), and a 2xx from an allowlisted host can be an HTML login page, so the proxy's
+     error code is WHITELISTED to a short snake_case token rather than trusted: anything else
+     degrades to the bare status. The hostile cases below are the point of the section, not padding
+     -- a diagnostic that leaks the credential it was added to debug is worse than no diagnostic. */
+  if (want(24)) {
+    const { ctx, page } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof icalFailureDetail === 'function', null, { timeout: 20000 });
+
+    const d = await page.evaluate(async () => {
+      /* The exact shape supabase-js throws on a non-2xx: a FunctionsHttpError whose `.context`
+         is the undrained Response. Built with a real Response so `.clone()` behaves as in prod. */
+      const httpErr = (status, bodyText, type) => {
+        const e = new Error('Edge Function returned a non-2xx status code');
+        e.name = 'FunctionsHttpError';
+        e.context = new Response(bodyText, { status, headers: { 'content-type': type || 'application/json' } });
+        return e;
+      };
+      const j = (status, code) => httpErr(status, JSON.stringify({ error: code }));
+      const drained = (() => {
+        const e = j(400, 'https_only');
+        e.context.text();                      // consume it, the way a careless caller would
+        return e;
+      })();
+      return {
+        /* The four the proxy actually returns, all previously identical in client_error. */
+        httpsOnly: await icalFailureDetail(j(400, 'https_only')),
+        notCalendar: await icalFailureDetail(j(422, 'not_a_calendar')),
+        hostNotAllowed: await icalFailureDetail(j(403, 'host_not_allowed')),
+        fetchFailed: await icalFailureDetail(j(502, 'fetch_failed')),
+        tooLarge: await icalFailureDetail(j(413, 'too_large')),
+        /* No status to add: the 12s withTimeout, and a relay/network failure. */
+        timeout: await icalFailureDetail(new Error('ical sync timed out')),
+        noContext: await icalFailureDetail(new Error('Failed to send a request to the Edge Function')),
+        nullish: await icalFailureDetail(null),
+        /* Hostile / unexpected bodies -- each must degrade, never echo. */
+        htmlBody: await icalFailureDetail(httpErr(400, '<html><body>Sign in</body></html>', 'text/html')),
+        credential: await icalFailureDetail(j(422, 'https://app.nursegrid.com/calendars/12345/6f1c8e2a-secret')),
+        spaced: await icalFailureDetail(j(400, 'https_only; url=webcal://app.nursegrid.com/x.ics')),
+        emptyCode: await icalFailureDetail(j(400, '')),
+        longCode: await icalFailureDetail(j(400, 'a'.repeat(300))),
+        noErrorKey: await icalFailureDetail(httpErr(400, JSON.stringify({ detail: 'nope' }))),
+        drained: await icalFailureDetail(drained),
+        /* And the whole pipeline: console.error is mirrored into the ring buffer that becomes the
+           `client_error` row. An improved string that never reaches the buffer fixes nothing. */
+        buffered: await (async () => {
+          try { localStorage.removeItem('scrubpayErrors'); } catch (_) {}
+          console.error('ical sync failed:', await icalFailureDetail(j(422, 'not_a_calendar')));
+          try { return localStorage.getItem('scrubpayErrors') || ''; } catch (_) { return ''; }
+        })(),
+      };
+    });
+
+    /* The four distinct verdicts. Before this, all four read the same sentence. */
+    ok('ical error: a 400 names https_only (the webcal outage, self-describing now)',
+      d.httpsOnly === '400 https_only', d.httpsOnly);
+    ok('ical error: a 422 names not_a_calendar (the real 2026-09-29 failure)',
+      d.notCalendar === '422 not_a_calendar', d.notCalendar);
+    ok('ical error: a 403 names host_not_allowed', d.hostNotAllowed === '403 host_not_allowed', d.hostNotAllowed);
+    ok('ical error: a 502 names fetch_failed', d.fetchFailed === '502 fetch_failed', d.fetchFailed);
+    ok('ical error: a 413 names too_large', d.tooLarge === '413 too_large', d.tooLarge);
+    /* The point of the section in one assertion: they are no longer the same string. */
+    ok('ical error: the four proxy failures are four distinct messages',
+      new Set([d.httpsOnly, d.notCalendar, d.hostNotAllowed, d.fetchFailed]).size === 4,
+      [d.httpsOnly, d.notCalendar, d.hostNotAllowed, d.fetchFailed].join(' | '));
+    ok('ical error: and none of them is still the generic supabase-js sentence',
+      ![d.httpsOnly, d.notCalendar, d.hostNotAllowed, d.fetchFailed]
+        .some((m) => /non-2xx status code/.test(m)));
+
+    /* A statusless error keeps its own message -- a timeout is not a proxy verdict. */
+    ok('ical error: a timeout with no Response keeps its own message',
+      d.timeout === 'ical sync timed out', d.timeout);
+    ok('ical error: a relay/network failure keeps its own message',
+      d.noContext === 'Failed to send a request to the Edge Function', d.noContext);
+    ok('ical error: a null error does not throw', typeof d.nullish === 'string', String(d.nullish));
+
+    /* Degradation, not echoing. */
+    ok('ical error: an HTML body degrades to the bare status',
+      d.htmlBody === '400 (no error code in body)', d.htmlBody);
+    ok('ical error: a JSON body with no error key degrades to the bare status',
+      d.noErrorKey === '400 (no error code in body)', d.noErrorKey);
+    ok('ical error: an empty error code degrades rather than printing "400 "',
+      d.emptyCode === '400 (no error code in body)', d.emptyCode);
+    ok('ical error: an over-long code is rejected by the whitelist',
+      d.longCode === '400 (no error code in body)', d.longCode);
+    ok('ical error: an already-drained Response still yields its status',
+      d.drained === '400 (no error code in body)', d.drained);
+
+    /* Invariant 13. If the proxy is ever changed to put a URL in `error`, this is what catches it. */
+    ok('ical error: a URL in the error field is NOT echoed',
+      d.credential === '422 (no error code in body)', d.credential);
+    ok('ical error: a code with a URL appended is NOT echoed',
+      d.spaced === '400 (no error code in body)', d.spaced);
+    const everyMsg = Object.values(d).map(String).join(' || ');
+    ok('ical error: no message anywhere in this section contains a feed host or scheme',
+      !/nursegrid|webcal|calendar\.google/i.test(everyMsg),
+      everyMsg.slice(0, 200));
+    ok('ical error: no message leaks a url scheme at all', !/https?:\/\//.test(
+      [d.httpsOnly, d.notCalendar, d.hostNotAllowed, d.fetchFailed, d.credential, d.spaced].join(' ')));
+
+    /* End to end: the string reaches the ring buffer that becomes the client_error row. */
+    ok('ical error: the detail reaches the scrubpayErrors ring buffer',
+      /ical sync failed: 422 not_a_calendar/.test(d.buffered), d.buffered.slice(0, 240));
+    ok('ical error: and the buffered row carries no feed url',
+      !/nursegrid|webcal/i.test(d.buffered), d.buffered.slice(0, 240));
+
+    /* A correct helper nothing awaits is the six-fixes-a-revert-would-not-catch problem again:
+       without the await, `console.error` would log "[object Promise]" and lose the whole point. */
+    const src24 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok("ical error: runIcalSync's catch awaits icalFailureDetail",
+      /console\.error\('ical sync failed:', await icalFailureDetail\(e\)\)/.test(src24));
+    ok('ical error: the old bare-message log is gone',
+      !/console\.error\('ical sync failed:', \(e && e\.message\)/.test(src24));
+    ok('ical error: the whitelist is anchored at both ends',
+      /const ICAL_ERR_CODE = \/\^\[a-z\]\[a-z0-9_\]\{0,31\}\$\//.test(src24));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

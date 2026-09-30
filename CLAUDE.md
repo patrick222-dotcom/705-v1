@@ -51,6 +51,29 @@ see Positioning.
   Fixed in the app 2026-09-29 (`normalizeFeedUrl`, pinned by `tests/smoke.mjs` §23); the deployed
   Edge Function still carries the broken line but can no longer be reached by it, because the app is
   its only caller and now normalizes first.
+  **The gap closed 2026-09-29 at 11:53 UTC, confirmed by the 09-30 groom: a real NurseGrid feed
+  synced end to end on a real phone.** `ics_sync_done {events:3}` → `ics_import_done {added:3}`,
+  the device's `session_end` shift count 7 → 10, and `POST 200` twice in the function's edge log
+  with **zero 400s**, 3h18m after the fix deployed. So the substitution half of the positioning is
+  real, the import stepper's pay-type questionnaire has been driven against a real NurseGrid feed,
+  and "no more need for NurseGrid" now lacks only one thing: **nobody has checked that the 3
+  imported shifts are correct** — their times, inferred pay types and therefore their dollar
+  figures. That is Invariant 3 territory with `Detect: none automated`, so it needs the owner's eyes
+  once, not a test. Do not upgrade this line to "verified" until that happens; the 09-29 correction
+  above is what over-claiming here looks like.
+  **A separate fault survives the fix and is NOT transient:** the first proxy call of a load has
+  returned `422 not_a_calendar` on both real sessions (09-28 12:26:32, 09-29 11:53:07), each time
+  followed by a retry that succeeded 24s later. Hypothesis (**unverified**): NurseGrid serves an
+  HTML interstitial on the first hit. Legible from `client_error` from 2026-09-30 on — see below —
+  so read one more real occurrence before building a retry against a guess. `BACKLOG.md` → P2.
+  **Since 2026-09-30 a failed sync says why.** `icalFailureDetail` puts the HTTP status and the
+  proxy's own `{error}` code in the ring buffer, so the four proxy failures are four distinct
+  `client_error` rows instead of supabase-js's one generic sentence. The code is **whitelisted** to
+  a short snake_case token, never trusted: an HTML body or a URL in the `error` field degrades to
+  the bare status, because the feed URL is a bearer credential (Invariant 13). Pinned by
+  `tests/smoke.mjs` §24. This exists because diagnosing the two failures above required the Edge
+  Function's edge log, **which retains 24 hours** — the 09-29 groom read it with 4h11m to spare and
+  the 09-30 groom with 4h42m. Two consecutive nights one bad night away from losing the evidence.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
