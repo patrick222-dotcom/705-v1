@@ -2110,6 +2110,35 @@ async function loadCloudRow(userId){
    saved row and every proxy call both carry https. `webcals://` is the same idea, spelled secure. */
 const normalizeFeedUrl = (url) => String(url == null ? '' : url).trim().replace(/^webcals?:\/\//i, 'https://');
 
+/* What a FAILED sync is allowed to say about itself. supabase-js reports any non-2xx from an Edge
+   Function as one generic string — "Edge Function returned a non-2xx status code" — with no status
+   and no body, so `400 https_only`, `403 host_not_allowed`, `422 not_a_calendar` and `502
+   fetch_failed` all landed in `client_error` as the same undiagnosable sentence. The 2026-09-28
+   webcal outage was only solvable because the function's own edge log still held the status codes,
+   and THAT LOG RETAINS 24 HOURS: the failures were 19h49m old when the groom read them. Four hours
+   more and the week's most important finding would have been an unexplained error string. This is
+   Invariant 4's lesson (a break nobody can see ran 47 days) aimed at the sync path.
+   On a FunctionsHttpError supabase-js hands the whole Response back on `.context`, so the status
+   and the proxy's own machine-readable `{error}` code are both there for the asking.
+   Take EXACTLY those two and nothing else. The feed URL is a bearer credential (Invariant 13) and
+   must never reach the buffer, and an upstream 2xx can be an HTML login page, so the code is
+   WHITELISTED to a short snake_case token rather than trusted — an unexpected body degrades to the
+   status alone instead of echoing itself. Read a clone: the caller may still want the original. */
+const ICAL_ERR_CODE = /^[a-z][a-z0-9_]{0,31}$/;
+async function icalFailureDetail(e){
+  const base = (e && e.message) || String(e);
+  const res = e && e.context;
+  if(!res || typeof res.status !== 'number') return base;   // timeout / network / relay: no status to add
+  let code = '';
+  try{
+    const src = typeof res.clone === 'function' ? res.clone() : res;
+    const body = typeof src.json === 'function' ? await src.json() : null;
+    const raw = body && body.error;
+    if(typeof raw === 'string' && ICAL_ERR_CODE.test(raw)) code = raw;
+  }catch(_){}
+  return code ? res.status + ' ' + code : res.status + ' (no error code in body)';
+}
+
 async function loadIcalSub(userId){
   if(!supabase || !userId) return null;
   const {data,error} = await supabase
@@ -3988,8 +4017,11 @@ function App(){
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
         answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true });
       track('ics_sync_done', {events:parsed.events.length}, user.id);
+    // The catch logs status + the proxy's own error code, never the URL (Invariant 13) — see
+    // icalFailureDetail. Keep console.error as the FIRST statement in the block: council #27
+    // pins that shape in tests/smoke.mjs to prove a failed background sync is still recorded.
     }catch(e){
-      console.error('ical sync failed:', (e && e.message) || String(e));   // mirrored into the ring buffer -> client_error; the URL is never logged
+      console.error('ical sync failed:', await icalFailureDetail(e));   // -> ring buffer -> client_error
       if(manual) toast("Couldn't reach your calendar. Check the link and try again.",'error');
     }finally{
       icalInFlight.current = false; setIcalBusy(false);
