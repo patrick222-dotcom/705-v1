@@ -382,6 +382,84 @@ and the push P0 it pointed at was fixed the same day.
   whose token lives in the URL fragment, so it can never be fetched server-side. The feed is a
   separate thing behind a different menu item. **Remaining:** one end-to-end sync on a real phone.
 
+- **Stamp `jobId` at write time, before a second job can ever exist (owner call, 2026-09-29).**
+  `harness:drivable`. This is the cheap half of the multi-job work and it is a *data hygiene*
+  deadline, not a feature: **no write path stamps `jobId` today.** The only writer is
+  `sanitizeData`'s backfill (`index.html:1368`–1372), which assigns every unstamped shift and event
+  to `jobs[0]` on load. Grep confirms it — the five `jobId` occurrences in `index.html` are that
+  backfill, the period filter (1498) and `groupHoursByJob` (1542/1554). Nothing that *creates* a
+  shift sets one. Observed in production: the owner's four manual October shifts carry
+  `"jobId":"job-1"` (backfilled, then persisted by a later save) and the three NurseGrid-imported
+  ones carry none at all. With exactly one job that is harmless and invisible. The moment a second
+  job exists it is unrecoverable: every pre-existing shift has already been silently assigned to
+  whichever job happens to sort first, and no later UI can ask the nurse which employer a shift from
+  eight months ago belonged to. **So stamp it now, while the answer is unambiguous** — manual shift
+  creation, PTO/event creation, and the .ics import commit all write `jobId: activeJob.id`. Scope is
+  small and additive; keep the backfill (it stays correct for anyone whose blob predates this) and
+  add a unit assertion that a newly created shift and a newly imported shift both carry a `jobId`.
+  Dedicated rather than nightly only because it touches the import commit path, which is
+  wage-adjacent by proximity — it must not change a single displayed figure, and that wants the
+  equality check.
+
+- **Differential *windows* on the job record — the fix for shifts that cross the day/night boundary
+  (owner call, 2026-09-29).** `harness:drivable`. **Blocked on one fact: a real paystub.**
+  BadgeBudget prices a whole shift at one differential. `shiftGrossCents` is
+  `hourlyRateCents(base, diff) × otMult × hours` — there is no hours-in-window concept anywhere in
+  the pay math (the only three `window` matches in `index.html`, lines 990/2181/3797, are the
+  *import date range*). So the owner's own synced NurseGrid shift, 00:15–12:45, is currently priced
+  as 12.5 night hours when roughly 7 are inside a night window and 5 are not; a standard 19:00–07:30
+  shift against a 23:00–07:00 window has 8 of 12.5 in-window. The error is small per shift and
+  compounds over a pay period, and it presents as "the app's number doesn't match my stub" — which
+  is the one thing the app exists to get right.
+  **Where it belongs:** on the job, not the nurse. `makeJob` already carries `differentials` and the
+  comment above it (`index.html:1398`) already states the principle — what lives on a job is what an
+  *employer* decides. `differentials` is amount-only today; this adds the times. No schema change is
+  needed for the single-job case, because `differentials` is already a per-job object in the blob and
+  `activeJob` already assembles it, so this can land *before* any multi-job UI and be inherited by it
+  for free.
+  **Why it is blocked, and don't skip this:** windows only price correctly if the employer's
+  *convention* is also known, and both conventions are common — pay per hour actually inside the
+  window, or designate the whole shift by its start time. Guessing replaces a knowable error with an
+  unknowable one. The convention is observable from the shift-differential line on a stub and is not
+  ours to assume (same standard already written down for `OT_METHODS`). So: read one stub, store the
+  answer as a job field beside the windows, then build. **Invariant 3 applies** — this moves every
+  displayed dollar figure on a boundary-crossing shift. Wage-core protocol, baseline probes, a new
+  assertion, and the equality check against the *deployed* build.
+  **Second payoff, which is why the owner raised it:** with windows on the job the import stepper can
+  pre-select the chip instead of making the nurse choose day / night / weekend day / weekend night
+  per shift. That is the single most repetitive thing in a bulk import. Treat the auto-selection as
+  a *default the nurse can override*, never a silent assignment — Invariant 3's rule that calendar
+  sync never silently rewrites a wage-affecting shift covers this too.
+
+- **Multi-job / multi-calendar — two employers, or a job change (owner call, 2026-09-29).**
+  `harness:needs-live-auth` for the feed half, `harness:drivable` for the job half. Working two jobs
+  and switching jobs are both ordinary in nursing, and the spine for it is already built and
+  deliberately dormant: `makeJob`, `MAX_JOBS = 8`, `DEFAULT_JOB_ID`, and `groupHoursByJob`. The
+  comment at `index.html:3313` names the remaining step — `activeJob` is synthesized from the
+  user-level state rather than read from the blob's `jobs` array, and "the array is the migration
+  target the multi-job UI will switch to", so the direction of truth flips for `baseRate`,
+  `differentials`, `workPeriod`, `otMethod`, `mealBreak*`. Tax stays user-level; it follows the
+  nurse's residence, not the employer, and one travel contract can span states.
+  **What it costs beyond the UI:** `ical_subscriptions` declares `user_id uuid primary key`
+  (`supabase/migrations/002_ical_subscription.sql`), i.e. exactly one feed per user by construction.
+  Multi-calendar needs migration 008 — a surrogate id with a unique `(user_id, …)` — plus a
+  feed-list UI in Settings (today the panel holds one Save & sync / Update link / Sync now / Remove
+  set), a job association per feed, and a job picker in the import stepper.
+  **Provider fact from the owner, 2026-09-29 — this shapes the design:** NurseGrid already models
+  calendars per employer, and the calendar selection is a *multi-select toggled before the feed URL
+  is generated*, so a nurse can produce either one feed per employer or one combined feed covering
+  several. **Take the one-feed-per-employer path and make it the instruction, not an inference.** A
+  combined feed cannot be split by us: the import reads only `UID`, `DTSTART` and `DTEND`, and the
+  employer name lives in `SUMMARY`/`LOCATION`, which Invariant 13 forbids storing ("the parser
+  stores dates, times, hours and UIDs — never titles"). So the only honest design is: the nurse
+  attaches one feed to one job and tells us which, and the UI says plainly that a feed covering two
+  employers will import as one. Do not "improve" this by reading the title to guess the employer —
+  that trades a bearer-credential invariant for a convenience.
+  **Sequencing (owner decision):** this is a *market* feature — the travel-nurse and
+  per-diem-plus-staff population — while the boundary-crossing differential above is a *Courtney*
+  problem live in production today. Ship the `jobId` stamp first (it has a deadline), then windows
+  on the one job, then this. Multi-job must not gate the differential fix.
+
 - **CLAUDE.md's "Open PRs" line is stale, and Invariant 11 depends on it** `harness:drivable` — it names
   only #46. **Six** are open as of 2026-09-20, all drafts: **#46** `claude/share-link-swap-board-hh9jsc`,
   **#70** `claude/siri-inbox`, **#72** `claude/siri-session-b`, **#82** `claude/rust-app-consideration-q78j8b`,
