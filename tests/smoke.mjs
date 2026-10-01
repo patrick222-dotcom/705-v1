@@ -2702,6 +2702,106 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 26. the NurseGrid connect card and its how-to sheet --------------------------------
+     The card is the substitution half of the positioning made visible: the sync existed since
+     2026-09-03 but lived at the bottom of Settings behind a label that assumed you already had a
+     feed URL in hand, and the owner's own first real sync took a hand-held walkthrough.
+
+     The card itself is harness:needs-live-auth -- it renders only for a signed-in user with no
+     subscription, and Supabase points at .invalid here, so there is never a user. Two things are
+     still drivable and both are the parts that rot: that a signed-out visitor is NOT offered it,
+     and the sheet's step text, which is mounted directly below. The step labels ARE the feature --
+     every bold string is what NurseGrid prints on screen, so a well-meaning rewrite into friendlier
+     wording is a regression, not a copy edit. Asserting them off the rendered DOM rather than the
+     source catches a paraphrase that a source regex would not. */
+  if (want(26)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+
+    ok('connect card: a signed-out visitor is not offered calendar sync',
+      (await page.locator('.whatif .t', { hasText: 'NurseGrid' }).count()) === 0);
+    ok('connect card: and the how-to sheet is not open on its own',
+      (await page.locator('.sheet[aria-label="Sync your NurseGrid calendar"]').count()) === 0);
+
+    /* Mount the sheet on its own. The JSX block compiles to a classic script, so its top-level
+       functions are globals -- the same property §25 leans on to call icsPendingSummary. */
+    const sheet = await page.evaluate(async () => {
+      const host = document.createElement('div');
+      host.id = 'ht-probe';
+      document.body.appendChild(host);
+      let saved = 0, closed = 0;
+      window.__htSaved = () => saved; window.__htClosed = () => closed;
+      ReactDOM.createRoot(host).render(React.createElement(IcalHowToSheet, {
+        onClose: () => { closed++; },
+        onSave: async () => { saved++; return false; },   // a paste that didn't take
+        userId: 'probe', icalUrl: '', setIcalUrl: () => {}, icalBusy: false,
+      }));
+      await new Promise((r) => setTimeout(r, 120));
+      return {
+        steps: [...host.querySelectorAll('.howto li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()),
+        bolds: [...host.querySelectorAll('.howto li b')].map((b) => b.textContent.trim()),
+        label: host.querySelector('.sheet')?.getAttribute('aria-label') || '',
+        gear: !!host.querySelector('.howto li svg'),
+        input: host.querySelector('input[type="url"]')?.getAttribute('placeholder') || '',
+        text: host.innerText.replace(/\s+/g, ' '),
+      };
+    });
+
+    ok('how-to: the sheet is a labelled dialog', sheet.label === 'Sync your NurseGrid calendar', sheet.label);
+    ok('how-to: six steps, in order', sheet.steps.length === 6, String(sheet.steps.length));
+    /* NurseGrid's own labels, verbatim and in the order you meet them. */
+    for (const lbl of ['Calendar', 'Calendar Settings', 'Enable Calendar Sharing',
+      'Generate Nursegrid Calendar Feed', 'Share the following worksite calendars', 'Share', 'Copy']) {
+      ok(`how-to: step text carries NurseGrid's own label "${lbl}"`,
+        sheet.bolds.includes(lbl), sheet.bolds.join(' | '));
+    }
+    ok('how-to: "Generate Nursegrid Calendar Feed" keeps NurseGrid\'s own capitalisation',
+      !sheet.bolds.includes('Generate NurseGrid Calendar Feed'), sheet.bolds.join(' | '));
+    ok('how-to: the gear is drawn, not described by name alone', sheet.gear);
+    ok('how-to: it ends by sending her back here to paste', /paste it in/i.test(sheet.steps[5]), sheet.steps[5]);
+    ok('how-to: and carries its own paste field, so Settings is not a second errand',
+      /paste your nursegrid link/i.test(sheet.input), sheet.input);
+    /* Invariant 13 adjacent: the sheet is where the credential is handled, so it says so. */
+    ok('how-to: the sheet calls the link a password', /like a password/i.test(sheet.text));
+    /* The multi-worksite caveat. NurseGrid can mint one consolidated feed across worksites, and a
+       combined feed cannot be split back out -- the import reads UID/DTSTART/DTEND only, and the
+       employer name lives in SUMMARY, which Invariant 13 forbids storing. So this says "pick one"
+       rather than letting her build a calendar this app cannot take apart (BACKLOG, multi-job). */
+    ok('how-to: two employers are told to pick one worksite for now', /pick one for now/i.test(sheet.text), sheet.text.slice(0, 400));
+
+    /* A sheet that closes on a rejected paste loses the link she just fetched from four screens
+       away. Close only on success -- onSave returned false above. */
+    const after = await page.evaluate(async () => {
+      document.querySelector('#ht-probe .btn-primary').click();
+      await new Promise((r) => setTimeout(r, 80));
+      return { saved: window.__htSaved(), closed: window.__htClosed() };
+    });
+    ok('how-to: Save & sync goes through the one shared handler', after.saved === 1, JSON.stringify(after));
+    ok('how-to: a paste that is rejected leaves the sheet open', after.closed === 0, JSON.stringify(after));
+
+    /* The card's gate and its dismissal are source-shape: needs-live-auth, as above. */
+    const src26 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('connect card: gated on a signed-in user with no subscription yet',
+      /\{user && !icalSub && !icalCtaOff && \(/.test(src26));
+    ok('connect card: "Not now" is remembered on this device',
+      /localStorage\.setItem\(ICAL_CTA_KEY,'1'\)/.test(src26));
+    ok('connect card: the dismissal key is prefixed like the rest (Invariant 5)',
+      /const ICAL_CTA_KEY = 'scrubpay_ical_cta_dismissed';/.test(src26));
+    ok('connect card: the dismissal read cannot throw on blocked storage',
+      /try\{ return localStorage\.getItem\(ICAL_CTA_KEY\)==='1'; \}catch\(_\)\{ return false; \}/.test(src26));
+    ok('how-to: it is reachable from Settings too, for anyone who waved the card off',
+      /onClick=\{onIcalHowTo\}/.test(src26) && /onIcalHowTo: \(\)=>\{ track\('ical_howto_opened'/.test(src26));
+    /* Analytics stays coarse: a surface name, never the feed URL (Invariant 13, Analytics rules). */
+    const tracks = (src26.match(/track\('ical_(?:howto_opened|cta_dismissed)'[^;]*/g) || []);
+    ok('how-to: its analytics carry a surface and nothing else', tracks.length === 3, tracks.join(' || '));
+    ok('how-to: and no ical event carries a url',
+      !tracks.some((t) => /icalUrl|icalSub|url:/.test(t)), tracks.join(' || '));
+    ok('connect card: no page errors', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -321,6 +321,20 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   `ICAL_RESYNC_MIN_MS` (10 min) and **quiet**, parking the plan in a banner rather than opening the
   import stepper. Never make it a modal: it fires when she returns to the app. The cold-load sync
   still opens the stepper. Pinned by `tests/smoke.mjs` §25.
+  **The sync is now offered, not just available** (2026-10-01): it shipped 2026-09-03 and lived at
+  the bottom of Settings behind a label that assumed a feed URL was already in hand — the owner's
+  own first real sync took a hand-held walkthrough. A home-screen card ("Want to sync your
+  NurseGrid calendar to load shifts?") opens a sheet carrying NurseGrid's six steps **in
+  NurseGrid's own on-screen wording** (`Enable Calendar Sharing` → `Generate Nursegrid Calendar
+  Feed` → worksite toggle → `Share` → `Copy`), with its own paste field wired to the same
+  `onSaveIcalUrl` handler Settings uses. **The labels are the feature** — a rewrite into friendlier
+  copy is a regression, which is why `tests/smoke.mjs` §26 mounts the sheet and asserts them off
+  the rendered DOM rather than grepping the source. **No screenshots**: the publish set is exactly
+  five files (Invariant 8), so an image would have to ride inline as base64 inside the file every
+  visitor downloads, to illustrate a sheet most of them never open. The card is gated to a
+  signed-in nurse with no subscription yet and one "Not now" retires it on that device
+  (`scrubpay_ical_cta_dismissed` — cosmetic, deliberately not in the synced blob); Settings keeps
+  the same walkthrough reachable for anyone who waved it off.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used

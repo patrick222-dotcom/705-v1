@@ -165,6 +165,18 @@
   .sync-banner button{background:#4A4FC4;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .sync-banner button.ghost{background:transparent;color:#474DA0;border:1px solid #CFD5FA}
 
+  /* NurseGrid how-to steps. No screenshots on purpose: the publish set is exactly five files
+     (Invariant 8), so an image would have to ride inline as base64 inside this file -- which
+     every visitor downloads, to show a four-screen walkthrough most of them will never open.
+     The steps carry NurseGrid's own on-screen labels verbatim instead, which is what you
+     actually hunt for with a phone in your hand. */
+  .howto{list-style:none;margin:14px 0 0;padding:0;counter-reset:ht}
+  .howto li{position:relative;padding:0 0 13px 34px;counter-increment:ht;font-size:13.5px;line-height:1.5;color:var(--ink)}
+  .howto li:before{content:counter(ht);position:absolute;left:0;top:0;width:23px;height:23px;border-radius:50%;background:var(--indigo);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .howto li b{font-weight:650}
+  .howto li .sub{display:block;font-size:12px;color:var(--muted-2);margin-top:3px;font-weight:500}
+  .howto li svg{width:15px;height:15px;vertical-align:-3px;margin:0 1px}
+
   /* quick-fill banner (shift templates applied across multiple calendar days) */
   .qf-banner{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
   .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
@@ -852,6 +864,12 @@ const ICS_EVENT_KIND = 'appointment';    // dayEvents kind used for read-only im
    generous; the number exists to stop tab-flipping from hammering the proxy and from re-rolling
    the 422 NurseGrid returns on the first hit of a load (BACKLOG P2, still unexplained). */
 const ICAL_RESYNC_MIN_MS = 10*60*1000;
+/* Cosmetic only -- it remembers that the connect card was waved off, nothing more. Deliberately
+   NOT in the user_data blob: a nurse who dismisses it on her phone has not dismissed it on the
+   iPad, and the blob is the thing that syncs. Carries the `scrubpay_` prefix to sit with the rest
+   of the keys (Invariant 5), but is not load-bearing -- losing it re-offers the card, which is
+   the harmless direction. */
+const ICAL_CTA_KEY = 'scrubpay_ical_cta_dismissed';
 
 /* Unfold RFC 5545 §3.1 folded lines: a CRLF|LF immediately followed by a space or tab is
    a continuation of the previous logical line, not a line break. */
@@ -2969,6 +2987,10 @@ function App(){
   // A foreground re-sync found changes but has NOT opened the stepper: the plan waits behind the
   // quiet banner until she asks for it. Same payload shape icsImport takes, so "Review" is a handoff.
   const [icsPending,setIcsPending] = useState(null);
+  const [showIcalHowTo,setShowIcalHowTo] = useState(false);   // the NurseGrid how-to sheet
+  const [icalCtaOff,setIcalCtaOff] = useState(()=>{
+    try{ return localStorage.getItem(ICAL_CTA_KEY)==='1'; }catch(_){ return false; }
+  });
   const lastIcalSyncAt = useRef(0);                  // ms of the last sync ATTEMPT — throttles the foreground re-sync
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
@@ -3364,10 +3386,10 @@ function App(){
   },[ready,setupComplete]);
 
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare||showIcalHowTo;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare,showIcalHowTo]);
   useEscape(()=>setShowBreakdown(false), showBreakdown);   // the one sheet rendered inline in App
 
   /* Flush any feedback that was saved locally while offline. */
@@ -4088,12 +4110,14 @@ function App(){
       icalInFlight.current = false; setIcalBusy(false);
     }
   };
+  /* Returns true only when the link was accepted and saved, so a caller that is itself a sheet
+     (the NurseGrid how-to) can close on success and stay open on a paste that didn't take. */
   const onSaveIcalUrl = async ()=>{
-    if(!user){ toast('Sign in to sync your schedule.','info'); return; }
+    if(!user){ toast('Sign in to sync your schedule.','info'); return false; }
     const url = normalizeFeedUrl(icalUrl);
-    if(url.length<12){ toast('Paste your calendar link first.','error'); return; }
+    if(url.length<12){ toast('Paste your calendar link first.','error'); return false; }
     if(providerOf(url)===null){
-      toast("That link isn't from a supported calendar yet — Google Calendar or NurseGrid.",'error'); return;
+      toast("That link isn't from a supported calendar yet — Google Calendar or NurseGrid.",'error'); return false;
     }
     setIcalBusy(true);
     try{
@@ -4101,9 +4125,10 @@ function App(){
       setIcalSub({icalUrl:url, provider:providerOf(url), lastSynced:null});
       icalSyncedForUser.current = user.id;   // this counts as this session's sync
       toast('Calendar link saved.','success');
-    }catch(e){ toast("Couldn't save that link.",'error'); setIcalBusy(false); return; }
+    }catch(e){ toast("Couldn't save that link.",'error'); setIcalBusy(false); return false; }
     setIcalBusy(false);
     runIcalSync({manual:true, url});
+    return true;
   };
   const onRemoveIcalUrl = async ()=>{
     if(!user) return;
@@ -4279,6 +4304,27 @@ function App(){
             <div className="row">
               <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
               <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); setIcsPending(null); }}>Not now</button>
+            </div>
+          </div>
+        )}
+
+        {/* The substitution half of the positioning (CLAUDE.md -> Positioning): she stops opening
+            NurseGrid. That only happens if she knows the sync exists, and until now it lived at
+            the bottom of Settings behind a label that assumed she already had a feed URL in hand.
+            Shown only to a signed-in nurse with no subscription yet -- the feed row is per-user,
+            so there is nothing to offer a signed-out visitor. One dismissal and it is gone for
+            good on this device; Settings keeps the same how-to for anyone who waved it off. */}
+        {user && !icalSub && !icalCtaOff && (
+          <div className="whatif" style={{marginBottom:14}}>
+            <div style={{flex:1}}>
+              <div className="t">Want to sync your NurseGrid calendar to load shifts?</div>
+              <div className="s">Paste the link once and your schedule lands here on its own — no typing shifts twice.</div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,flex:'0 0 auto'}}>
+              <button onClick={()=>{ track('ical_howto_opened',{surface:'card'},user&&user.id); setShowIcalHowTo(true); }}>Show me how</button>
+              <button onClick={()=>{ try{ localStorage.setItem(ICAL_CTA_KEY,'1'); }catch(_){}
+                                     setIcalCtaOff(true); track('ical_cta_dismissed',null,user&&user.id); }}
+                      style={{background:'transparent',color:'#6A60C9',fontWeight:500,padding:'4px 0',minHeight:0}}>Not now</button>
             </div>
           </div>
         )}
@@ -4480,6 +4526,8 @@ function App(){
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
             user, icalUrl, setIcalUrl, icalSub, icalBusy,
+            onIcalHowTo: ()=>{ track('ical_howto_opened',{surface:'settings'},user&&user.id);
+                               setShowSettings(false); setShowIcalHowTo(true); },
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
             onFeedback:()=>{ setShowSettings(false); openFeedback('Settings'); },
             onShare:()=>{ setShowSettings(false); openShare('settings'); }}} />}
@@ -4500,6 +4548,8 @@ function App(){
       {showAuth && <AuthModal mode={authMode} onClose={()=>setShowAuth(false)} />}
 
       {showShare && <ShareSheet userId={user?.id} surface={shareSurface} onClose={()=>setShowShare(false)} />}
+      {showIcalHowTo && <IcalHowToSheet userId={user?.id} icalUrl={icalUrl} setIcalUrl={setIcalUrl}
+        icalBusy={icalBusy} onSave={onSaveIcalUrl} onClose={()=>setShowIcalHowTo(false)} />}
 
       {showFeedback && <FeedbackSheet user={user} surface={fbSurface} onClose={()=>setShowFeedback(false)} />}
 
@@ -5618,7 +5668,7 @@ function Settings(props){
     pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
-    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,onIcalHowTo,
     workPeriod,setWorkPeriod,otMethod,setOtMethod,mealBreakMins,setMealMins,mealBreakMode,setMealMode}=props;
   useEscape(onClose);
   const [newName,setNewName]=useState('');
@@ -5779,6 +5829,12 @@ function Settings(props){
             <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
               Paste your calendar's secret iCal address (in Google Calendar: Settings → your calendar → “Secret address in iCal format”). BadgeBudget checks it each time you open the app and pulls in new shifts — you confirm the pay type for anything it hasn't seen. Treat the link like a password: it's stored privately and never shared.
             </div>
+            {/* The walkthrough stays reachable from here for anyone who waved off the home-screen
+                card, which is the only other place it is offered. */}
+            <button className="linklike" onClick={onIcalHowTo}
+              style={{display:'block',fontSize:12,color:'var(--indigo)',fontWeight:600,marginBottom:8,textAlign:'left'}}>
+              Using NurseGrid? Here's how to get your link ›
+            </button>
             <div className="inp">
               <input type="url" inputMode="url" autoComplete="off" spellCheck={false}
                 placeholder="https://calendar.google.com/…/basic.ics"
@@ -6686,6 +6742,60 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
    other's numbers, which on a unit of travellers and float staff is most of them. The link path
    mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
    into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
+/* The NurseGrid walkthrough. Written against the real app on 2026-10-01 -- every bold string
+   below is the label NurseGrid prints on screen, in the order you meet it, so don't paraphrase
+   them into something friendlier: the whole value here is that the words match.
+   The paste field is this sheet's, not a pointer at Settings. Sending her to
+   Settings -> scroll -> paste after four screens in another app is where the flow was losing
+   people, and `onSave` is the identical handler Settings calls, so there is one code path. */
+function IcalHowToSheet({onClose, userId, icalUrl, setIcalUrl, icalBusy, onSave}){
+  useEscape(onClose);
+  const save = async ()=>{ const ok = await onSave(); if(ok) onClose(); };
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Sync your NurseGrid calendar">
+        <div className="grab"></div>
+        <div className="sheet-h">
+          <div className="t">Sync your NurseGrid schedule</div>
+          <button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button>
+        </div>
+        <div style={{fontSize:13.5,lineHeight:1.55,color:'var(--muted)'}}>
+          NurseGrid can hand out a private link to your schedule. Paste it here once and your shifts
+          keep arriving on their own — you still confirm the pay type for anything new.
+        </div>
+        <ol className="howto">
+          <li>Open NurseGrid and tap the <b>Calendar</b> tab, then the gear {Ic.gear} at the top right.</li>
+          <li>On <b>Calendar Settings</b>, switch on <b>Enable Calendar Sharing</b>.<span className="sub">The rows under it stay greyed out until you do.</span></li>
+          <li>Tap <b>Generate Nursegrid Calendar Feed</b>.</li>
+          <li>Under <b>Share the following worksite calendars</b>, switch on your worksite, then tap <b>Share</b> at the top right.<span className="sub">Two employers? Pick one for now — BadgeBudget follows a single calendar today.</span></li>
+          <li>In the share menu that pops up, tap <b>Copy</b>.</li>
+          <li>Come back here and paste it in.</li>
+        </ol>
+        <div className="inp" style={{marginTop:4}}>
+          <input type="url" inputMode="url" autoComplete="off" spellCheck={false}
+            placeholder="Paste your NurseGrid link"
+            value={icalUrl} onChange={e=>setIcalUrl(e.target.value)} disabled={icalBusy}
+            aria-label="NurseGrid calendar link" />
+        </div>
+        <button className="btn btn-primary" style={{marginTop:10}} onClick={save} disabled={icalBusy}>
+          {icalBusy ? 'Working…' : 'Save & sync'}
+        </button>
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:10,lineHeight:1.5}}>
+          Treat that link like a password — anyone holding it can read your calendar. It's stored
+          privately to your account and never shared.
+        </div>
+        {/* NurseGrid's own share screen tells you to set your calendar app to fetch on an
+            interval. That advice is for Apple/Google Calendar; it does not apply here, and saying
+            so pre-empts a hunt for a setting this app doesn't have. */}
+        <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,lineHeight:1.5}}>
+          NurseGrid's tip about a "fetch interval" is for Apple or Google Calendar. BadgeBudget
+          re-checks every time you open it.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareSheet({onClose, userId, surface}){
   useEscape(onClose);
   const blurb = 'BadgeBudget — see what a shift is really worth before you pick it up.';
