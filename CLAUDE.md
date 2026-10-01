@@ -468,9 +468,13 @@ through. It sees only agent pushes; CI stays the binding gate.
   The `ops_*` functions must never appear in the advisor's `anon`-executable list.
 - `ical-proxy` accepts the public anon key (`security-08`) — an open relay until the handler checks
   `role === 'authenticated'` (hardening session).
-- MCP: `.mcp.json` runs `@supabase/mcp-server-supabase` over stdio with `SUPABASE_ACCESS_TOKEN`
-  from the environment. Fallback: the Management API (`database/query`, `config/auth`,
-  `advisors/*`); Node fetch needs `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`.
+- MCP: `.mcp.json` runs `@supabase/mcp-server-supabase@0.13.0` over stdio with `SUPABASE_ACCESS_TOKEN`
+  from the environment, **pinned and `--read-only`** (2026-10-01): every session can query
+  production, none can write to it by accident. Read-only blocks writes, **not RLS bypass** — queries
+  still run privileged, so they can't show what a user sees; use `scripts/ops_gate_probe.sql` for
+  that. Writes (migrations, function patches) go through the Management API (`database/query`,
+  `config/auth`, `advisors/*`) in a dedicated session; Node fetch needs
+  `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Bump the pin deliberately.
 - Re-read headroom figures before quoting them; old ones in the notes have drifted before.
 
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
