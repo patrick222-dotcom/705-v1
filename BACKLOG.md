@@ -60,6 +60,32 @@ and the push P0 it pointed at was fixed the same day.
   reports SUCCEEDED while writing nothing is the signature.
 
 ### P1
+- [ ] **A sync that finds nothing, and a sync whose feed will not parse, are both completely
+  invisible — `ics_sync_done` means "found changes", not "sync completed"** — `harness:drivable`
+  — found in the 2026-10-01 groom by reading the proxy's edge log against `events` and finding
+  **four `POST 200`s and only two `ics_sync_done` rows.** `runIcalSync` has three early returns
+  that fire *after* a successful fetch and track nothing at all: the `parseICSSchedule` catch, the
+  `parsed.events.length===0` return, and the `pending===0` return. Each one only ever reaches the
+  nurse as a toast, and the toast is gated on `manual` — so a **background** sync in any of those
+  three states writes **zero rows anywhere**. Verified in production tonight: the proxy returned
+  `200 text/calendar` at 00:06:42 and again at 04:49:55, both the first call of their load, and
+  neither produced an `ics_sync_done` or a `client_error`. Both were `pending===0` (the 577-byte
+  body is the same length as the 00:14 one, which did sync).
+  **Two distinct costs, and the second is the serious one.** (a) The event is *misnamed for the
+  job it is being asked to do*: counting it answers "how often did a sync have something to show
+  her", not "how often did sync work", so it undercounts by exactly the healthy case — and the
+  positioning rests on that number. (b) **The parse-failure branch is an Invariant 4 shape**: a
+  feed that answers `200` with a body the parser rejects leaves a background sync silent forever.
+  That is the same class as the 47-day upsert outage and the six-failure webcal bug — a break with
+  no signal — and it is the one branch `icalFailureDetail` (shipped 09-30) does **not** cover,
+  because that path never throws past the inner catch.
+  Fix: track the terminal state of every sync, not just the interesting one — one coarse
+  `snake_case` event (or a `result` prop) distinguishing `changes` / `up_to_date` / `empty` /
+  `unparseable`, with no URL, no title and no wage figure (Invariant 13 + the analytics rules).
+  Drivable: stub `functions.invoke` to return each of the four bodies and assert the tracked props.
+  **Build this together with the provider P2 below** — same function, same call sites, and shipping
+  them separately means touching `runIcalSync` twice.
+  **BLOCKED ON PR #136 UNTIL IT MERGES** — see the note on the provider item.
 - [x] ~~**`ical sync failed` says nothing about WHY, and the only log that did expires in 24h**~~ —
   SHIPPED 2026-09-30 (see Done log). `icalFailureDetail` reads the Response off `error.context` and
   the row now reads `ical sync failed: 422 not_a_calendar` instead of one generic sentence.
@@ -84,16 +110,6 @@ and the push P0 it pointed at was fixed the same day.
   code, never the URL (Invariant 13). Drivable: stub the invoke to reject with each shape and assert
   the buffered message. This is Invariant 4's lesson aimed at the sync path: a break nobody can see
   ran 47 days, and this one was 19 hours from being invisible.
-- [ ] **Decide whether Settings should carry the durable route into the swap board** — `harness:drivable`
-  — found while building the de-emphasis, 2026-09-20. The item below called entry point (2) "the
-  Settings 'Shift swaps' card … the durable route in, it is where someone who already swaps would
-  look." **It is not in Settings.** `Settings` (the component at ~index.html:5388) contains no swap
-  entry at all; that card is a second *dashboard* card in `.dash`'s second column, and `.col` is not
-  `desk-only`, so on a phone it stacks below the fold on the same screen. The de-emphasis still lands
-  — below the fold is not the first screen, and the board stays reachable — but the plan's premise
-  was wrong, so the "durable route" the positioning assumed does not exist. Either move/duplicate the
-  entry into Settings (where the note says someone would look) or amend the positioning note to say
-  the dashboard's second column is the route. One-line product call; do not guess it.
 - [x] ~~**Quiet the swap-board CTAs (positioning, 2026-09-19)**~~ — **SHIPPED 2026-09-27**, merged by
   the owner as `6ea400e`. It blocked the queue's top P1 slot for eight days and cost the nightly a
   build item on four separate nights (09-21 through 09-24, then 09-27); the loop skipped it correctly
@@ -284,6 +300,14 @@ and the push P0 it pointed at was fixed the same day.
   event props is coarse, non-identifying and carries no wage figure, so it is inside the analytics
   rules (CLAUDE.md → Analytics). Cheap, and it makes the one number the positioning rests on a
   query instead of an excavation. Drivable: stub the sync and assert the tracked props.
+  **SKIPPED 2026-10-01 — open PR #136 rewrites the exact lines this needs.** #136
+  ("foreground re-sync with a quiet banner") edits `runIcalSync` around both call sites: it wraps
+  the `setIcsImport(...)` argument into a `payload` const immediately above
+  `track('ics_sync_done', …)`, and inserts `setIcsPending(null)` immediately below
+  `track('ics_import_done', …)`. A nightly commit here conflicts with a human's open PR, so the
+  loop skipped it rather than spend the owner's time on a merge. **#136 is a DRAFT and both
+  required checks are green** (gate + smoke, 2026-10-01 00:43). Unblock by merging it; then build
+  this and the P1 above in one pass.
 
 ### P2 (new, groom 2026-09-29)
 - [ ] **One of the 09-28 sync attempts returned `422 not_a_calendar`, and nothing explains it** —
@@ -313,6 +337,17 @@ and the push P0 it pointed at was fixed the same day.
   with no 24-hour deadline. **Do not build a blind retry against this yet** — one silent retry of
   every sync doubles the load on a provider we do not control, and the hypothesis is a guess. Read
   one more real occurrence first.
+  **2026-10-01 — four more real proxy calls, all `200`, and they kill the leading hypothesis.**
+  The edge log for 2026-10-01 holds four `OPTIONS 200` + `POST 200` pairs (00:06:42, 00:10:06,
+  00:14:00, 04:49:55), every one `text/calendar`, **zero 422s and zero 400s**. Two of them —
+  00:06:42 and 04:49:55 — were the **first proxy call of their load**, each fired within a second
+  of an `app_open`. So "NurseGrid answers the first request of a session with an HTML interstitial"
+  is **contradicted**: the first hit of a load returned a real calendar twice in one night. The
+  fault is **intermittent**, not first-hit-deterministic, which makes a blind retry a worse idea
+  than it already was and makes the P1 above the only thing that will ever explain it — note that
+  `icalFailureDetail` has still never fired in production, because all 4 `client_error` rows in
+  the table predate it. Running count: **2 occurrences across 7 observed sync sessions.** Keep
+  reading; still do not build.
 
 ### P2 (new, groom 2026-09-27)
 - [x] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~
@@ -990,6 +1025,23 @@ here so the loop's queue contains only work it can actually finish; pick these u
   publication) or exponential backoff on an idle board. `harness:needs-live-auth`.
 
 ## Blocked
+- [ ] **Decide whether Settings should carry the durable route into the swap board (OWNER DECISION)**
+  — `harness:drivable`. **Moved here from `## Queue` P1 on 2026-10-01, applying this file's own
+  recorded lesson** — the 09-27 note on the #118 saga says in as many words: *"an item parked in
+  `## Queue` awaiting a human decision reads as available work to every run that opens the file …
+  park the next one under `## Blocked` instead, where it cannot occupy the top of a band."* This
+  item has sat at the top of P1 since 2026-09-20 ending in "one-line product call; do not guess
+  it", which is a blocker wearing a queue item's clothes. Nothing about it changed; only where it
+  lives. Original note:
+  Found while building the de-emphasis, 2026-09-20. The swap-board plan called entry point (2)
+  "the Settings 'Shift swaps' card … the durable route in, it is where someone who already swaps
+  would look." **It is not in Settings.** `Settings` (the component at ~index.html:5388) contains
+  no swap entry at all; that card is a second *dashboard* card in `.dash`'s second column, and
+  `.col` is not `desk-only`, so on a phone it stacks below the fold on the same screen. The
+  de-emphasis still lands — below the fold is not the first screen, and the board stays reachable
+  — but the plan's premise was wrong, so the "durable route" the positioning assumed does not
+  exist. Either move/duplicate the entry into Settings (where the note says someone would look) or
+  amend the positioning note to say the dashboard's second column is the route.
 - [x] **UNBLOCKED 2026-09-28 — the NurseGrid feed host is confirmed** (`app.nursegrid.com`), already
   matched by the allowlist, so **no redeploy of the Edge Function is needed**: the only change to
   `ical-proxy/index.ts` was the comment recording the verification. What is left is not owner-blocked
@@ -1077,6 +1129,45 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-01 (nightly) — **No build: the one buildable queue item is inside an open PR's edit
+  region. The groom found a new telemetry hole and disproved a standing hypothesis.**
+  **Groom.** `silence_watch` → **FRESH** (newest event 3.4h old, 48h window), so no health proof
+  was owed. `events` **1062 rows, up from 1050**; 23 in the last 48h. `feedback` unchanged at 11
+  rows, newest 2026-09-14 — nothing in 17 days. Activation deliberately **not** quoted: the device
+  classifier is still broken (CLAUDE.md → Ops dashboard).
+  **Two more real sync sessions, both the owner's iPhone, both clean.** 2026-10-01 00:10 →
+  `ics_sync_done {events:2}` → `ics_import_done {removed:1}`, and 00:14 → `{events:1}` →
+  `{removed:1}`; `session_end` shift count 10 → 9 → 8. The removals are **expected, not data
+  loss** — open PR #136's own note records the owner deleting a shift upstream and hand-syncing to
+  watch the remove path. Checked before assuming it, because a sync that silently deletes a worked
+  shift would be the worst bug this app could have.
+  **Finding 1 — `ics_sync_done` does not mean a sync succeeded, and nobody knew.** The proxy's edge
+  log holds **four `POST 200`s** on 10-01 against **two `ics_sync_done` rows**. `runIcalSync` has
+  three early returns after a successful fetch that track nothing: the parse catch, zero events,
+  and `pending===0`. All three only speak through a toast gated on `manual`, so a *background* sync
+  in any of them writes **zero rows anywhere** — and the parse-failure one is an Invariant 4 shape,
+  a break with no signal, on the path that already produced a 47-day and a six-failure outage.
+  Filed as the new top P1 with the fix shape; `icalFailureDetail` does not cover it, because that
+  branch never throws.
+  **Finding 2 — the 422's leading hypothesis is dead.** All four of 10-01's proxy calls returned
+  `200 text/calendar`, zero 422s and zero 400s, and **two of them were the first call of their
+  load** (00:06:42 and 04:49:55, each within a second of an `app_open`). "NurseGrid serves an HTML
+  interstitial on the first hit of a session" is contradicted. The fault is intermittent — 2 in 7
+  observed sync sessions — which makes a blind retry worse, not better. The P2 is updated, still
+  explicitly do-not-build.
+  **Why nothing was built.** `## Queue`'s only drivable item, the `provider` prop on the two ics
+  events, lives on the exact lines open draft **PR #136** rewrites: it wraps the `setIcsImport`
+  argument into a `payload` const immediately above `track('ics_sync_done', …)` and inserts
+  `setIcsPending(null)` immediately below `track('ics_import_done', …)`. The nightly rule is to
+  skip rather than conflict with a human's open PR, so it skipped. **#136 is green on both
+  required checks and has been a draft since 00:39 UTC.** Everything else in the queue is a
+  product call, an explicit do-not-build, or `unscoped`.
+  **Queue hygiene, applying this file's own lesson.** The 09-27 #118 post-mortem says to park an
+  item awaiting a human decision under `## Blocked`, "where it cannot occupy the top of a band" —
+  and the Settings-swap-route product call has sat at the top of P1 since 09-20 ending in "do not
+  guess it". Moved to `## Blocked` unchanged. **Gate 11/11, groom_seed 33/33, silence_watch 39/0,
+  smoke 371/0** on an untouched `index.html` — 371, not the 386 #136's note quotes, because that
+  figure includes the 15 assertions #136's own §25 adds and which are not on the deploy branch.
 - 2026-10-01 — **The feed re-syncs when she comes back to the app, and the day sheet stops printing
   the wrong date.** Both reported from a real phone the same morning, both on the calendar surface,
   neither touching the pay math.
