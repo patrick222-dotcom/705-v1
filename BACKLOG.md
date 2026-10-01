@@ -1129,6 +1129,40 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-01 — **Offered the NurseGrid sync instead of just shipping it.**
+  The feed subscription has existed since 2026-09-03 and nobody has ever found it unprompted: it
+  sits at the bottom of Settings under `CALENDAR SYNC`, behind a hint that starts by telling you to
+  paste an address you do not have. The owner's own first real sync took a walkthrough in chat.
+  **What shipped.** A home-screen card — *Want to sync your NurseGrid calendar to load shifts?* —
+  shown only to a signed-in nurse with no subscription yet, one "Not now" retiring it on that
+  device (`scrubpay_ical_cta_dismissed`; cosmetic, deliberately not in the synced blob, since
+  dismissing it on the phone is not dismissing it on the iPad). It opens a sheet with NurseGrid's
+  six steps written in **NurseGrid's own on-screen labels**, verbatim and in the order you meet
+  them — `Calendar` tab → gear → `Enable Calendar Sharing` → `Generate Nursegrid Calendar Feed` →
+  worksite toggle → `Share` → `Copy`. The sheet carries its own paste field wired to the same
+  `onSaveIcalUrl` Settings calls, so coming back from four screens in another app is not then a
+  Settings errand; the handler now reports success so the sheet closes on a good paste and stays
+  open on a rejected one, which is the difference between keeping and losing the link she just
+  fetched. Settings keeps a `Using NurseGrid? Here's how to get your link ›` link for anyone who
+  waved the card off. Two caveats are stated in the sheet rather than discovered: the link is a
+  password (Invariant 13), and two employers means picking one worksite for now — NurseGrid can
+  mint one consolidated feed and a combined feed **cannot** be split back out, because the import
+  reads `UID`/`DTSTART`/`DTEND` only and the employer name lives in `SUMMARY`.
+  **No screenshots, deliberately.** The owner supplied a full marked-up set. The publish set is
+  exactly five files (Invariant 8), so an image would have to ride inline as base64 inside the
+  428KB file every visitor downloads, to illustrate a sheet most of them never open. The exact
+  labels do the same job at ~0 bytes, and the one target that is genuinely hard to name — the gear
+  — is drawn from the icon set the app already carries.
+  **Verified.** `tests/smoke.mjs` §26, 27 assertions, 413/413 overall. It mounts the sheet directly
+  (the JSX block compiles to a classic script, so its components are globals) and asserts the step
+  labels **off the rendered DOM**, because the failure mode here is a well-meaning rewrite into
+  friendlier copy and a source regex would not catch a paraphrase. Negative-tested on a copy, three
+  breaks: paraphrasing `Nursegrid` → `NurseGrid` failed exactly its two label assertions; closing
+  the sheet on a rejected paste failed exactly that one; dropping `!icalCtaOff` from the card's gate
+  failed exactly that one. Gate 11/11, groom 33/33. The card itself is `harness:needs-live-auth` —
+  it needs a signed-in user and the scratch build points Supabase at `.invalid` — so its gate and
+  dismissal are pinned at the source, and what is driven is the signed-out negative (a visitor who
+  cannot use sync is not offered it) plus the sheet.
 - 2026-10-01 (nightly) — **No build: the one buildable queue item is inside an open PR's edit
   region. The groom found a new telemetry hole and disproved a standing hypothesis.**
   **Groom.** `silence_watch` → **FRESH** (newest event 3.4h old, 48h window), so no health proof
@@ -1168,6 +1202,37 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   guess it". Moved to `## Blocked` unchanged. **Gate 11/11, groom_seed 33/33, silence_watch 39/0,
   smoke 371/0** on an untouched `index.html` — 371, not the 386 #136's note quotes, because that
   figure includes the 15 assertions #136's own §25 adds and which are not on the deploy branch.
+- 2026-10-01 — **The feed re-syncs when she comes back to the app, and the day sheet stops printing
+  the wrong date.** Both reported from a real phone the same morning, both on the calendar surface,
+  neither touching the pay math.
+  **Foreground re-sync.** The silent auto-sync lived in one effect keyed on cloud hydration and
+  guarded by a ref cleared only on sign-out, so it ran **once per page load** — and a phone never
+  page-loads. On iOS "opening the app" is returning to an already-loaded Safari tab, so the effect
+  never re-ran and the only way to pull a changed schedule was Settings → scroll → Sync now, which
+  the owner hit by hand after deleting a shift upstream. The Settings copy promising BadgeBudget
+  "checks it each time you open the app" was therefore true for a cold load and false for every
+  ordinary return. Added a `visibilitychange` re-sync (the same shape the cloud-data poll already
+  used), throttled by `ICAL_RESYNC_MIN_MS` = 10 min so tab-flipping can't hammer the proxy or
+  re-roll the unexplained first-hit 422. It is **quiet**: it parks the plan in `icsPending` behind a
+  banner instead of opening the stepper, because returning to the app and being asked to delete a
+  shift is how an app teaches someone not to return. The cold-load sync still opens the stepper —
+  this is additive. "Review" hands the identical payload over, so nothing applies without the same
+  confirm step a file import gets.
+  **Day-sheet date header.** `AddShiftSheet` fell back to `new Date(dateKey)` when the tapped day
+  sat outside the 14-day period in view — and the month scroll makes every day tappable. An ISO
+  date-only string parses as **UTC midnight**, so west of Greenwich the header rendered the evening
+  before: an Oct 5 shift read "Sun, Oct 4". Display only — the shift list, the month grid and every
+  dollar figure key off `dateKey` itself, which is why it survived. Now uses `fmtDateShort`, the
+  local parse every other date label in the file already used.
+  **Verification.** `tests/smoke.mjs` §25, 15 assertions, **timezone-pinned** — the bug is invisible
+  on CI, where UTC runners make both parses agree, the same trap §22 documents. Negative-tested
+  three ways on a copy: reverting the date fix failed both out-of-period assertions and left the
+  in-period one green (proving it discriminates the right branch); counting groups instead of events
+  in the summary failed only that assertion; dropping the quiet branch failed only the shape check.
+  Full suite **386 passed / 0 failed**, gate 11/11, groom_seed 33/33. The foreground sync itself is
+  `harness:needs-live-auth` — it needs a signed-in user, a saved subscription and the proxy, none of
+  which exist where Supabase points at `.invalid` — so its two safety properties (quiet, throttled)
+  are pinned at the source instead.
 - 2026-09-30 (nightly) — **The first real NurseGrid sync in the app's life succeeded, and the run
   shipped the diagnostic that made it legible.**
   **Groom.** `silence_watch` → **FRESH** (newest event 19.3h old, 48h window), so no health proof was
