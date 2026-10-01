@@ -425,7 +425,7 @@ durable memory — commit everything. Scheduled-run quirks: `BACKLOG.md` → Env
   and runs the handler** — live-probed 2026-09-13, `security-08`: 422, not 401 — and `www.google.com`
   is allowlisted with no path constraint, so until the handler checks `role === 'authenticated'` it
   is an anonymous relay against free-tier egress; `BACKLOG.md` → hardening session).
-- **MCP.** `.mcp.json` runs `@supabase/mcp-server-supabase` over stdio with `SUPABASE_ACCESS_TOKEN`
+- **MCP.** `.mcp.json` runs `@supabase/mcp-server-supabase@0.13.0 --read-only` (pinned + read-only since 2026-10-01; writes go through the Management API below) over stdio with `SUPABASE_ACCESS_TOKEN`
   from the environment (uppercase; set in the cloud environment settings, never committed). Network
   policy must allow `api.supabase.com`. Prefer the typed tools (`execute_sql`, `get_advisors`,
   `list_tables`) over dashboard instructions. PR #57 replaces this with the hosted HTTP/OAuth server;
