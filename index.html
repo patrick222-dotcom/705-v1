@@ -156,6 +156,14 @@
   .est-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
   .est-banner button{background:#7A5A12;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .est-banner button.ghost{background:transparent;color:#8A6A22;border:1px solid #E4C98F}
+  /* Quiet re-sync notice. Same geometry as .est-banner on purpose -- one banner shape in the app,
+     recoloured by meaning: amber qualifies a number, this one offers an action. */
+  .sync-banner{background:#EEF0FF;border:1px solid #CFD5FA;border-radius:17px;padding:14px 16px;margin-bottom:14px}
+  .sync-banner .t{font-weight:700;font-size:13.5px;color:#2E3480}
+  .sync-banner .s{font-size:12.5px;line-height:1.5;color:#474DA0;margin-top:3px}
+  .sync-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
+  .sync-banner button{background:#4A4FC4;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .sync-banner button.ghost{background:transparent;color:#474DA0;border:1px solid #CFD5FA}
 
   /* quick-fill banner (shift templates applied across multiple calendar days) */
   .qf-banner{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
@@ -840,6 +848,10 @@ const ICS_IMPORT_PAST_DAYS = 60;         // import window: 60 days back...
 const ICS_IMPORT_FUTURE_DAYS = 366;      // ...to 366 days forward
 const ICS_IGNORED_MAX = 500;             // remembered "not a shift, hide it" uids (bounds blob growth)
 const ICS_EVENT_KIND = 'appointment';    // dayEvents kind used for read-only imported calendar entries
+/* Floor between foreground re-syncs. A schedule changes on the order of days, so ten minutes is
+   generous; the number exists to stop tab-flipping from hammering the proxy and from re-rolling
+   the 422 NurseGrid returns on the first hit of a load (BACKLOG P2, still unexplained). */
+const ICAL_RESYNC_MIN_MS = 10*60*1000;
 
 /* Unfold RFC 5545 §3.1 folded lines: a CRLF|LF immediately followed by a space or tab is
    a continuation of the previous logical line, not a line break. */
@@ -1000,6 +1012,22 @@ function icsDropSummary(parsed){
   if(parsed.droppedCap>0) segs.push(`${parsed.droppedCap} over the ${ICS_IMPORT_MAX_EVENTS}-event limit`);
   if(parsed.droppedWindow>0) segs.push(`${parsed.droppedWindow} outside the last ${ICS_IMPORT_PAST_DAYS} days–next year`);
   return segs.length ? `Skipped: ${segs.join(' · ')}` : '';
+}
+
+/* One line for the quiet re-sync banner: "2 new · 1 removed". Counts the same three buckets the
+   import sheet's own header counts, so the banner and the sheet it opens can never disagree.
+   Groups hold the events, not one event each, so adds come from items.length -- a banner that
+   said "1 new" and then stepped through four cards would read as a bug. */
+function icsPendingSummary(p){
+  if(!p) return '';
+  const add = (p.groups||[]).reduce((n,g)=>n+((g.items||[]).length),0);
+  const changed = (p.toUpdate||[]).length + (p.toUpdateEvents||[]).length;
+  const removed = (p.toRemove||[]).length + (p.toRemoveEvents||[]).length;
+  const segs = [];
+  if(add>0) segs.push(`${add} new`);
+  if(changed>0) segs.push(`${changed} changed`);
+  if(removed>0) segs.push(`${removed} removed`);
+  return segs.join(' · ');
 }
 
 /* Group parsed events for the questionnaire: one card per (weekday-class, start-time-or-allday,
@@ -2938,6 +2966,10 @@ function App(){
   const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
   const icalInFlight = useRef(false);                // hard guard against overlapping syncs
   const icalSyncedForUser = useRef(null);            // user.id already auto-synced this app-open (sync runs once, silently)
+  // A foreground re-sync found changes but has NOT opened the stepper: the plan waits behind the
+  // quiet banner until she asks for it. Same payload shape icsImport takes, so "Review" is a handoff.
+  const [icsPending,setIcsPending] = useState(null);
+  const lastIcalSyncAt = useRef(0);                  // ms of the last sync ATTEMPT — throttles the foreground re-sync
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -3151,6 +3183,27 @@ function App(){
     })();
     return ()=>{ cancelled=true; };
   },[hydratedUserId]);
+
+  /* A phone never page-loads. The effect above is keyed to cloud hydration and guarded by a ref
+     that is only cleared on sign-out, so it runs ONCE per load -- and on iOS "opening the app"
+     means returning to a Safari tab that is already loaded. The result: the Settings copy promises
+     BadgeBudget "checks it each time you open the app", which was true for a cold load and false
+     for every ordinary return, and the only way to pull a changed schedule was Settings -> Sync
+     now. The owner hit that by hand on 2026-10-01 after deleting a shift upstream.
+     So: re-sync when the tab comes back to the foreground. Throttled by ICAL_RESYNC_MIN_MS, and
+     QUIET -- it fills the banner rather than opening the stepper. The cold-load sync above keeps
+     opening the stepper exactly as it always has; this is additive. */
+  useEffect(()=>{
+    if(!supabase || !user || !icalSub || !icalSub.icalUrl) return;
+    const onVis = ()=>{
+      if(document.visibilityState!=='visible') return;
+      if(icsImport || icsPending || icalInFlight.current) return;   // never stack on an open sheet or an unread banner
+      if(Date.now() - lastIcalSyncAt.current < ICAL_RESYNC_MIN_MS) return;
+      runIcalSync({quiet:true, url:icalSub.icalUrl});
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return ()=>document.removeEventListener('visibilitychange', onVis);
+  },[user, icalSub, icsImport, icsPending]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* save (debounced) */
   useEffect(()=>{
@@ -3968,6 +4021,7 @@ function App(){
     toast(parts.length ? parts.join(', ').replace(/^./,c=>c.toUpperCase())+'.' : 'Calendar already up to date.','success');
     track('ics_import_done', {added,updated,skipped,removed,shown}, user?.id);
     setIcsImport(null);
+    setIcsPending(null);   // whatever the banner was still holding has just been applied
   };
 
   /* ---- iCal auto-sync: fetch the saved feed through the SSRF-guarded proxy, then route the parsed
@@ -3985,11 +4039,14 @@ function App(){
   };
   const runIcalSync = async (opts)=>{
     const manual = !!(opts && opts.manual);
+    // quiet: found changes go behind the banner instead of opening the stepper (foreground re-sync).
+    const quiet = !!(opts && opts.quiet);
     // normalizeFeedUrl here, not only on save: a row saved before this fix still holds webcal://.
     const url = normalizeFeedUrl((opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl);
     if(!supabase || !user || hydratedForUser.current!==user.id || !url) return;
     if(icalInFlight.current) return;
     icalInFlight.current = true; setIcalBusy(true);
+    lastIcalSyncAt.current = Date.now();   // stamp the ATTEMPT, so a failing feed can't spin on every foreground
     try{
       const {data,error} = await withTimeout(
         supabase.functions.invoke('ical-proxy',{body:{url}}), 12000, 'ical sync');
@@ -4013,9 +4070,13 @@ function App(){
       }
       const groups = groupICSEvents(plan.toClassify);
       const answers = {}; groups.forEach(g=>{ answers[g.key]=inferShiftType(g); });
-      setIcsImport({ groups, toUpdate:changedUpdates, toRemove:plan.toRemove,
+      const payload = { groups, toUpdate:changedUpdates, toRemove:plan.toRemove,
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
-        answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true });
+        answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true };
+      // A quiet sync never steals the screen. Coming back to the app and being asked to delete a
+      // shift is how you teach someone to stop coming back to the app.
+      if(quiet){ setIcsPending(payload); track('ics_resync_found', {}, user.id); }
+      else setIcsImport(payload);
       track('ics_sync_done', {events:parsed.events.length}, user.id);
     // The catch logs status + the proxy's own error code, never the URL (Invariant 13) — see
     // icalFailureDetail. Keep console.error as the FIRST statement in the block: council #27
@@ -4205,6 +4266,22 @@ function App(){
           <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
           <div className="period" role="group" aria-label="Pay period"><button onClick={()=>movePeriod(-1)} aria-label="Previous pay period">‹</button><span className="num" aria-live="polite">{periodLabel}</span><button onClick={()=>movePeriod(1)} aria-label="Next pay period">›</button></div>
         </div>
+
+        {/* A foreground re-sync found schedule changes and parked them here. Deliberately not a
+            modal: this fires when she returns to the app, and a dialog asking to delete a shift
+            the instant she comes back is how an app teaches someone not to come back. "Review"
+            hands the identical payload to the stepper, so nothing is applied without the same
+            confirm step a file import gets. */}
+        {icsPending && !icsImport && (
+          <div className="sync-banner" role="status">
+            <div className="t">Your schedule changed</div>
+            <div className="s">{icsPendingSummary(icsPending) || 'There are updates from your calendar.'}</div>
+            <div className="row">
+              <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
+              <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); setIcsPending(null); }}>Not now</button>
+            </div>
+          </div>
+        )}
 
         {/* Two shortened setup paths reach the planner without real differentials or tax rates,
             and one of them reaches it without the nurse's own hourly rate at all. This says so,
@@ -4912,8 +4989,19 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   // active when the draft opened can go inactive under it. Re-seed rather than leave no chip lit
   // while the preview still prices that differential — the lit chip must always be what is priced.
   useEffect(()=>{ const d=differentials[shiftType]; if(d && !d.active) setType(firstActiveShiftType(differentials)); },[differentials]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const dt = days.find(d=>keyOf(d)===dateKey) || new Date(dateKey);
-  const dateLabel = dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  /* `days` is only the 14-day period in view, and the month scroll makes every other day tappable
+     too. The old fallback was `new Date(dateKey)` -- and an ISO date-only string parses as UTC
+     MIDNIGHT per ECMA-262, so anywhere west of Greenwich the label rendered the evening before:
+     an Oct 5 shift opened from outside the current period was headed "Sun, Oct 4". Reported from a
+     real phone 2026-10-01. fmtDateShort splits the key and builds a LOCAL date, which is what
+     every other date label in this file already does.
+     Display only -- the shift list below, the month grid and every dollar figure key off dateKey
+     itself and were always right, which is exactly why this survived so long. It is also INVISIBLE
+     on CI: the runners are UTC, where the two parses agree. tests/smoke.mjs 25 pins a timezone for
+     the same reason 22 does. */
+  const dt = days.find(d=>keyOf(d)===dateKey);
+  const dateLabel = dt ? dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+                       : fmtDateShort(dateKey);
 
   const draft = {shiftType,hours,bonusType,customBonus,isOvertime,noMeal};
   const previewGross = shiftGross(baseRate, differentials[shiftType], draft, job);

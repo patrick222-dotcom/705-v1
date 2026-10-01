@@ -1077,6 +1077,37 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-01 — **The feed re-syncs when she comes back to the app, and the day sheet stops printing
+  the wrong date.** Both reported from a real phone the same morning, both on the calendar surface,
+  neither touching the pay math.
+  **Foreground re-sync.** The silent auto-sync lived in one effect keyed on cloud hydration and
+  guarded by a ref cleared only on sign-out, so it ran **once per page load** — and a phone never
+  page-loads. On iOS "opening the app" is returning to an already-loaded Safari tab, so the effect
+  never re-ran and the only way to pull a changed schedule was Settings → scroll → Sync now, which
+  the owner hit by hand after deleting a shift upstream. The Settings copy promising BadgeBudget
+  "checks it each time you open the app" was therefore true for a cold load and false for every
+  ordinary return. Added a `visibilitychange` re-sync (the same shape the cloud-data poll already
+  used), throttled by `ICAL_RESYNC_MIN_MS` = 10 min so tab-flipping can't hammer the proxy or
+  re-roll the unexplained first-hit 422. It is **quiet**: it parks the plan in `icsPending` behind a
+  banner instead of opening the stepper, because returning to the app and being asked to delete a
+  shift is how an app teaches someone not to return. The cold-load sync still opens the stepper —
+  this is additive. "Review" hands the identical payload over, so nothing applies without the same
+  confirm step a file import gets.
+  **Day-sheet date header.** `AddShiftSheet` fell back to `new Date(dateKey)` when the tapped day
+  sat outside the 14-day period in view — and the month scroll makes every day tappable. An ISO
+  date-only string parses as **UTC midnight**, so west of Greenwich the header rendered the evening
+  before: an Oct 5 shift read "Sun, Oct 4". Display only — the shift list, the month grid and every
+  dollar figure key off `dateKey` itself, which is why it survived. Now uses `fmtDateShort`, the
+  local parse every other date label in the file already used.
+  **Verification.** `tests/smoke.mjs` §25, 15 assertions, **timezone-pinned** — the bug is invisible
+  on CI, where UTC runners make both parses agree, the same trap §22 documents. Negative-tested
+  three ways on a copy: reverting the date fix failed both out-of-period assertions and left the
+  in-period one green (proving it discriminates the right branch); counting groups instead of events
+  in the summary failed only that assertion; dropping the quiet branch failed only the shape check.
+  Full suite **386 passed / 0 failed**, gate 11/11, groom_seed 33/33. The foreground sync itself is
+  `harness:needs-live-auth` — it needs a signed-in user, a saved subscription and the proxy, none of
+  which exist where Supabase points at `.invalid` — so its two safety properties (quiet, throttled)
+  are pinned at the source instead.
 - 2026-09-30 (nightly) — **The first real NurseGrid sync in the app's life succeeded, and the run
   shipped the diagnostic that made it legible.**
   **Groom.** `silence_watch` → **FRESH** (newest event 19.3h old, 48h window), so no health proof was

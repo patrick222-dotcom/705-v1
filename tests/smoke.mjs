@@ -2608,6 +2608,100 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 25. the day sheet's date header, and the quiet re-sync banner's summary -------------
+     Reported from a real phone 2026-10-01: opening an Oct 5 shift showed the right time under a
+     header that read "Sun, Oct 4". `days` only covers the 14-day period in view, and the month
+     scroll makes every other day tappable, so the sheet fell back to `new Date(dateKey)` -- and an
+     ISO date-only string parses as UTC MIDNIGHT per ECMA-262. West of Greenwich that renders the
+     evening before. Display only: the shift list, the month grid and every dollar figure key off
+     dateKey itself, which is why it survived.
+
+     This context pins timezoneId for the same reason 22 does. CI runners are UTC, where the two
+     parses agree and an assertion written without it passes with the bug still in. */
+  if (want(25)) {
+    const ctx = await browser.newContext({ ...devices['iPhone 13'], timezoneId: 'America/New_York' });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+    await page.waitForSelector('#splash', { state: 'hidden', timeout: 5000 }).catch(() => {});
+
+    /* Build the expectation the CORRECT way -- split the key, construct a local date. That is
+       exactly what the old fallback failed to do, so this comparison is the defect. */
+    const fmtLocal = (key) => { const [y, m, d] = key.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
+    const labelSel = '.sheet[aria-label="Add a shift"] .sheet-h .row-item';
+    const openAndRead = async (sel) => {
+      const key = await page.locator(sel).first().getAttribute('data-date');
+      await page.locator(sel).first().click();
+      await page.waitForSelector(labelSel, { timeout: 5000 });
+      const got = (await page.locator(labelSel).first().innerText()).trim();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet[aria-label="Add a shift"]', { state: 'detached', timeout: 4000 }).catch(() => {});
+      return { key, got };
+    };
+
+    /* The found-in-`days` branch: a day inside the viewed period was always right, and must stay right. */
+    const inPeriod = await openAndRead('.cell.today');
+    ok('day sheet: a day INSIDE the viewed period is headed with its own date',
+      inPeriod.got === fmtLocal(inPeriod.key), `${inPeriod.got} vs ${fmtLocal(inPeriod.key)} for ${inPeriod.key}`);
+
+    /* The fallback branch -- the defect. The last rendered cell is months out, so it cannot be in
+       the 14-day period and `days.find` must miss. */
+    const cells = await page.locator('.cell[data-date]').count();
+    ok('day sheet: the month scroll renders days outside the viewed period', cells > 40, String(cells));
+    const outKey = await page.locator('.cell[data-date]').last().getAttribute('data-date');
+    await page.locator('.cell[data-date]').last().scrollIntoViewIfNeeded();
+    await page.locator('.cell[data-date]').last().click();
+    await page.waitForSelector(labelSel, { timeout: 5000 });
+    const outGot = (await page.locator(labelSel).first().innerText()).trim();
+    ok('day sheet: a day OUTSIDE the viewed period is headed with its own date, not the day before',
+      outGot === fmtLocal(outKey), `${outGot} vs ${fmtLocal(outKey)} for ${outKey}`);
+    /* Name the specific wrong answer, so a future regression reads as the bug it is rather than
+       as a formatting mismatch. */
+    const dayBefore = (() => { const [y, m, d] = outKey.split('-').map(Number);
+      return new Date(y, m - 1, d - 1).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); })();
+    ok('day sheet: and specifically NOT the UTC-parse answer', outGot !== dayBefore, `${outGot} / off-by-one would be ${dayBefore}`);
+    await page.keyboard.press('Escape');
+
+    /* The quiet re-sync banner's one-line summary. The sync that fills it needs a signed-in user,
+       a saved subscription and the proxy -- none of which exist in a harness that points Supabase
+       at .invalid -- so the SUMMARY is what is drivable here, and it is the part that can silently
+       disagree with the sheet it opens. Groups hold many events, hence items.length not groups.length. */
+    const sum = await page.evaluate(() => ({
+      empty: icsPendingSummary(null),
+      addsCountEvents: icsPendingSummary({ groups: [{ items: [1, 2, 3] }, { items: [4] }], toUpdate: [], toRemove: [], toUpdateEvents: [], toRemoveEvents: [] }),
+      removalsOnly: icsPendingSummary({ groups: [], toUpdate: [], toRemove: [1], toUpdateEvents: [], toRemoveEvents: [] }),
+      allThree: icsPendingSummary({ groups: [{ items: [1] }], toUpdate: [1], toRemove: [1, 2], toUpdateEvents: [], toRemoveEvents: [] }),
+      eventsCountToo: icsPendingSummary({ groups: [], toUpdate: [], toRemove: [], toUpdateEvents: [1], toRemoveEvents: [1] }),
+      nothing: icsPendingSummary({ groups: [], toUpdate: [], toRemove: [], toUpdateEvents: [], toRemoveEvents: [] }),
+    }));
+    ok('resync banner: a null plan summarises to nothing', sum.empty === '', JSON.stringify(sum.empty));
+    ok('resync banner: adds count EVENTS, not groups', sum.addsCountEvents === '4 new', sum.addsCountEvents);
+    ok('resync banner: a removal-only plan says so', sum.removalsOnly === '1 removed', sum.removalsOnly);
+    ok('resync banner: all three buckets read in order', sum.allThree === '1 new · 1 changed · 2 removed', sum.allThree);
+    ok('resync banner: day events count alongside shifts', sum.eventsCountToo === '1 changed · 1 removed', sum.eventsCountToo);
+    ok('resync banner: an empty plan summarises to nothing', sum.nothing === '', JSON.stringify(sum.nothing));
+
+    /* The foreground re-sync itself is harness:needs-live-auth. Pin its SHAPE at the source so the
+       two properties that make it safe cannot be quietly dropped: it is quiet (banner, never a
+       modal) and it is throttled. */
+    const src25 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('resync: the foreground sync asks for quiet mode', /runIcalSync\(\{quiet:true, url:icalSub\.icalUrl\}\)/.test(src25));
+    ok('resync: quiet mode fills the banner instead of opening the stepper',
+      /if\(quiet\)\{ setIcsPending\(payload\); /.test(src25));
+    ok('resync: it is throttled', /Date\.now\(\) - lastIcalSyncAt\.current < ICAL_RESYNC_MIN_MS/.test(src25));
+    ok('resync: and never stacks on an open sheet or an unread banner',
+      /if\(icsImport \|\| icsPending \|\| icalInFlight\.current\) return;/.test(src25));
+    ok('day sheet: no page errors', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

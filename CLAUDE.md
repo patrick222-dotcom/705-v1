@@ -316,6 +316,11 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   and the WHATWG `protocol` setter refuses to reassign it — Node and Deno enforce that, **Chromium
   does not**, so a browser test of the setter passes while production returns `400`. Never rely on
   the setter; `tests/smoke.mjs` §23 pins both engines.
+  **The feed re-syncs on foreground, quietly** (2026-10-01): the cold-load sync runs once per page
+  load, and a phone never page-loads, so a `visibilitychange` re-sync was added — throttled to
+  `ICAL_RESYNC_MIN_MS` (10 min) and **quiet**, parking the plan in a banner rather than opening the
+  import stepper. Never make it a modal: it fires when she returns to the app. The cold-load sync
+  still opens the stepper. Pinned by `tests/smoke.mjs` §25.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used
