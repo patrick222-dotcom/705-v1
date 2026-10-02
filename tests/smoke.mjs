@@ -2802,6 +2802,272 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 27. every sync says HOW IT ENDED, and which provider it was ------------------------
+     `runIcalSync` had five terminal states and told production about one of them. The success
+     path tracked `ics_sync_done`; the parseICSSchedule catch, the zero-events return, the
+     pending===0 return and the catch each wrote NOTHING to `events`, reaching the nurse only as
+     a toast -- and the toast is gated on `manual`, so a BACKGROUND sync in any of those four
+     states was completely invisible.
+
+     The 2026-10-01 groom caught it by reading the Edge Function's edge log against `events` and
+     finding FOUR `POST 200`s against only TWO `ics_sync_done` rows. Two syncs fetched a real
+     calendar successfully and left no trace anywhere, because both were `pending===0` -- the
+     healthy case.
+
+     Two distinct costs. (a) `ics_sync_done` is misnamed for the job it gets asked to do:
+     counting it answers "how often did a sync have something to show her", not "how often did
+     sync work", so it undercounts by exactly the state that means everything is fine -- and the
+     substitution half of the positioning rests on that number. (b) The unparseable branch is an
+     INVARIANT 4 SHAPE: a feed answering 200 with a body the parser rejects leaves a background
+     sync silent forever, which is the same class as the 47-day upsert outage and the six-failure
+     webcal bug. It is also the one path `icalFailureDetail` (§24) cannot see, because it never
+     throws past the inner catch.
+
+     Driving this needs a signed-in user, a saved subscription and a proxy that answers on
+     command, so the client is stubbed the way §11's fakeAuth stubs it -- table-aware here,
+     because hydration must complete (user_data -> PGRST116) before the cold-load sync effect
+     fires at all, and the subscription row is what gives it a URL. `events` inserts are
+     captured instead of sent, which is the only way to assert on props the app never shows. */
+  if (want(27)) {
+    const FEED_URL = 'https://app.nursegrid.com/calendars/12345/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    /* Five days out, so it lands inside the 60-back..366-forward import window on any run date. */
+    const soon = (() => {
+      const d = new Date(); d.setDate(d.getDate() + 5);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const vevent = (uid) => ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', `UID:${uid}`, `DTSTART:${soon}T190000Z`, `DTEND:${soon}T233000Z`,
+      'SUMMARY:ICU', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    const FEEDS = {
+      /* A genuinely new shift: nothing matches it, so it goes to the questionnaire. */
+      changes: vevent('ng-new-1'),
+      /* Parses fine, but every event is already dismissed as "not a shift" -> pending 0. This is
+         the state the two untracked production syncs were in. */
+      upToDate: vevent('ng-ignored-1'),
+      /* Parses, and drops every event on its own: an `@scrubpay` UID is our own export coming
+         back (Invariant 6), so `events.length` is 0 without the parser ever complaining. */
+      empty: vevent('scrubpay-2026-01-01-1@scrubpay'),
+      /* The interstitial shape. A 200 from an allowlisted host whose body has no VEVENT at all
+         makes parseICSSchedule throw -- the branch that was silent forever. */
+      unparseable: '<html><body>Please sign in to NurseGrid</body></html>',
+    };
+
+    const syncRun = async ({ feed, seed = SEEDED_STATE, fail = null }) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.addInitScript(([body, failWith, feedUrl]) => {
+        window.__ev = [];
+        const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+          access_token: 'a', refresh_token: 'a' };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const orig = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = orig(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                  c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                  /* Table-aware, unlike §11's: `user_data` must answer "no row" so hydration
+                     COMPLETES (hydratedUserId is what the cold-load sync effect keys on), and
+                     `ical_subscriptions` must answer with a row or there is no URL to sync. */
+                  c.from = (table) => {
+                    const q = { _op: 'select' };
+                    for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                    q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                    q.upsert = () => { q._op = 'upsert'; return q; };
+                    q.then = (res, rej) => {
+                      if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                      if (table === 'ical_subscriptions') {
+                        return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                      }
+                      return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                    };
+                    return q;
+                  };
+                  /* `SupabaseClient.functions` is a PROTOTYPE GETTER that returns a BRAND NEW
+                     FunctionsClient on every single access (supabase-js 2.45.4,
+                     SupabaseClient.js:87). So `c.functions = {...}` fails silently against the
+                     setter-less accessor, and `c.functions.invoke = fn` writes onto a throwaway
+                     object that is discarded before the app's next read. Both mistakes were made
+                     here, and both presented IDENTICALLY: the app reached the real relay at
+                     .invalid, threw, and every terminal state reported `failed` -- a section that
+                     looked like it was driving five cases while driving none. Shadowing the
+                     accessor with an own property is the only form that takes, and the
+                     `__invokes` assertion below is what caught it. */
+                  const fx = { invoke: async () => {
+                    window.__invokes = (window.__invokes || 0) + 1;
+                    if (failWith) {
+                      /* The exact supabase-js shape §24 pins: a FunctionsHttpError carrying the
+                         undrained Response, so the catch runs its real code path. */
+                      const e = new Error('Edge Function returned a non-2xx status code');
+                      e.name = 'FunctionsHttpError';
+                      e.context = new Response(JSON.stringify({ error: failWith.code }),
+                        { status: failWith.status, headers: { 'content-type': 'application/json' } });
+                      throw e;
+                    }
+                    return { data: body, error: null };
+                  } };
+                  Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, [feed, fail, FEED_URL]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'),
+        null, { timeout: 15000 }).catch(() => {});
+      const rows = await page.evaluate(() => (window.__ev || []).map((r) => ({ name: r.name, props: r.props })));
+      const invokes = await page.evaluate(() => window.__invokes || 0);
+      return { ctx, page, errors, rows, invokes };
+    };
+    const resultOf = (rows) => {
+      const r = rows.filter((x) => x.name === 'ics_sync_result');
+      return { n: r.length, props: r[0] ? r[0].props : null };
+    };
+
+    /* (1) changes — the one state that was already visible. It must stay visible, and it must
+       still emit `ics_sync_done` as well: that event has months of history behind it. */
+    {
+      const { ctx, errors, rows, invokes } = await syncRun({ feed: FEEDS.changes });
+      const res = resultOf(rows);
+      const done = rows.filter((x) => x.name === 'ics_sync_done');
+      ok('sync result: the stub actually reached the proxy (the drive is real, not a no-op)',
+        invokes === 1, String(invokes));
+      ok('sync result: a feed with a new shift reports result=changes',
+        res.n === 1 && res.props && res.props.result === 'changes', JSON.stringify(res));
+      ok('sync result: and names the provider',
+        res.props && res.props.provider === 'nursegrid', JSON.stringify(res.props));
+      ok('sync result: ics_sync_done still fires on the success path (months of history)',
+        done.length === 1 && done[0].props.events === 1, JSON.stringify(done.map((d) => d.props)));
+      ok('sync result: ics_sync_done carries the provider too — the metric the positioning rests on',
+        done.length === 1 && done[0].props.provider === 'nursegrid', JSON.stringify(done[0] && done[0].props));
+      ok('sync result: no page errors across the signed-in sync drive',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* (2) up_to_date — THE production case. Two real syncs on 2026-10-01 fetched a calendar,
+       found nothing to confirm and wrote nothing anywhere. This is that sync, instrumented. */
+    {
+      const { ctx, rows } = await syncRun({
+        feed: FEEDS.upToDate,
+        seed: { ...SEEDED_STATE, icsIgnored: { 'ng-ignored-1': true } },
+      });
+      const res = resultOf(rows);
+      ok('sync result: a healthy sync with nothing to confirm reports result=up_to_date',
+        res.n === 1 && res.props && res.props.result === 'up_to_date', JSON.stringify(res));
+      ok('sync result: and it is NOT counted as a found-changes sync',
+        rows.every((r) => r.name !== 'ics_sync_done'), JSON.stringify(rows.map((r) => r.name)));
+      await ctx.close();
+    }
+
+    /* (3) empty — the feed parsed, and every event was dropped. Distinct from up_to_date on
+       purpose: "your calendar has nothing in it" and "your calendar matches" are different
+       answers to "why did nothing happen", and conflating them is how you chase the wrong bug. */
+    {
+      const { ctx, rows } = await syncRun({ feed: FEEDS.empty });
+      const res = resultOf(rows);
+      ok('sync result: a feed whose every event is dropped reports result=empty',
+        res.n === 1 && res.props && res.props.result === 'empty', JSON.stringify(res));
+      await ctx.close();
+    }
+
+    /* (4) unparseable — the Invariant 4 branch, and the reason this section is not just a metric
+       tidy-up. A 200 with a body the parser rejects used to leave a background sync silent
+       forever, and §24's icalFailureDetail cannot see it because it never throws that far. */
+    {
+      const { ctx, rows } = await syncRun({ feed: FEEDS.unparseable });
+      const res = resultOf(rows);
+      ok('sync result: a 200 that is not a calendar reports result=unparseable (Invariant 4 shape)',
+        res.n === 1 && res.props && res.props.result === 'unparseable', JSON.stringify(res));
+      ok('sync result: and it is visible in events, not only in a toast nobody saw',
+        rows.some((r) => r.name === 'ics_sync_result'), JSON.stringify(rows.map((r) => r.name)));
+      await ctx.close();
+    }
+
+    /* (5) failed — the catch. §24 already makes the client_error row diagnostic; this makes the
+       failure COUNTABLE, so "how often did sync work" has a complete denominator. */
+    {
+      const { ctx, rows } = await syncRun({ feed: FEEDS.changes, fail: { status: 422, code: 'not_a_calendar' } });
+      const res = resultOf(rows);
+      ok('sync result: a proxy failure reports result=failed',
+        res.n === 1 && res.props && res.props.result === 'failed', JSON.stringify(res));
+      ok('sync result: failed is the DEFAULT, so a throw from anywhere still reports',
+        res.props && res.props.provider === 'nursegrid', JSON.stringify(res.props));
+      await ctx.close();
+    }
+
+    /* The whole point in one assertion: the five states are five distinct, exhaustive answers.
+       Before this, four of them were the same answer — silence. */
+    {
+      const seen = [];
+      for (const [feed, seed, fail] of [
+        [FEEDS.changes, SEEDED_STATE, null],
+        [FEEDS.upToDate, { ...SEEDED_STATE, icsIgnored: { 'ng-ignored-1': true } }, null],
+        [FEEDS.empty, SEEDED_STATE, null],
+        [FEEDS.unparseable, SEEDED_STATE, null],
+        [FEEDS.changes, SEEDED_STATE, { status: 502, code: 'fetch_failed' }],
+      ]) {
+        const { ctx, rows } = await syncRun({ feed, seed, fail });
+        seen.push(resultOf(rows).props ? resultOf(rows).props.result : '(none)');
+        await ctx.close();
+      }
+      ok('sync result: the five terminal states are five DISTINCT results',
+        new Set(seen).size === 5, seen.join(','));
+      ok('sync result: and every one of them wrote exactly one row',
+        !seen.includes('(none)'), seen.join(','));
+    }
+
+    /* Invariant 13 + the analytics rules: a result token and a provider slug, nothing else. The
+       diagnostic added to debug a credential leak must not become one. */
+    {
+      const { ctx, rows } = await syncRun({ feed: FEEDS.changes });
+      const icsRows = rows.filter((r) => /^ics_/.test(r.name));
+      const blob = JSON.stringify(icsRows);
+      /* `provider:'nursegrid'` is the slug and is meant to be there, so this asserts on the
+         CREDENTIAL -- the host, the scheme, the path and the secret -- rather than on the word.
+         A check that banned the word would have had to be deleted to make this section pass,
+         which is how a privacy assertion quietly becomes decoration. */
+      ok('sync result: no ics event carries the feed url, its host or its scheme (Invariant 13)',
+        !/app\.nursegrid|webcal|https?:\/\/|6f1c8e2a|calendars\//i.test(blob), blob.slice(0, 300));
+      ok('sync result: the provider is a bare slug, never a hostname',
+        icsRows.every((r) => !r.props || !r.props.provider || /^(google|nursegrid|file)$/.test(r.props.provider)),
+        blob.slice(0, 300));
+      ok('sync result: no ics event carries an event title',
+        !/ICU/.test(blob), blob.slice(0, 300));
+      ok('sync result: the result props are exactly {result, provider}',
+        icsRows.filter((r) => r.name === 'ics_sync_result')
+          .every((r) => Object.keys(r.props).sort().join(',') === 'provider,result'),
+        blob.slice(0, 300));
+      await ctx.close();
+    }
+
+    /* A file import has no subscription, so `provider` must say so rather than borrowing the
+       feed's — otherwise a nurse who syncs NurseGrid and also imports a .ics file has both
+       counted against NurseGrid. Source-pinned: the payload is where the answer is set. */
+    const src27 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    ok('sync result: a file import is tagged provider:file, not the feed provider',
+      /answers, stepIdx:0, dropNotice, provider:'file' \}\);/.test(src27));
+    ok('sync result: ics_import_done reads the provider off the payload, not off icalSub',
+      /provider:\(icsImport && icsImport\.provider\) \|\| null\}/.test(src27));
+    ok('sync result: the sync payload stamps its own provider',
+      /dropNotice:icsDropSummary\(parsed\), fromSync:true, provider \};/.test(src27));
+    /* Tracking from `finally` is the structural half of the fix: a sixth early return added later
+       cannot forget to report, because it does not have to remember. */
+    ok('sync result: the row is written from finally, so a new early return cannot be silent',
+      /\}finally\{\n      icalInFlight\.current = false; setIcalBusy\(false\);\n      track\('ics_sync_result', \{result, provider\}, user\.id\);/.test(src27));
+    ok("sync result: 'failed' is the initialiser, not something the catch sets",
+      /let result = 'failed';/.test(src27) && !/catch\(e\)\{\s*result\s*=/.test(src27));
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

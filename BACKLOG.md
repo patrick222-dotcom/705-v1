@@ -60,8 +60,16 @@ and the push P0 it pointed at was fixed the same day.
   reports SUCCEEDED while writing nothing is the signature.
 
 ### P1
-- [ ] **A sync that finds nothing, and a sync whose feed will not parse, are both completely
-  invisible — `ics_sync_done` means "found changes", not "sync completed"** — `harness:drivable`
+- [x] ~~**A sync that finds nothing, and a sync whose feed will not parse, are both completely
+  invisible — `ics_sync_done` means "found changes", not "sync completed"**~~ — SHIPPED 2026-10-02
+  (see Done log), together with the provider P2 below, in one pass as the note asked. Every sync
+  that reaches the proxy now writes exactly one `ics_sync_result {result, provider}`, `result`
+  being `changes` / `up_to_date` / `empty` / `unparseable` / `failed`. It is tracked from
+  `finally` with `failed` as the initialiser, so a sixth early return added later cannot be
+  silent without someone deleting the line. `tests/smoke.mjs` §27 drives all five states end to
+  end against a stubbed proxy — 24 assertions, six deliberate breaks. Original note below:
+- [ ] ~~**A sync that finds nothing, and a sync whose feed will not parse, are both completely
+  invisible — `ics_sync_done` means "found changes", not "sync completed"**~~ — `harness:drivable`
   — found in the 2026-10-01 groom by reading the proxy's edge log against `events` and finding
   **four `POST 200`s and only two `ics_sync_done` rows.** `runIcalSync` has three early returns
   that fire *after* a successful fetch and track nothing at all: the `parseICSSchedule` catch, the
@@ -85,7 +93,8 @@ and the push P0 it pointed at was fixed the same day.
   Drivable: stub `functions.invoke` to return each of the four bodies and assert the tracked props.
   **Build this together with the provider P2 below** — same function, same call sites, and shipping
   them separately means touching `runIcalSync` twice.
-  **BLOCKED ON PR #136 UNTIL IT MERGES** — see the note on the provider item.
+  **(Was blocked on PR #136; the owner merged it on 2026-10-01 as `4b28407`, which is what let
+  the 10-02 run take this.)**
 - [x] ~~**`ical sync failed` says nothing about WHY, and the only log that did expires in 24h**~~ —
   SHIPPED 2026-09-30 (see Done log). `icalFailureDetail` reads the Response off `error.context` and
   the row now reads `ical sync failed: 422 not_a_calendar` instead of one generic sentence.
@@ -289,9 +298,59 @@ and the push P0 it pointed at was fixed the same day.
   "Names stay hidden until everyone accepts." line now sits under the SUGGESTED FOR YOU header,
   above the swap suggestion cards.
 
+### P1 (new, groom 2026-10-02)
+- [ ] **A past shift that has scrolled out of the feed is proposed for DELETION, which would eat
+  her worked history** — `harness:drivable`. The removal half of the import plan asks "is this
+  shift's date inside the window?" and the window it checks is the **parser's** fixed
+  `today-60 .. today+366`, not the span the feed actually covers (`icsPlanFromExisting`,
+  `inWindow(rec.dateKey)` against `parsed.windowStartKey/EndKey`, set in `parseICSSchedule` from
+  `ICS_IMPORT_PAST_DAYS`/`ICS_IMPORT_FUTURE_DAYS`). So any already-imported shift absent from the
+  current fetch and dated within the last 60 days lands in `toRemove`.
+  **Confirmed by reading the code; the half that is UNVERIFIED is the provider.** If NurseGrid's
+  feed publishes upcoming shifts only — which is the ordinary shape for a scheduling app — then
+  every synced shift becomes a deletion proposal a few days after she works it, and the thing
+  being deleted is the hours a past paycheck was computed from. Tonight's production rows are
+  consistent with it but do **not** prove it: the owner's device synced twice on 10-01, each time
+  `ics_sync_done {events:2}` then `{events:1}` against `ics_import_done {added:0, removed:1}`, and
+  the `session_end` shift count walked 10 → 9 → 8. The #136 note says the owner deleted a shift
+  upstream by hand that night, so at least one of those two removals is a deliberate test of
+  deletion propagation working correctly, not erosion. Two removals, one explanation.
+  **Not silent, which is the one mercy:** removals go through the stepper and she has to agree
+  (`docs`/the comment in `icsPlanFromExisting` is explicit that absence is only *evidence* of
+  deletion). The cost is that she would be agreeing, repeatedly, to delete her own history, framed
+  as a cancelled shift.
+  What would settle the provider half: one look at a real NurseGrid feed's earliest `DTSTART`
+  against today — the owner can read that off the feed URL in a browser, or the next sync's
+  `ics_sync_done {events:N}` shrinking while `added:0` says it again. What would settle the code
+  half is already settled.
+  Shape of the fix, if it holds: bound removals by the **feed's own** earliest event rather than
+  the parser's window, i.e. never propose removing a shift dated before the first event the feed
+  actually contains. Drivable without any provider at all — `icsPlanFromExisting` is a top-level
+  function, so a unit drive can seed a past `icsUid` shift, hand it a forward-only feed and assert
+  `toRemove` is empty. **Do not fix it blind, though:** the opposite error (a cancelled shift that
+  never comes out) is the one the removal code was written for, and over-tightening the bound
+  brings that back. Read one real feed first.
+
+### P3 (new, groom 2026-10-02)
+- [ ] **The connect card was dismissed on its first real exposure** — `harness:unscoped`, and
+  deliberately **not** an action item. Device `f184ffa5` (iPhone iOS 18.7, 34 shifts, setup
+  complete — not the owner's phone) fired `ical_cta_dismissed` at 16:00:23 on 2026-10-01, about
+  four minutes after `app_open` and seconds after sharing the app from the top bar. n=1, and
+  "Not now" on a card offering a six-step errand in another app is a perfectly reasonable thing
+  for a nurse with a schedule she has already typed in to tap. Recorded so the next run with real
+  traffic adds to the denominator instead of rediscovering it, and so it sits beside the
+  `estimate_dismissed` note below rather than being read on its own. If it holds across devices
+  the question is whether the card is asking too early, which is a design call.
+
 ### P2 (new, groom 2026-09-30)
-- [ ] **`ics_sync_done` and `ics_import_done` carry no provider, so the metric that matters cannot
-  be counted** — `harness:drivable` — found while confirming the first real NurseGrid sync. The two
+- [x] ~~**`ics_sync_done` and `ics_import_done` carry no provider, so the metric that matters
+  cannot be counted**~~ — SHIPPED 2026-10-02 (see Done log), in the same pass as the P1 above.
+  Both events carry `provider` now, plus the new `ics_sync_result`. The slug is `google` /
+  `nursegrid` / `file` / `null` — `file` because a .ics file import has no subscription and must
+  not be counted against whichever feed happened to be saved, which is why the value rides on the
+  import payload rather than being read off `icalSub` at confirm time. Original note below:
+- [ ] ~~**`ics_sync_done` and `ics_import_done` carry no provider, so the metric that matters cannot
+  be counted**~~ — `harness:drivable` — found while confirming the first real NurseGrid sync. The two
   events that prove the substitution half of the positioning is working (`ics_sync_done {events:N}`,
   `ics_import_done {added,updated,skipped,removed,shown}`) say nothing about WHICH provider the feed
   came from, and `providerOf` has the answer in hand at the call site. So "how many NurseGrid syncs
@@ -1129,6 +1188,60 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-02 — **Every sync now says how it ended, and which provider it was.** Before tonight
+  `runIcalSync` had five terminal states and told production about one of them. The success path
+  tracked `ics_sync_done`; the `parseICSSchedule` catch, the `events.length===0` return, the
+  `pending===0` return and the catch wrote **nothing to `events` at all**, reaching the nurse only
+  as a toast — and the toast is gated on `manual`, so a *background* sync in any of those four
+  states was completely invisible. The 10-01 groom caught it by reading the Edge Function's edge
+  log against `events`: **four `POST 200`s, two `ics_sync_done` rows.** Two syncs fetched a real
+  calendar and left no trace, because both were the healthy `pending===0` case.
+  **What shipped.** One row per sync that reaches the proxy: `ics_sync_result {result, provider}`,
+  `result` ∈ `changes` / `up_to_date` / `empty` / `unparseable` / `failed`. Two structural choices
+  carry the fix rather than the diff: it is tracked from **`finally`**, so a sixth early return
+  added next year cannot forget to report, and `failed` is the **initialiser** rather than
+  something the catch assigns, so a throw from anywhere in the body — including one nobody has
+  thought of — still lands. `ics_sync_done` keeps firing unchanged on the success path; it has
+  months of history behind it and is still the right answer to "did a sync have something to show
+  her". The new event is the answer to "did sync work", which is the number the substitution half
+  of the positioning actually rests on.
+  **The provider P2 rode along**, as its own note asked — same function, same call sites, and
+  shipping them apart meant touching `runIcalSync` twice. `provider` is now on `ics_sync_done`,
+  `ics_import_done` and `ics_sync_result`: `google` / `nursegrid` / `file` / `null`. It rides on
+  the import payload rather than being read off `icalSub` at confirm time, because a .ics **file**
+  import has no subscription and must not be counted against whichever feed happened to be saved.
+  So "how many NurseGrid syncs succeeded" is a query now instead of an excavation of a log that
+  expires in 24 hours.
+  **Why the unparseable branch was the serious one.** A feed answering `200` with a body the
+  parser rejects left a background sync silent *forever* — the same class as the 47-day upsert
+  outage (Invariant 4) and the six-failure webcal bug. It is also the one path `icalFailureDetail`
+  (shipped 09-30) cannot see, because it never throws past the inner catch. That branch is the
+  leading explanation for the two unexplained `422 not_a_calendar` hits, and it is now legible
+  from `events` with no deadline.
+  **Verification.** `tests/smoke.mjs` §27, 24 assertions, all five states driven **end to end**
+  against a stubbed proxy on a signed-in page — not asserted off the source. Six deliberate
+  breaks, each failing only its own assertions: no `result` on the unparseable / empty /
+  up_to_date branches (2 FAILs each), the whole `finally` track removed (11 FAILs), `provider`
+  dropped from `ics_sync_done` (1), and a file import borrowing the feed's provider (1).
+  Analytics stay inside the rules: a result token and a provider slug, never the feed URL
+  (Invariant 13), never an event title, never a wage figure — each pinned by its own assertion.
+  **Two lessons worth more than the feature.** (1) `SupabaseClient.functions` is a **prototype
+  getter that returns a brand new `FunctionsClient` on every access** (supabase-js 2.45.4,
+  `SupabaseClient.js:87`). `c.functions = {…}` fails silently against the setter-less accessor and
+  `c.functions.invoke = fn` writes onto a throwaway — **both mistakes were made here, and both
+  presented identically**: the app reached the real relay at `.invalid`, threw, and all five
+  states reported `failed`. A section that looked like it drove five cases drove none. Shadowing
+  the accessor with `Object.defineProperty` is the only form that takes, and the thing that caught
+  it is the one assertion that exists purely to prove the drive is real
+  (`invokes === 1`) — the same hazard shape as §23's `protocol` setter, in a different API.
+  (2) The first Invariant-13 assertion written here banned the word *nursegrid* from the event
+  blob and failed on `provider:'nursegrid'`, which is the slug and is meant to be there. It was
+  rewritten to ban the **credential** — host, scheme, path, secret — rather than the word, because
+  the alternative was deleting a privacy assertion to make the suite pass.
+  Gate: 11/11 mechanical, 33/33 groom_seed, 39/39 silence_watch, **437/437 smoke, 0 failed**.
+  `silence_watch: FRESH` (newest event 4.9h old). Groom also filed a P1 (a past shift that leaves
+  the feed is proposed for deletion — code confirmed, provider unverified) and a P3 (the connect
+  card was dismissed on its first real exposure, n=1).
 - 2026-10-01 — **Offered the NurseGrid sync instead of just shipping it.**
   The feed subscription has existed since 2026-09-03 and nobody has ever found it unprompted: it
   sits at the bottom of Settings under `CALENDAR SYNC`, behind a hint that starts by telling you to
