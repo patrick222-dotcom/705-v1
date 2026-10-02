@@ -70,14 +70,25 @@ does not resurrect shipped themes.
   never a returning device — exclude it with `anon_id not like 'nostore-%'` in any device or retention
   count. Pinned by `tests/smoke.mjs` §20.
   Naming: `snake_case`, `<surface>_<verb>`. Regenerate the list with
-  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 41 through `track()` plus one
+  `grep -o "track('[a-z_]*'" index.html | sort -u`; currently 47 through `track()` plus one
   (`session_end`) that is sent only by the unload path below and so never appears in that grep —
-  42 in the table. `app_open` `{via}` (present only when the URL
+  48 in the table. (The count read 41 from 2026-10-01 to 2026-10-02 while the prose below already
+  named all six of the events it was missing: regenerate the number with the grep, don't trust it.) `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
   `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
-  `ics_import_parsed/done`, `ics_sync_done`, `ics_resync_found`,
+  `ics_import_parsed`, `ics_import_done` `{added,updated,skipped,removed,shown,provider}`,
+  `ics_sync_done` `{events,provider}`,
+  `ics_sync_result` `{result,provider}` — **the only event that fires on EVERY sync that reached the
+  proxy**, `result` being one of `changes` / `up_to_date` / `empty` / `unparseable` / `failed`.
+  `ics_sync_done` means "found changes", so counting it answers "how often did a sync have
+  something to show her", not "how often did sync work"; the other four states wrote nothing at all
+  before 2026-10-02, which made a background sync against an unparseable feed silent forever
+  (Invariant 4's shape, in the sync path). `provider` on both is `google` / `nursegrid` / `file`
+  (file imports) / `null`, and is the whole reason "how many NurseGrid syncs succeeded" is a query
+  rather than an excavation of a 24-hour edge log. Pinned by `tests/smoke.mjs` §27.
+  `ics_resync_found`,
   `ics_resync_opened`/`ics_resync_dismissed` (the quiet foreground re-sync banner),
   `ical_howto_opened` `{surface:'card'|'settings'}`, `ical_cta_dismissed`,
   `pattern_lab_opened`, `pattern_saved` `{cycle}`,

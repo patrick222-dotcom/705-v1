@@ -3943,7 +3943,7 @@ function App(){
       const dropNotice = icsDropSummary(parsed);
       setIcsImport({ groups, toUpdate:plan.toUpdate.filter(u=>u.changed), toRemove:plan.toRemove,
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
-        answers, stepIdx:0, dropNotice });
+        answers, stepIdx:0, dropNotice, provider:'file' });
     };
     r.onerror = ()=> toast("Couldn't read that calendar file.",'error');
     r.readAsText(f);
@@ -4041,7 +4041,12 @@ function App(){
     if(removed) parts.push(`removed ${removed}`);
     if(shown) parts.push(`${shown} shown as events`);
     toast(parts.length ? parts.join(', ').replace(/^./,c=>c.toUpperCase())+'.' : 'Calendar already up to date.','success');
-    track('ics_import_done', {added,updated,skipped,removed,shown}, user?.id);
+    /* `provider` rides on the payload rather than being read from icalSub here: a file import has
+       no subscription at all, and a sync whose subscription changed mid-stepper would otherwise be
+       counted against the wrong feed. Set where the plan is built, which is where the answer is
+       already in hand. */
+    track('ics_import_done', {added,updated,skipped,removed,shown,
+      provider:(icsImport && icsImport.provider) || null}, user?.id);
     setIcsImport(null);
     setIcsPending(null);   // whatever the banner was still holding has just been applied
   };
@@ -4069,6 +4074,23 @@ function App(){
     if(icalInFlight.current) return;
     icalInFlight.current = true; setIcalBusy(true);
     lastIcalSyncAt.current = Date.now();   // stamp the ATTEMPT, so a failing feed can't spin on every foreground
+    /* EVERY sync that gets this far ends with exactly one `ics_sync_result` row, written in the
+       finally below. Before this, three of the five terminal states wrote nothing anywhere: the
+       parseICSSchedule catch, the zero-events return and the pending===0 return each only ever
+       reached the nurse as a toast, and the toast is gated on `manual` — so a BACKGROUND sync in
+       any of them was completely invisible. That mattered twice over. `ics_sync_done` means
+       "found changes", not "sync completed", so counting it undercounts by exactly the healthy
+       case — and the positioning rests on that number. Worse, the unparseable branch is an
+       Invariant 4 shape: a feed answering 200 with a body the parser rejects leaves a background
+       sync silent forever, and it is the one path `icalFailureDetail` cannot see, because it never
+       throws past the inner catch.
+       `failed` is the default rather than a value the catch sets, so a throw from anywhere in the
+       body — including one nobody has thought of — still reports. Tracking from `finally` is
+       deliberate for the same reason: a new early return cannot forget to say how it ended.
+       The props are coarse and non-identifying: a result token and a provider slug, never the
+       feed URL (Invariant 13), never an event title, never a wage figure. */
+    let result = 'failed';
+    const provider = providerOf(url);
     try{
       const {data,error} = await withTimeout(
         supabase.functions.invoke('ical-proxy',{body:{url}}), 12000, 'ical sync');
@@ -4076,10 +4098,10 @@ function App(){
       const text = typeof data==='string' ? data : (data && (data.text || data.body)) || '';
       let parsed;
       try{ parsed = parseICSSchedule(text); }
-      catch(_){ if(manual) toast("That calendar feed didn't contain any shifts.",'error'); return; }
+      catch(_){ result='unparseable'; if(manual) toast("That calendar feed didn't contain any shifts.",'error'); return; }
       stampIcalSynced(user.id);
       setIcalSub(s=> s ? {...s, lastSynced:new Date().toISOString()} : s);
-      if(parsed.events.length===0){ if(manual) toast('No shifts found in that calendar.','info'); return; }
+      if(parsed.events.length===0){ result='empty'; if(manual) toast('No shifts found in that calendar.','info'); return; }
       const plan = buildIcsImportPlan(parsed);
       const changedUpdates = plan.toUpdate.filter(u=>u.changed);
       // Removals and event moves count as "something to confirm" too — otherwise a shift deleted
@@ -4087,6 +4109,7 @@ function App(){
       const pending = changedUpdates.length + plan.toClassify.length
         + plan.toRemove.length + plan.toUpdateEvents.length + plan.toRemoveEvents.length;
       if(pending===0){
+        result='up_to_date';
         if(manual) toast('Your schedule is already up to date.','success');
         return;
       }
@@ -4094,12 +4117,13 @@ function App(){
       const answers = {}; groups.forEach(g=>{ answers[g.key]=inferShiftType(g); });
       const payload = { groups, toUpdate:changedUpdates, toRemove:plan.toRemove,
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
-        answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true };
+        answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true, provider };
       // A quiet sync never steals the screen. Coming back to the app and being asked to delete a
       // shift is how you teach someone to stop coming back to the app.
       if(quiet){ setIcsPending(payload); track('ics_resync_found', {}, user.id); }
       else setIcsImport(payload);
-      track('ics_sync_done', {events:parsed.events.length}, user.id);
+      result = 'changes';
+      track('ics_sync_done', {events:parsed.events.length, provider}, user.id);
     // The catch logs status + the proxy's own error code, never the URL (Invariant 13) — see
     // icalFailureDetail. Keep console.error as the FIRST statement in the block: council #27
     // pins that shape in tests/smoke.mjs to prove a failed background sync is still recorded.
@@ -4108,6 +4132,7 @@ function App(){
       if(manual) toast("Couldn't reach your calendar. Check the link and try again.",'error');
     }finally{
       icalInFlight.current = false; setIcalBusy(false);
+      track('ics_sync_result', {result, provider}, user.id);
     }
   };
   /* Returns true only when the link was accepted and saved, so a caller that is itself a sheet

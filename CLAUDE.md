@@ -123,7 +123,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; 65 assertions on an iPhone 13 profile. `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **437 assertions** on an iPhone 13 profile (read "65" here until 2026-10-02 — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -316,6 +316,14 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   and the WHATWG `protocol` setter refuses to reassign it — Node and Deno enforce that, **Chromium
   does not**, so a browser test of the setter passes while production returns `400`. Never rely on
   the setter; `tests/smoke.mjs` §23 pins both engines.
+  **Every sync says how it ended** (2026-10-02): one `ics_sync_result {result, provider}` per sync
+  that reaches the proxy — `changes` / `up_to_date` / `empty` / `unparseable` / `failed` — tracked
+  from `finally` with `failed` as the initialiser, so a new early return cannot be silent. Before
+  it, four of the five states wrote nothing anywhere and a background sync against an unparseable
+  feed was invisible forever (Invariant 4's shape in the sync path, and the one branch
+  `icalFailureDetail` cannot see). `ics_sync_done` still means **"found changes"**, not "sync
+  completed" — don't count it as a success rate. `provider` is on all three ics events now
+  (`google`/`nursegrid`/`file`/`null`). Pinned by `tests/smoke.mjs` §27.
   **The feed re-syncs on foreground, quietly** (2026-10-01): the cold-load sync runs once per page
   load, and a phone never page-loads, so a `visibilitychange` re-sync was added — throttled to
   `ICAL_RESYNC_MIN_MS` (10 min) and **quiet**, parking the plan in a banner rather than opening the
