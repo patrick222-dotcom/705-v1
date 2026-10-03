@@ -2724,6 +2724,24 @@ const run = async () => {
     ok('connect card: and the how-to sheet is not open on its own',
       (await page.locator('.sheet[aria-label="Sync your NurseGrid calendar"]').count()) === 0);
 
+    /* The calendar card's one button leads to the NurseGrid how-to (owner call, 2026-10-03). It
+       used to be "Sync to calendar" meaning *export*, beside an "Import .ics" file picker. Both
+       file paths live on in Settings -> Data; the home screen offers only the sync. */
+    const calCard = page.locator('.card', { has: page.locator('.cal-head .ttl', { hasText: 'Calendar' }) });
+    ok('calendar card: no "Import .ics" file picker on the home screen',
+      (await calCard.locator('text=Import .ics').count()) === 0);
+    ok('calendar card: no export button posing as "Sync to calendar"',
+      (await calCard.locator('text=Sync to calendar').count()) === 0);
+    const syncBtn = calCard.locator('button', { hasText: 'Sync NurseGrid' });
+    ok('calendar card: offers "Sync NurseGrid"', (await syncBtn.count()) === 1);
+    if (await syncBtn.count()) {
+      await syncBtn.click();
+      ok('calendar card: "Sync NurseGrid" opens the NurseGrid how-to sheet',
+        (await page.locator('.sheet[aria-label="Sync your NurseGrid calendar"]').count()) === 1);
+      await page.locator('.sheet[aria-label="Sync your NurseGrid calendar"] .back').click();
+      await page.waitForTimeout(150);
+    }
+
     /* Mount the sheet on its own. The JSX block compiles to a classic script, so its top-level
        functions are globals -- the same property §25 leans on to call icsPendingSummary. */
     const sheet = await page.evaluate(async () => {
@@ -2790,11 +2808,13 @@ const run = async () => {
       /const ICAL_CTA_KEY = 'scrubpay_ical_cta_dismissed';/.test(src26));
     ok('connect card: the dismissal read cannot throw on blocked storage',
       /try\{ return localStorage\.getItem\(ICAL_CTA_KEY\)==='1'; \}catch\(_\)\{ return false; \}/.test(src26));
+    ok('calendar card: file import and export still live in Settings -> Data',
+      /Import schedule \(\.ics\)<input type="file"/.test(src26) && /onClick=\{exportICS\}>\{Ic\.calendar\}Add to calendar \(\.ics\)/.test(src26));
     ok('how-to: it is reachable from Settings too, for anyone who waved the card off',
       /onClick=\{onIcalHowTo\}/.test(src26) && /onIcalHowTo: \(\)=>\{ track\('ical_howto_opened'/.test(src26));
     /* Analytics stays coarse: a surface name, never the feed URL (Invariant 13, Analytics rules). */
     const tracks = (src26.match(/track\('ical_(?:howto_opened|cta_dismissed)'[^;]*/g) || []);
-    ok('how-to: its analytics carry a surface and nothing else', tracks.length === 3, tracks.join(' || '));
+    ok('how-to: its analytics carry a surface and nothing else', tracks.length === 4, tracks.join(' || '));
     ok('how-to: and no ical event carries a url',
       !tracks.some((t) => /icalUrl|icalSub|url:/.test(t)), tracks.join(' || '));
     ok('connect card: no page errors', errors.filter((e) => !isExpectedNetwork(e)).length === 0,

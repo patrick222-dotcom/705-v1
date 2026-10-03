@@ -1217,6 +1217,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-03 — **The home calendar card has one button, and it leads to the NurseGrid sync**
+  (owner request). "Import .ics" is gone from the home screen and "Sync to calendar" — which
+  *exported* to the phone's calendar despite reading like the sync — is now **"Sync NurseGrid"**,
+  opening the same six-step how-to sheet as the connect card and Settings
+  (`ical_howto_opened {surface:'calendar'}`). File import and export both stay in Settings → Data,
+  which is the only path for a signed-out visitor. `tests/smoke.mjs` §26 +5 assertions, each
+  negative-tested on a copy; 455/455. Same day the owner **confirmed the real NurseGrid sync
+  correct** (one shift: time, inferred Night Shift; removals propagate) — see CLAUDE.md.
 - 2026-10-03 — **A synced calendar can no longer ask her to delete the shifts she has already
   worked.** The removal half of the import plan asked one question — "is this date inside the
   parser's window?" — and that window reaches **60 days back**. A scheduling feed that publishes

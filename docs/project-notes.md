@@ -90,7 +90,7 @@ does not resurrect shipped themes.
   rather than an excavation of a 24-hour edge log. Pinned by `tests/smoke.mjs` §27.
   `ics_resync_found`,
   `ics_resync_opened`/`ics_resync_dismissed` (the quiet foreground re-sync banner),
-  `ical_howto_opened` `{surface:'card'|'settings'}`, `ical_cta_dismissed`,
+  `ical_howto_opened` `{surface:'card'|'settings'|'calendar'}`, `ical_cta_dismissed`,
   `pattern_lab_opened`, `pattern_saved` `{cycle}`,
   `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`,
   `feedback_submitted` `{kind}` (which tile, or `'other'` for the open box), `swap_group_created/joined`,
