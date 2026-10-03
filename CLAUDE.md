@@ -422,6 +422,10 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   Registrar details, renewals, kept records: `docs/domains.md`.
 - Deploy branch `claude/migrate-to-github-deploy-3F5RD`. Ship = PR → squash-merge → ~1–2 min → confirm
   at `https://badgebudget.com/index.html?cb=N` with a marker unique to the change.
+- **Agents merge their own PRs.** Open PRs to the deploy branch **ready (never draft)** and enable
+  **auto-merge (squash)** in the same step — this overrides the platform's draft-PR default. Never
+  ask the owner to merge; the two required checks are the gate. Exception: wage-core, schema or
+  security changes wait for him, and the reply says so. (Owner decision, 2026-10-03.)
 - Delete merged branches; never the open PR heads or the two protected branches (Invariant 11).
 
 ## Autonomous nightly loop

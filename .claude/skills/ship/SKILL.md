@@ -52,7 +52,13 @@ Open the PR against `claude/migrate-to-github-deploy-3F5RD`. CI runs `gate` and 
 **Read the run, don't trust the badge** — a workflow that never triggered also shows no
 failures. Confirm both jobs actually executed and report their assertion counts.
 
-Squash-merge. Deploy fires automatically and takes 1–2 minutes.
+**Open it ready, not as a draft, and turn on auto-merge (squash) yourself** — the platform's default
+is a draft PR, and this repo overrides it: the owner should never be asked to click merge. Both
+required checks are the gate; auto-merge lands the PR the moment they go green. (Owner decision
+2026-10-03, after PR #145 sat as a draft waiting on him.) Only leave it unmerged when the change
+needs his eyes first — wage-core, a schema or security change — and then say so in one line.
+
+Deploy fires automatically on merge and takes 1–2 minutes.
 
 ## 5. Verify against badgebudget.com — with a marker
 
