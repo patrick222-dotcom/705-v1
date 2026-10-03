@@ -2257,7 +2257,7 @@ function icsPlanFromExisting(events, existingByUid, opts){
      for a wage app. But absence from a fetch is only EVIDENCE of deletion under strict conditions,
      because parseICSSchedule drops events on its own:
        * outside the 60-days-back..366-days-forward window -> only ever consider dates INSIDE it,
-         so history and far-future shifts are never touched;
+         so far-future shifts are never touched;
        * past the 200-event cap (feed truncated)           -> consider nothing at all;
        * repeating (RRULE) events                          -> never imported in the first place, so
          the one residual false positive is a one-off event the user later made recurring.
@@ -2266,18 +2266,43 @@ function icsPlanFromExisting(events, existingByUid, opts){
   const toRemove=[], toRemoveEvents=[];
   const ws=o.windowStartKey, we=o.windowEndKey;
   if(ws && we && !o.truncated){
-    const inWindow = dk => typeof dk==='string' && dk>=ws && dk<=we;   // 'YYYY-MM-DD' sorts lexically
+    /* The past side of that window is NOT enough on its own, and the bullet above used to claim
+       "history is never touched" while the window reached 60 days BACK. A scheduling feed that
+       publishes upcoming shifts only — the ordinary shape, and NurseGrid's as far as we can tell —
+       contains nothing dated before today, so every shift she has already WORKED goes missing from
+       the fetch and landed in toRemove: the stepper then asked her, repeatedly, to delete her own
+       pay history, framed as a cancelled shift.
+       So bound the past side by the feed's OWN earliest event as well:
+         * on or after today  -> absence still means deletion. That is what this code is for, and a
+           cancelled UPCOMING shift must keep coming out — including the earliest one in the feed,
+           which is why this is a union with the clause below and not just "at or after the feed's
+           first event" (that alone would stop the nearest cancellation ever propagating).
+         * before today       -> absence counts only where the feed demonstrably reaches that far,
+           i.e. it carries some event on or before that date.
+       A feed with no events at all proves nothing about the past and removes nothing from it.
+       This holds whichever way the feed is shaped, which is why it needed no answer to the open
+       question of how far back NurseGrid publishes. The opposite error is bounded too: a past shift
+       deleted upstream inside a backward-reaching feed is still proposed, and one inside a
+       forward-only feed stays until she deletes it by hand — the safe direction for worked hours. */
+    const todayKey = o.todayKey || todayISO();
+    let feedFirstKey = null;                       // earliest dateKey this fetch actually contains
+    (events||[]).forEach(ev=>{
+      if(typeof ev.dateKey==='string' && (feedFirstKey===null || ev.dateKey<feedFirstKey)) feedFirstKey = ev.dateKey;
+    });
+    // 'YYYY-MM-DD' sorts lexically, so every comparison here is a plain string compare.
+    const removable = dk => typeof dk==='string' && dk>=ws && dk<=we
+      && (dk>=todayKey || (feedFirstKey!==null && dk>=feedFirstKey));
     Object.keys(existingByUid).forEach(uid=>{
       if(seen[uid]) return;
       const rec = existingByUid[uid];
-      if(!inWindow(rec.dateKey)) return;
+      if(!removable(rec.dateKey)) return;
       toRemove.push({ uid, dateKey:rec.dateKey, shiftId:rec.shift.id,
         hours:rec.shift.hours, shiftType:rec.shift.shiftType });
     });
     Object.keys(eventsByUid).forEach(uid=>{
       if(seen[uid]) return;
       const rec = eventsByUid[uid];
-      if(!inWindow(rec.dateKey)) return;
+      if(!removable(rec.dateKey)) return;
       toRemoveEvents.push({ uid, dateKey:rec.dateKey, eventId:rec.event.id, kind:rec.event.kind });
     });
     toRemove.sort((a,b)=> a.dateKey.localeCompare(b.dateKey));

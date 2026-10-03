@@ -299,8 +299,18 @@ and the push P0 it pointed at was fixed the same day.
   above the swap suggestion cards.
 
 ### P1 (new, groom 2026-10-02)
-- [ ] **A past shift that has scrolled out of the feed is proposed for DELETION, which would eat
-  her worked history** — `harness:drivable`. The removal half of the import plan asks "is this
+- [x] ~~**A past shift that has scrolled out of the feed is proposed for DELETION, which would eat
+  her worked history**~~ — SHIPPED 2026-10-03 (see Done log). **The note below said "read one real
+  feed first", and the fix shipped without one — deliberately, because it was built to be correct
+  under BOTH feed shapes, which is what retires the question rather than answering it.** The bound
+  is a *union*, not the note's "earliest event in the feed": on or after today absence still means
+  deletion, and before today it counts only where the feed demonstrably reaches that far. The note's
+  own proposed shape would have been a regression — a bare "never remove anything dated before the
+  feed's first event" stops the *nearest* cancelled shift propagating, which is the exact job the
+  removal code exists for. `tests/smoke.mjs` §28, 13 assertions, four deliberate breaks, one of
+  which is that over-tightening. Original note below:
+- [ ] ~~**A past shift that has scrolled out of the feed is proposed for DELETION, which would eat
+  her worked history**~~ — `harness:drivable`. The removal half of the import plan asks "is this
   shift's date inside the window?" and the window it checks is the **parser's** fixed
   `today-60 .. today+366`, not the span the feed actually covers (`icsPlanFromExisting`,
   `inWindow(rec.dateKey)` against `parsed.windowStartKey/EndKey`, set in `parseICSSchedule` from
@@ -330,6 +340,25 @@ and the push P0 it pointed at was fixed the same day.
   `toRemove` is empty. **Do not fix it blind, though:** the opposite error (a cancelled shift that
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
+
+### P2 (new, groom 2026-10-03)
+- [ ] **`ics_sync_result` is live and has never once fired** — not a defect, a **note against
+  misreading its absence**. It deployed 2026-10-02 (confirmed in the live bytes tonight: the
+  string is present at badgebudget.com, 448,719 bytes, 5 SRI pins) and the last sync of any kind
+  in `events` is **2026-10-01 00:14**. So the five-state reporting the 10-02 build exists for has
+  had nothing to report, and the next run to go looking must not read zero rows as a broken
+  tracker. What would exercise it: one sync on a real phone. Until then the 10-02 build is
+  verified in the harness and in the deployed bytes, and **unverified in the field** — the same
+  distinction the 09-29 correction in CLAUDE.md was written to enforce.
+- [ ] **The 422 count is still 2 of 7 — no new evidence, and `icalFailureDetail` has still never
+  fired** — housekeeping on the P2 below so the next run does not re-derive it. No sync since
+  10-01 means no new proxy calls, so the running count is unchanged and the leading hypothesis is
+  still dead. `icalFailureDetail` has still never fired: the table holds **17 `client_error` rows,
+  4 of them `ical sync failed`** (two on 09-28, two on 09-29), and all four carry the generic
+  `Edge Function returned a non-2xx status code` — the exact undiagnosable string the 09-30 build
+  replaced, and all four predate it. **Correcting the 10-01 note in passing:** it reads "all 4
+  `client_error` rows in the table", which is 4 *ical* rows out of 17 total — the substance held,
+  the count did not. **Still do not build a retry.**
 
 ### P3 (new, groom 2026-10-02)
 - [ ] **The connect card was dismissed on its first real exposure** — `harness:unscoped`, and
@@ -1188,6 +1217,58 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-03 — **A synced calendar can no longer ask her to delete the shifts she has already
+  worked.** The removal half of the import plan asked one question — "is this date inside the
+  parser's window?" — and that window reaches **60 days back**. A scheduling feed that publishes
+  upcoming shifts only (the ordinary shape, and NurseGrid's as far as anyone can tell) contains
+  nothing dated before today, so every shift she had worked went missing from the fetch and landed
+  in `toRemove`. The import stepper then offered it up for deletion, framed as a cancelled shift —
+  and the thing being deleted is the hours a past paycheck was computed from. The comment directly
+  above the code claimed *"history and far-future shifts are never touched"*; it was true of the
+  far future and false of history, and it is corrected.
+  **Never silent, which is the one mercy, and why this was P1 rather than P0:** removals go through
+  the stepper and she has to agree. The cost was that she would be agreeing, repeatedly, to erase
+  her own record.
+  **The fix is a union, and that is the whole design.** A removal candidate must still sit inside
+  the parser window, and then: on or after **today**, absence still means deletion — that is the
+  job this code exists for, and a cancelled *upcoming* shift must keep coming out; **before**
+  today, absence counts only where the feed demonstrably reaches that far, i.e. carries some event
+  on or before that date. A feed with no events at all proves nothing about the past and now
+  removes nothing from it.
+  **Why it shipped without reading a real feed, which the item explicitly warned against.** The
+  warning was sound about the *shape it proposed* — "bound removals by the feed's own earliest
+  event" — and that shape is a real regression: with shifts on the 5th and the 10th, cancelling
+  the 5th leaves the feed starting on the 10th, so a bare earliest-event bound would stop the
+  **nearest** cancellation ever propagating. The union has no such hole, and because it asks the
+  feed how far back it reaches instead of assuming, it is correct whether NurseGrid publishes
+  history or not. That retires the open provider question for this item rather than answering it;
+  the question itself is still unanswered and is now attached to nothing.
+  **One residual edge, left deliberately.** The cut is `>= today`, so a shift dated **today** that
+  is absent from a feed starting tomorrow is still proposed for removal. That is one day of
+  exposure, and tightening it to `> today` would reopen the hole in the other direction — a shift
+  cancelled this morning would never come out. Left as is; worth revisiting only if a real feed
+  turns out to start at tomorrow rather than today.
+  **New evidence on that question, still short of proof.** `ics_sync_done` ran **3** events
+  (09-29) → **2** (10-01 00:10) → **1** (10-01 00:14), each later sync `added:0, removed:1`, the
+  device's shift count walking 10 → 9 → 8. The #136 note records the owner hand-deleting one shift
+  upstream that night, which accounts for the 2→1 inside four minutes. The **3→2 drop across two
+  days is not accounted for**, and a worked shift falling out of a forward-only feed is exactly
+  what it looks like. Consistent with, not evidence of.
+  `tests/smoke.mjs` §28 — 13 assertions driving `icsPlanFromExisting` as a unit with `todayKey`
+  injected, because CI runners would otherwise re-date every fixture nightly. **Four deliberate
+  breaks, each failing only the assertions it should:** (1) the bound removed entirely reproduces
+  the production bug, offering 2026-09-20 and 2026-10-01 for deletion — 6 FAILs; (2) the
+  over-tightened earliest-event-only bound stops the nearest cancellation coming out — 3 FAILs,
+  and this is the break worth having; (3) an empty feed treated as permission to reach into
+  history — 1 FAIL; (4) the day-event side left on the raw window — 2 FAILs. Gate green: 11/11
+  mechanical, 33/33 groom-seed, smoke 450/0. No wage-core function touched; the change alters which
+  shifts are *proposed* for removal, computes no money, and the planner is not on the Invariant 3
+  list.
+  **Groomed, nothing else shipped:** `events` is **FRESH** (`silence_watch` verdict, newest row
+  9.3h old, 1,092 total), `feedback` unchanged since 09-14, and the last 72h of traffic is almost
+  entirely crawlers — two HeadlessChrome, a `Dataprovider.com`, a forged `Edge/12.246` and a
+  Chrome/95-on-Linux; the only two real devices both visited on 10-01. Neither open siri draft
+  (#70, #72) touches `icsPlanFromExisting` or the window keys, so the region was clear.
 - 2026-10-02 — **Every sync now says how it ended, and which provider it was.** Before tonight
   `runIcalSync` had five terminal states and told production about one of them. The success path
   tracked `ics_sync_done`; the `parseICSSchedule` catch, the `events.length===0` return, the
