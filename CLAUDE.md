@@ -490,8 +490,9 @@ through. It sees only agent pushes; CI stays the binding gate.
 - MCP: `.mcp.json` runs `@supabase/mcp-server-supabase@0.13.0` over stdio with `SUPABASE_ACCESS_TOKEN`
   from the environment, **pinned and `--read-only`** (2026-10-01): every session can query
   production, none can write to it by accident. Read-only blocks writes, **not RLS bypass** — queries
-  still run privileged, so they can't show what a user sees; use `scripts/ops_gate_probe.sql` for
-  that. Writes (migrations, function patches) go through the Management API (`database/query`,
+  run as `supabase_read_only_user`, which is not a superuser but has `rolbypassrls` and
+  `pg_read_all_data` (checked 2026-10-03: sees every `user_data` row), so they can't show what a user
+  sees; use `scripts/ops_gate_probe.sql` for that. Writes (migrations, function patches) go through the Management API (`database/query`,
   `config/auth`, `advisors/*`) in a dedicated session; Node fetch needs
   `NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Bump the pin deliberately.
 - Re-read headroom figures before quoting them; old ones in the notes have drifted before.
