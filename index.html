@@ -51,7 +51,7 @@
   input,select{font-family:inherit}
   .num{font-variant-numeric:tabular-nums}
   /* Fixed-width digits on every money figure, so totals don't shift sideways as they update */
-  .stat .v,.takehome .v,.pl-money .v,.bd-row .lh .vv,.cell .amt,.drow .amt,.pl-cmp td.v,.preview .v{font-variant-numeric:tabular-nums}
+  .takehome .v,.pl-money .v,.bd-row .lh .vv,.cell .amt,.drow .amt,.pl-cmp td.v,.preview .v{font-variant-numeric:tabular-nums}
   /* Headings wrap in even lines instead of leaving one word alone on the last line */
   h1,h2,h3,.display,.sheet-h .t,.cdlg .ct,.ob .q,.cal-head .ttl{text-wrap:balance}
   p{text-wrap:pretty}
@@ -133,10 +133,21 @@
   .hero .more{margin-top:14px;font-weight:600;font-size:12.5px;color:#8E92A0;display:inline-flex;align-items:center;gap:4px}
   .hero .more:hover{color:#cfd2db}
 
-  .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .stat{background:var(--glass-strong);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:14px 16px}
-  .stat .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px}
-  .stat .k{font-size:12px;color:var(--muted-2);margin-top:2px;font-weight:500}
+  .hero-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;column-gap:12px}
+  .hero-stats{flex:none;display:flex;flex-direction:column;gap:8px;padding-left:14px;border-left:1px solid rgba(255,255,255,.12);margin-bottom:18px}
+  .hero-stats .hs{display:flex;align-items:baseline;justify-content:flex-end;gap:5px}
+  .hero-stats .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:20px;line-height:1;color:#fff;font-variant-numeric:tabular-nums}
+  .hero-stats .k{font-size:12px;font-weight:600;color:#9A9DAB;min-width:34px}
+  .hero-links{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:14px}
+  .hero-links .more{margin-top:0;white-space:nowrap}
+  /* Below 360pt the figure and the stats column don't reliably share a row (it depends on the
+     font's width), so the stats become one fixed row under the figure instead of wrapping by chance. */
+  @media (max-width:359px){
+    .hero-top{display:block}
+    .hero-stats{flex-direction:row;gap:16px;padding-left:0;border-left:0;margin:-4px 0 14px}
+    .hero-stats .hs{justify-content:flex-start}
+    .hero-stats .k{min-width:0}
+  }
 
   .whatif{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;display:flex;align-items:center;gap:12px}
   .whatif .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
@@ -498,7 +509,6 @@
     .acct-menu{background:rgba(246,245,241,.99)}
     .scrim{background:rgba(18,18,26,.66)}
     .whatif,.qf-banner{background:var(--indigo-soft)}
-    .stat{background:var(--card)}
     .viewseg{background:#EFEEE9}
     .viewseg button.on{background:#fff}
     .iconbtn,.calnav button,.back{background:#fff}
@@ -518,7 +528,6 @@
     .acct-menu{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
     .scrim{background:rgba(18,18,26,.7);backdrop-filter:none;-webkit-backdrop-filter:none}
     .whatif,.qf-banner{background:var(--indigo-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
-    .stat{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
     .viewseg{background:#EFEEE9;backdrop-filter:none;-webkit-backdrop-filter:none}
     .viewseg button.on{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
     .iconbtn,.calnav button,.back,.period{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -4428,8 +4437,20 @@ function App(){
           {/* LEFT */}
           <div className="col">
             <div className="hero" ref={heroRef} tabIndex={-1}>
-              <div className="lbl">Projected take-home</div>
-              <div className="num num">{fmt(calc.net)}</div>
+              {/* Hours and shifts live in the card, not in two tiles under it (2026-10-03): the tiles
+                  cost ~95px above the fold and repeated the "N hrs · N shifts" chip that used to sit
+                  here. Not .num on the stat values — .hero .num is the big mint figure's style. The row
+                  wraps rather than shrinks, so a figure too wide to share it pushes the stats below. */}
+              <div className="hero-top">
+                <div className="hero-main">
+                  <div className="lbl">Projected take-home</div>
+                  <div className="num num">{fmt(calc.net)}</div>
+                </div>
+                <div className="hero-stats" aria-label="This period">
+                  <div className="hs"><span className="v">{calc.hours.toFixed(calc.hours%1?1:0)}</span>{' '}<span className="k">hrs</span></div>
+                  <div className="hs"><span className="v">{periodShiftCount}</span>{' '}<span className="k">{periodShiftCount===1?'shift':'shifts'}</span></div>
+                </div>
+              </div>
               <div className="chips">
                 <span className="chip">Gross {fmt(calc.gross)}</span>
                 {/* Gross − net, NOT calc.ded. computeNet caps the displayed pre/post rows so the
@@ -4441,15 +4462,11 @@ function App(){
                     (council #2 / wage-math-00, wage-math-02). */}
                 <span className="chip">Taxes &amp; deductions –{fmt(Math.max(0, Math.round(calc.gross) - Math.round(calc.net)))}</span>
                 {calc.hours>0 && <span className="chip">Keep {calc.pct}%</span>}
-                {calc.hours>0 && <span className="chip">{calc.hours} hrs · {periodShiftCount} shifts</span>}
               </div>
-              <button className="more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
-              <button className="more linklike" onClick={()=>openShare('hero')}>Share BadgeBudget ›</button>
-            </div>
-
-            <div className="stats">
-              <div className="stat"><div className="v num">{calc.hours.toFixed(calc.hours%1?1:0)}</div><div className="k">hours this period</div></div>
-              <div className="stat"><div className="v num">{periodShiftCount}</div><div className="k">shifts this period</div></div>
+              <div className="hero-links">
+                <button className="more linklike" onClick={()=>setShowBreakdown(true)}>See the full breakdown ›</button>
+                <button className="more linklike" onClick={()=>openShare('hero')}>Share ›</button>
+              </div>
             </div>
 
             <div className="whatif">

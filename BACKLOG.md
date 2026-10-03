@@ -1225,6 +1225,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-03 — **Hours and shifts moved into the take-home card** (owner request, from a
+  screenshot). The two "hours / shifts this period" tiles under the hero are gone; the same figures
+  sit in a small right-hand column inside the card, and the "N hrs · N shifts" chip that already
+  repeated them is dropped. "See the full breakdown ›" and "Share ›" now share one row (they ran
+  together as "breakdown ›Share BadgeBudget ›" on the owner's phone). ~95px back above the fold on
+  an iPhone 13. Pinned by `tests/smoke.mjs` §30 on **two** profiles — iPhone 13 and first-gen
+  iPhone SE (320pt) — with a four-digit take-home: no overlap, no overflow, stats no taller than
+  the figure, links on one row and unwrapped. Below 360pt the stats are a fixed row under the
+  figure — CI's fallback font wrapped the side-by-side layout on the SE where ours did not; every layout assertion negative-tested. §9's meal assertions now
+  read the hours from the card instead of the removed chip.
 - 2026-10-03 — **Time off in a synced calendar defaults to "Not a shift".** Courtney's first real
   NurseGrid sync (131 entries, `ics_import_done {added:131, shown:0, skipped:0}`) pre-selected every
   card as a paid shift, and her vacation / unavailable days — published by NurseGrid as 24-hour

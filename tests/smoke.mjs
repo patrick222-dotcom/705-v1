@@ -748,9 +748,10 @@ const run = async () => {
       await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
       const out = await page.evaluate(() => {
         const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+        /* hours/shifts moved from a hero chip into .hero-stats on 2026-10-03 (§30) */
         return {
           gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
-          hrs: txt([...document.querySelectorAll('.hero .chip')].find((c) => /hrs/.test(c.textContent))),
+          hrs: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt).join(' · '),
         };
       });
       const real = errors.filter((e) => !isExpectedNetwork(e));
@@ -761,9 +762,9 @@ const run = async () => {
     const missed = await read({ ...base, shifts: { [day(0)]: [shift({ noMeal: true })] } });
 
     ok('meal: an ordinary 12h shift is unchanged — the default moves nothing',
-      got.gross === 'Gross $782' && got.hrs === '12 hrs · 1 shifts', `${got.gross} / ${got.hrs}`);
+      got.gross === 'Gross $782' && got.hrs === '12 hrs · 1 shift', `${got.gross} / ${got.hrs}`);
     ok('meal: a missed lunch pays the full 12.5h block',
-      missed.gross === 'Gross $814' && missed.hrs === '12.5 hrs · 1 shifts', `${missed.gross} / ${missed.hrs}`);
+      missed.gross === 'Gross $814' && missed.hrs === '12.5 hrs · 1 shift', `${missed.gross} / ${missed.hrs}`);
     ok('meal: no page errors either way',
       got.errors.length === 0 && missed.errors.length === 0, (got.errors[0] || missed.errors[0] || ''));
 
@@ -2262,8 +2263,9 @@ const run = async () => {
       const seen = await p.page.waitForSelector('.wrap .whatif', { timeout: 20000 }).then(() => true).catch(() => false);
       const titles = seen ? await p.page.evaluate(() =>
         [...document.querySelectorAll('.wrap .whatif')].map((c) => c.querySelector('.t')?.textContent.trim() || '')) : [];
-      const shiftsShown = seen ? await p.page.evaluate(() => [...document.querySelectorAll('.stat')]
-        .some((s) => /shifts? this period|hours this period/.test(s.textContent))) : false;
+      /* hours/shifts live in the hero since 2026-10-03 (§30), not in .stat tiles */
+      const shiftsShown = seen ? await p.page.evaluate(() => [...document.querySelectorAll('.hero .hero-stats .hs')]
+        .some((s) => /\bshifts?\b/.test(s.textContent))) : false;
       ok('positioning: the weekend-pickup card is gone from a dashboard with shifts and a rate',
         seen && shiftsShown && titles.some((t) => /Pattern lab/.test(t)) && !titles.some((t) => /Pick up a weekend/i.test(t)),
         JSON.stringify(titles));
@@ -3263,6 +3265,74 @@ const run = async () => {
     const real29 = errors.filter((e) => !isExpectedNetwork(e));
     ok('time off: no page errors', real29.length === 0, real29.join(' | '));
     await ctx.close();
+  }
+
+  /* §30 — Hours and shifts live inside the hero (2026-10-03). They used to be two glass tiles under
+     it, ~95px of the first screen spent repeating a "N hrs · N shifts" chip the hero already had.
+     Pinned: the tiles and the chip are gone, the in-card figures are the real period figures, and
+     the layout holds with a four-digit take-home on the narrowest phone Playwright ships (first-gen
+     iPhone SE, 320pt) as well as the rig's default iPhone 13 — the stats column must never overlap the big
+     number, push the "Projected take-home" label down, or overflow the card. The sandbox has no
+     fonts CDN, so this runs on the fallback face, which is wider than Bricolage: a pass here is
+     conservative for the real font. */
+  if (want(30)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const shifts = {};
+    [0, 1, 2, 5, 6, 7].forEach((n, i) => { shifts[day(n)] = [{ id: i + 1, shiftType: 'night', hours: 12.5, bonusType: 'none', customBonus: 0, isOvertime: false }]; });
+    const seed = { setupComplete: true, baseRate: 65.15, payPeriodStart: day(0), shifts };
+    for (const dev of ['iPhone 13', 'iPhone SE']) {
+      const ctx = await browser.newContext({ ...devices[dev] });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }, [STORAGE_KEY, seed]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero .hero-stats', { timeout: 25000 });
+      const m = await page.evaluate(() => {
+        const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+        const rr = (sel) => { const b = r(sel); return b && { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; };
+        const txt = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+        const hero = document.querySelector('.hero');
+        const links = [...document.querySelectorAll('.hero .hero-links .more')].map((b) => b.getBoundingClientRect());
+        return {
+          tiles: document.querySelectorAll('.stats, .stat').length,
+          chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
+          stats: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt),
+          net: txt(document.querySelector('.hero .num')),
+          num: rr('.hero .num'), main: rr('.hero .hero-main'), side: rr('.hero .hero-stats'),
+          overflow: hero.scrollWidth - hero.clientWidth,
+          links: links.map((b) => ({ top: Math.round(b.top), left: b.left, right: b.right, h: Math.round(b.height) })),
+        };
+      });
+      const tag = `[${dev}]`;
+      ok(`hero stats ${tag}: the two tiles under the hero are gone`, m.tiles === 0, String(m.tiles));
+      ok(`hero stats ${tag}: no hours/shifts chip duplicates them`, !m.chip);
+      ok(`hero stats ${tag}: the card shows the period's hours and shifts`,
+        m.stats.join(' · ') === '75 hrs · 6 shifts', m.stats.join(' · '));
+      ok(`hero stats ${tag}: a four-digit take-home is what is being laid out`, /^\$\d,\d{3}$/.test(m.net), m.net);
+      const apart = m.num && m.side && (m.num.right <= m.side.left || m.num.bottom <= m.side.top);
+      ok(`hero stats ${tag}: the stats never overlap the take-home figure`, apart,
+        `num=${JSON.stringify(m.num)} side=${JSON.stringify(m.side)}`);
+      /* ≥360pt: a column beside the figure. <360pt: a fixed row under it — the side-by-side fit
+         there depends on the font's width, and CI's fallback face wrapped it where ours did not. */
+      ok(`hero stats ${tag}: ${dev === 'iPhone SE' ? 'a row under' : 'a column beside'} the figure`,
+        dev === 'iPhone SE' ? m.side.top >= m.num.bottom - 1 && m.side.left === m.num.left
+                            : m.side.left >= m.num.right && m.side.top < m.num.bottom,
+        `num=${JSON.stringify(m.num)} side=${JSON.stringify(m.side)}`);
+      ok(`hero stats ${tag}: the stats column is no taller than the label + figure beside it`,
+        m.side.height <= m.main.height, `side=${Math.round(m.side.height)} main=${Math.round(m.main.height)}`);
+      ok(`hero stats ${tag}: nothing overflows the card`, m.overflow <= 0, String(m.overflow));
+      ok(`hero stats ${tag}: breakdown and share sit on one row without touching`,
+        m.links.length === 2 && m.links[0].top === m.links[1].top && m.links[0].right < m.links[1].left, JSON.stringify(m.links));
+      /* the chevron used to wrap under the label at 320pt — one line of 12.5px text is ~17px tall */
+      ok(`hero stats ${tag}: neither link wraps onto a second line`,
+        m.links.every((l) => l.h < 26), JSON.stringify(m.links.map((l) => l.h)));
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok(`hero stats ${tag}: no page errors`, real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
   }
 
   await browser.close();
