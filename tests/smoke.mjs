@@ -3353,13 +3353,15 @@ const run = async () => {
       const hex = (c) => '#' + c.match(/\d+/g).slice(0, 3).map((n) => (+n).toString(16).padStart(2, '0')).join('').toUpperCase();
       const g = {};
       document.querySelectorAll('.legend span').forEach((s) => { if (!s.querySelector('.glyph')) return; g[s.textContent.slice(s.querySelector('.glyph').textContent.length).trim()] = hex(getComputedStyle(s.querySelector('.glyph')).color); });
-      return { g, fab: hex(getComputedStyle(document.querySelector('.fab')).backgroundColor) };
+      return { g, fab: hex(getComputedStyle(document.querySelector('.fab')).backgroundColor),
+        hero: hex(getComputedStyle(document.querySelector('.hero')).backgroundColor) };
     });
     ok('palette: a saved color still at the old Night default moves to the new one', got.g['Night'] === '#34452A', JSON.stringify(got.g));
     ok('palette: a color she picked herself is left alone', got.g['Weekend day'] === '#123456', JSON.stringify(got.g));
     ok('palette: the old default matches case-insensitively', got.g['Weekend night'] === '#8C4A38', JSON.stringify(got.g));
     ok('palette: an unsaved key gets the new default', got.g['Holiday'] === '#D9A33C', JSON.stringify(got.g));
     ok('palette: the add-shift button is door clay', got.fab === '#B65D45', got.fab);
+    ok('palette: the take-home card sits on shutter-dark green', got.hero === '#22301F', got.hero);
     const real = errors.filter((e) => !isExpectedNetwork(e));
     ok('palette: no page errors', real.length === 0, real.join(' | '));
     await ctx.close();
