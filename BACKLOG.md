@@ -930,7 +930,9 @@ and the push P0 it pointed at was fixed the same day.
   exactly the "where do anonymous visitors abandon as Courtney shares links" view the owner wanted.
   Rendered as a new dashboard card. (Owner deferred a separate "friends" tier for now — the ask was
   really insiders-out + a clean anonymous funnel, which this delivers.)
-- [ ] **"Pick up a weekend shift" CTA vs the pattern lab** (design question from owner feedback
+- [x] ~~**"Pick up a weekend shift" CTA vs the pattern lab**~~ — RESOLVED 2026-10-03: owner
+  call was to hide the card outright; the pattern lab is the what-if surface. Pinned by
+  `tests/smoke.mjs` §21. Original note: (design question from owner feedback
   2026-09-07: "Should the pick up a weekend shift CTA be rolled into the pattern thing") —
   `harness:unscoped`. A product/design call about whether the pickup prompt and the pattern lab are
   one surface or two, and where each belongs. Needs the owner's own decision, not a nightly build.

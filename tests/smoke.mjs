@@ -2251,6 +2251,24 @@ const run = async () => {
     /* Guard against "passing" by having removed the wrong card, or all of them. */
     ok('positioning: the pattern-lab card is still on the dashboard',
       dashCards.some((t) => /Pattern lab/.test(t)), JSON.stringify(dashCards));
+    /* Owner call 2026-10-03: the "Pick up a weekend night?" card is hidden. It only rendered with
+       a base rate and at least one shift, so it is checked on its own seeded page -- on the bare
+       page above the assertion could never fail. */
+    {
+      const seed = { setupComplete: true, baseRate: 50,
+        shifts: { '2026-09-10': [{ id: 's1', shiftType: 'base', hours: 12, bonusType: 'none' }] } };
+      const p = await newPage(browser, url, { seed });
+      await p.page.goto(url, { waitUntil: 'domcontentloaded' });
+      const seen = await p.page.waitForSelector('.wrap .whatif', { timeout: 20000 }).then(() => true).catch(() => false);
+      const titles = seen ? await p.page.evaluate(() =>
+        [...document.querySelectorAll('.wrap .whatif')].map((c) => c.querySelector('.t')?.textContent.trim() || '')) : [];
+      const shiftsShown = seen ? await p.page.evaluate(() => [...document.querySelectorAll('.stat')]
+        .some((s) => /shifts? this period|hours this period/.test(s.textContent))) : false;
+      ok('positioning: the weekend-pickup card is gone from a dashboard with shifts and a rate',
+        seen && shiftsShown && titles.some((t) => /Pattern lab/.test(t)) && !titles.some((t) => /Pick up a weekend/i.test(t)),
+        JSON.stringify(titles));
+      await p.ctx.close();
+    }
 
     /* The durable route in still works end to end -- de-emphasised, never unreachable. NOTE: this
        card is NOT in Settings, though BACKLOG.md called it "the Settings Shift swaps card". It is a
