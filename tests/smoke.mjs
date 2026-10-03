@@ -3209,6 +3209,62 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 29. time off in a feed defaults to "Not a shift" ---------------------------------
+     2026-10-03: Courtney's first real NurseGrid sync brought in 131 entries and the stepper
+     pre-selected every one as a paid shift -- including 13 vacation / unavailable days that
+     NurseGrid publishes as 24-hour blocks. She tapped through ("I rushed it") and her estimate
+     gained 312 hours that do not exist. The parser never kept titles, so it could not tell. Now it
+     reads SUMMARY transiently, reduces it to one boolean, and the stepper's default for those
+     cards is "Not a shift". The default is the whole fix: she still sees every card. */
+  if (want(29)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof icsDefaultAnswer === 'function', null, { timeout: 20000 });
+
+    const r = await page.evaluate(() => {
+      const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+        return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); };
+      const ev = (uid, summary, start, end) => ['BEGIN:VEVENT', 'UID:' + uid,
+        ...(summary == null ? [] : ['SUMMARY:' + summary]), start, end, 'END:VEVENT'];
+      /* Two Mondays-or-whatever at the SAME start and length: one shift, one vacation. */
+      const text = ['BEGIN:VCALENDAR',
+        ...ev('shift', 'Day Shift', 'DTSTART:' + day(7) + 'T070000', 'DTEND:' + day(7) + 'T193000'),
+        ...ev('vac', 'Vacation', 'DTSTART:' + day(14) + 'T070000', 'DTEND:' + day(14) + 'T193000'),
+        ...ev('unav', 'Unavailable', 'DTSTART;VALUE=DATE:' + day(8), 'DTEND;VALUE=DATE:' + day(9)),
+        ...ev('long', null, 'DTSTART:' + day(9) + 'T000000', 'DTEND:' + day(10) + 'T000000'),
+        ...ev('hol', 'Holiday shift', 'DTSTART:' + day(21) + 'T070000', 'DTEND:' + day(21) + 'T193000'),
+        ...ev('esc', 'Requested\\, off', 'DTSTART:' + day(22) + 'T070000', 'DTEND:' + day(22) + 'T193000'),
+        ...ev('notitle', null, 'DTSTART:' + day(23) + 'T070000', 'DTEND:' + day(23) + 'T193000'),
+        'END:VCALENDAR'].join('\n');
+      const out = parseICSSchedule(text);
+      const by = {}; out.events.forEach((e) => { by[e.uid] = e; });
+      const groups = groupICSEvents(out.events);
+      const gOf = (uid) => groups.find((g) => g.items.some((i) => i.uid === uid));
+      return {
+        hint: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, v.offHint])),
+        ans: Object.fromEntries(Object.keys(by).map((k) => [k, icsDefaultAnswer(gOf(k))])),
+        stored: JSON.stringify(out),
+      };
+    });
+    ok('time off: a titled vacation is hinted off', r.hint.vac === true, JSON.stringify(r.hint));
+    ok('time off: an all-day "Unavailable" is hinted off', r.hint.unav === true, JSON.stringify(r.hint));
+    ok('time off: an untitled 24-hour block is hinted off', r.hint.long === true, JSON.stringify(r.hint));
+    ok('time off: an escaped "Requested\\, off" title is hinted off', r.hint.esc === true, JSON.stringify(r.hint));
+    ok('time off: a plain shift is NOT hinted off', r.hint.shift === false, JSON.stringify(r.hint));
+    ok('time off: a worked holiday is NOT hinted off', r.hint.hol === false, JSON.stringify(r.hint));
+    ok('time off: an untitled 12.5h entry is NOT hinted off', r.hint.notitle === false, JSON.stringify(r.hint));
+    ok('time off: the stepper defaults time off to "Not a shift"',
+      ['vac', 'unav', 'long', 'esc'].every((k) => r.ans[k] === 'event'), JSON.stringify(r.ans));
+    ok('time off: and still defaults a real shift to a shift type',
+      ['shift', 'hol', 'notitle'].every((k) => r.ans[k] !== 'event' && r.ans[k] !== 'skip'), JSON.stringify(r.ans));
+    /* Invariant 13: the title is read, never kept. */
+    ok('time off: no title survives the parse',
+      !/Vacation|Unavailable|Day Shift|Holiday|Requested/.test(r.stored), r.stored.slice(0, 200));
+    const real29 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('time off: no page errors', real29.length === 0, real29.join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
