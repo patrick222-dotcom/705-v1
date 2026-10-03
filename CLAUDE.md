@@ -101,6 +101,8 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
   invariant once for precision, then keep going in English.
 - **Anything I need to do goes in a numbered "Next steps" list at the end.** Max 5, concrete, the
   first one doable right now. Tasks buried in paragraphs get lost.
+  **Tag every step with who does it** — start each with **(You)** or **(Me)** — so an action of
+  mine is never mistaken for one of his (owner request, 2026-10-03).
 - **When there are options, pick one and say why in a sentence.** Don't survey. If you need a decision
   from me, ask at most one clarifying question, and only if you genuinely can't proceed on a stated
   assumption — otherwise state the assumption and keep going.
