@@ -4316,7 +4316,6 @@ function App(){
   }
 
   /* ============== MAIN APP ============== */
-  const sampleWeekendNet = Math.round(shiftGross(baseRate, differentials['weekend-eve'], {shiftType:'weekend-eve',hours:12,bonusType:'none'}) * keepRatio);
 
   return (
     <div>
@@ -4434,18 +4433,15 @@ function App(){
             {/* The swap board is deliberately quiet (CLAUDE.md -> Positioning, 2026-09-19). The
                 dashboard card that used to sit here is gone: it is the one feature that needs a
                 colleague to adopt something, and it was competing on the first screen with the
-                pattern lab and the pickup prompt, which both work for one nurse alone. The board
+                pattern lab, which works for one nurse alone. The board
                 itself is untouched and still fully reachable: the "Shift swaps" card lower down in
                 `.dash`'s second column (NOT in Settings -- Settings carries no swap entry), the
                 topnav link (desktop-only), and an invite link, which still opens it directly.
                 swapPendingCount and its badge are deliberately left in place at the remaining sites
                 so someone mid-swap can still finish. */}
 
-            {shiftCount>0 && baseRate>0 &&
-              <div className="whatif">
-                <div style={{flex:1}}><div className="t">Pick up a weekend night?</div><div className="s">That's about <b>+{fmt(sampleWeekendNet)}</b> take-home.</div></div>
-                <button onClick={()=>{ const sat=days.find(d=>d.getDay()===6 && !(shifts[keyOf(d)])) || days.find(d=>d.getDay()===6) || days[0]; openSheet(keyOf(sat)); }}>Try it</button>
-              </div>}
+            {/* The "Pick up a weekend night?" card that sat here was removed 2026-10-03 (owner call).
+                The pattern lab is the one-nurse what-if surface; see BACKLOG.md. */}
 
             <div className="card">
               <div className="cal-head"><div><div className="ttl">Calendar</div></div><div className="sub">{qfMode?'':'Tap a day to add or edit'}</div></div>
