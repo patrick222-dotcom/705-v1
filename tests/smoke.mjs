@@ -3236,6 +3236,7 @@ const run = async () => {
       await page.waitForSelector('.hero .hero-stats', { timeout: 25000 });
       const m = await page.evaluate(() => {
         const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
+        const rr = (sel) => { const b = r(sel); return b && { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; };
         const txt = (el) => el.textContent.replace(/\s+/g, ' ').trim();
         const hero = document.querySelector('.hero');
         const links = [...document.querySelectorAll('.hero .hero-links .more')].map((b) => b.getBoundingClientRect());
@@ -3244,7 +3245,7 @@ const run = async () => {
           chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
           stats: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt),
           net: txt(document.querySelector('.hero .num')),
-          num: r('.hero .num'), main: r('.hero .hero-main'), side: r('.hero .hero-stats'),
+          num: rr('.hero .num'), main: rr('.hero .hero-main'), side: rr('.hero .hero-stats'),
           overflow: hero.scrollWidth - hero.clientWidth,
           links: links.map((b) => ({ top: Math.round(b.top), left: b.left, right: b.right, h: Math.round(b.height) })),
         };
@@ -3255,8 +3256,15 @@ const run = async () => {
       ok(`hero stats ${tag}: the card shows the period's hours and shifts`,
         m.stats.join(' · ') === '75 hrs · 6 shifts', m.stats.join(' · '));
       ok(`hero stats ${tag}: a four-digit take-home is what is being laid out`, /^\$\d,\d{3}$/.test(m.net), m.net);
-      ok(`hero stats ${tag}: the stats column never overlaps the take-home figure`,
-        m.num && m.side && m.num.right <= m.side.left, `num.right=${m.num && Math.round(m.num.right)} side.left=${m.side && Math.round(m.side.left)}`);
+      const apart = m.num && m.side && (m.num.right <= m.side.left || m.num.bottom <= m.side.top);
+      ok(`hero stats ${tag}: the stats never overlap the take-home figure`, apart,
+        `num=${JSON.stringify(m.num)} side=${JSON.stringify(m.side)}`);
+      /* ≥360pt: a column beside the figure. <360pt: a fixed row under it — the side-by-side fit
+         there depends on the font's width, and CI's fallback face wrapped it where ours did not. */
+      ok(`hero stats ${tag}: ${dev === 'iPhone SE' ? 'a row under' : 'a column beside'} the figure`,
+        dev === 'iPhone SE' ? m.side.top >= m.num.bottom - 1 && m.side.left === m.num.left
+                            : m.side.left >= m.num.right && m.side.top < m.num.bottom,
+        `num=${JSON.stringify(m.num)} side=${JSON.stringify(m.side)}`);
       ok(`hero stats ${tag}: the stats column is no taller than the label + figure beside it`,
         m.side.height <= m.main.height, `side=${Math.round(m.side.height)} main=${Math.round(m.main.height)}`);
       ok(`hero stats ${tag}: nothing overflows the card`, m.overflow <= 0, String(m.overflow));

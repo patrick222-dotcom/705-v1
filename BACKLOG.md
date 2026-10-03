@@ -1226,7 +1226,8 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   together as "breakdown ›Share BadgeBudget ›" on the owner's phone). ~95px back above the fold on
   an iPhone 13. Pinned by `tests/smoke.mjs` §29 on **two** profiles — iPhone 13 and first-gen
   iPhone SE (320pt) — with a four-digit take-home: no overlap, no overflow, stats no taller than
-  the figure, links on one row and unwrapped; every layout assertion negative-tested. §9's meal assertions now
+  the figure, links on one row and unwrapped. Below 360pt the stats are a fixed row under the
+  figure — CI's fallback font wrapped the side-by-side layout on the SE where ours did not; every layout assertion negative-tested. §9's meal assertions now
   read the hours from the card instead of the removed chip.
 - 2026-10-03 — **The home calendar card has one button, and it leads to the NurseGrid sync**
   (owner request). "Import .ics" is gone from the home screen and "Sync to calendar" — which
