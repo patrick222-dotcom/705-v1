@@ -56,11 +56,13 @@ see Positioning.
   the device's `session_end` shift count 7 → 10, and `POST 200` twice in the function's edge log
   with **zero 400s**, 3h18m after the fix deployed. So the substitution half of the positioning is
   real, the import stepper's pay-type questionnaire has been driven against a real NurseGrid feed,
-  and "no more need for NurseGrid" now lacks only one thing: **nobody has checked that the 3
-  imported shifts are correct** — their times, inferred pay types and therefore their dollar
-  figures. That is Invariant 3 territory with `Detect: none automated`, so it needs the owner's eyes
-  once, not a test. Do not upgrade this line to "verified" until that happens; the 09-29 correction
-  above is what over-claiming here looks like.
+  and the owner checked the result on 2026-10-03: **the synced shift is correct** (Wed Oct 14,
+  12:15 AM, 12.5h, inferred *Night Shift* — matching NurseGrid's own shift screen side by side), and
+  **removals propagate** (he deleted 2 of the 3 shifts in NurseGrid and they left BadgeBudget;
+  `ics_sync_result {up_to_date, nursegrid}` at 12:49 UTC, zero `client_error`). Scope of that claim:
+  **one shift, one account, owner's eyes** — not a test, and the dollar figure rests on his word
+  rather than a probe. Before then this line said "do not upgrade until checked"; the 09-29
+  correction above is what over-claiming here looked like.
   **A separate fault survives the fix and is NOT transient:** the first proxy call of a load has
   returned `422 not_a_calendar` on both real sessions (09-28 12:26:32, 09-29 11:53:07), each time
   followed by a retry that succeeded 24s later. Hypothesis (**unverified**): NurseGrid serves an
@@ -123,7 +125,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **450 assertions** on an iPhone 13 profile (read "437" here until 2026-10-03 — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **455 assertions** on an iPhone 13 profile (read "450" until the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
