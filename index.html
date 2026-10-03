@@ -21,18 +21,25 @@
 <script crossorigin="anonymous" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <style>
   :root{
-    --ink:#16181F; --ink-2:#21242F; --paper:#F6F5F1; --card:#FFFFFF;
-    --indigo:#5B4FE9; --indigo-press:#4A3FD4; --indigo-soft:#ECEAFE; --indigo-ink:#3F35B8;
+    --ink:#16181F; --ink-2:#21242F; --paper:#F4F1E9; --card:#FFFFFF;
+    /* "Bucks County" palette (2026-10-03): four farmhouse colors, one job each.
+       clay = the one primary action per screen; sage = chrome (selection, toggles, focus,
+       today, progress, links); wheat = holiday/estimates; fieldstone = neutrals.
+       Rule: "is this the thing she should tap next?" -> clay. Otherwise -> sage. */
+    --clay:#B65D45; --clay-press:#9C4A34; --clay-soft:#F7EBE6; --clay-ink:#6B3324;
+    --sage:#5F6C45; --sage-press:#4F5A39; --sage-soft:#EDEFE0; --sage-ink:#3D4A2C;
+    --sage-tint:rgba(95,108,69,.055);
+    --hero:#22301F;   /* shutter-dark: ground of the three money cards (owner pick 2026-10-03) */
+    --wheat:#D9A33C; --wheat-soft:#FDF3DD; --wheat-ink:#8A5A05;
     --mint:#34D399; --money:#11A86B; --money-soft:#E3F7EE; --money-ink:#0B5D3C;
-    --coral:#FF6B5C; --coral-soft:#FFF3F1; --coral-ink:#7A2E26;
-    --violet:#9B5BE9; --amber:#F5A524; --slate:#8A93A6;
-    --muted:#6B665C; --muted-2:#726D62; --line:#EEEDE8; --line-2:#E7E5DE;
+    --muted:#6B665C; --muted-2:#726D62; --line:#E9E4D9; --line-2:#DED8CA;
     --danger:#B03D2E; --danger-soft:#F3D6D1;   /* 5.3:1 on the glass panels and money-soft, not just on white */
 
     /* Liquid Glass tokens */
     --glass:rgba(255,255,255,.55); --glass-strong:rgba(255,255,255,.74);
     --glass-hi:rgba(255,255,255,.85); --glass-line:rgba(255,255,255,.7);
-    --glass-indigo:rgba(91,79,233,.12); --glass-indigo-line:rgba(91,79,233,.22);
+    --glass-clay:rgba(182,93,69,.12); --glass-clay-line:rgba(182,93,69,.22);
+    --glass-sage:rgba(95,108,69,.12); --glass-sage-line:rgba(95,108,69,.22);
     --blur:20px; --r-lg:22px; --r-pill:999px;
   }
   *{box-sizing:border-box}
@@ -42,9 +49,9 @@
   body::before{
     content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(circle at 10% -8%, rgba(91,79,233,.09), transparent 42%),
+      radial-gradient(circle at 10% -8%, rgba(95,108,69,.08), transparent 42%),
       radial-gradient(circle at 102% 8%, rgba(52,211,153,.08), transparent 40%),
-      radial-gradient(circle at 30% 108%, rgba(155,91,233,.06), transparent 45%);
+      radial-gradient(circle at 30% 108%, rgba(182,93,69,.05), transparent 45%);
   }
   .display{font-family:'Bricolage Grotesque','Plus Jakarta Sans',sans-serif;letter-spacing:-.02em}
   button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
@@ -68,7 +75,7 @@
   #splash .logo{display:flex;align-items:center;gap:10px}
   #splash .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--money);margin-left:3px;vertical-align:2px}
   #splash .wm{font-family:'Bricolage Grotesque';font-weight:800;font-size:24px}
-  #splash .spin{width:26px;height:26px;border:3px solid #e3e1d8;border-top-color:var(--indigo);border-radius:50%;animation:spin .8s linear infinite}
+  #splash .spin{width:26px;height:26px;border:3px solid #e3e1d8;border-top-color:var(--sage);border-radius:50%;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
 
   /* layout */
@@ -93,7 +100,7 @@
      real button now, never decorative -- below 920px .topnav is display:none, so this is the only
      route to Settings and Sign out on a phone. z-index clears .topbar (40) and .fab (45) but stays
      under .scrim (80), so an open sheet always covers the menu. */
-  .avatar{position:relative;width:40px;height:40px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
+  .avatar{position:relative;width:40px;height:40px;border-radius:50%;background:var(--sage-soft);color:var(--sage);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:0;padding:0;font-family:inherit;cursor:pointer}
   .avatar::after{content:'';position:absolute;inset:-2px;border-radius:50%}  /* same hit-slop as .iconbtn — it is the only phone route to Settings (council 2026-09-13) */
   .acct{position:relative;display:flex;flex:0 0 auto}
   /* Outside-tap closes through this transparent fixed backdrop rather than a document listener:
@@ -122,7 +129,7 @@
   .card{background:rgba(255,255,255,.93);border:1px solid rgba(255,255,255,.8);border-radius:var(--r-lg);padding:18px;box-shadow:inset 0 1px 0 var(--glass-hi),0 14px 34px rgba(30,26,20,.06)}
   .card h3{margin:0 0 14px;font-size:14px;font-weight:700}
 
-  .hero{background:var(--ink);border-radius:22px;padding:22px 24px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 20px 46px rgba(16,14,24,.32)}
+  .hero{background:var(--hero);border-radius:22px;padding:22px 24px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 20px 46px rgba(16,14,24,.32)}
   .hero:focus{outline:none}
   .hero:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
   .hero .lbl{font-size:12.5px;font-weight:600;color:#9A9DAB}
@@ -149,17 +156,17 @@
     .hero-stats .k{min-width:0}
   }
 
-  .whatif{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;display:flex;align-items:center;gap:12px}
-  .whatif .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
-  .whatif .s{font-size:12px;color:#6A60C9;margin-top:3px}
-  .whatif button{background:var(--indigo);color:#fff;padding:9px 14px;border-radius:11px;font-weight:600;font-size:12.5px;flex:0 0 auto}
+  .whatif{background:var(--glass-clay);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-clay-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;display:flex;align-items:center;gap:12px}
+  .whatif .t{font-weight:600;font-size:13.5px;color:var(--clay-ink)}
+  .whatif .s{font-size:12px;color:var(--clay-ink);margin-top:3px}
+  .whatif button{background:var(--clay);color:#fff;padding:9px 14px;border-radius:11px;font-weight:600;font-size:12.5px;flex:0 0 auto}
 
   /* mobile-only: hidden by default, shown at/under the same breakpoint .desk-only hides at
      (920px) — the app's one real layout breakpoint (two-column desktop dash vs stacked mobile) */
   .mob-only{display:none}
   @media (max-width:919px){ .mob-only{display:flex} }
 
-  /* estimate banner — the honesty guard for the two shortened setup paths. Amber, not indigo:
+  /* estimate banner — the honesty guard for the two shortened setup paths. Amber, not clay:
      it is a caveat about whose numbers these are, not a feature being promoted. */
   .est-banner{background:#FFF6E6;border:1px solid #F3DCAE;border-radius:17px;padding:14px 16px;margin-bottom:14px}
   .est-banner .t{font-weight:700;font-size:13.5px;color:#7A5A12}
@@ -183,15 +190,15 @@
      actually hunt for with a phone in your hand. */
   .howto{list-style:none;margin:14px 0 0;padding:0;counter-reset:ht}
   .howto li{position:relative;padding:0 0 13px 34px;counter-increment:ht;font-size:13.5px;line-height:1.5;color:var(--ink)}
-  .howto li:before{content:counter(ht);position:absolute;left:0;top:0;width:23px;height:23px;border-radius:50%;background:var(--indigo);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .howto li:before{content:counter(ht);position:absolute;left:0;top:0;width:23px;height:23px;border-radius:50%;background:var(--sage);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
   .howto li b{font-weight:650}
   .howto li .sub{display:block;font-size:12px;color:var(--muted-2);margin-top:3px;font-weight:500}
   .howto li svg{width:15px;height:15px;vertical-align:-3px;margin:0 1px}
 
   /* quick-fill banner (shift templates applied across multiple calendar days) */
-  .qf-banner{background:var(--glass-indigo);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-indigo-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
-  .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--indigo-ink)}
-  .qf-banner .s{font-size:12px;color:#6A60C9;margin-top:3px}
+  .qf-banner{background:var(--glass-sage);backdrop-filter:blur(var(--blur)) saturate(1.5);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);border:1px solid var(--glass-sage-line);box-shadow:inset 0 1px 0 var(--glass-hi);border-radius:17px;padding:15px 16px;margin-bottom:14px}
+  .qf-banner .t{font-weight:600;font-size:13.5px;color:var(--sage-ink)}
+  .qf-banner .s{font-size:12px;color:var(--sage-ink);margin-top:3px}
   .qf-banner .row{display:flex;align-items:center;gap:12px}
   .qf-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 
@@ -210,7 +217,7 @@
   .yearlist{display:flex;flex-direction:column;gap:7px}
   .yrow{display:flex;align-items:center;gap:12px;width:100%;background:#fbfaf7;border:1px solid var(--line);border-radius:13px;padding:13px 15px;text-align:left;transition:background .12s}
   .yrow.has{background:#fff}
-  .yrow:hover{background:var(--indigo-soft)}
+  .yrow:hover{background:var(--sage-soft)}
   .yrow .ym{font-weight:700;font-size:14.5px;width:84px;flex:0 0 auto}
   .yrow .yd{flex:1;font-size:13px;color:var(--muted);font-weight:500}
   .yrow .ychev{color:#c9c6bc;font-size:18px;font-weight:700;flex:0 0 auto}
@@ -248,7 +255,7 @@
   .cal-pp-div::before,.cal-pp-div::after{content:'';flex:1;height:1px;background:var(--line)}
   .cal-pp-div .pp-chip{position:relative;flex:0 0 auto;font-family:inherit;font-size:10.5px;font-weight:700;letter-spacing:.01em;color:var(--muted-2);background:var(--card);padding:0 11px;min-height:32px;display:inline-flex;align-items:center;border-radius:20px;border:1px solid var(--line);cursor:pointer;white-space:nowrap}
   .cal-pp-div .pp-chip::after{content:'';position:absolute;inset:-6px 0}  /* 32 + 6 + 6 = 44px hit area, within the divider row's own margins */
-  .cal-pp-div .pp-chip:hover{background:var(--indigo-soft);color:var(--indigo-ink)}
+  .cal-pp-div .pp-chip:hover{background:var(--sage-soft);color:var(--sage-ink)}
   /* mobile: let the grid bleed past the card's AND the page's own padding so it fills
      the phone screen almost edge-to-edge, with a slim padding of its own and a tighter gap. */
   @media (max-width:520px){
@@ -280,16 +287,16 @@
      cell rows never grow. */
   .cell .dots i.glyph{width:auto;height:auto;background:none;font-size:9.5px;line-height:1;font-style:normal;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
   /* hollow rings for day events (PTO/education/appt/off) — distinct from solid shift dots */
-  .cell .dots i.ev{background:transparent;border:1.3px solid #8A93A6;box-sizing:border-box;width:6px;height:6px}
+  .cell .dots i.ev{background:transparent;border:1.3px solid #9A9082;box-sizing:border-box;width:6px;height:6px}
   .cell .amt{font-weight:700;font-size:10px;color:var(--money-ink);margin-top:1px}
-  .cell .note-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--indigo)}
+  .cell .note-mark{position:absolute;top:7px;right:7px;width:5px;height:5px;border-radius:50%;background:var(--sage)}
   .cell.has{background:#fff}
   /* ACTIVE pay-period wash — faint, deliberately below .qf-on (quick-fill highlighting must
      still win when both apply) and below .today's ring (a box-shadow, so it's unaffected either way) */
-  .cell.pp-active{background:rgba(91,79,233,.055)}
-  .cell.qf-on{box-shadow:0 0 0 2px var(--indigo) inset;background:var(--indigo-soft)}
+  .cell.pp-active{background:var(--sage-tint)}
+  .cell.qf-on{box-shadow:0 0 0 2px var(--sage) inset;background:var(--sage-soft)}
   /* today indicator: 2px inset ring, box-shadow so it never affects box size/layout */
-  .cell.today{box-shadow:0 0 0 2px var(--indigo) inset}
+  .cell.today{box-shadow:0 0 0 2px var(--sage) inset}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
   .legend span{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:500}
   .legend i{width:8px;height:8px;border-radius:50%}
@@ -304,8 +311,8 @@
   .bd-row .lh .vv{font-weight:600;color:var(--danger)}
   .bd-row .lh .vv.g{font-family:'Bricolage Grotesque';font-weight:700;color:var(--ink)}
   .bar{height:9px;border-radius:5px;background:var(--danger-soft)}
-  .bar.gross{height:10px;background:var(--indigo);width:100%}
-  .takehome{background:var(--ink);border-radius:16px;padding:16px 18px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
+  .bar.gross{height:10px;background:var(--sage);width:100%}
+  .takehome{background:var(--hero);border-radius:16px;padding:16px 18px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
   .takehome .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
   .takehome .s{font-size:11.5px;color:#7E8290;margin-top:2px}
   .takehome .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em}
@@ -314,22 +321,22 @@
   /* buttons */
   .btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:15px;border-radius:15px;font-weight:600;font-size:15px;width:100%;transition:transform .06s,box-shadow .12s}
   .btn:active{transform:translateY(1px)}
-  .btn-primary{background:var(--indigo);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 10px 24px rgba(91,79,233,.32),0 2px 8px rgba(91,79,233,.2)}
-  .btn-primary:hover{background:var(--indigo-press)}
+  .btn-primary{background:var(--clay);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 10px 24px rgba(182,93,69,.32),0 2px 8px rgba(182,93,69,.2)}
+  .btn-primary:hover{background:var(--clay-press)}
   .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line-2)}
   .btn-ghost:hover{background:#fbfaf7}
-  .btn-soft{background:var(--indigo-soft);color:var(--indigo-ink)}
+  .btn-soft{background:var(--sage-soft);color:var(--sage-ink)}
   .btn-sm{padding:10px 16px;border-radius:var(--r-pill);font-size:13px;width:auto}
 
   /* fab */
-  .fab{position:fixed;right:16px;bottom:calc(22px + env(safe-area-inset-bottom));z-index:45;background:var(--indigo);color:#fff;padding:15px 26px;border-radius:var(--r-pill);font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 16px 40px rgba(91,79,233,.45),0 4px 14px rgba(91,79,233,.28)}
+  .fab{position:fixed;right:16px;bottom:calc(22px + env(safe-area-inset-bottom));z-index:45;background:var(--clay);color:#fff;padding:15px 26px;border-radius:var(--r-pill);font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 16px 40px rgba(182,93,69,.45),0 4px 14px rgba(182,93,69,.28)}
   .fab:active{transform:translateY(1px)}
 
   /* toggle */
   .tg{width:44px;height:25px;border-radius:13px;background:#D7D5CE;position:relative;flex:0 0 auto;transition:background .15s;cursor:pointer;border:0;padding:0;-webkit-appearance:none;appearance:none;display:block}
   .tg::after{content:'';position:absolute;top:-10px;bottom:-10px;left:0;right:0}
   .tg .knob{position:absolute;top:2.5px;left:2.5px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
-  .tg.on{background:var(--indigo)}
+  .tg.on{background:var(--sage)}
   .tg.on .knob{left:21.5px}
 
   /* inputs */
@@ -342,16 +349,16 @@
   .inp.suf input{padding-right:38px}
   .inp .pfx{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
   .inp .sfx{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted-2);font-weight:600}
-  .inp input:focus,.inp select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,79,233,.12)}
+  .inp input:focus,.inp select:focus{border-color:var(--sage);box-shadow:0 0 0 3px rgba(95,108,69,.14)}
   /* Feedback tiles. One tap picks the SHAPE of the report and pre-fills the box with a scaffold,
      so a nurse fills two blanks instead of composing a bug report from a blank textarea. */
   .fb-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
   .fb-tile{display:flex;align-items:center;gap:9px;min-height:58px;padding:10px 12px;background:#fff;border:1.5px solid var(--line);border-radius:14px;font:inherit;font-size:13px;font-weight:600;line-height:1.3;color:var(--ink);text-align:left;cursor:pointer}
-  .fb-tile .g{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
-  .fb-tile.on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo)}
-  .fb-tile.on .g{background:var(--indigo);color:#fff}
+  .fb-tile .g{flex:0 0 auto;width:26px;height:26px;border-radius:9px;background:var(--sage-soft);color:var(--sage);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+  .fb-tile.on{border-color:var(--sage);background:var(--sage-soft);color:var(--sage)}
+  .fb-tile.on .g{background:var(--sage);color:#fff}
   .fb-text{width:100%;padding:13px 14px;border:1.5px solid var(--line-2);border-radius:13px;font-size:16px;background:#fff;color:var(--ink);outline:none;font-family:inherit;resize:vertical;min-height:110px;line-height:1.45}
-  .fb-text:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,79,233,.12)}
+  .fb-text:focus{border-color:var(--sage);box-shadow:0 0 0 3px rgba(95,108,69,.14)}
 
   /* diff rows */
   .drow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;margin-bottom:9px}
@@ -365,7 +372,7 @@
   .chips-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .chip-sel{background:#fff;border:1.5px solid var(--line);border-radius:var(--r-pill);padding:11px 12px;min-height:44px;display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;text-align:left}
   .chip-sel i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-  .chip-sel.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .chip-sel.on{background:var(--sage);border-color:var(--sage);color:#fff}
   .chip-sel.on i{background:#fff!important}
   .hrs{display:flex;flex-wrap:wrap;gap:8px}
   .hrs .hc{flex:1;border:1.5px solid var(--line);border-radius:12px;padding:11px;text-align:center;font-weight:700;font-size:14px;color:var(--muted);background:#fff}
@@ -373,8 +380,8 @@
 
   /* tags */
   .tag{display:inline-block;font-weight:600;font-size:10.5px;padding:3px 8px;border-radius:var(--r-pill);margin-top:5px}
-  .tag.est{color:#8A5A05;background:#FDF3DD}
-  .tag.auto{color:var(--indigo);background:var(--indigo-soft)}
+  .tag.est{color:var(--wheat-ink);background:var(--wheat-soft)}
+  .tag.auto{color:var(--sage);background:var(--sage-soft)}
 
   /* pattern lab */
   .pl-cmp{width:100%;border-collapse:collapse;font-size:12.5px;min-width:300px}
@@ -405,24 +412,24 @@
   .pl-cell{position:relative}
   .pl-cell .fx{position:absolute;top:2px;right:3px;font-size:8px;line-height:1}
   .pl-money .avg,.pl-cmp .avg,.pl-card .avg{font-weight:500;font-size:10.5px;color:var(--muted-2)}
-  .pl-money{background:var(--ink);border-radius:16px;padding:16px 18px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
+  .pl-money{background:var(--hero);border-radius:16px;padding:16px 18px;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 14px 32px rgba(16,14,24,.28)}
   .pl-money .k{font-size:12.5px;color:#9A9DAB;font-weight:600}
   .pl-money .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:34px;color:var(--mint);letter-spacing:-.02em;line-height:1.1;margin-top:2px}
   .pl-money .s{font-size:12px;color:#B9BCC8;margin-top:6px;line-height:1.45}
   .pl-life{display:flex;flex-direction:column;gap:8px}
   .pl-life .li{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:13px;line-height:1.45;color:var(--ink)}
-  .pl-life .li .ic{flex:0 0 18px;text-align:center;font-size:14px;line-height:1.35;color:var(--indigo)}
+  .pl-life .li .ic{flex:0 0 18px;text-align:center;font-size:14px;line-height:1.35;color:var(--sage)}
   .pl-life .li b{font-weight:700}
 
   /* progress */
   .prog{flex:1;height:6px;border-radius:3px;background:#E5E3DC;overflow:hidden}
-  .prog i{display:block;height:100%;background:var(--indigo);border-radius:3px;transition:width .3s}
+  .prog i{display:block;height:100%;background:var(--sage);border-radius:3px;transition:width .3s}
   .back{position:relative;width:36px;height:36px;border-radius:13px;border:1px solid var(--glass-line);background:var(--glass-strong);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);box-shadow:inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex:0 0 auto}
   .back::after{content:'';position:absolute;inset:-4px}
 
   /* onboarding */
   .ob{min-height:100dvh;display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding:22px 24px calc(24px + env(safe-area-inset-bottom))}
-  .ob .eyebrow{font-weight:600;font-size:12.5px;color:var(--indigo);margin-bottom:10px;letter-spacing:.02em}
+  .ob .eyebrow{font-weight:600;font-size:12.5px;color:var(--sage);margin-bottom:10px;letter-spacing:.02em}
   .ob h1{margin:0;font-size:inherit}
   .ob .q{font-family:'Bricolage Grotesque';font-weight:700;font-size:25px;line-height:1.18}
   .ob .help{font-size:14px;line-height:1.55;color:var(--muted);margin-top:12px}
@@ -434,8 +441,8 @@
      "show me an example" opt-out on the rate step. Subordinate to the step's real CTA, never
      hidden from it. */
   .ob-footlink{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
-  .ob-footlink b{font-weight:700;color:var(--indigo)}
-  .pill{display:inline-flex;align-self:flex-start;background:var(--indigo-soft);color:var(--indigo);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
+  .ob-footlink b{font-weight:700;color:var(--sage)}
+  .pill{display:inline-flex;align-self:flex-start;background:var(--sage-soft);color:var(--sage);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
 
   /* share sheet — the QR has to survive being read off a screen at arm's length in bad light,
      so it gets a solid white plate regardless of theme, never the frosted glass. */
@@ -472,13 +479,13 @@
   .preview .k{font-weight:600;font-size:12px;color:var(--money-ink)}
   .preview .v{font-weight:700;font-size:14px;color:var(--money-ink);margin-top:2px}
   .row-item{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin-bottom:9px}
-  .link{color:var(--indigo);font-weight:600;font-size:13px}
+  .link{color:var(--sage);font-weight:600;font-size:13px}
   .danger-link{color:var(--danger);font-weight:600;font-size:12.5px;padding:14px 8px;margin:-14px -8px;min-height:44px;display:inline-flex;align-items:center}
 
   /* swap matching: count badge on entry points + suggestion/plan cards */
   .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:700;line-height:1;margin-left:6px;vertical-align:middle}
   .swap-card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:10px}
-  .swap-card .kicker{font-weight:600;font-size:11.5px;color:var(--indigo);letter-spacing:.02em;margin-bottom:6px}
+  .swap-card .kicker{font-weight:600;font-size:11.5px;color:var(--sage);letter-spacing:.02em;margin-bottom:6px}
   .swap-step{font-size:13.5px;color:var(--ink);line-height:1.55}
   .swap-step b{font-weight:700}
   .swap-plan-text{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;margin:10px 0;color:var(--ink)}
@@ -508,7 +515,8 @@
     .sheet,.modal,.cdlg{background:rgba(246,245,241,.99)}
     .acct-menu{background:rgba(246,245,241,.99)}
     .scrim{background:rgba(18,18,26,.66)}
-    .whatif,.qf-banner{background:var(--indigo-soft)}
+    .whatif{background:var(--clay-soft)}
+    .qf-banner{background:var(--sage-soft)}
     .viewseg{background:#EFEEE9}
     .viewseg button.on{background:#fff}
     .iconbtn,.calnav button,.back{background:#fff}
@@ -527,7 +535,8 @@
     .sheet,.modal,.cdlg{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
     .acct-menu{background:rgba(246,245,241,.99);backdrop-filter:none;-webkit-backdrop-filter:none}
     .scrim{background:rgba(18,18,26,.7);backdrop-filter:none;-webkit-backdrop-filter:none}
-    .whatif,.qf-banner{background:var(--indigo-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .whatif{background:var(--clay-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .qf-banner{background:var(--sage-soft);backdrop-filter:none;-webkit-backdrop-filter:none}
     .viewseg{background:#EFEEE9;backdrop-filter:none;-webkit-backdrop-filter:none}
     .viewseg button.on{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
     .iconbtn,.calnav button,.back,.period{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -625,7 +634,7 @@
       '<div style="font-size:40px;margin-bottom:12px">&#9888;&#65039;</div>' +
       '<div style="font-weight:700;font-size:18px;color:#fff;margin-bottom:8px">BadgeBudget couldn\'t start</div>' +
       '<div style="font-size:13px;color:#9A9DAB;margin-bottom:20px;word-break:break-word">' + esc(detail) + '</div>' +
-      '<button onclick="location.reload()" style="background:#5B4FE9;color:#fff;border:none;border-radius:12px;padding:12px 28px;font-weight:600;font-size:14px">Try again</button>' +
+      '<button onclick="location.reload()" style="background:#B65D45;color:#fff;border:none;border-radius:12px;padding:12px 28px;font-weight:600;font-size:14px">Try again</button>' +
       '<button onclick="window.__copyErrorLog(this)" style="display:block;margin:12px auto 0;background:none;color:#9A9DAB;border:none;font-size:12px;text-decoration:underline">Copy error log</button>' +
       '</div>';
   }, 8000);
@@ -779,15 +788,29 @@ const animateScrollTop = (el, target, duration=380) => {
 };
 
 const DIFF_DEFAULTS = {
-  'base':         { name:'Day (regular)',   amount:0,    type:'dollar',     active:true,  color:'#8A93A6' },
-  'night':        { name:'Night',           amount:10,   type:'dollar',     active:true,  color:'#5B4FE9' },
-  'weekday-eve':  { name:'Weekday evening',  amount:3,    type:'dollar',     active:false, color:'#8A93A6' },
-  'weekend-day':  { name:'Weekend day',      amount:11.5, type:'dollar',     active:true,  color:'#FF6B5C' },
-  'weekend-eve':  { name:'Weekend night',    amount:16.5, type:'dollar',     active:true,  color:'#9B5BE9' },
-  'holiday':      { name:'Holiday',          amount:1.5,  type:'multiplier', active:true,  color:'#F5A524' },
+  'base':         { name:'Day (regular)',   amount:0,    type:'dollar',     active:true,  color:'#9A9082' },
+  'night':        { name:'Night',           amount:10,   type:'dollar',     active:true,  color:'#34452A' },
+  'weekday-eve':  { name:'Weekday evening',  amount:3,    type:'dollar',     active:false, color:'#6E665A' },
+  'weekend-day':  { name:'Weekend day',      amount:11.5, type:'dollar',     active:true,  color:'#B65D45' },
+  'weekend-eve':  { name:'Weekend night',    amount:16.5, type:'dollar',     active:true,  color:'#8C4A38' },
+  'holiday':      { name:'Holiday',          amount:1.5,  type:'multiplier', active:true,  color:'#D9A33C' },
   'overtime':     { name:'Overtime (1.5×)',  amount:1.5,  type:'multiplier', active:true,  color:'#11A86B' },
   'bonus-incentive':{ name:'Bonus incentive',amount:15,   type:'dollar',     active:true,  color:'#11A86B' },
 };
+const CUSTOM_DIFF_COLOR = '#5F6C45';
+/* Shift colors are user-editable and persisted, so changing DIFF_DEFAULTS alone only reaches new
+   users. A saved color moves to the new default ONLY while it still equals the pre-2026-10-03
+   default for that key — anything she picked herself is left alone. Color only: never touches
+   amount/type/active, so no dollar figure can move. */
+const PREV_DIFF_COLORS = { 'base':'#8A93A6', 'night':'#5B4FE9', 'weekday-eve':'#8A93A6',
+  'weekend-day':'#FF6B5C', 'weekend-eve':'#9B5BE9', 'holiday':'#F5A524' };
+function migrateDiffColor(k, v){
+  if(!v || typeof v.color!=='string') return v;
+  const c = v.color.toUpperCase();
+  const next = PREV_DIFF_COLORS[k] ? (c===PREV_DIFF_COLORS[k] ? DIFF_DEFAULTS[k].color : null)
+             : (k.indexOf('custom-')===0 && c==='#5B4FE9' ? CUSTOM_DIFF_COLOR : null);
+  return next ? {...v, color:next} : v;
+}
 /* ---- sample ("show me what this looks like") mode ------------------------------------
    A planner with no shifts projects $0, so a sample that shows nothing is worthless. Sample
    mode seeds one believable fortnight and tags every shift with this id, so "clear the sample"
@@ -823,10 +846,10 @@ const glyphFor = (type) => SHIFT_GLYPH[type] || '●';
    the AddShiftSheet chips toggle, never stack. Only 'pto' (with hours) touches pay. */
 const EVENT_KINDS = ['pto','education','appointment','off'];
 const EVENT_KIND_META = {
-  pto:         { label:'PTO',        color:'var(--money-ink)' },
-  education:   { label:'Education',  color:'var(--violet)' },
-  appointment: { label:'Appt',       color:'var(--amber)' },
-  off:         { label:'Off',        color:'var(--slate)' },
+  pto:         { label:'PTO',        color:'#8A9A6B' },
+  education:   { label:'Education',  color:'#4C6478' },
+  appointment: { label:'Appt',       color:'#D9A33C' },
+  off:         { label:'Off',        color:'#9A9082' },
 };
 const MAX_DAY_EVENTS = 4;
 const MAX_NOTE_LEN = 240;
@@ -2939,7 +2962,7 @@ class ErrorBoundary extends React.Component {
             <div style={{fontSize:'14px',color:'var(--muted)',marginBottom:'24px',lineHeight:'1.5'}}>
               The app encountered an error. Try refreshing the page.
             </div>
-            <button onClick={()=>window.location.reload()} style={{background:'var(--indigo)',color:'#fff',border:'none',borderRadius:'12px',padding:'12px 24px',fontWeight:'600',fontSize:'14px',cursor:'pointer'}}>
+            <button onClick={()=>window.location.reload()} style={{background:'var(--clay)',color:'#fff',border:'none',borderRadius:'12px',padding:'12px 24px',fontWeight:'600',fontSize:'14px',cursor:'pointer'}}>
               Reload App
             </button>
             {this.state.error && (
@@ -3119,7 +3142,7 @@ function App(){
     if(d.customWithholdings) setCW(d.customWithholdings);
     if(d.differentials){
       const m={...DIFF_DEFAULTS};
-      Object.entries(d.differentials).forEach(([k,v])=>{ if(v&&typeof v==='object'&&!Array.isArray(v)) m[k]={...(DIFF_DEFAULTS[k]||{color:'#8A93A6',type:'dollar'}),...v}; });
+      Object.entries(d.differentials).forEach(([k,v])=>{ if(v&&typeof v==='object'&&!Array.isArray(v)) m[k]={...(DIFF_DEFAULTS[k]||{color:'#9A9082',type:'dollar'}),...migrateDiffColor(k,v)}; });
       setDiff(m);
     }
     if(d.templates) setTemplates(d.templates);
@@ -4409,7 +4432,7 @@ function App(){
               <button onClick={()=>{ track('ical_howto_opened',{surface:'card'},user&&user.id); setShowIcalHowTo(true); }}>Show me how</button>
               <button onClick={()=>{ try{ localStorage.setItem(ICAL_CTA_KEY,'1'); }catch(_){}
                                      setIcalCtaOff(true); track('ical_cta_dismissed',null,user&&user.id); }}
-                      style={{background:'transparent',color:'#6A60C9',fontWeight:500,padding:'4px 0',minHeight:0}}>Not now</button>
+                      style={{background:'transparent',color:'var(--sage-ink)',fontWeight:500,padding:'4px 0',minHeight:0}}>Not now</button>
             </div>
           </div>
         )}
@@ -4508,7 +4531,7 @@ function App(){
                     <div className="qf-chips">
                       {templates.map(t=>
                         <button key={t.id} className="chip-sel" style={{minHeight:44}} onClick={()=>setQfTemplate(t)}>
-                          <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h
+                          <i style={{background:differentials[t.shiftType]?.color||'#9A9082'}}></i>⚡ {t.name} ×{t.hours}h
                         </button>)}
                     </div>
                     <button className="btn btn-ghost btn-sm" style={{marginTop:12,minHeight:44}} onClick={endQuickFill}>Cancel</button>
@@ -4549,7 +4572,7 @@ function App(){
                   </div>}
               <div className="legend">
                 {[['night','Night'],['weekend-day','Weekend day'],['weekend-eve','Weekend night'],['holiday','Holiday'],['bonus-incentive','Bonus']].map(([k,l])=>
-                  <span key={k}><i className="glyph" style={{color:differentials[k]?.color||'#8A93A6'}}>{glyphFor(k)}</i>{l}</span>)}
+                  <span key={k}><i className="glyph" style={{color:differentials[k]?.color||'#9A9082'}}>{glyphFor(k)}</i>{l}</span>)}
               </div>
               <div className="legend" style={{marginTop:6}}>
                 {EVENT_KINDS.map(k=>
@@ -4870,8 +4893,8 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
           {CHIP_OPTS.map(([k,l])=>(
             <button key={k} className={'chip-sel'+(sel===k?' on':'')} aria-pressed={sel===k} style={{minHeight:44}} onClick={()=>onAnswer(g.key,k)}>
               <i style={{background: k==='skip' ? 'transparent'
-                : k==='event' ? (EVENT_KIND_META[ICS_EVENT_KIND]?.color||'#8A93A6')
-                : (differentials[k]?.color||'#8A93A6')}}></i>{l}
+                : k==='event' ? (EVENT_KIND_META[ICS_EVENT_KIND]?.color||'#9A9082')
+                : (differentials[k]?.color||'#9A9082')}}></i>{l}
             </button>
           ))}
         </div>
@@ -4932,8 +4955,8 @@ function Calendar({days,keyOf,statOf,differentials,shifts,dayEvents,notes,onPick
               {/* Shift glyphs and event rings share one marker row (capped to 4 combined) so a day
                   with both never grows taller than a day with just one — see .cell min-height/overflow. */}
               <div className="dots">
-                {arr.slice(0,4).map((s,i)=><i key={'s'+i} className="glyph" style={{color:differentials[s.shiftType]?.color||'#8A93A6'}}>{glyphFor(s.shiftType)}</i>)}
-                {evs.slice(0,Math.max(0,4-Math.min(arr.length,4))).map((e,i)=><i key={'e'+i} className="ev" style={{borderColor:EVENT_KIND_META[e.kind]?.color||'#8A93A6'}}></i>)}
+                {arr.slice(0,4).map((s,i)=><i key={'s'+i} className="glyph" style={{color:differentials[s.shiftType]?.color||'#9A9082'}}>{glyphFor(s.shiftType)}</i>)}
+                {evs.slice(0,Math.max(0,4-Math.min(arr.length,4))).map((e,i)=><i key={'e'+i} className="ev" style={{borderColor:EVENT_KIND_META[e.kind]?.color||'#9A9082'}}></i>)}
               </div>
               {/* estimated take-home, not gross — see the "Day amounts are estimated take-home" hint below the legend */}
               {t.g>0 && <div className="amt num">{'~'+fmt(Math.round(t.g*keepRatio))}</div>}
@@ -5229,7 +5252,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
               {templates.map(t=>(
                 <div key={t.id} style={{display:'flex',alignItems:'center',gap:8}}>
                   <button className="chip-sel" style={{flex:1,minHeight:44}} onClick={()=>applyTemplateTap(t)}>
-                    <i style={{background:differentials[t.shiftType]?.color||'#8A93A6'}}></i>⚡ {t.name} ×{t.hours}h{t.isOvertime ? ' · OT' : ''}
+                    <i style={{background:differentials[t.shiftType]?.color||'#9A9082'}}></i>⚡ {t.name} ×{t.hours}h{t.isOvertime ? ' · OT' : ''}
                   </button>
                   <button className="back" aria-label={'Delete template '+t.name} onClick={()=>onDeleteTemplate(t)}>{Ic.x}</button>
                 </div>
@@ -5243,7 +5266,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
             {list.map(s=>(
               <div className="row-item" key={s.id}>
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
-                  <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#8A93A6',display:'inline-block'}}></i>
+                  <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#9A9082',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
                   {s.isOvertime && <span className="ot-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>OT ×1.5</span>}
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>{BONUS_LABEL[s.bonusType]}</span>}
@@ -5257,7 +5280,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         <div className="chips-grid" style={{marginBottom:16}}>
           {active.map(([k,d])=>(
             <button key={k} className={'chip-sel'+(shiftType===k?' on':'')} aria-pressed={shiftType===k} onClick={()=>{ setType(k); configDirtySinceAdd.current=true; }}>
-              <i style={{background:d.color||'#8A93A6'}}></i>{d.name}
+              <i style={{background:d.color||'#9A9082'}}></i>{d.name}
             </button>
           ))}
         </div>
@@ -5280,7 +5303,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
           <button className={'chip-sel'+(noMeal?' on':'')} aria-pressed={noMeal}
             style={{width:'100%',marginBottom:noMeal?8:16,minHeight:44}}
             onClick={()=>{ setNoMeal(v=>!v); configDirtySinceAdd.current=true; }}>
-            <i style={{background:'#F5A524'}}></i>I never got my {mealMins}-minute lunch
+            <i style={{background:'var(--wheat)'}}></i>I never got my {mealMins}-minute lunch
           </button>
           {noMeal &&
             <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>
@@ -5343,7 +5366,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         </div>
 
         {!savingTpl
-          ? <button className="linklike" style={{fontSize:12.5,fontWeight:600,color:'var(--indigo)',marginBottom:14,minHeight:44,display:'inline-flex',alignItems:'center',gap:6}}
+          ? <button className="linklike" style={{fontSize:12.5,fontWeight:600,color:'var(--sage)',marginBottom:14,minHeight:44,display:'inline-flex',alignItems:'center',gap:6}}
               onClick={()=>{ setTplName(''); setSavingTpl(true); }}>⚡ Save as template</button>
           : <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
               <div className="inp" style={{flex:1}}>
@@ -5390,9 +5413,9 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
      the figure, so say so next to it. Label only -- the number is the same one it always was. */
   const avgNote = cells => { const k = lcm(cells.length, 14)/14; return k>1 ? `avg. over ${k} paychecks — checks will vary` : ''; };
   const cellColor = c => {
-    if(!c) return '#E7E5DE';
+    if(!c) return '#DED8CA';
     const key = c.kind==='fixed' ? c.shiftType : (c.kind==='night' ? 'night' : 'base');
-    return (differentials[key] && differentials[key].color) || '#8A93A6';
+    return (differentials[key] && differentials[key].color) || '#9A9082';
   };
   const cellLabel = c => {
     if(!c) return 'off';
@@ -5561,7 +5584,7 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
   const brushes = [
     ...PATTERN_BRUSHES.map(b=>({key:b.key, label:`${b.kind==='night'?'☾':'☀'} ${b.label} ${b.hours}h`, color:cellColor({kind:b.kind})})),
     ...templates.map(t=>({key:'tpl:'+t.id, label:`⚡ ${t.name} ×${t.hours}h`, color:cellColor({kind:'fixed',shiftType:t.shiftType})})),
-    {key:'off', label:'Off (erase)', color:'#E7E5DE'},
+    {key:'off', label:'Off (erase)', color:'#DED8CA'},
   ];
   const gl = goalLine(metrics);
 
@@ -5781,7 +5804,7 @@ function Settings(props){
   const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
   const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
   const del=async k=>{ if(!(await confirmAsync("Any shifts you've logged with this differential will be repriced at your base rate — this can't be undone.",{title:'Delete differential?',confirm:'Delete',danger:true}))) return; const n={...differentials}; delete n[k]; setDiff(n); };
-  const addDiff=()=>{ if(newName.trim()){ setDiff({...differentials,['custom-'+Date.now()]:{name:newName,amount:parseFloat(newAmt)||0,type:'dollar',active:true,color:'#5B4FE9'}}); setNewName(''); setNewAmt(0); } };
+  const addDiff=()=>{ if(newName.trim()){ setDiff({...differentials,['custom-'+Date.now()]:{name:newName,amount:parseFloat(newAmt)||0,type:'dollar',active:true,color:CUSTOM_DIFF_COLOR}}); setNewName(''); setNewAmt(0); } };
 
   return (
     <div className="scrim" onClick={onClose}>
@@ -5802,7 +5825,7 @@ function Settings(props){
         {Object.entries(differentials).map(([k,d])=>(
           <div className={'drow'+(d.active?'':' off')} key={k}>
             <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
-            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
+            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#9A9082',flex:'0 0 auto'}}></i>
             <input className="nm" value={d.name} disabled={k==='base'} aria-label="Differential name" onChange={e=>upd(k,'name',e.target.value)} style={{border:'none',background:'transparent',outline:'none',fontWeight:600,fontSize:14,minWidth:0}}/>
             <span className="amt">{d.type==='multiplier'?<><NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0.1} ariaLabel={d.name+' multiplier'} style={{width:34}}/>×</>:<>+$<NumInput value={d.amount} onCommit={v=>upd(k,'amount',v)} min={0} ariaLabel={d.name+' amount'}/></>}</span>
             {k!=='base' && <button className="danger-link" onClick={()=>del(k)} style={{flex:'0 0 auto'}} aria-label={'Delete '+d.name+' differential'}>Del</button>}
@@ -5926,7 +5949,7 @@ function Settings(props){
             {/* The walkthrough stays reachable from here for anyone who waved off the home-screen
                 card, which is the only other place it is offered. */}
             <button className="linklike" onClick={onIcalHowTo}
-              style={{display:'block',fontSize:12,color:'var(--indigo)',fontWeight:600,marginBottom:8,textAlign:'left'}}>
+              style={{display:'block',fontSize:12,color:'var(--sage)',fontWeight:600,marginBottom:8,textAlign:'left'}}>
               Using NurseGrid? Here's how to get your link ›
             </button>
             <div className="inp">
@@ -6536,7 +6559,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
             <div style={{fontSize:36,marginBottom:12}} aria-hidden="true">🤝</div>
             <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Join this swap board?</div>
             <div style={{fontSize:13.5,color:'var(--muted)',lineHeight:1.5,marginBottom:16}}>A colleague shared an invite link with you.</div>
-            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:16}}>{inviteCode}</div>
+            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--sage-soft)',color:'var(--sage-ink)',borderRadius:16,padding:'18px 12px',marginBottom:16}}>{inviteCode}</div>
             <button className="btn btn-primary" style={{marginBottom:10}} disabled={joining} onClick={()=>doJoinGroup(inviteCode, true)}>{joining?'Joining…':'Join board'}</button>
             <button className="btn btn-ghost" disabled={joining} onClick={resolveInvite}>Not now</button>
           </div>}
@@ -6545,7 +6568,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
           <div style={{textAlign:'center',padding:'8px 4px 4px'}}>
             <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:8}}>Board created</div>
             <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>Send your unit the link — it drops them straight onto this board.</div>
-            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--indigo-soft)',color:'var(--indigo-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
+            <div className="display num" style={{fontWeight:800,fontSize:34,letterSpacing:'4px',background:'var(--sage-soft)',color:'var(--sage-ink)',borderRadius:16,padding:'18px 12px',marginBottom:14}}>{justCreated.invite_code}</div>
             <button className="btn btn-primary" style={{marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}} onClick={()=>shareInvite(justCreated.invite_code, justCreated.name)}>{Ic.share}<span>Invite your unit</span></button>
             <button className="btn btn-ghost" onClick={()=>setJustCreated(null)}>Continue to board</button>
           </div>}
@@ -6741,7 +6764,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                 board"). The backend has no per-user group cap — this is purely the missing affordance. */}
             <div style={{marginTop:22,paddingTop:16,borderTop:'1px solid var(--line)',display:'flex',flexDirection:'column',gap:2}}>
               {!createMoreOpen &&
-                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setCreateMoreOpen(true); setJoinMoreOpen(false); }}>
+                <button className="linklike" style={{fontSize:13,color:'var(--sage-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setCreateMoreOpen(true); setJoinMoreOpen(false); }}>
                   + Create another board
                 </button>}
               {createMoreOpen &&
@@ -6757,7 +6780,7 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
                   </div>
                 </div>}
               {!joinMoreOpen &&
-                <button className="linklike" style={{fontSize:13,color:'var(--indigo-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setJoinMoreOpen(true); setCreateMoreOpen(false); }}>
+                <button className="linklike" style={{fontSize:13,color:'var(--sage-ink)',padding:'11px 4px',display:'inline-flex',alignItems:'center',minHeight:44,cursor:'pointer'}} onClick={()=>{ setJoinMoreOpen(true); setCreateMoreOpen(false); }}>
                   + Join another board with a code
                 </button>}
               {joinMoreOpen &&
@@ -7006,7 +7029,7 @@ function Onboarding(props){
       <div style={{marginTop:18}}>
         {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
           <div className={'drow'+(d.active?'':' off')} key={k}>
-            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#8A93A6',flex:'0 0 auto'}}></i>
+            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#9A9082',flex:'0 0 auto'}}></i>
             <span className="nm">{d.name}</span>
             <span className="amt num">{d.type==='multiplier'? d.amount+'× rate' : '+$'+d.amount.toFixed(2)+'/hr'}</span>
             <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
