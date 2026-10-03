@@ -4,6 +4,25 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-10-03 — the NurseGrid substitution, checked by eye; one calendar button (#142)
+
+**The real NurseGrid sync is owner-confirmed correct.** The open item since 2026-09-29 was that
+nobody had checked the imported shifts — Invariant 3 with no automated detection. The owner put
+NurseGrid's own shift screen beside BadgeBudget's day sheet: Wed Oct 14, 12:15 AM start, 12.5h,
+inferred *Night Shift*, matching. He also deleted 2 of the 3 synced shifts in NurseGrid and they
+left BadgeBudget, so removals propagate. The first `ics_sync_result` row ever written came from
+the same session (`up_to_date`, `nursegrid`, 12:49 UTC, zero `client_error`), and the device was
+confirmed as his (signed in to his account). Scope, so this isn't over-claimed the way 09-28 was:
+one shift, one account, a human's eyes, and the dollar figure rests on his word, not a probe.
+The 422-on-first-hit fault did not recur on this load; one clean run doesn't settle the
+interstitial hypothesis either way.
+
+**The home calendar card now has one button, "Sync NurseGrid"** (owner request). It replaced
+"Import .ics" and "Sync to calendar" — the latter *exported* to the phone's calendar while reading
+like the sync. It opens the same how-to sheet as the connect card and Settings. File import and
+export stay in Settings → Data. Smoke §26 +5 (negative-tested), 455/455; squash `0a08a38`, live on
+badgebudget.com and byte-identical to the deploy branch.
+
 ## 2026-09-16 — the test harness was the app's largest user, and abandonment had no exit row
 
 Two findings from a review of the live console, both of the same kind: a measurement that had
