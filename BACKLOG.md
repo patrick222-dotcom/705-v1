@@ -1225,6 +1225,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   which is the only path for a signed-out visitor. `tests/smoke.mjs` §26 +5 assertions, each
   negative-tested on a copy; 455/455. Same day the owner **confirmed the real NurseGrid sync
   correct** (one shift: time, inferred Night Shift; removals propagate) — see CLAUDE.md.
+  **SHIPPED #142, squash `0a08a38`, live on badgebudget.com and byte-identical to the deploy branch.**
 - 2026-10-03 — **A synced calendar can no longer ask her to delete the shifts she has already
   worked.** The removal half of the import plan asked one question — "is this date inside the
   parser's window?" — and that window reaches **60 days back**. A scheduling feed that publishes
