@@ -3068,6 +3068,109 @@ const run = async () => {
       /let result = 'failed';/.test(src27) && !/catch\(e\)\{\s*result\s*=/.test(src27));
   }
 
+  /* ---- 28. a feed must never propose deleting shifts she has already WORKED ------------
+     The removal half of the import plan asked "is this date inside the parser's window?", and that
+     window reaches 60 days BACK. A scheduling feed that publishes upcoming shifts only carries
+     nothing dated before today, so every worked shift went missing from the fetch and was offered
+     up for deletion — the hours a past paycheck was computed from, framed as a cancelled shift.
+     The bound is now a union: on or after today absence still means deletion, and before today it
+     counts only where the feed reaches that far. Both halves need pinning, because over-tightening
+     this brings back the error the removal code exists for (a cancelled shift that never comes out).
+     Driven as a unit against the top-level function, with todayKey injected — CI runners would
+     otherwise re-date every fixture nightly. */
+  if (want(28)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+
+    const plans = await page.evaluate(() => {
+      const TODAY = '2026-10-03';
+      const ws = '2026-08-04';              // TODAY - 60
+      const we = '2027-10-04';              // TODAY + 366
+      const shiftAt = (dateKey, id) => ({ dateKey, shift: { id, hours: 12, shiftType: 'day', icsUid: id } });
+      const existing = () => ({
+        worked_sep: shiftAt('2026-09-20', 'worked_sep'),   // worked, inside the window's past side
+        worked_oct: shiftAt('2026-10-01', 'worked_oct'),   // worked two days ago
+        soonest: shiftAt('2026-10-05', 'soonest'),         // upcoming, earlier than anything in the feed
+        later: shiftAt('2026-10-10', 'later'),             // upcoming, still in the feed
+        ancient: shiftAt('2026-06-01', 'ancient'),         // outside the window entirely
+        far: shiftAt('2028-01-01', 'far'),                 // outside the window, future side
+      });
+      const ev = (dateKey, uid) => ({ dateKey, uid, hours: 12, start: '07:00' });
+      const plan = (events, opts) => window.icsPlanFromExisting(events, existing(), Object.assign(
+        { windowStartKey: ws, windowEndKey: we, truncated: false, todayKey: TODAY }, opts || {}));
+      const uids = (p) => p.toRemove.map((r) => r.uid).sort();
+
+      // A forward-only feed: carries `later` only, so everything else is absent from the fetch.
+      const forwardOnly = plan([ev('2026-10-10', 'later')]);
+      // A feed that genuinely reaches back: its earliest event predates both worked shifts.
+      const reachesBack = plan([ev('2026-09-01', 'someone_else'), ev('2026-10-10', 'later')]);
+      // Nothing at all. Proves nothing about the past; the future side is unchanged.
+      const emptyFeed = plan([]);
+      // The day-event side of the plan takes the same bound.
+      const ptoPlan = window.icsPlanFromExisting([ev('2026-10-10', 'later')], {}, {
+        windowStartKey: ws, windowEndKey: we, truncated: false, todayKey: TODAY,
+        eventsByUid: {
+          pto_past: { dateKey: '2026-09-15', event: { id: 'pto_past', kind: 'pto' } },
+          pto_future: { dateKey: '2026-10-20', event: { id: 'pto_future', kind: 'pto' } },
+        },
+      });
+      return {
+        forwardOnly: uids(forwardOnly),
+        reachesBack: uids(reachesBack),
+        emptyFeed: uids(emptyFeed),
+        ptoRemove: ptoPlan.toRemoveEvents.map((r) => r.uid).sort(),
+        forwardDates: forwardOnly.toRemove.map((r) => r.dateKey),
+      };
+    });
+
+    /* The fix itself: a worked shift absent from a forward-only feed is not up for deletion. */
+    ok('import plan: a forward-only feed does not propose deleting a worked shift',
+      !plans.forwardOnly.includes('worked_sep') && !plans.forwardOnly.includes('worked_oct'),
+      plans.forwardOnly.join(','));
+    ok('import plan: no removal a forward-only feed proposes is dated in the past',
+      plans.forwardDates.every((d) => d >= '2026-10-03'), plans.forwardDates.join(','));
+    /* The half that must NOT be lost. `soonest` (10-05) sits before the feed's earliest event
+       (10-10), so a bound of "at or after the feed's first event" alone would stop the nearest
+       cancellation propagating — the exact job this code was written for. */
+    ok('import plan: a cancelled upcoming shift still comes out, even before the feed\'s first event',
+      plans.forwardOnly.includes('soonest'), plans.forwardOnly.join(','));
+    ok('import plan: a forward-only feed proposes exactly the cancelled upcoming shift',
+      plans.forwardOnly.join(',') === 'soonest', plans.forwardOnly.join(','));
+
+    /* A feed that really does publish history keeps its past removals — the bound is the feed's
+       own reach, not a blanket "never touch the past". */
+    ok('import plan: a feed reaching back to 09-01 still proposes its past removals',
+      plans.reachesBack.includes('worked_sep') && plans.reachesBack.includes('worked_oct'),
+      plans.reachesBack.join(','));
+    ok('import plan: and that feed still proposes the upcoming one too',
+      plans.reachesBack.includes('soonest'), plans.reachesBack.join(','));
+    ok('import plan: the parser window still binds — a shift older than it is never proposed',
+      !plans.reachesBack.includes('ancient') && !plans.forwardOnly.includes('ancient'),
+      plans.reachesBack.join(','));
+    ok('import plan: and a far-future shift outside the window is never proposed',
+      !plans.reachesBack.includes('far') && !plans.forwardOnly.includes('far'),
+      plans.reachesBack.join(','));
+
+    /* An empty fetch is the weakest evidence there is; it must not reach into history. */
+    ok('import plan: an empty feed proposes no past removal at all',
+      !plans.emptyFeed.includes('worked_sep') && !plans.emptyFeed.includes('worked_oct'),
+      plans.emptyFeed.join(','));
+    ok('import plan: an empty feed still proposes the upcoming shifts',
+      plans.emptyFeed.includes('soonest') && plans.emptyFeed.includes('later'),
+      plans.emptyFeed.join(','));
+
+    /* Day events (PTO, appointments) ride the same code path and the same bound. */
+    ok('import plan: a past day event is not proposed for removal by a forward-only feed',
+      !plans.ptoRemove.includes('pto_past'), plans.ptoRemove.join(','));
+    ok('import plan: a future day event absent from the feed still is',
+      plans.ptoRemove.join(',') === 'pto_future', plans.ptoRemove.join(','));
+
+    const real28 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('import plan: no page errors while driving the planner', real28.length === 0, real28.join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -123,7 +123,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **437 assertions** on an iPhone 13 profile (read "65" here until 2026-10-02 — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **450 assertions** on an iPhone 13 profile (read "437" here until 2026-10-03 — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -316,6 +316,17 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   and the WHATWG `protocol` setter refuses to reassign it — Node and Deno enforce that, **Chromium
   does not**, so a browser test of the setter passes while production returns `400`. Never rely on
   the setter; `tests/smoke.mjs` §23 pins both engines.
+  **A removal is bounded by the feed's own reach, never by the parser's window** (2026-10-03):
+  absence from a fetch means "deleted" only on or after **today**, or earlier than today where the
+  feed demonstrably reaches that far (it carries some event on or before that date). The window
+  alone was wrong because it starts **60 days back** while a forward-only feed — NurseGrid's
+  apparent shape — carries nothing before today, so every shift she had already worked was offered
+  up for deletion through the import stepper. The bound is a **union on purpose**: the obvious
+  "never remove anything before the feed's first event" is a regression, because cancelling the
+  *nearest* shift moves the feed's first event past it and the cancellation would never propagate.
+  Being a union is also what makes it provider-independent, so it needed no answer to "how far
+  back does NurseGrid publish?" — that question is still open and now gates nothing. Pinned by
+  `tests/smoke.mjs` §28.
   **Every sync says how it ended** (2026-10-02): one `ics_sync_result {result, provider}` per sync
   that reaches the proxy — `changes` / `up_to_date` / `empty` / `unparseable` / `failed` — tracked
   from `finally` with `failed` as the initialiser, so a new early return cannot be silent. Before
