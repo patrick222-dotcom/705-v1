@@ -748,7 +748,7 @@ const run = async () => {
       await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
       const out = await page.evaluate(() => {
         const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
-        /* hours/shifts moved from a hero chip into .hero-stats on 2026-10-03 (§29) */
+        /* hours/shifts moved from a hero chip into .hero-stats on 2026-10-03 (§30) */
         return {
           gross: txt([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
           hrs: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt).join(' · '),
@@ -2263,7 +2263,7 @@ const run = async () => {
       const seen = await p.page.waitForSelector('.wrap .whatif', { timeout: 20000 }).then(() => true).catch(() => false);
       const titles = seen ? await p.page.evaluate(() =>
         [...document.querySelectorAll('.wrap .whatif')].map((c) => c.querySelector('.t')?.textContent.trim() || '')) : [];
-      /* hours/shifts live in the hero since 2026-10-03 (§29), not in .stat tiles */
+      /* hours/shifts live in the hero since 2026-10-03 (§30), not in .stat tiles */
       const shiftsShown = seen ? await p.page.evaluate(() => [...document.querySelectorAll('.hero .hero-stats .hs')]
         .some((s) => /\bshifts?\b/.test(s.textContent))) : false;
       ok('positioning: the weekend-pickup card is gone from a dashboard with shifts and a rate',
@@ -3211,7 +3211,63 @@ const run = async () => {
     await ctx.close();
   }
 
-  /* §29 — Hours and shifts live inside the hero (2026-10-03). They used to be two glass tiles under
+  /* ---- 29. time off in a feed defaults to "Not a shift" ---------------------------------
+     2026-10-03: Courtney's first real NurseGrid sync brought in 131 entries and the stepper
+     pre-selected every one as a paid shift -- including 13 vacation / unavailable days that
+     NurseGrid publishes as 24-hour blocks. She tapped through ("I rushed it") and her estimate
+     gained 312 hours that do not exist. The parser never kept titles, so it could not tell. Now it
+     reads SUMMARY transiently, reduces it to one boolean, and the stepper's default for those
+     cards is "Not a shift". The default is the whole fix: she still sees every card. */
+  if (want(29)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof icsDefaultAnswer === 'function', null, { timeout: 20000 });
+
+    const r = await page.evaluate(() => {
+      const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+        return d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'); };
+      const ev = (uid, summary, start, end) => ['BEGIN:VEVENT', 'UID:' + uid,
+        ...(summary == null ? [] : ['SUMMARY:' + summary]), start, end, 'END:VEVENT'];
+      /* Two Mondays-or-whatever at the SAME start and length: one shift, one vacation. */
+      const text = ['BEGIN:VCALENDAR',
+        ...ev('shift', 'Day Shift', 'DTSTART:' + day(7) + 'T070000', 'DTEND:' + day(7) + 'T193000'),
+        ...ev('vac', 'Vacation', 'DTSTART:' + day(14) + 'T070000', 'DTEND:' + day(14) + 'T193000'),
+        ...ev('unav', 'Unavailable', 'DTSTART;VALUE=DATE:' + day(8), 'DTEND;VALUE=DATE:' + day(9)),
+        ...ev('long', null, 'DTSTART:' + day(9) + 'T000000', 'DTEND:' + day(10) + 'T000000'),
+        ...ev('hol', 'Holiday shift', 'DTSTART:' + day(21) + 'T070000', 'DTEND:' + day(21) + 'T193000'),
+        ...ev('esc', 'Requested\\, off', 'DTSTART:' + day(22) + 'T070000', 'DTEND:' + day(22) + 'T193000'),
+        ...ev('notitle', null, 'DTSTART:' + day(23) + 'T070000', 'DTEND:' + day(23) + 'T193000'),
+        'END:VCALENDAR'].join('\n');
+      const out = parseICSSchedule(text);
+      const by = {}; out.events.forEach((e) => { by[e.uid] = e; });
+      const groups = groupICSEvents(out.events);
+      const gOf = (uid) => groups.find((g) => g.items.some((i) => i.uid === uid));
+      return {
+        hint: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, v.offHint])),
+        ans: Object.fromEntries(Object.keys(by).map((k) => [k, icsDefaultAnswer(gOf(k))])),
+        stored: JSON.stringify(out),
+      };
+    });
+    ok('time off: a titled vacation is hinted off', r.hint.vac === true, JSON.stringify(r.hint));
+    ok('time off: an all-day "Unavailable" is hinted off', r.hint.unav === true, JSON.stringify(r.hint));
+    ok('time off: an untitled 24-hour block is hinted off', r.hint.long === true, JSON.stringify(r.hint));
+    ok('time off: an escaped "Requested\\, off" title is hinted off', r.hint.esc === true, JSON.stringify(r.hint));
+    ok('time off: a plain shift is NOT hinted off', r.hint.shift === false, JSON.stringify(r.hint));
+    ok('time off: a worked holiday is NOT hinted off', r.hint.hol === false, JSON.stringify(r.hint));
+    ok('time off: an untitled 12.5h entry is NOT hinted off', r.hint.notitle === false, JSON.stringify(r.hint));
+    ok('time off: the stepper defaults time off to "Not a shift"',
+      ['vac', 'unav', 'long', 'esc'].every((k) => r.ans[k] === 'event'), JSON.stringify(r.ans));
+    ok('time off: and still defaults a real shift to a shift type',
+      ['shift', 'hol', 'notitle'].every((k) => r.ans[k] !== 'event' && r.ans[k] !== 'skip'), JSON.stringify(r.ans));
+    /* Invariant 13: the title is read, never kept. */
+    ok('time off: no title survives the parse',
+      !/Vacation|Unavailable|Day Shift|Holiday|Requested/.test(r.stored), r.stored.slice(0, 200));
+    const real29 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('time off: no page errors', real29.length === 0, real29.join(' | '));
+    await ctx.close();
+  }
+
+  /* §30 — Hours and shifts live inside the hero (2026-10-03). They used to be two glass tiles under
      it, ~95px of the first screen spent repeating a "N hrs · N shifts" chip the hero already had.
      Pinned: the tiles and the chip are gone, the in-card figures are the real period figures, and
      the layout holds with a four-digit take-home on the narrowest phone Playwright ships (first-gen
@@ -3219,7 +3275,7 @@ const run = async () => {
      number, push the "Projected take-home" label down, or overflow the card. The sandbox has no
      fonts CDN, so this runs on the fallback face, which is wider than Bricolage: a pass here is
      conservative for the real font. */
-  if (want(29)) {
+  if (want(30)) {
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const t = new Date();
     const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));

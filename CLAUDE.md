@@ -101,6 +101,8 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
   invariant once for precision, then keep going in English.
 - **Anything I need to do goes in a numbered "Next steps" list at the end.** Max 5, concrete, the
   first one doable right now. Tasks buried in paragraphs get lost.
+  **Tag every step with who does it** — start each with **(You)** or **(Me)** — so an action of
+  mine is never mistaken for one of his (owner request, 2026-10-03).
 - **When there are options, pick one and say why in a sentence.** Don't survey. If you need a decision
   from me, ask at most one clarifying question, and only if you genuinely can't proceed on a stated
   assumption — otherwise state the assumption and keep going.
@@ -125,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **478 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §29 (read "476" for an hour on 2026-10-03, "456" until the hero-stats change 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **489 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -272,7 +274,8 @@ the 47-day outage it exists to catch.
 13. **The iCal feed URL is a bearer credential.** It lives only in `ical_subscriptions` (owner-only RLS,
     no `anon` grants), is absent from `serializeState` so it never enters the `user_data` blob (which
     is exported, mirrored to localStorage and echoed by the sync poll), never goes into `events`, and
-    is never logged by `ical-proxy`. The parser stores dates, times, hours and UIDs — never titles.
+    is never logged by `ical-proxy`. The parser stores dates, times, hours and UIDs — never titles. It *reads* `SUMMARY` once, at
+    parse time, to set the boolean `offHint` (time off vs. shift), and keeps nothing else from it.
     ↳ **Detect** none, and a leak is silent by construction — nothing observable changes when a bearer
     credential escapes. **Blast** anyone holding the URL reads the nurse's whole calendar
     indefinitely; the only revocation is the calendar provider reissuing it. **Verify** confirm
@@ -356,6 +359,12 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   signed-in nurse with no subscription yet and one "Not now" retires it on that device
   (`scrubpay_ical_cta_dismissed` — cosmetic, deliberately not in the synced blob); Settings keeps
   the same walkthrough reachable for anyone who waved it off.
+  **Time off defaults to "Not a shift"** (2026-10-03): NurseGrid puts vacation and unavailable
+  days in the same feed as shifts, often as 24-hour blocks, and the stepper used to pre-select every
+  card as a paid shift — Courtney's first sync priced 13 of them, 312 phantom hours. An entry that is
+  all-day, ≥20h, or titled like time off (`ICS_OFF_TITLE_RE`; "holiday" deliberately excluded) now
+  defaults to "Not a shift" on its own card. A default, not a filter: she still sees every card.
+  Pinned by `tests/smoke.mjs` §29.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used
@@ -413,6 +422,10 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   Registrar details, renewals, kept records: `docs/domains.md`.
 - Deploy branch `claude/migrate-to-github-deploy-3F5RD`. Ship = PR → squash-merge → ~1–2 min → confirm
   at `https://badgebudget.com/index.html?cb=N` with a marker unique to the change.
+- **Agents merge their own PRs.** Open PRs to the deploy branch **ready (never draft)** and enable
+  **auto-merge (squash)** in the same step — this overrides the platform's draft-PR default. Never
+  ask the owner to merge; the two required checks are the gate. Exception: wage-core, schema or
+  security changes wait for him, and the reply says so. (Owner decision, 2026-10-03.)
 - Delete merged branches; never the open PR heads or the two protected branches (Invariant 11).
 
 ## Autonomous nightly loop

@@ -967,6 +967,23 @@ function parseICSDuration(v){
   return totalH>0 ? totalH : null;
 }
 
+/* Does a calendar entry look like time OFF rather than a shift? NurseGrid publishes vacation,
+   unavailable and requested-off days in the same feed as shifts, and the parser never kept titles,
+   so on 2026-10-03 a real nurse's first sync pre-selected all 13 of hers as paid 24-hour shifts --
+   312 phantom hours in the paycheck estimate, because the stepper's default was "a shift" and she
+   tapped through. Three signals, any one enough: an all-day entry, one 20h or longer (no bedside
+   shift is), or a title that says so. The title is read HERE and only here, reduced to this one
+   boolean, and never stored or sent anywhere (Invariant 13). It only changes the stepper's
+   pre-selection to "Not a shift"; she still sees and can override every card. "holiday" is
+   deliberately NOT a keyword -- a worked holiday is a paid shift. */
+const ICS_OFF_TITLE_RE = /\b(vacation|vacay|unavailable|unavail|not available|available|pto|time off|day off|days off|off|requested off|request off|leave|loa|sick|bereavement|jury duty)\b/i;
+const ICS_OFF_MIN_HOURS = 20;
+function icsLooksOff(title, allDay, hours){
+  if(allDay) return true;
+  if(hours >= ICS_OFF_MIN_HOURS) return true;
+  return ICS_OFF_TITLE_RE.test(String(title||'').replace(/\\[,;nN]/g,' '));
+}
+
 /* Parse an uploaded .ics file's full text into normalized import candidates. Tolerant by
    design: malformed VEVENTs (no DTSTART) are dropped silently; RRULE/own-export/out-of-window
    events are dropped with counts the caller can report. Throws only if the file has no
@@ -1013,11 +1030,13 @@ function parseICSSchedule(text){
     if(events.length >= ICS_IMPORT_MAX_EVENTS){ droppedCap++; return; }
 
     const uid = uidRaw ? uidRaw.replace(/[^A-Za-z0-9@._-]/g,'').slice(0,128) : '';
+    const offHint = icsLooksOff(props.SUMMARY && props.SUMMARY.value, dtstart.allDay, hours);
     events.push({
       dateKey: keyOfYMD(dtstart.y,dtstart.mo,dtstart.d),
       start: dtstart.allDay ? null : `${String(dtstart.hh).padStart(2,'0')}:${String(dtstart.mm).padStart(2,'0')}`,
       hours,
       uid: uid || null,
+      offHint,
     });
   });
   events.sort((a,b)=> a.dateKey===b.dateKey ? (a.start||'').localeCompare(b.start||'') : a.dateKey.localeCompare(b.dateKey));
@@ -1058,17 +1077,25 @@ function icsPendingSummary(p){
 }
 
 /* Group parsed events for the questionnaire: one card per (weekday-class, start-time-or-allday,
-   hours) combination — matching shifts get confirmed together instead of one card each. */
+   hours) combination — matching shifts get confirmed together instead of one card each. Time-off
+   entries never share a card with shifts at the same time and length: one answer per card. */
 function groupICSEvents(events){
   const map = new Map();
   events.forEach(ev=>{
     const [y,mo,d] = ev.dateKey.split('-').map(Number);
     const isWeekend = [0,6].indexOf(new Date(y,mo-1,d).getDay())>=0;
-    const key = `${isWeekend?'we':'wd'}|${ev.start||'allday'}|${ev.hours}`;
-    if(!map.has(key)) map.set(key, {key, isWeekend, start:ev.start, hours:ev.hours, items:[]});
+    const off = !!ev.offHint;
+    const key = `${isWeekend?'we':'wd'}|${ev.start||'allday'}|${ev.hours}${off?'|off':''}`;
+    if(!map.has(key)) map.set(key, {key, isWeekend, start:ev.start, hours:ev.hours, offHint:off, items:[]});
     map.get(key).items.push(ev);
   });
   return Array.from(map.values()).sort((a,b)=> a.items[0].dateKey.localeCompare(b.items[0].dateKey));
+}
+
+/* The stepper's pre-selection for a card: time off defaults to "Not a shift" (visible on the
+   calendar, never priced), everything else to the inferred shift type. */
+function icsDefaultAnswer(group){
+  return group.offHint ? 'event' : inferShiftType(group);
 }
 
 /* Pre-fill inference for a group's shift-type chip, per product spec:
@@ -3968,7 +3995,7 @@ function App(){
       const plan = buildIcsImportPlan(parsed);
       const groups = groupICSEvents(plan.toClassify);
       const answers = {};
-      groups.forEach(g=>{ answers[g.key] = inferShiftType(g); });
+      groups.forEach(g=>{ answers[g.key] = icsDefaultAnswer(g); });
       // Non-blocking parse drops (repeating / cap / window) are surfaced INSIDE the stepper
       // sheet as a compact one-line notice — not toast(): the global toast host is fixed to the
       // bottom of the viewport (above the sheet) and firing it the instant the sheet opens would
@@ -4148,7 +4175,7 @@ function App(){
         return;
       }
       const groups = groupICSEvents(plan.toClassify);
-      const answers = {}; groups.forEach(g=>{ answers[g.key]=inferShiftType(g); });
+      const answers = {}; groups.forEach(g=>{ answers[g.key]=icsDefaultAnswer(g); });
       const payload = { groups, toUpdate:changedUpdates, toRemove:plan.toRemove,
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
         answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true, provider };
@@ -4830,7 +4857,9 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
           <span style={{fontSize:12,fontWeight:600,color:'var(--muted-2)',flex:'0 0 auto'}}>{stepIdx+1} of {total+1}</span>
         </div>
         <div className="display" style={{fontWeight:700,fontSize:19,marginBottom:6}}>{groupLabel(g)}</div>
-        <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>What kind of shift is this?</div>
+        <div style={{fontSize:13.5,color:'var(--muted)',marginBottom:18}}>
+          {g.offHint ? 'This looks like time off, not a shift.' : 'What kind of shift is this?'}
+        </div>
         {(sel==='event'||sel==='skip') &&
           <div style={{fontSize:12,color:'var(--muted-2)',marginTop:-12,marginBottom:16,lineHeight:1.45}}>
             {sel==='event'

@@ -29,6 +29,12 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P0
+- [ ] **Courtney's synced shift times may jump an hour at the Nov 1 DST change** (P1 · source:groom ·
+  harness:drivable) — her imported starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after;
+  real shifts don't move. She is in Phoenix (Arizona has no DST), so the feed's zone handling
+  (`parseICSDateTime`, CLAUDE.md "A feed's times are converted to the viewer's clock") is the
+  suspect. **Unverified** — first compare one November shift in BadgeBudget against NurseGrid's own
+  screen (owner asked her 2026-10-03). Start time picks the differential, so this is a pay figure.
 - [x] ~~**Every real NurseGrid feed failed to sync — `webcal://` never reached the proxy as https**~~
   — SHIPPED 2026-09-29 (see Done log). Found in the groom, not the queue: one real iPhone, signed
   in, pasted the feed NurseGrid actually hands out and got **six `ical sync failed` rows and zero
@@ -1224,11 +1230,22 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   sit in a small right-hand column inside the card, and the "N hrs · N shifts" chip that already
   repeated them is dropped. "See the full breakdown ›" and "Share ›" now share one row (they ran
   together as "breakdown ›Share BadgeBudget ›" on the owner's phone). ~95px back above the fold on
-  an iPhone 13. Pinned by `tests/smoke.mjs` §29 on **two** profiles — iPhone 13 and first-gen
+  an iPhone 13. Pinned by `tests/smoke.mjs` §30 on **two** profiles — iPhone 13 and first-gen
   iPhone SE (320pt) — with a four-digit take-home: no overlap, no overflow, stats no taller than
   the figure, links on one row and unwrapped. Below 360pt the stats are a fixed row under the
   figure — CI's fallback font wrapped the side-by-side layout on the SE where ours did not; every layout assertion negative-tested. §9's meal assertions now
   read the hours from the card instead of the removed chip.
+- 2026-10-03 — **Time off in a synced calendar defaults to "Not a shift".** Courtney's first real
+  NurseGrid sync (131 entries, `ics_import_done {added:131, shown:0, skipped:0}`) pre-selected every
+  card as a paid shift, and her vacation / unavailable days — published by NurseGrid as 24-hour
+  blocks — went in as 13 paid 24h shifts: **312 phantom hours** in her estimate. She tapped through
+  ("I rushed it"). The parser now reads `SUMMARY` transiently and reduces it, plus all-day and
+  ≥20h, to one `offHint` boolean (the title is never stored — Invariant 13); hinted cards never
+  share a group with shifts and default to "Not a shift" with the subtitle "This looks like time
+  off, not a shift." She can still override every card. `tests/smoke.mjs` §29, 11 assertions,
+  negative-tested on a copy; 466/466. Her already-imported 13 are cleaned up by hand (owner texted
+  her the steps). **Unverified:** which titles NurseGrid actually uses — the keyword list is a
+  guess; read one real feed's SUMMARY values before widening or narrowing it.
 - 2026-10-03 — **The home calendar card has one button, and it leads to the NurseGrid sync**
   (owner request). "Import .ics" is gone from the home screen and "Sync to calendar" — which
   *exported* to the phone's calendar despite reading like the sync — is now **"Sync NurseGrid"**,
