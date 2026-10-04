@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **489 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **518 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -340,6 +340,9 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   `icalFailureDetail` cannot see). `ics_sync_done` still means **"found changes"**, not "sync
   completed" — don't count it as a success rate. `provider` is on all three ics events now
   (`google`/`nursegrid`/`file`/`null`). Pinned by `tests/smoke.mjs` §27.
+  **Field-verified 2026-10-04:** 20 rows in 48h, all `provider:'nursegrid'` — 19 `up_to_date` and
+  one `changes`. The foreground re-sync makes `ics_sync_result` the dominant row in `events` from
+  here on, so read funnel counts with that in mind.
   **The feed re-syncs on foreground, quietly** (2026-10-01): the cold-load sync runs once per page
   load, and a phone never page-loads, so a `visibilitychange` re-sync was added — throttled to
   `ICAL_RESYNC_MIN_MS` (10 min) and **quiet**, parking the plan in a banner rather than opening the
@@ -365,6 +368,16 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   all-day, ≥20h, or titled like time off (`ICS_OFF_TITLE_RE`; "holiday" deliberately excluded) now
   defaults to "Not a shift" on its own card. A default, not a filter: she still sees every card.
   Pinned by `tests/smoke.mjs` §29.
+  **That default is forward-only, so the already-imported ones get a repair path** (2026-10-04):
+  `longSyncedShifts` re-finds them from the *saved* blob — titles are never stored (Invariant 13)
+  and `allDay` is not a field on a shift, so **duration is the only signal that survives an
+  import**, at the same 20h floor and scoped to `icsUid`-bearing shifts so a long day she typed in
+  herself is untouched. A dashboard card appears only while suspects exist and opens a sheet where
+  "Not a shift" makes exactly the stepper's two `skip` writes (drop the shift, remember the uid in
+  `icsIgnored`). **Never add a "remove all"** — a batch button on a list she has not read deletes
+  shifts she actually worked. It shipped because the 10-03 claim that her 13 were "cleaned up by
+  hand" was **false**: both her devices still reported `session_end {shifts:165}` eight hours after
+  #145 deployed. Pinned by `tests/smoke.mjs` §32.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used
