@@ -35,6 +35,29 @@ and the push P0 it pointed at was fixed the same day.
   (`parseICSDateTime`, CLAUDE.md "A feed's times are converted to the viewer's clock") is the
   suspect. **Unverified** — first compare one November shift in BadgeBudget against NurseGrid's own
   screen (owner asked her 2026-10-03). Start time picks the differential, so this is a pay figure.
+  **2026-10-04 — the app's conversion is almost certainly NOT the suspect; read this before
+  building anything.** Two reasons, both from the code and from figures already written down.
+  (a) **The quoted times look like the feed's UTC values, not a converted local clock.** CLAUDE.md
+  records NurseGrid emitting `...T041500Z` for a shift its own UI shows as 00:15 in Philadelphia —
+  `04:15` is one of the two clusters in this note. A shift at a fixed *Eastern wall clock* has a UTC
+  value that moves **+1h when DST ends**: 21:00 EDT = 01:00Z becomes 21:00 EST = 02:00Z, and
+  00:00 EDT = 04:00Z becomes 05:00Z. That is exactly `01:00/04:00 → 02:00/05:00`. The numbers in
+  this note are therefore consistent with a *correct* feed read raw, and the +1h is how UTC behaves,
+  not a fault.
+  (b) **`parseICSDateTime` has no fixed-offset arithmetic to get wrong.** The `Z` path is
+  `Date.UTC(...)` then `new Date(ms).getHours()`, DST-aware in the viewer's zone by construction;
+  the `TZID=` path is `icsZonedWallToMs`, whose documented two-pass exists precisely so a first
+  guess cannot land on the far side of a DST change. The owner confirmed one real shift correct on
+  2026-10-03 (Wed Oct 14, 12:15 AM from `041500Z`), which exercises that path.
+  **The live question is whose zone, not whose arithmetic.** If her *worksite* is in a DST zone and
+  her *phone* is in Phoenix (which has none), her shifts genuinely do move an hour against her clock
+  on Nov 1 and there is nothing to fix. If her worksite is also Phoenix, NurseGrid is computing UTC
+  in the wrong zone and the fault is upstream of us. The owner's side-by-side is what separates
+  them. **Do not change `parseICSDateTime` on this note:** it is a pay figure, so it needs a
+  dedicated session under the `wage-core` protocol, and the only app-side change either reading
+  could justify is a *display* one (saying which zone a synced time is in), not new arithmetic.
+  Still **unverified**, still P0 only because "a pay figure may be wrong" belongs there until
+  someone reads it.
 - [x] ~~**Every real NurseGrid feed failed to sync — `webcal://` never reached the proxy as https**~~
   — SHIPPED 2026-09-29 (see Done log). Found in the groom, not the queue: one real iPhone, signed
   in, pasted the feed NurseGrid actually hands out and got **six `ical sync failed` rows and zero
@@ -347,8 +370,55 @@ and the push P0 it pointed at was fixed the same day.
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
 
+### P2 (new, groom 2026-10-04)
+- [ ] **A cloud save fired as the phone backgrounds is cancelled, every time, and only the unload
+  handler is exposed to it** — `harness:drivable`. Three loads in the 48h to this groom wrote
+  `Supabase save failed: AbortError: Promise was rejected because the browsing context is going
+  away`, always **two at a time** (10-03 13:45:46, 14:51:24, 15:08:37, all device `8e0e32fe`). The
+  mechanism is already written down in this repo and the fix already exists in it: the comment
+  above `beaconInsert` (index.html ~2046) names **this exact error string** as the reason unload
+  telemetry uses `keepalive`, and then applies `keepalive` only to `events`. The `user_data` upsert
+  in the same `pagehide`/`visibilitychange` flush still goes out as an ordinary supabase-js fetch,
+  which the browser cancels as the document is discarded.
+  **Honest severity: P2, not P1 — no data is lost.** The rejection handler demonstrably still runs
+  (that is how the string reached `logClientError` at all), so the `else writeBackup(...)` branch
+  runs with it and the blob lands in the per-user localStorage backup; Invariant 4's newer-wins rule
+  then re-adopts and re-saves it on the next load **on that device**. The flush path also never sets
+  `syncError`, so she sees no false "couldn't sync" banner. What is actually wrong is narrower and
+  real: **between that backgrounding and her next load on that device, the cloud row is stale**, so
+  a second device opened in that gap shows older data — and the owner is a two-device account
+  (`f184ffa5` and `592667f1` both reported 165 shifts tonight), which is how this surfaces.
+  **Fix shape, and the reason it is not a one-liner:** a raw `keepalive` POST to
+  `/rest/v1/user_data` with `on_conflict=user_id` + `Prefer: resolution=merge-duplicates` (Invariant
+  4 applies to the raw call too). Unlike `events` it cannot ride the anon key — `user_data` is
+  owner-only RLS — so it needs the session access token in **module scope**, cached at sign-in:
+  reading it from localStorage inside a `pagehide` handler is the exact failure §20 was written
+  about, and `getSession()` is async. Expiry and refresh have to be thought about, and a stale token
+  is a 401 the backup silently covers. Drivable: stub `fetch`, background the page, assert one
+  keepalive request with the right conflict target and no feed URL in it.
+  **Do not take this in the same run as anything else touching the save path** — the 47-day upsert
+  outage lived here.
+- [ ] **A second real NurseGrid feed now exists, but its host is still unread** — housekeeping on
+  CLAUDE.md's "narrow the allowlist regex when a second real feed agrees". Device `f184ffa5` synced
+  a feed on 2026-10-03 13:57 with `provider:'nursegrid'` on all three ics events, which means
+  `providerOf` matched — so there **is** a second real feed and a second account. The host itself is
+  not in `events` and must not be (Invariant 13: the feed URL is a bearer credential), and the Edge
+  Function's edge log retains 24 hours, so **that window has already closed for this one.** The
+  regex stays wide. To actually narrow it, read the host from the function's edge log inside 24h of a
+  *future* first sync, or have the owner read it off the saved link; a narrow pin that misses
+  Courtney's subdomain breaks the one user this app exists for, so one more sample is cheap next to
+  that.
+
 ### P2 (new, groom 2026-10-03)
-- [ ] **`ics_sync_result` is live and has never once fired** — not a defect, a **note against
+- [x] ~~**`ics_sync_result` is live and has never once fired**~~ — **CLOSED 2026-10-04: it fired
+  20 times in the 48h to this groom**, every row `provider:'nursegrid'` — 19 `up_to_date` and one
+  `changes` (device `f184ffa5`, `{events:131}` → `ics_import_done {added:131}`). So the five-state
+  reporting the 10-02 build exists for is now **verified in the field**, not just in the harness and
+  the deployed bytes, and the distinction the 09-29 correction was written to enforce is satisfied.
+  Two things fall out of those 20 rows and are recorded below: the 422 running count, and the fact
+  that 19 `up_to_date`s in one day on one device is the foreground re-sync doing its job (and the
+  dominant row in `events` from here on — read funnel counts accordingly). Original note below:
+- [ ] ~~**`ics_sync_result` is live and has never once fired**~~ — not a defect, a **note against
   misreading its absence**. It deployed 2026-10-02 (confirmed in the live bytes tonight: the
   string is present at badgebudget.com, 448,719 bytes, 5 SRI pins) and the last sync of any kind
   in `events` is **2026-10-01 00:14**. So the five-state reporting the 10-02 build exists for has
@@ -442,6 +512,18 @@ and the push P0 it pointed at was fixed the same day.
   `icalFailureDetail` has still never fired in production, because all 4 `client_error` rows in
   the table predate it. Running count: **2 occurrences across 7 observed sync sessions.** Keep
   reading; still do not build.
+  **2026-10-04 — 20 more syncs, zero 422s. Running count is now 2 in 27.** `ics_sync_result` fired
+  20 times in the 48h to this groom (19 `up_to_date`, 1 `changes`), every one a proxy call that got
+  a parseable calendar back, across two devices and two accounts. The rate is drifting toward
+  noise, which makes a blind retry worse again, not better. **Still do not build.**
+  **And a real limit of the 09-30 fix, found by the one failure that did occur:** the single
+  `ical sync failed` row of the night (10-03 14:51:24, device `8e0e32fe`) reads *"Failed to send a
+  request to the Edge Function"* with **no status and no code** — not because `icalFailureDetail`
+  regressed, but because supabase-js raises a `FunctionsFetchError` on a transport failure and there
+  is no `Response` on `error.context` to read a status off. So the 09-30 build covers "the proxy
+  answered badly" and cannot cover "we never reached the proxy", and `icalFailureDetail` has
+  **still** never put a status code in a production row. Nothing to build — the two message shapes
+  already separate the two cases — but do not read the missing status as a regression.
 
 ### P2 (new, groom 2026-09-27)
 - [x] ~~**One load can emit two `session_end` rows, and nothing in the schema says which is real**~~
@@ -1225,6 +1307,32 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-04 — **The phantom hours already in her data can now be taken back, one day at a time.**
+  The 10-03 time-off default (§29) is **forward-only** — it changes what the stepper pre-selects —
+  and the 10-03 Done-log line above says her already-imported 13 "are cleaned up by hand (owner
+  texted her the steps)". **The data says that did not happen.** Both of her devices reported
+  `session_end {shifts:165}` on 2026-10-03 21:48 and 2026-10-04 01:08 UTC, hours after that line
+  was written and ~8h after #145 deployed; 13 removals would read 152. There has been no
+  `ics_import_done` since the 13:58 import. So ~312 phantom hours are still inflating the one
+  number this app exists for, on the phone of the one nurse it exists for.
+  **The fix is a repair path, not another default.** `longSyncedShifts` re-finds them from the
+  *saved* blob, which is harder than `icsLooksOff` had it: titles are never stored (Invariant 13)
+  and `allDay` is not a field on a shift, so duration is the only signal that survives an import.
+  That is enough — the same 20h floor, scoped to `icsUid`-bearing shifts so a long day she typed
+  in herself is untouched. A dashboard card appears only while suspects exist ("2 synced days are
+  logged as 20+ hour shifts", framed in pay terms, not calendar terms) and opens a sheet listing
+  each one by date and duration. "Not a shift" makes exactly the two writes the stepper's `skip`
+  answer makes — drop the shift, remember the uid in `icsIgnored` — so the next sync does not hand
+  it straight back. **Deliberately no "remove all"**: these are her hours, and a batch button on a
+  list she has not read is how you delete a shift she actually worked. "Not now" parks the card
+  per-device (`scrubpay_ics_longreview_dismissed`, cosmetic, outside the synced blob) for the nurse
+  who really does keep a 20h+ entry. No wage-core function touched; no new stored data shape, so
+  no sanitizer branch. `tests/smoke.mjs` §32, **22 assertions, 14 deliberate breaks**, every
+  assertion family negative-tested on a copy; 518/518 smoke, 11/11 gate, 33/33 groom-seed,
+  39/39 silence-classifier. **Two of the first breaks aborted the run instead of failing an
+  assertion** (a `waitForFunction` predicate that never came true) — exactly the first of the three
+  ways the `harness` skill says this check lies — so the drive was restructured onto fixed settles
+  and the three breaks re-run until they produced real FAILs.
 - 2026-10-03 — **Hours and shifts moved into the take-home card** (owner request, from a
   screenshot). The two "hours / shifts this period" tiles under the hero are gone; the same figures
   sit in a small right-hand column inside the card, and the "N hrs · N shifts" chip that already

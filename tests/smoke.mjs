@@ -3367,6 +3367,150 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 32. the repair half of the time-off default -------------------------------------
+     §29 stopped NEW time-off entries being pre-selected as paid shifts. It is forward-only, and
+     production already holds the case it cannot help: device f184ffa5 confirmed a NurseGrid import
+     at 2026-10-03 13:58 UTC -- an hour before §29's fix deployed -- and its `session_end` shift
+     count went 34 -> 165 (`ics_import_done {added:131, skipped:0, shown:0}`). Every 24-hour
+     vacation block in that feed is now a paid 24-hour shift in her saved data, inflating the only
+     number this app exists to get right, and nothing in the app had ever offered to take one back.
+     Titles are never stored (Invariant 13), so duration is the only signal that survives the
+     import -- the same 20-hour floor icsLooksOff uses, scoped to `icsUid`-bearing shifts so a long
+     day she typed in herself is left alone. */
+  if (want(32)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const sh = (id, hours, extra) => ({ id, shiftType: 'day', hours, bonusType: 'none', customBonus: 0, ...extra });
+    const seed = {
+      ...SEEDED_STATE,
+      shifts: {
+        [day(-9)]: [sh('vac_a', 24, { icsUid: 'ng-vac-a@nursegrid' })],   // synced vacation block
+        [day(-4)]: [sh('real', 12, { icsUid: 'ng-real@nursegrid' })],     // synced shift -- untouched
+        [day(-2)]: [sh('mine', 24, {})],                                  // hand-typed 24h -- not ours
+        [day(3)]:  [sh('vac_b', 23.5, { icsUid: 'ng-vac-b@nursegrid' })], // synced unavailable day
+      },
+    };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof longSyncedShifts === 'function', null, { timeout: 20000 });
+
+    /* --- the detector, driven directly: it is a top-level pure function, same as §28's planner. */
+    const d = await page.evaluate(() => {
+      const one = (hours, extra) => ({ '2026-05-05': [{ id: 'x', hours, ...extra }] });
+      const uid = { icsUid: 'u@nursegrid' };
+      return {
+        picks24: longSyncedShifts(one(24, uid)).length,
+        skips12: longSyncedShifts(one(12, uid)).length,
+        skipsHandTyped: longSyncedShifts(one(24, {})).length,
+        at20: longSyncedShifts(one(20, uid)).length,
+        under20: longSyncedShifts(one(19.9, uid)).length,
+        junk: longSyncedShifts(null).length + longSyncedShifts({ k: null }).length
+              + longSyncedShifts(one('not a number', uid)).length,
+        order: longSyncedShifts({
+          '2026-07-01': [{ id: 'b', hours: 24, ...uid }],
+          '2026-06-01': [{ id: 'a', hours: 24, ...uid }],
+        }).map((r) => r.dateKey).join(','),
+        carries: JSON.stringify(longSyncedShifts(one(24, uid))[0]),
+      };
+    });
+    ok('longreview: a 24h synced entry is a suspect', d.picks24 === 1, String(d.picks24));
+    ok('longreview: a 12h synced shift is not', d.skips12 === 0, String(d.skips12));
+    ok('longreview: a 24h shift she typed herself is not — no icsUid, not our business',
+      d.skipsHandTyped === 0, String(d.skipsHandTyped));
+    ok('longreview: the floor is 20 hours inclusive', d.at20 === 1 && d.under20 === 0,
+      `at20=${d.at20} under20=${d.under20}`);
+    ok('longreview: junk shapes yield nothing rather than throwing', d.junk === 0, String(d.junk));
+    ok('longreview: suspects come back oldest date first', d.order === '2026-06-01,2026-07-01', d.order);
+    ok('longreview: each row carries the date, id, hours and uid the repair needs',
+      /"dateKey"/.test(d.carries) && /"icsUid"/.test(d.carries) && /"hours":24/.test(d.carries), d.carries);
+
+    /* --- the card. Two of the four seeded shifts qualify, and it must say two. */
+    const cardText = () => page.evaluate(() => {
+      const c = [...document.querySelectorAll('.whatif')].find((e) => /20\+ hour shift/.test(e.textContent));
+      return c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
+    });
+    const card = await cardText();
+    ok('longreview: the card appears and counts only the synced long entries',
+      /^2 synced days are logged as 20\+ hour shifts/.test(card), card);
+    ok('longreview: it says why it matters in pay terms, not calendar terms',
+      /take-home estimate/.test(card), card);
+
+    /* --- the sheet. One row per suspect, each readable from the rendered DOM. */
+    await page.evaluate(() => {
+      const c = [...document.querySelectorAll('.whatif')].find((e) => /20\+ hour shift/.test(e.textContent));
+      [...c.querySelectorAll('button')].find((b) => /Review/.test(b.textContent)).click();
+    });
+    await page.waitForSelector('.sheet .longrev-row', { timeout: 15000 });
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.sheet .longrev-row')]
+      .map((r) => r.textContent.replace(/\s+/g, ' ').trim()));
+    ok('longreview: the sheet lists one row per suspect', rows.length === 2, rows.join(' | '));
+    ok('longreview: a row shows its hours, so she can tell a vacation block from a shift',
+      rows.some((r) => /24 hours/.test(r)) && rows.some((r) => /23\.5 hours/.test(r)), rows.join(' | '));
+    ok('longreview: there is no bulk remove button — one row at a time, deliberately',
+      await page.evaluate(() => ![...document.querySelectorAll('.sheet button')]
+        .some((b) => /remove all|all of them|clear all/i.test(b.textContent))), '');
+
+    /* --- the repair itself: the shift goes, and the uid is remembered so the next sync does not
+           hand it straight back. Both halves are read off the persisted blob, not the DOM. */
+    /* Settled with a fixed wait rather than waitForFunction on purpose: a broken repair must make
+       these assertions FAIL, and a predicate that never comes true aborts the run instead -- which
+       is one of the three ways the harness check lies (see the `harness` skill). */
+    const tapFirst = () => page.evaluate(() => {
+      const r = [...document.querySelectorAll('.sheet .longrev-row')][0];
+      if (r) r.querySelector('button').click();
+    });
+    const settle = (k) => page.evaluate((key) => new Promise((r) => setTimeout(() => {
+      const blob = JSON.parse(localStorage.getItem(key) || '{}');
+      const ids = [];
+      Object.values(blob.shifts || {}).forEach((arr) => (arr || []).forEach((s) => ids.push(s.id)));
+      r({ ids: ids.sort().join(','), ignored: Object.keys(blob.icsIgnored || {}).sort().join(','),
+          rows: document.querySelectorAll('.sheet .longrev-row').length });
+    }, 900)), k);
+
+    await tapFirst();
+    const saved = await settle(STORAGE_KEY);
+    ok('longreview: "Not a shift" drops that shift and nothing else',
+      saved.ids === 'mine,real,vac_b', saved.ids);
+    ok('longreview: and remembers its uid, so the next sync does not re-add it',
+      saved.ignored === 'ng-vac-a@nursegrid', saved.ignored);
+    ok('longreview: the row it repaired leaves the list', saved.rows === 1, String(saved.rows));
+
+    /* --- clearing the last one retires the card by itself; there is no "reviewed" flag to keep. */
+    await tapFirst();
+    const saved2 = await settle(STORAGE_KEY);
+    ok('longreview: the second repair empties the list', saved2.rows === 0, String(saved2.rows));
+    ok('longreview: both uids are remembered, not just the last',
+      saved2.ignored === 'ng-vac-a@nursegrid,ng-vac-b@nursegrid', saved2.ignored);
+    await page.evaluate(() => [...document.querySelectorAll('.sheet button')]
+      .find((b) => /^Done$/.test(b.textContent.trim())).click());
+    await page.waitForSelector('.sheet', { state: 'detached', timeout: 15000 });
+    ok('longreview: with nothing left to fix the card is gone', (await cardText()) === '', await cardText());
+
+    /* --- "Not now" is for the nurse who really does keep a 20h+ entry: it parks the card on this
+           device only, with the same cosmetic-localStorage contract the connect card uses. */
+    const ctx2 = await newPage(browser, url, { seed });
+    await ctx2.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await ctx2.page.waitForSelector('.whatif', { timeout: 20000 });
+    await ctx2.page.evaluate(() => {
+      const c = [...document.querySelectorAll('.whatif')].find((e) => /20\+ hour shift/.test(e.textContent));
+      [...c.querySelectorAll('button')].find((b) => /Not now/.test(b.textContent)).click();
+    });
+    const parked = await ctx2.page.evaluate(() => ({
+      gone: ![...document.querySelectorAll('.whatif')].some((e) => /20\+ hour shift/.test(e.textContent)),
+      key: localStorage.getItem('scrubpay_ics_longreview_dismissed'),
+      shifts: Object.keys(JSON.parse(localStorage.getItem('nursingWagePlannerData') || '{}').shifts || {}).length,
+    }));
+    ok('longreview: "Not now" hides the card', parked.gone, JSON.stringify(parked));
+    ok('longreview: and parks it per-device, outside the synced blob', parked.key === '1', String(parked.key));
+    ok('longreview: "Not now" changes no shift', parked.shifts === 4, String(parked.shifts));
+    await ctx2.ctx.close();
+
+    const real32 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('longreview: no page errors driving the review', real32.length === 0, real32.join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -902,6 +902,9 @@ const ICAL_RESYNC_MIN_MS = 10*60*1000;
    of the keys (Invariant 5), but is not load-bearing -- losing it re-offers the card, which is
    the harmless direction. */
 const ICAL_CTA_KEY = 'scrubpay_ical_cta_dismissed';
+/* Same contract as ICAL_CTA_KEY above: cosmetic, per-device, deliberately NOT in the synced blob.
+   Losing it re-offers the review, which is the harmless direction. */
+const ICS_LONG_REVIEW_KEY = 'scrubpay_ics_longreview_dismissed';
 
 /* Unfold RFC 5545 §3.1 folded lines: a CRLF|LF immediately followed by a space or tab is
    a continuation of the previous logical line, not a line break. */
@@ -1005,6 +1008,38 @@ function icsLooksOff(title, allDay, hours){
   if(allDay) return true;
   if(hours >= ICS_OFF_MIN_HOURS) return true;
   return ICS_OFF_TITLE_RE.test(String(title||'').replace(/\\[,;nN]/g,' '));
+}
+
+/* The time-off default (icsLooksOff, 2026-10-03) is forward-only: it changes what the import
+   stepper PRE-SELECTS, so it does nothing for a nurse who already tapped through one. Production
+   has exactly that case -- a real device synced a NurseGrid feed on 2026-10-03 at 13:58 UTC, an
+   hour before the default shipped, and its shift count went 34 -> 165 in one confirm
+   (`ics_import_done {added:131, skipped:0, shown:0}`). Vacation and unavailable blocks arrive as
+   24-hour entries, so every one of those that rode in is now a paid 24h shift inflating the one
+   number this app exists to get right.
+
+   This finds them again from the SAVED data, which is a harder problem than icsLooksOff had:
+   titles are never stored (Invariant 13) and `allDay` is not a field on a shift, so the only
+   signal that survives the import is the duration. That is enough -- no bedside shift runs 20
+   hours, which is the same floor icsLooksOff uses. Scoped to `icsUid`-bearing shifts on purpose:
+   a 24h shift she typed in herself is a deliberate act and none of this code's business.
+
+   Returns the suspects oldest-date-first, each as {dateKey, id, hours, icsUid}. Pure and
+   top-level so it can be driven without a render. */
+const ICS_LONG_REVIEW_MAX = 60;        // render cap; the card still reports the true total
+function longSyncedShifts(shifts){
+  const out = [];
+  if(!shifts || typeof shifts !== 'object') return out;
+  Object.keys(shifts).sort().forEach(dateKey=>{
+    (shifts[dateKey]||[]).forEach(sh=>{
+      if(!sh || typeof sh !== 'object') return;
+      if(typeof sh.icsUid !== 'string' || !sh.icsUid) return;
+      const hours = Number(sh.hours);
+      if(!isFinite(hours) || hours < ICS_OFF_MIN_HOURS) return;
+      out.push({dateKey, id:sh.id, hours, icsUid:sh.icsUid});
+    });
+  });
+  return out;
 }
 
 /* Parse an uploaded .ics file's full text into normalized import candidates. Tolerant by
@@ -3075,6 +3110,10 @@ function App(){
   const [icalCtaOff,setIcalCtaOff] = useState(()=>{
     try{ return localStorage.getItem(ICAL_CTA_KEY)==='1'; }catch(_){ return false; }
   });
+  const [showLongReview,setShowLongReview] = useState(false);  // the "is this really a shift?" sheet
+  const [longReviewOff,setLongReviewOff] = useState(()=>{
+    try{ return localStorage.getItem(ICS_LONG_REVIEW_KEY)==='1'; }catch(_){ return false; }
+  });
   const lastIcalSyncAt = useRef(0);                  // ms of the last sync ATTEMPT — throttles the foreground re-sync
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
@@ -3470,10 +3509,10 @@ function App(){
   },[ready,setupComplete]);
 
   useEffect(()=>{
-    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare||showIcalHowTo;
+    const open = sheetDate||showSettings||showBreakdown||paystub||showAuth||showFeedback||icsImport||showSwaps||showPatterns||showShare||showIcalHowTo||showLongReview;
     document.body.style.overflow = open ? 'hidden':'';
     return ()=>{ document.body.style.overflow=''; };
-  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare,showIcalHowTo]);
+  },[sheetDate,showSettings,showBreakdown,paystub,showAuth,showFeedback,icsImport,showSwaps,showPatterns,showShare,showIcalHowTo,showLongReview]);
   useEscape(()=>setShowBreakdown(false), showBreakdown);   // the one sheet rendered inline in App
 
   /* Flush any feedback that was saved locally while offline. */
@@ -4037,6 +4076,34 @@ function App(){
   const icsBack = ()=> setIcsImport(prev=> prev && ({...prev, stepIdx: Math.max(0, prev.stepIdx-1)}));
   const icsDismissNotices = ()=> setIcsImport(prev=> prev && ({...prev, dropNotice:''}));
   const icsCancelImport = ()=> setIcsImport(null);
+  /* Already-imported entries that look like time off rather than a shift (longSyncedShifts).
+     Derived, never stored: the moment she removes one it drops out of the list by itself, so
+     there is no "reviewed" flag to keep in sync with the blob. */
+  const longSuspects = useMemo(()=> longSyncedShifts(shifts), [shifts]);
+  const longFixedCount = useRef(0);
+
+  /* "Not a shift" on one row. Deliberately the SAME two writes the stepper's `skip` answer makes
+     (drop the shift, remember the uid in icsIgnored) so the next sync does not hand it straight
+     back. One row at a time and never in bulk: these are her hours, and a batch button on a list
+     she has not read is how you delete a shift she actually worked. */
+  const dismissLongShift = (dateKey, id, icsUid)=>{
+    setShifts(prev=>{
+      const arr = prev[dateKey] || [];
+      const filtered = arr.filter(sh=>sh.id!==id);
+      const next = {...prev};
+      if(filtered.length) next[dateKey] = filtered; else delete next[dateKey];
+      return next;
+    });
+    if(icsUid) setIcsIgnored(prev=> ({...prev, [icsUid]:true}));
+    longFixedCount.current += 1;
+  };
+  const closeLongReview = ()=>{
+    setShowLongReview(false);
+    /* One coarse row per visit to the sheet, not one per tap -- a count, never an hour figure. */
+    track('ics_longreview_closed', {fixed: longFixedCount.current}, user&&user.id);
+    longFixedCount.current = 0;
+  };
+
   const icsConfirmImport = ()=>{
     if(!icsImport) return;
     const { groups, toUpdate, answers } = icsImport;
@@ -4437,6 +4504,28 @@ function App(){
           </div>
         )}
 
+        {/* Phantom hours left behind by a sync that predates the time-off default. This is a
+            paycheck-correctness card, not a feature pitch, so it leads with the number that is
+            wrong and offers to fix it -- and it only ever exists while there is something to fix.
+            "Not now" parks it on this device for the nurse who really does have a 24-hour entry
+            she means to keep. */}
+        {longSuspects.length > 0 && !longReviewOff && (
+          <div className="whatif" style={{marginBottom:14}}>
+            <div style={{flex:1}}>
+              <div className="t">{longSuspects.length === 1
+                ? 'One synced day is logged as a 20+ hour shift'
+                : `${longSuspects.length} synced days are logged as 20+ hour shifts`}</div>
+              <div className="s">Vacation and unavailable days arrive in the same calendar feed as shifts. If any of these aren't shifts, they're padding your take-home estimate.</div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6,flex:'0 0 auto'}}>
+              <button onClick={()=>{ track('ics_longreview_opened',{n:longSuspects.length},user&&user.id); setShowLongReview(true); }}>Review</button>
+              <button onClick={()=>{ try{ localStorage.setItem(ICS_LONG_REVIEW_KEY,'1'); }catch(_){}
+                                     setLongReviewOff(true); track('ics_longreview_dismissed',null,user&&user.id); }}
+                      style={{background:'transparent',color:'var(--sage-ink)',fontWeight:500,padding:'4px 0',minHeight:0}}>Not now</button>
+            </div>
+          </div>
+        )}
+
         {/* Two shortened setup paths reach the planner without real differentials or tax rates,
             and one of them reaches it without the nurse's own hourly rate at all. This says so,
             in the same view as the number it is qualifying — the app's whole promise is that the
@@ -4665,6 +4754,8 @@ function App(){
       {showShare && <ShareSheet userId={user?.id} surface={shareSurface} onClose={()=>setShowShare(false)} />}
       {showIcalHowTo && <IcalHowToSheet userId={user?.id} icalUrl={icalUrl} setIcalUrl={setIcalUrl}
         icalBusy={icalBusy} onSave={onSaveIcalUrl} onClose={()=>setShowIcalHowTo(false)} />}
+
+      {showLongReview && <IcsLongReviewSheet rows={longSuspects} onDismissOne={dismissLongShift} onClose={closeLongReview} />}
 
       {showFeedback && <FeedbackSheet user={user} surface={fbSurface} onClose={()=>setShowFeedback(false)} />}
 
@@ -6859,6 +6950,52 @@ function SwapsSheet({user, shifts, dayEvents, notes, saveDayShifts, differential
    other's numbers, which on a unit of travellers and float staff is most of them. The link path
    mirrors shareInvite() exactly — navigator.share when it exists (the real iOS sheet, straight
    into Messages), copy as the fallback, and an AbortError means they chose not to send it. */
+/* "Is this really a shift?" -- the repair half of the time-off default (longSyncedShifts).
+   Reads only what the import kept: a date and a duration. There is deliberately no "remove all"
+   button; see dismissLongShift for why. A row she leaves alone stays a paid shift, which is the
+   recoverable direction. */
+function IcsLongReviewSheet({onClose, rows, onDismissOne}){
+  useEscape(onClose);
+  const shown = (rows||[]).slice(0, ICS_LONG_REVIEW_MAX);
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Review long synced days">
+        <div className="grab"></div>
+        <div className="sheet-h">
+          <div className="t">Is this really a shift?</div>
+          <button className="back" onClick={onClose} aria-label="Close">{Ic.x}</button>
+        </div>
+        <div style={{fontSize:13.5,lineHeight:1.55,color:'var(--muted)'}}>
+          These came in from your calendar as 20 hours or longer. A vacation or unavailable day
+          usually looks like that; a shift doesn't. Anything you mark "Not a shift" stops counting
+          toward your pay and won't come back on the next sync.
+        </div>
+        {shown.length === 0 && <div style={{fontSize:14,marginTop:14,color:'var(--muted)'}}>Nothing left to review.</div>}
+        <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8}}>
+          {shown.map(r=>(
+            <div key={r.dateKey+'-'+r.id} className="longrev-row"
+                 style={{display:'flex',alignItems:'center',gap:10,justifyContent:'space-between',
+                         padding:'10px 12px',borderRadius:12,background:'var(--card-2, rgba(0,0,0,0.03))'}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:600}}>{fmtDateShort(r.dateKey)}</div>
+                <div style={{fontSize:12.5,color:'var(--muted)'}}>{Math.round(r.hours*10)/10} hours</div>
+              </div>
+              <button onClick={()=>onDismissOne(r.dateKey, r.id, r.icsUid)}
+                      style={{flex:'0 0 auto'}}>Not a shift</button>
+            </div>
+          ))}
+        </div>
+        {(rows||[]).length > shown.length && (
+          <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:10}}>
+            Showing the first {shown.length} of {(rows||[]).length}. Clear these and reopen for the rest.
+          </div>
+        )}
+        <button className="btn btn-primary" style={{marginTop:14}} onClick={onClose}>Done</button>
+      </div>
+    </div>
+  );
+}
+
 /* The NurseGrid walkthrough. Written against the real app on 2026-10-01 -- every bold string
    below is the label NurseGrid prints on screen, in the order you meet it, so don't paraphrase
    them into something friendlier: the whole value here is that the words match.
