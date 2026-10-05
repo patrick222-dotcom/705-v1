@@ -370,9 +370,45 @@ and the push P0 it pointed at was fixed the same day.
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
 
+### P3 (new, groom 2026-10-05)
+- [ ] **The four open PRs are all month-stale drafts and none of them can gate a nightly item any
+  more** — housekeeping, recorded so no future run re-derives it. The nightly's rule is to skip a
+  queue item whose region of `index.html` an open PR already touches (it cost the 10-01 run the
+  provider P2, correctly, because #136 was live human work). Tonight that check was run against
+  **#82, #72, #70 and #46** and it does not apply to any of them: their last activity is
+  2026-08-24 to 2026-09-09, and each one's diff against the deploy branch is **2,900–3,600 changed
+  lines of `index.html` in the REVERSE direction** — they would *remove* the council's
+  `else writeBackup(...)` branch, the keepalive beacon, §20's anon-id fix and everything after.
+  They are not competing edits to a region; they are a month-old fork of the whole file. **What to
+  do with them is an owner call** (the #118 saga's lesson is that a draft nobody closes costs a
+  build item a night): close them, or say which are worth rebasing. Until then a nightly should
+  treat "an open PR touches this region" as being about *live* work, not about an abandoned draft.
+- [ ] **One `anon_id` in `events` is neither a uuid nor a `nostore-` id** — `harness:unscoped`,
+  cosmetic, and recorded only so the cohort re-baseline does not trip over it. The 10-04 23:00:33
+  load carries `anon_id:'muufca43b2i7uhlk16i'` — a base36 string, no prefix, no dashes. Every other
+  id in the table is a uuid or `nostore-<uuid>`. It is a desktop Chrome UA with one `app_open` +
+  `ob_step` and no `session_end`, i.e. crawler-shaped, so the likely answer is a client that
+  pre-seeds localStorage rather than a bug in `anonId()`. **Unverified.** What would settle it:
+  read `anonId()`'s fallback branches against that shape. Device-count queries that assume a uuid
+  shape (or filter only `nostore-%`) will keep this row; it is one row.
+
 ### P2 (new, groom 2026-10-04)
-- [ ] **A cloud save fired as the phone backgrounds is cancelled, every time, and only the unload
-  handler is exposed to it** — `harness:drivable`. Three loads in the 48h to this groom wrote
+- [x] ~~**A cloud save fired as the phone backgrounds is cancelled, every time, and only the unload
+  handler is exposed to it**~~ — SHIPPED 2026-10-05 (see Done log). The note's own fix shape held
+  exactly: a raw keepalive POST with `on_conflict=user_id` + `Prefer: resolution=merge-duplicates`,
+  and the access token cached at module scope by `rememberAuthToken`. **One thing the note did not
+  anticipate:** success is *unobservable* once the document is gone, so the flush now writes the
+  per-user backup **unconditionally**, stamped with the same `updated_at` it sent — `backupWins` is
+  a strict `>`, so an equal stamp leaves the cloud authoritative when the write landed and the
+  backup wins when it did not. That changes `writeBackup`'s long-standing "only written when a save
+  fails" contract, and its comment is corrected rather than left to mislead the next reader.
+  **And one assertion was thrown away for being unfalsifiable:** the drive-level check that the two
+  timestamps are equal passed with the fix deliberately broken, because both clock reads land in the
+  same millisecond. It is pinned at the source instead (the way §11 pins what a drive cannot reach),
+  plus the one direction a drive *can* see — the stamp is never newer than the row sent.
+  `tests/smoke.mjs` §33, 21 assertions, 13 deliberate breaks. Original note below:
+- [ ] ~~**A cloud save fired as the phone backgrounds is cancelled, every time, and only the unload
+  handler is exposed to it**~~ — `harness:drivable`. Three loads in the 48h to this groom wrote
   `Supabase save failed: AbortError: Promise was rejected because the browsing context is going
   away`, always **two at a time** (10-03 13:45:46, 14:51:24, 15:08:37, all device `8e0e32fe`). The
   mechanism is already written down in this repo and the fix already exists in it: the comment
@@ -1307,6 +1343,38 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-05 — **Her last edit before she pockets the phone now actually reaches the cloud.** The
+  comment above `beaconInsert` has named `AbortError: Promise was rejected because the browsing
+  context is going away` as the reason unload *telemetry* uses a raw keepalive fetch since
+  2026-09-16 — and applied keepalive to `events` only. The `user_data` upsert in the very same
+  `pagehide`/`visibilitychange` flush still went out as an ordinary supabase-js fetch, so the
+  browser cancelled it as the document was discarded: three loads on 2026-10-03 logged that exact
+  string, always two at a time, all on device `8e0e32fe`.
+  **Nothing was ever lost, which is why this was P2.** The rejection handler runs, the blob lands in
+  the per-user localStorage backup, and Invariant 4's newer-wins rule re-adopts it on the next load
+  *on that device*. The cost was narrower and real: until that next load the cloud row stayed stale,
+  so the account's **second** device showed older data — and both the owner's devices reported 165
+  shifts the night this was filed.
+  `beaconSaveUserData` is the saver, built off three things `beaconInsert` could not lend it.
+  (a) `user_data` is owner-only RLS, so it cannot ride the anon key; the session access token is
+  cached at module scope by `rememberAuthToken`, armed at sign-in, **re-armed on every
+  `TOKEN_REFRESHED`** and disarmed on sign-out — reading auth state inside a `pagehide` handler is
+  the precise failure §20 was written about, and `getSession()` is async. (b) Invariant 4 applies to
+  the raw call: `?on_conflict=user_id` plus `Prefer: resolution=merge-duplicates` is the
+  raw-PostgREST spelling of `{onConflict:'user_id'}`, and without them the POST is a plain INSERT
+  that violates `user_data_user_id_key` with 23505 — the 47-day outage, rebuilt by hand. (c) The
+  response is unreadable once the document is gone, **so success cannot be observed**: the flush
+  therefore writes the backup every time, stamped with the `updated_at` it sent, which loses the tie
+  to a landed cloud row and wins when the write never arrived. An expired token sends nothing and
+  hands back to the ordinary path, which at least asks supabase-js to refresh.
+  **An assertion was deleted for proving nothing.** The equality of those two timestamps passed with
+  the fix deliberately broken — both `new Date()` calls fall in the same millisecond — so it is
+  pinned at the source instead, alongside the half a drive can see (the stamp is never *newer* than
+  what was sent, the direction that would wrongly override a landed write). That is the repo's own
+  standard applied to its own new test: an assertion that has only ever passed is not a pin.
+  No wage-core function touched, no new stored data shape, no sanitizer branch. `tests/smoke.mjs`
+  §33, **21 assertions, 13 deliberate breaks**, every assertion family negative-tested on a copy;
+  539/539 smoke, 11/11 gate, 33/33 groom-seed, 39/39 silence-classifier.
 - 2026-10-04 — **The phantom hours already in her data can now be taken back, one day at a time.**
   The 10-03 time-off default (§29) is **forward-only** — it changes what the stepper pre-selects —
   and the 10-03 Done-log line above says her already-imported 13 "are cleaned up by hand (owner

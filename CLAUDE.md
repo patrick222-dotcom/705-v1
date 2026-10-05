@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **518 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **539 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -297,6 +297,20 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   debounced 500ms, capped at `MAX_BLOB_BYTES` (512KB); anonymous → localStorage. Every array goes
   through `sanitizeData` on load. Cross-device sync is a 15s visible-tab poll guarded by
   `updated_at` + content equality; `applyData(...,{keepPeriod:true})` leaves the viewed period alone.
+  **The unload flush rides `keepalive`, not supabase-js** (2026-10-05): an ordinary fetch started in
+  a `pagehide`/`visibilitychange` handler is cancelled as the document is discarded — three real
+  loads logged `AbortError: Promise was rejected because the browsing context is going away` on
+  2026-10-03 — so the flush sends a raw `keepalive` POST (`beaconSaveUserData`) instead. **Invariant
+  4 applies to the raw call**: `?on_conflict=user_id` + `Prefer: resolution=merge-duplicates`, or it
+  is a plain INSERT and 23505s forever. It cannot ride the anon key (`user_data` is owner-only RLS),
+  so the access token is cached in module scope by `rememberAuthToken` — armed at sign-in, re-armed
+  on `TOKEN_REFRESHED`, cleared on sign-out; **never read auth state inside an unload handler**.
+  Success is unobservable there, so the flush writes the per-user backup **every time**, stamped with
+  the `updated_at` it sent: `backupWins` is a strict `>`, so an equal stamp leaves the cloud
+  authoritative and the backup wins only when the write never landed. Pinned by `tests/smoke.mjs`
+  §33 — which also records one assertion deleted for being unfalsifiable (both clock reads land in
+  the same millisecond, so the equality check passed with the fix broken; it is pinned at the source
+  instead).
 - **Analytics.** `track(name, props)` → `events`, insert-only. Coarse `snake_case`
   `<surface>_<verb>` names only — **never wage or goal figures**. `session_end` goes through
   `beaconInsert()` (keepalive fetch), not `track()`, and the row to read is the LAST per load.

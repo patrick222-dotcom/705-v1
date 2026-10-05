@@ -2113,6 +2113,67 @@ function beaconInsert(rows){
   }catch(_){ return false; }
 }
 
+/* ---------- the unload SAVER: the same keepalive rule, applied to her actual data ----------
+   The comment above names `AbortError: Promise was rejected because the browsing context is
+   going away` as the reason unload telemetry uses a raw keepalive fetch — and then applied
+   keepalive to `events` only. The `user_data` upsert in the very same pagehide/visibilitychange
+   flush still went out as an ordinary supabase-js fetch, so the browser cancelled it as the
+   document was discarded: three loads in the 48h to 2026-10-04 wrote that exact string, always
+   two at a time, all on one real device.
+
+   No data was ever lost — the rejection handler runs, the blob lands in the per-user localStorage
+   backup, and Invariant 4's newer-wins rule re-adopts it on the next load *on that device*. What
+   was wrong is narrower: between the backgrounding and her next load the cloud row stayed stale,
+   so a second device opened in that gap showed older data. This is a two-device account.
+
+   Three things this cannot borrow from beaconInsert:
+   · `user_data` is owner-only RLS, so it cannot ride the anon key. It needs the session access
+     token, which is cached at module scope by rememberAuthToken() at sign-in and on every
+     refresh — reading auth state from localStorage inside an unload handler is the precise
+     failure §20 was written about, and getSession() is async.
+   · `on_conflict=user_id` + `resolution=merge-duplicates` is Invariant 4 in raw-PostgREST form.
+     Without them the POST is a plain INSERT, it violates user_data_user_id_key, and every save
+     after the first one fails with 23505 — the 47-day outage, rebuilt by hand.
+   · The response is unreadable once the document is gone, so success cannot be observed. The
+     caller therefore ALWAYS writes the per-user backup as well, stamped with the same updated_at
+     this sends: backupWins is a strict `>`, so equal timestamps leave the cloud authoritative
+     when the write landed, and the backup wins when it did not.
+
+   Returns the updated_at it sent (truthy) when a request went out, or null when it could not
+   send one — the caller falls back to the ordinary save on null. Must never throw: it runs
+   inside a pagehide handler. */
+let authAccessToken = null;    // module scope, for the unload handler only
+let authTokenExpMs = 0;        // ms epoch; 0 = unknown, treated as usable
+function rememberAuthToken(session){
+  try{
+    authAccessToken = (session && typeof session.access_token === 'string') ? session.access_token : null;
+    const exp = session && session.expires_at;
+    authTokenExpMs = (typeof exp === 'number' && isFinite(exp)) ? exp * 1000 : 0;
+  }catch(_){ authAccessToken = null; authTokenExpMs = 0; }
+}
+function beaconSaveUserData(userId, data){
+  try{
+    if(!userId || !authAccessToken || typeof fetch !== 'function') return null;
+    /* An expired token is a 401 we could not read anyway; hand it back to the ordinary path,
+       which at least asks supabase-js to refresh. The backup covers either outcome. */
+    if(authTokenExpMs && Date.now() >= authTokenExpMs) return null;
+    if(blobBytes(data) > MAX_BLOB_BYTES){ logClientError('Save skipped: blob over MAX_BLOB_BYTES'); return null; }
+    const updatedAt = new Date().toISOString();
+    fetch(SUPABASE_URL + '/rest/v1/user_data?on_conflict=user_id', {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: 'Bearer ' + authAccessToken,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal,resolution=merge-duplicates'
+      },
+      body: JSON.stringify({user_id:userId, data, updated_at:updatedAt})
+    }).catch(()=>{});
+    return updatedAt;
+  }catch(_){ return null; }
+}
+
 /* What this page load has done so far. Module scope, not React state: the unload handler must
    be able to read it without a render having happened. */
 const sessionMeta = { t0: Date.now(), last: 'app_open', n: 0, sent: 0, sentN: -1, sentLast: null };
@@ -3129,11 +3190,15 @@ function App(){
   const oversizeWarned = useRef(false);    // warn once if the blob outgrows the free-tier budget
   const lastSeenAt = useRef(null);         // updated_at of the cloud blob we last wrote/loaded (sync guard)
   const BACKUP_KEY = uid => STORE_KEY + '::' + uid;  // per-user local mirror (never the shared anon key)
-  /* The backup is written ONLY when a cloud save fails, so it always holds work the cloud never
-     received. It carries its own timestamp so hydration can tell whether it is newer than the
-     cloud row instead of guessing. */
-  const writeBackup = (uid, data)=>{
-    try{ localStorage.setItem(BACKUP_KEY(uid), JSON.stringify({savedAt:new Date().toISOString(), data})); }catch(_){}
+  /* The backup holds work the cloud may never have received, and it carries its own timestamp so
+     hydration can tell whether it is newer than the cloud row instead of guessing.
+     Two writers, and the second is why `savedAt` is a parameter: the debounced/retry paths write
+     it only when a save FAILS (so it is strictly unsent work), while the unload flush writes it
+     every time, stamped with the same updated_at its keepalive POST sent — success is unobservable
+     once the document is gone, and an equal timestamp loses to the cloud row because `backupWins`
+     below is a strict `>`. So a leftover backup after a landed flush is inert, not authoritative. */
+  const writeBackup = (uid, data, savedAt)=>{
+    try{ localStorage.setItem(BACKUP_KEY(uid), JSON.stringify({savedAt:savedAt || new Date().toISOString(), data})); }catch(_){}
   };
   /* Reads both shapes. Backups written before 2026-08-23 are a bare data object with no savedAt;
      since one can only exist because a save failed, it is unsent work and outranks any cloud row
@@ -3260,7 +3325,7 @@ function App(){
       try{
         if(!supabase) throw new Error('Supabase unavailable — offline mode');
         const {data:{session}} = await withTimeout(supabase.auth.getSession(), 4000, 'auth check');
-        setSession(session);
+        setSession(session); rememberAuthToken(session);
         setUser(session?.user ?? null);
         if(session?.user){
           prevUserId.current = session.user.id;
@@ -3277,7 +3342,7 @@ function App(){
     // Keep this callback SYNCHRONOUS — supabase-js holds the auth lock here, and awaiting
     // another client call inside it can deadlock token refresh. Defer any load with setTimeout(0).
     const {data:{subscription}} = supabase.auth.onAuthStateChange((event,session)=>{
-      setSession(session);
+      setSession(session); rememberAuthToken(session);   // fires on TOKEN_REFRESHED too — this is what keeps the unload saver's token current
       const nextUser = session?.user ?? null;
       setUser(nextUser);
       const nextId = nextUser?.id ?? null;
@@ -3409,7 +3474,22 @@ function App(){
         // best-effort immediate cloud save; never mirror a signed-in user's data into the shared anon key
         // A failed save here mirrors to the per-user backup exactly as the debounced path does — the
         // flush used to have only a success branch (council 2026-09-13, data-integrity-00).
-        if(hydratedForUser.current === snap.user.id){ try{ saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } else { writeBackup(snap.user.id, snap.data); } }); }catch(_){} }
+        if(hydratedForUser.current === snap.user.id){
+          try{
+            /* Keepalive first: an ordinary fetch started here is cancelled with an AbortError as
+               the document is discarded, which left the cloud row stale until this device's next
+               load (see beaconSaveUserData). Success is unobservable, so the backup is written
+               unconditionally with the SAME updated_at — the cloud stays authoritative if the
+               write landed, the backup wins if it did not. */
+            const beaconTs = beaconSaveUserData(snap.user.id, snap.data);
+            if(beaconTs){ lastSeenAt.current = beaconTs; writeBackup(snap.user.id, snap.data, beaconTs); }
+            else{
+              /* No usable token (CDN script missing, signed out mid-flush, or an expired token):
+                 the pre-2026-10-05 path, including its failure branch. */
+              saveToSupabase(snap.user.id, snap.data).then(ts=>{ if(ts){ lastSeenAt.current=ts; try{ localStorage.removeItem(BACKUP_KEY(snap.user.id)); }catch(_){} } else { writeBackup(snap.user.id, snap.data); } });
+            }
+          }catch(_){}
+        }
       }else{
         try{ localStorage.setItem(STORE_KEY, JSON.stringify(snap.data)); }catch(_){}
       }
@@ -3447,7 +3527,7 @@ function App(){
     // Force signed-out state locally — never rely on onAuthStateChange, which won't fire if
     // signOut stalled. Same routine as the SIGNED_OUT branch (idempotent if that also fires).
     prevUserId.current = null;
-    setSession(null); setUser(null);
+    setSession(null); rememberAuthToken(null); setUser(null);
     clearSignedInState();
     setTimeout(()=>{ try{ const raw=localStorage.getItem(STORE_KEY); if(raw) applyData(JSON.parse(raw),{landCurrent:true}); }catch(_){} }, 0);
   };
