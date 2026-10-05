@@ -3511,6 +3511,223 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 33. the unload save rides keepalive ---------------------------------------------
+     The comment above beaconInsert names `AbortError: Promise was rejected because the browsing
+     context is going away` as the reason unload TELEMETRY uses a raw keepalive fetch -- and then
+     applied keepalive to `events` only. The `user_data` upsert in the same pagehide /
+     visibilitychange flush still went out as an ordinary supabase-js fetch, so the browser
+     cancelled it as the document was discarded: three loads in the 48h to 2026-10-04 logged that
+     exact string, always two at a time, all on device 8e0e32fe. Nothing was lost -- the rejection
+     handler writes the per-user backup and Invariant 4's newer-wins rule re-adopts it on the next
+     load on THAT device -- but until then the cloud row stayed stale, so the account's second
+     device showed older data.
+     Invariant 4 applies to the raw call too: `on_conflict=user_id` +
+     `Prefer: resolution=merge-duplicates` is the raw-PostgREST spelling of
+     `{onConflict:'user_id'}`, and without them the POST is a plain INSERT that violates
+     user_data_user_id_key with 23505 -- the 47-day outage rebuilt by hand. */
+  if (want(33)) {
+    const UID = '33333333-3333-4333-8333-333333333333';
+    const future = () => Math.floor(Date.now() / 1000) + 3600;
+    const past = () => Math.floor(Date.now() / 1000) - 60;
+
+    /* A signed-in page whose every fetch is recorded. The user_data keepalive POST is answered
+       locally (201) rather than delegated: the scratch copy points at an unresolvable host, and a
+       real network attempt would make the assertions depend on how fast it fails. Everything else
+       still goes to the real fetch. supabase-js itself is stubbed the way §11's fakeAuth stubs it
+       -- select answers PGRST116 so hydration completes, upserts are counted -- so the ORDINARY
+       save path is observable separately from the keepalive one. */
+    const signedIn = async (session) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: SEEDED_STATE });
+      await page.addInitScript((S) => {
+        window.__reqs = [];
+        const orig = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          let u = '';
+          try { u = typeof input === 'string' ? input : (input && input.url) || ''; } catch (_) {}
+          const o = init || {};
+          if (/\/rest\/v1\/user_data/.test(u)) {
+            /* Recorded whether or not it is keepalive, deliberately: an assertion that can only
+               see keepalive requests cannot FAIL when the flag is the thing that regressed. */
+            let h = {};
+            try { h = o.headers && typeof o.headers === 'object' ? { ...o.headers } : {}; } catch (_) {}
+            window.__reqs.push({ url: u, method: o.method || 'GET', keepalive: !!o.keepalive, headers: h,
+                                 body: typeof o.body === 'string' ? o.body : null });
+            return Promise.resolve(new Response(null, { status: 201 }));
+          }
+          return orig(input, init);
+        };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const mk = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = mk(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: S }, error: null });
+                  c.auth.onAuthStateChange = (cb) => { window.__fireAuth = (ev, sess) => cb(ev, sess); return { data: { subscription: { unsubscribe() {} } } }; };
+                  c.from = () => {
+                    const q = { _op: 'select' };
+                    for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single']) q[m] = () => q;
+                    q.insert = () => { q._op = 'insert'; return q; };
+                    q.upsert = () => { q._op = 'upsert'; window.__upserts = (window.__upserts || 0) + 1; return q; };
+                    q.then = (res, rej) => Promise.resolve(
+                      q._op === 'select' ? { data: null, error: { code: 'PGRST116', message: 'no row' } } : { error: null },
+                    ).then(res, rej);
+                    return q;
+                  };
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, session);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      /* The debounced save is 500ms and it is what sets snapshotRef; let it land so the counts
+         below separate "the ordinary save ran once at load" from "the flush ran another one". */
+      await page.waitForTimeout(1200);
+      return { ctx, page, errors };
+    };
+    const background = async (page) => {
+      const before = await page.evaluate(() => window.__upserts || 0);
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.waitForTimeout(400);
+      return before;
+    };
+
+    /* --- a live token: the flush sends ONE keepalive upsert and no ordinary one. */
+    {
+      const { ctx, page, errors } = await signedIn({
+        user: { id: UID, email: 'k@example.com' }, access_token: 'tok-live', refresh_token: 'r', expires_at: future(),
+      });
+      const upsertsBefore = await background(page);
+      const got = await page.evaluate((k) => {
+        const r = (window.__reqs || []).filter((x) => /\/rest\/v1\/user_data/.test(x.url));
+        let backup = null;
+        try { backup = JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) {}
+        return { reqs: r, upserts: window.__upserts || 0, backup };
+      }, `${STORAGE_KEY}::${UID}`);
+
+      ok('keepalive-save: backgrounding sends exactly one user_data request',
+        got.reqs.length === 1, String(got.reqs.length));
+      const req = got.reqs[0] || { headers: {}, body: '' };
+      ok('keepalive-save: it is a keepalive POST', req.keepalive === true && req.method === 'POST',
+        `${req.method} keepalive=${req.keepalive}`);
+      ok('keepalive-save: Invariant 4 — the conflict target is user_id',
+        /[?&]on_conflict=user_id(&|$)/.test(req.url || ''), req.url || '');
+      ok('keepalive-save: Invariant 4 — Prefer resolves duplicates rather than plain-inserting',
+        /resolution=merge-duplicates/.test(req.headers.Prefer || ''), String(req.headers.Prefer));
+      ok('keepalive-save: it carries the session token, not the anon key',
+        req.headers.Authorization === 'Bearer tok-live', String(req.headers.Authorization));
+      ok('keepalive-save: and still presents the publishable apikey PostgREST requires',
+        typeof req.headers.apikey === 'string' && req.headers.apikey.length > 20, String(!!req.headers.apikey));
+      let body = {};
+      try { body = JSON.parse(req.body || '{}'); } catch (_) {}
+      ok('keepalive-save: the row names this user and carries her blob',
+        body.user_id === UID && body.data && typeof body.data === 'object' && typeof body.updated_at === 'string',
+        JSON.stringify(Object.keys(body)));
+      ok('keepalive-save: Invariant 13 — no iCal feed address rides the blob',
+        !/ical|webcal|basic\.ics/i.test(req.body || ''), (req.body || '').slice(0, 80));
+      ok('keepalive-save: the flush does NOT also fire the cancellable supabase-js upsert',
+        got.upserts === upsertsBefore, `${upsertsBefore} -> ${got.upserts}`);
+      ok('keepalive-save: the backup is written anyway — success is unobservable once the page is gone',
+        !!(got.backup && got.backup.data), JSON.stringify(got.backup && Object.keys(got.backup)));
+      /* The backup must carry the timestamp the POST SENT, not its own clock read, so that
+         `backupWins` (a strict `>`) leaves the cloud authoritative when the write landed. A drive
+         cannot prove that: both clock reads fall in the same millisecond in practice, so an
+         equality assertion passes either way -- breaking it on a copy produced zero failures. So
+         it is pinned at the source instead, the way §11 pins what a signed-out drive cannot reach.
+         The drive still asserts the weaker half it CAN see: the stamp is never newer than what
+         was sent, which is the direction that would wrongly override a landed write. */
+      ok('keepalive-save: the flush stamps the backup with the timestamp it SENT, not its own clock read',
+        /writeBackup\(snap\.user\.id, snap\.data, beaconTs\)/.test(readFileSync(join(SCRATCH, 'index.html'), 'utf8')));
+      ok('keepalive-save: so the stamp is never newer than the row it sent',
+        !!(got.backup && got.backup.savedAt <= body.updated_at), `${got.backup && got.backup.savedAt} vs ${body.updated_at}`);
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok('keepalive-save: no page errors across the backgrounding', real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
+
+    /* --- an EXPIRED token is a 401 nobody could read; hand it back to the ordinary path, which at
+           least asks supabase-js to refresh. The backup covers either outcome. */
+    {
+      const { ctx, page } = await signedIn({
+        user: { id: UID, email: 'k@example.com' }, access_token: 'tok-stale', refresh_token: 'r', expires_at: past(),
+      });
+      const upsertsBefore = await background(page);
+      const got = await page.evaluate(() => ({
+        reqs: (window.__reqs || []).filter((x) => /\/rest\/v1\/user_data/.test(x.url)).length,
+        upserts: window.__upserts || 0,
+      }));
+      ok('keepalive-save: an expired token sends no keepalive write', got.reqs === 0, String(got.reqs));
+      ok('keepalive-save: it falls back to the ordinary save instead of skipping one',
+        got.upserts === upsertsBefore + 1, `${upsertsBefore} -> ${got.upserts}`);
+      await ctx.close();
+    }
+
+    /* --- the unit boundaries, driven directly: beaconSaveUserData is a top-level function, the
+           same property §28 and §32 lean on. These are the cases a UI drive cannot reach. */
+    {
+      const { ctx, page } = await signedIn({
+        user: { id: UID, email: 'k@example.com' }, access_token: 'tok-live', refresh_token: 'r', expires_at: future(),
+      });
+      const d = await page.evaluate(() => {
+        const n0 = (window.__reqs || []).length;
+        const noUser = beaconSaveUserData(null, { a: 1 });
+        const bigBlob = { pad: 'x'.repeat(600 * 1024) };
+        const over = beaconSaveUserData('u', bigBlob);
+        const sentAfter = (window.__reqs || []).length - n0;
+        rememberAuthToken(null);
+        const noToken = beaconSaveUserData('u', { a: 1 });
+        rememberAuthToken({ access_token: 'back', expires_at: Math.floor(Date.now() / 1000) + 3600 });
+        const again = beaconSaveUserData('u', { a: 1 });
+        const lastAuth = (window.__reqs || []).slice(-1)[0];
+        return { noUser, over, sentAfter, noToken, again: !!again,
+                 lastAuth: lastAuth && lastAuth.headers.Authorization };
+      });
+      ok('keepalive-save: no user id — nothing is sent', d.noUser === null, JSON.stringify(d.noUser));
+      ok('keepalive-save: a blob over MAX_BLOB_BYTES is refused, same single size check as saveToSupabase',
+        d.over === null, JSON.stringify(d.over));
+      ok('keepalive-save: neither of those put a request on the wire', d.sentAfter === 0, String(d.sentAfter));
+      ok('keepalive-save: rememberAuthToken(null) disarms it — a signed-out flush writes nothing',
+        d.noToken === null, JSON.stringify(d.noToken));
+      ok('keepalive-save: and a refreshed token re-arms it with the NEW value',
+        d.again === true && d.lastAuth === 'Bearer back', String(d.lastAuth));
+      await ctx.close();
+    }
+
+    /* --- the refresh CALL SITE, which the block above cannot reach: supabase-js rotates the
+           access token through onAuthStateChange('TOKEN_REFRESHED'), and a cache armed only at
+           sign-in would keep sending yesterday's token after an hour on one loaded tab. Driven
+           through the app's own callback, the way §11's __fireAuth does. */
+    {
+      const { ctx, page } = await signedIn({
+        user: { id: UID, email: 'k@example.com' }, access_token: 'tok-first', refresh_token: 'r', expires_at: future(),
+      });
+      await page.evaluate(([uid, exp]) => window.__fireAuth('TOKEN_REFRESHED', {
+        user: { id: uid, email: 'k@example.com' },
+        access_token: 'tok-rotated', refresh_token: 'r2', expires_at: exp,
+      }), [UID, future()]);
+      await page.waitForTimeout(300);
+      await background(page);
+      const auth = await page.evaluate(() => {
+        const r = (window.__reqs || []).filter((x) => /\/rest\/v1\/user_data/.test(x.url));
+        return r.length ? r[r.length - 1].headers.Authorization : null;
+      });
+      ok('keepalive-save: a rotated token reaches the unload saver, not the one from sign-in',
+        auth === 'Bearer tok-rotated', String(auth));
+      await ctx.close();
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
