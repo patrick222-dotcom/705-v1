@@ -29,6 +29,39 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P0
+- [ ] **The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
+  `waiting` with its one job unstarted.** Needs the owner; nothing in this repo can clear it.
+  **Facts, not inference.** PR #150 squash-merged to the deploy branch at **08:49 UTC** as
+  `a64348b`, both required checks green. Deploy workflow run **168**
+  (`https://github.com/patrick222-dotcom/705-v1/actions/runs/37438695953`) was created at
+  **08:49:25**, its single `deploy` job went to `status:"waiting"` at 08:49:26, and `updated_at`
+  has not moved since 08:49:27. badgebudget.com still serves the pre-#150 bytes (**468,257
+  characters, 5 SRI pins** — the site is healthy, just a version behind): `hydrateWithRetry` and
+  `HYDRATE_RETRY_MS` both grep to **0** there, polled for ~20 minutes.
+  **What it is not.** githubstatus.com reported *All Systems Operational* throughout. `deploy.yml`
+  is byte-identical to the one run 167 used, and that run went created → completed in **21
+  seconds** (08:36:11 → 08:36:32 on 10-05); runs 164–167 are all the same ~20s shape. The `gate`
+  and `smoke` jobs ran on this same repo minutes earlier, so it is not an Actions-wide stall or a
+  spending limit.
+  **Leading explanation, and it is a guess** — a **deployment protection rule newly added to the
+  `github-pages` environment** (a required reviewer or a wait timer). The job declares
+  `environment: {name: github-pages}`, and `waiting` is the status Actions uses for exactly that;
+  `concurrency: group:"pages"` would also hold a second run behind this one, which is why no
+  further run was dispatched — it would queue, not help. **Unverified**: environment settings are
+  not readable from this session's tooling, so nobody has looked.
+  **What clears it:** open run 168 and approve it if it offers *Review deployments*; otherwise
+  Settings → Environments → `github-pages` and remove the reviewer or wait timer. Then confirm
+  `curl -s "https://badgebudget.com/index.html?cb=N" | grep -c hydrateWithRetry` is non-zero.
+  **Why this is a P0 and written down rather than left to be re-derived:** it is Invariant 9's
+  blast shape arriving by a different door — *everything merged after that point sits unshipped
+  while looking merged*. Invariant 9's `Detect` says "deploys stop while pushes keep succeeding,
+  so nothing fails loudly; the signal is an empty Actions tab", and that is precisely tonight.
+  Every nightly from here must treat a merge as unshipped until the live grep says otherwise,
+  which the loop's own step 5 already requires — tonight is the first run where that step earned
+  its keep. **If a later run finds run 168 completed and the marker live, close this item with the
+  date and what unblocked it**; if it finds a *second* night stuck the same way, that is a standing
+  repo problem and belongs in CLAUDE.md → Deployment, not here.
+
 - [ ] **Courtney's synced shift times may jump an hour at the Nov 1 DST change** (P1 · source:groom ·
   harness:drivable) — her imported starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after;
   real shifts don't move. She is in Phoenix (Arizona has no DST), so the feed's zone handling
