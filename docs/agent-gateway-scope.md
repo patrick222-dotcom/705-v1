@@ -10,7 +10,7 @@ re-verify before building on them, this space moves monthly. **Path B** at the e
 The Shortcut build guide, wire contract and drift-proofing (version handshake, `app_config`,
 server-driven menus, the calendar-aware "Plan shifts" flow) live in `siri-shortcut.md`.
 
-## Revision 2026-10-06 — two flows, one sign-in, every host
+## Revision 2026-10-06 — two flows, one sign-in, every host, one flywheel
 
 Owner-directed. **This section supersedes the generic tool table in §3 and the sequence below it.**
 The rest of the document (core extraction, versioned ops, parity contract, where it is probably
@@ -127,27 +127,104 @@ So: small purpose-built widgets, precompiled, single-file, no network — the **
 flagged). Each ends in an "Open in BadgeBudget" link for the full visual. Widgets render numbers
 the server computed; they do no math (Invariant 3 stays in one place).
 
+### The flywheel — what makes it sticky (owner direction, 2026-10-06)
+
+The goal is **stickiness**: a nurse comes back because each pay cycle gives her a reason to, and
+each visit makes the next one more useful. Four stages, each feeding the next:
+
+```
+   schedule request ──shifts──▶ paycheck estimate ──net per check──▶ budget target
+          ▲                            ▲                                  │
+          │                            └──corrected setup── reconcile ◀── actual stub
+          └────────────── "covers target in 2 of 3 checks" ◀──────────────┘
+```
+
+1. **Schedule → paycheck.** Requested or scheduled shifts become an estimated net per check
+   (existing pay math; Flow B's `check_request` returns it).
+2. **Paycheck → budget.** That net is compared with **one number**: what she needs per paycheck.
+3. **Budget → schedule.** A draft request is reported against the target: *"covers it in 2 of 3
+   checks; the third is $140 short."*
+4. **Stub → reconcile → paycheck.** When the real check lands, the stub's net is compared with
+   the estimate (Flow A's closure check, run every cycle instead of once). A gap corrects her
+   setup. **This is the step that makes it a flywheel** — without it the loop runs on unchecked
+   numbers; with it, every turn makes the estimate more accurate, and accuracy is what makes the
+   other three steps worth trusting.
+
+**Budget is one number — owner decision, 2026-10-06.** `budget_target`: net needed per paycheck =
+fixed bills + goal contributions, both entered as totals. No categories, no transactions, no bank
+links. Categories turn this into a YNAB competitor, with a trust and security bar a pay planner
+does not need to clear. It extends the existing savings goals (`goals`, `MAX_GOALS`) rather than
+replacing them: a goal's per-check contribution is one input to the target.
+
+**The no-nudge rule binds hardest at step 3.** A budget gap is exactly what tempts an agent toward
+"pick up two more shifts", and that is how a pay app becomes a burnout app. Tools report the gap
+and the options she already has (her patterns, her rules); they never propose extra shifts unless
+she asks for more. Unchanged from 09-04 §3.
+
+**Cadence is the stickiness mechanism.** The work already has rhythms: a paycheck every two weeks
+(reconcile), a request every six (schedule), bills monthly (budget). Each is one natural prompt
+for the assistant, and server-side memory (below) makes it feel like a continuation. **The metric
+is return per cadence event** — share of pay periods with a reconcile, share of request windows
+where the request was checked here — not daily actives. Counted from `tool_called` names and
+existing app events; never figures.
+
+### Continuity — memory keyed on identity, not on a session
+
+The 2026-07-28 MCP spec **removed** the protocol-level session (SEP-2567: no `Mcp-Session-Id`, no
+initialize handshake; every request stands alone). Continuity therefore comes from the **OAuth
+identity**: every call carries her Supabase JWT, so the server always knows who she is. This is
+better than a session, not a workaround — it survives across conversations *and across hosts*.
+Set up in Claude, open ChatGPT next month, and it already knows her pattern and her unit's rules.
+Host-native memory cannot do that; it is the portability argument for the whole gateway.
+
+- **`get_context`** — the first call of any conversation. Returns setup state (pay setup
+  stub-verified or not, `budget_target` set or not, `schedule_rules` present or not), saved
+  preferences, and open items (*"six-week request window closes Oct 20"*, *"Oct 9 stub not yet
+  reconciled"*). Read-only, so it ships with the first gateway step.
+- **`remember` / `forget`** — preferences saved **on her confirmation**, as typed facts
+  (`{kind:'avoid_weekday', value:'tue'}`), from a fixed vocabulary. **Never free text written by
+  the model**: anything stored as prose is fed back to a model as context later, so free text is
+  a stored prompt-injection channel. Owner-only RLS, same as `user_data`.
+- **`report_issue({tool, what, expected})`** — "that number's wrong" lands in the existing
+  `feedback` table with `kind:'agent'`, and the nightly groom triages it like any other feedback.
+  The reconcile step is a second, automatic signal: `pay_reconciled {within_1pct: bool}` —
+  a boolean, never the figures.
+- **Visible and deletable in the app** — Settings → "What your assistant remembers", every fact
+  listed with a delete. Memory she cannot see is how "trustworthy" becomes "creepy"; this panel is
+  a precondition for shipping `remember`, not a follow-up.
+
+"Self-learning" here means stored facts plus reviewed feedback. No model is trained on her data.
+
 ### Revised sequence
 
 1. **Extract the core** — unchanged from below. Everything after depends on one copy of the math.
 2. **Read-only gateway + identity.** Edge Function `mcp`, Supabase OAuth server, consent route in
-   `index.html`, Google upstream. Tools: `get_paycheck`, `list_shifts`, `preview_pay_setup`.
-   Connect on the owner's Claude. Gate: OAuth transcript; second-user token cannot read the first
-   user's blob; closure check matches the app's own figure on a real stub.
+   `index.html`, Google upstream. Tools: `get_context`, `get_paycheck`, `list_shifts`,
+   `preview_pay_setup`, `report_issue`. Connect on the owner's Claude. Gate: OAuth transcript;
+   second-user token cannot read the first user's blob; closure check matches the app's own
+   figure on a real stub.
 3. **Paycheck widget** (MCP App). Gate: renders in Claude and in ChatGPT developer mode.
-4. **`apply_pay_setup`** (CAS write). Wage-adjacent: **owner approves**, per CLAUDE.md.
-5. **`schedule_rules` + `check_request` + request widget.** Schema change: owner approves.
-6. **Distribution:** ChatGPT directory submission (needs `privacy.html` update), Gemini Spark
-   test, custom auth domain, a "Connect your assistant" page modeled on Mercury's.
-7. **Dogfood on Courtney's account**; the honest metric is `tool_called` vs `shift_saved` over a
-   month (09-04 §Sequence 5).
+4. **First writes:** `apply_pay_setup` (CAS write), `remember`/`forget`, and the "What your
+   assistant remembers" panel in the app — the panel ships in the same step or `remember` does
+   not. Wage-adjacent and a schema change: **owner approves**, per CLAUDE.md.
+5. **Budget + reconcile:** `budget_target` (one number), `reconcile_paycheck` (Flow A's closure
+   check against each new stub). Closes the flywheel's loop. Owner approves (schema).
+6. **`schedule_rules` + `check_request` + request widget,** reporting against `budget_target`.
+   Designed from Courtney's interview output. Schema change: owner approves.
+7. **Distribution:** ChatGPT directory submission (needs `privacy.html` update, including what
+   the assistant remembers), Gemini Spark test, custom auth domain, a "Connect your assistant"
+   page modeled on Mercury's.
+8. **Dogfood on Courtney's account.** Metrics: return per cadence event (flywheel section) and
+   `tool_called` vs `shift_saved` over a month (09-04 §Sequence 5).
 
 ### Owner decisions added
 
 - Pay for the Supabase custom auth domain before step 6 (recommended) or ship with the
   `supabase.co` Google screen.
 - Does `apply_pay_setup` write on her confirmation alone, or queue for owner review in v1?
-- One real unit's scheduling rules (needed before step 5 is designed).
+- One real unit's scheduling rules (needed before step 6 is designed) — interview prompt sent to
+  Courtney 2026-10-06; her output is the input.
+- **Decided 2026-10-06:** the budget is one number per paycheck — no categories, no bank links.
 
 Sources (checked 2026-10-06): Claude custom connectors —
 support.claude.com/en/articles/11175166; ChatGPT developer mode —

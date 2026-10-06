@@ -1151,6 +1151,10 @@ and the push P0 it pointed at was fixed the same day.
   setup (server recomputes and checks against the stub's net) and the self-schedule request
   (`schedule_rules` + `check_request`); Google sign-in as the upstream identity (never Gmail scopes);
   MCP Apps widgets instead of iframing the app; host tiers Claude/ChatGPT(+dots) → Gemini → Muse/Siri.
+  Same day, later: the **flywheel** (schedule → paycheck → one-number budget → schedule, closed by
+  reconciling each real stub) and **memory keyed on the OAuth identity** (`get_context`, confirmed
+  typed `remember`/`forget`, `report_issue`, an in-app memory panel) — the 2026-07-28 MCP spec
+  dropped protocol sessions. Budget stays one number (owner decision).
 
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
