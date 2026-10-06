@@ -3728,6 +3728,200 @@ const run = async () => {
     }
   }
 
+  /* ---- 34. a failed cloud load retries instead of silently sinking the whole load -----------
+     `Load error: TypeError: Load failed` / `Failed to fetch` is the single most common thing the
+     app reports from the field -- 10 of 22 `client_error` rows at the 2026-10-06 groom, across 3
+     real devices, every one a transient blip at app open. And a failed hydration was TERMINAL for
+     the load: `hydratedForUser` stays unset, which is correct (it is what stops default or stale
+     state overwriting her real cloud blob), but everything downstream is gated on it -- the
+     debounced save returns early, the unload flush skips its signed-in branch, the 15s
+     cross-device poll never runs, the iCal auto-sync never fires. So every edit she made for the
+     rest of that load was persisted NOWHERE: not the cloud, and not localStorage either, because
+     the per-user backup is only ever written by the save paths that had already returned. Nothing
+     told her, since `syncError` is set by a failed SAVE and never by a failed load, and a manual
+     reload was the only recovery -- on a phone, which never page-loads.
+     Two bounds this section exists to hold, because each is a worse bug than the one being fixed:
+     (a) the retries must NOT be awaited -- `init` holds the splash until its hydrate call returns
+         and Invariant 1's boot watchdog replaces the app at 8s, so a serial chain would trade a
+         silent data problem for a broken boot;
+     (b) the failed path must still write nothing -- mirroring the un-replaced state into the
+         per-user backup would make it win the next load by being newer and clobber her real cloud
+         row, which is the exact bug the gate exists to prevent, one load later. */
+  if (want(34)) {
+    const UID = '34343434-3434-4343-8343-343434343434';
+    const CLOUD = { name: 'Cloud Nurse', baseRate: 44.44, setupComplete: true, shifts: {}, differentials: {} };
+
+    /* A signed-in page whose user_data SELECTs fail a budgeted number of times and then answer
+       with CLOUD. Only user_data selects are flaky -- ical_subscriptions and the rest answer
+       PGRST116 as §33's stub does, so a failure here cannot be confused for one of theirs.
+       Failures reject FAST (no network wait), which is both the common production shape and what
+       makes the boot-budget assertion below mean something: three serial attempts would still
+       cost the 1500+4000ms of backoff even when every attempt is instant. */
+    const flaky = async (failBudget) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: SEEDED_STATE });
+      const logs = [];
+      page.on('console', (m) => { try { logs.push(m.text()); } catch (_) {} });
+      await page.addInitScript(([S, budget, cloud]) => {
+        window.__selects = 0; window.__upserts = 0; window.__upsertRows = []; window.__budget = budget;
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const mk = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = mk(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: S }, error: null });
+                  c.auth.onAuthStateChange = (cb) => { window.__fireAuth = (ev, sess) => cb(ev, sess); return { data: { subscription: { unsubscribe() {} } } }; };
+                  c.from = (table) => {
+                    const q = { _op: 'select' };
+                    for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single']) q[m] = () => q;
+                    q.insert = () => { q._op = 'insert'; return q; };
+                    q.upsert = (row) => { q._op = 'upsert'; window.__upserts++; window.__upsertRows.push(row); return q; };
+                    q.then = (res, rej) => {
+                      let out;
+                      if (q._op !== 'select') out = { error: null };
+                      else if (table !== 'user_data') out = { data: null, error: { code: 'PGRST116', message: 'no row' } };
+                      else {
+                        window.__selects++;
+                        if (window.__budget > 0) {
+                          window.__budget--;
+                          /* The production shape: supabase-js hands back a TypeError with no
+                             `code`, which is exactly why loadCloudRow cannot mistake it for the
+                             expected-first-run PGRST116 and throws. */
+                          out = { data: null, error: { message: 'TypeError: Load failed', details: '', hint: '', code: '' } };
+                        } else {
+                          out = { data: { data: cloud, updated_at: new Date().toISOString() }, error: null };
+                        }
+                      }
+                      return Promise.resolve(out).then(res, rej);
+                    };
+                    return q;
+                  };
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, [{ user: { id: UID, email: 'h@example.com' }, access_token: 'tok-h', refresh_token: 'r',
+            expires_at: Math.floor(Date.now() / 1000) + 3600 }, failBudget, CLOUD]);
+      const t0 = Date.now();
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      return { ctx, page, errors, logs, t0 };
+    };
+    const foreground = async (page) => {
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.waitForTimeout(600);
+    };
+
+    /* --- the transient case, which is every occurrence in production so far: one failure, then
+           the retry lands and the load becomes saveable. */
+    {
+      const { ctx, page, errors, logs } = await flaky(1);
+      await page.waitForTimeout(3000);   // attempt 2 is scheduled at +1500ms, then a 500ms save debounce
+      const got = await page.evaluate(() => ({
+        selects: window.__selects, upserts: window.__upserts, rows: window.__upsertRows,
+      }));
+
+      ok('hydrate-retry: a failed cloud load is attempted again', got.selects >= 2, String(got.selects));
+      ok('hydrate-retry: and the load becomes saveable once it lands — the cloud save was blocked until then',
+        got.upserts >= 1, String(got.upserts));
+      const last = got.rows[got.rows.length - 1] || {};
+      ok('hydrate-retry: the blob the retry fetched is the one now in hand, not the local copy it replaced',
+        !!(last.data && last.data.name === 'Cloud Nurse'), JSON.stringify(last.data && last.data.name));
+      ok('hydrate-retry: the retry names its attempt, so the ring buffer says give-up from recovered',
+        logs.some((l) => /Cloud load error \(attempt 1 of 3\)/.test(l)),
+        logs.filter((l) => /Cloud load error/.test(l)).join(' | '));
+      /* An assertion on the backup belongs in the EXHAUSTION block below, not here, and the first
+         draft of this section had one in both. In the transient case nothing ever writes a backup
+         to begin with -- the un-hydrated window is one 1500ms backoff and the first debounced save
+         lands after the retry has -- so `!backup` held with the fix deliberately broken. Deleted
+         rather than left as theatre, the way §33 deleted its timestamp-equality check. */
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok('hydrate-retry: no page errors across the retry', real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
+
+    /* --- the bound that matters more than the fix: boot does not wait for the retries. Asserted
+           CAUSALLY rather than on a stopwatch -- the first version of this checked that the splash
+           cleared inside 4s, and a chain that awaited only its FIRST retry passed it, because one
+           1500ms backoff still fits. What cannot be fudged is how many attempts have happened by
+           the time the splash goes: exactly one, whatever the backoff is set to. The deadline is
+           Invariant 1's 8s watchdog, which replaces the app with the boot error screen, so the
+           wait is bounded just inside it and a timeout is reported as a FAIL rather than aborting
+           the run. */
+    {
+      const { ctx, page } = await flaky(99);
+      let cleared = false;
+      try {
+        await page.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 7500 });
+        cleared = true;
+      } catch (_) {}
+      const n = await page.evaluate(() => window.__selects);
+      ok('hydrate-retry: boot still clears the splash inside Invariant 1\'s 8s watchdog', cleared);
+      ok('hydrate-retry: because the retries are scheduled, not awaited — the splash waits on attempt 1 alone',
+        cleared && n === 1, String(n));
+      await ctx.close();
+    }
+
+    /* --- exhaustion: three attempts, then it stops, and it has still written nothing anywhere. */
+    {
+      const { ctx, page, logs } = await flaky(99);
+      await page.waitForTimeout(7000);   // attempts at 0, +1500, +5500
+      const got = await page.evaluate((k) => {
+        let backup = null;
+        try { backup = JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) {}
+        return { selects: window.__selects, upserts: window.__upserts, backup };
+      }, `${STORAGE_KEY}::${UID}`);
+
+      ok('hydrate-retry: it gives up after exactly 3 attempts', got.selects === 3, String(got.selects));
+      ok('hydrate-retry: and says so, naming the last one', logs.some((l) => /Cloud load error \(attempt 3 of 3\)/.test(l)),
+        logs.filter((l) => /Cloud load error/.test(l)).join(' | '));
+      ok('hydrate-retry: an un-hydrated load still never writes the cloud', got.upserts === 0, String(got.upserts));
+      ok('hydrate-retry: and never writes the per-user backup either — a newer backup of un-replaced state would clobber her real row next load',
+        !got.backup, JSON.stringify(got.backup));
+      /* Not asserted here, deliberately: a leak into the shared anon key would carry the SEEDED
+         state, since hydration never lands in this block, so no check against CLOUD's marker can
+         ever fail. §13 pins the anon-key boundary where it is reachable. */
+
+      /* The throttle: a foreground immediately after an attempt is not a fourth attempt. */
+      await foreground(page);
+      const after = await page.evaluate(() => window.__selects);
+      ok('hydrate-retry: a foreground inside the floor does not re-roll it', after === 3, String(after));
+
+      /* --- and the recovery a phone actually gets: it never page-loads, so the next foreground
+             past the floor is what tries again. */
+      await page.evaluate(() => { window.__budget = 0; });
+      await page.waitForTimeout(5200);
+      await foreground(page);
+      await page.waitForTimeout(900);
+      const back = await page.evaluate(() => ({ selects: window.__selects, upserts: window.__upserts }));
+      ok('hydrate-retry: a later foreground re-attempts it', back.selects === 4, String(back.selects));
+      ok('hydrate-retry: and that attempt makes the load saveable again', back.upserts >= 1, String(back.upserts));
+      await ctx.close();
+    }
+
+    /* --- what a drive cannot reach: a sign-out between two scheduled attempts. The guard is
+           `prevUserId`, the auth handler's record of who is signed in, nulled on SIGNED_OUT --
+           firing it mid-backoff needs a timing window the harness cannot hold open, so it is
+           pinned at the source the way §11 and §33 pin what a drive cannot see. */
+    {
+      const src = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+      ok('hydrate-retry: a retry is abandoned if she signed out while it waited',
+        /if\(prevUserId\.current !== userId \|\| hydratedForUser\.current === userId\) return;/.test(src));
+      ok('hydrate-retry: the awaited first attempt is the only one the splash waits on',
+        /const first = await hydrateFromCloud\(userId, timeoutMs, 1\);/.test(src));
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **539 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **555 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -311,6 +311,21 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   §33 — which also records one assertion deleted for being unfalsifiable (both clock reads land in
   the same millisecond, so the equality check passed with the fix broken; it is pinned at the source
   instead).
+- **A failed cloud load retries, because it used to sink the whole load silently** (2026-10-06).
+  `hydratedForUser` staying unset on a load failure is correct — it is what stops default or stale
+  state overwriting her real blob — but every write path is gated on it, so the debounced save, the
+  unload flush, the 15s poll and the iCal auto-sync all go quiet together and **her edits reach
+  neither the cloud nor localStorage**, with no UI saying so (`syncError` is set by a failed *save*,
+  never a failed *load*). `Load error: TypeError: Load failed` was 10 of 22 `client_error` rows at
+  the 2026-10-06 groom, across 3 real devices. `hydrateWithRetry` awaits attempt 1 and **schedules**
+  the rest (`HYDRATE_RETRY_MS`, 1500/4000ms), plus a `visibilitychange` re-attempt
+  (`HYDRATE_RETRY_MIN_MS`, 5s). **Never await the retry chain** — `init` holds the splash until that
+  call returns and Invariant 1's watchdog replaces the app at 8s. **Never write the per-user backup
+  from the failed path** — it would mirror the state hydration failed to replace, win the next load
+  by being newer, and clobber her real cloud row. Pinned by `tests/smoke.mjs` §34, which asserts the
+  boot bound *causally* (when the splash goes, exactly one attempt has happened) after a stopwatch
+  version let a partially-awaited chain through. She is still not told when all three attempts fail
+  — `BACKLOG.md` → P2.
 - **Analytics.** `track(name, props)` → `events`, insert-only. Coarse `snake_case`
   `<surface>_<verb>` names only — **never wage or goal figures**. `session_end` goes through
   `beaconInsert()` (keepalive fetch), not `track()`, and the row to read is the LAST per load.
