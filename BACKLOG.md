@@ -1147,6 +1147,10 @@ and the push P0 it pointed at was fixed the same day.
   tool list and gates parity; (5) dogfood. **Owner decisions pending** (see the doc): build step yes/no,
   rehearsal project, agent swap-board writes, custom auth domain, create `main`. First session = step 1
   only; not a nightly item — it changes the build.
+  **Revised 2026-10-06** (doc → *Revision 2026-10-06*): two flows lead — pay stub → verified pay
+  setup (server recomputes and checks against the stub's net) and the self-schedule request
+  (`schedule_rules` + `check_request`); Google sign-in as the upstream identity (never Gmail scopes);
+  MCP Apps widgets instead of iframing the app; host tiers Claude/ChatGPT(+dots) → Gemini → Muse/Siri.
 
 _These are real and wanted, but none can be implemented **and** fully verified inside one
 autonomous run — each needs a live repro, a design call, or delicate surgery on machinery the
