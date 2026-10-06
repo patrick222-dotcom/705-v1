@@ -1,4 +1,4 @@
-# Agent gateway — scope (2026-09-04)
+# Agent gateway — scope (2026-09-04, revised 2026-10-06)
 
 Owner-directed scoping session, written the day the pattern lab shipped. This is a design document,
 not a build log: nothing below is implemented. It records the thesis, what the current codebase
@@ -9,6 +9,154 @@ re-verify before building on them, this space moves monthly. **Path B** at the e
 (added 2026-09-05) is the near-term bridge: a Siri Shortcut writing to an ops inbox the app confirms.
 The Shortcut build guide, wire contract and drift-proofing (version handshake, `app_config`,
 server-driven menus, the calendar-aware "Plan shifts" flow) live in `siri-shortcut.md`.
+
+## Revision 2026-10-06 — two flows, one sign-in, every host
+
+Owner-directed. **This section supersedes the generic tool table in §3 and the sequence below it.**
+The rest of the document (core extraction, versioned ops, parity contract, where it is probably
+wrong) still stands. Host facts were checked 2026-10-06 from secondary sources unless marked
+otherwise; several conflict with each other, and those are marked **unverified** with what would
+settle them.
+
+### What changed in the thesis
+
+The 09-04 thesis was "two peer surfaces". The sharper version: **the nurse brings her own model.**
+Her assistant (Claude, ChatGPT, Gemini, a dot) does the reading and reasoning on her tokens;
+BadgeBudget is the system of record and the **verifier**. The server never trusts a figure the
+model computed. It recomputes it with the same pure functions the app uses (step 1 below) and
+says whether it agrees. That is what makes an agent writing to pay settings safe enough to ship.
+
+### Flow A — pay stub → verified pay setup (onboarding)
+
+1. She drops a stub into her assistant. The model reads it, whatever the layout.
+2. It calls `preview_pay_setup({earnings_rows, gross, net, period})` with the **rows**, not with
+   rates it decided on.
+3. The server runs `differentialsFromStub` (`index.html`, already ships) — it discards any row
+   where rate × hours disagrees with the stub's own amount — then runs `computeNet` on the
+   proposed setup and returns the **closure check**: *"BadgeBudget would have predicted $2,914 net
+   for this period; your stub says $2,921 (0.2% off)."*
+4. She confirms in chat; the model calls `apply_pay_setup({proposal_id})`. The write is a
+   compare-and-swap on `user_data.updated_at`: it lands only if the blob has not changed since
+   the preview. That is enough for a settings write and does not wait on the full ops layer.
+
+Why this matters beyond onboarding: the closure check is the first **automated** signal that a
+displayed take-home figure is right (Invariant 3's `Detect` is currently "none"). Every stub an
+agent submits is a free accuracy probe; log `pay_setup_checked {within_1pct: bool}` — a boolean,
+never the figures.
+
+Privacy: a stub carries name, address, employer, often a partial SSN. The server accepts only the
+earnings rows and the three totals, stores none of it beyond the resulting settings, and the
+gateway logs tool names only (the 09-04 analytics rule). The stub itself lives with her model
+provider, by her choice; `privacy.html` must say so before any directory submission.
+
+### Flow B — the self-schedule request
+
+"I need to submit my six weeks; use my 3-on pattern, avoid my kid's games, and I owe two weekends."
+
+- **Personal calendar conflicts are not BadgeBudget's job.** Her Google Calendar connector already
+  reads that; her assistant composes the two. This is the agent-first payoff — BadgeBudget never
+  asks for calendar scopes.
+- **Employer rules are new data:** `schedule_rules` — period length, shifts per period, weekend
+  minimum, holiday rotation, required days (Mon/Fri), request deadline. Per user, entered once
+  (or read off an email/policy PDF by her model and confirmed, same propose/confirm shape as A).
+  Shape it from **one real rule set from Courtney's unit** before designing a schema.
+- **Tools:** `get_schedule_rules`, `list_patterns`, `check_request({dates})` → rule violations +
+  the period's projected paycheck. Output is a **draft she submits herself.** Nothing writes to the
+  employer's scheduling system.
+- **No-nudge rule still binds** (09-04 §3): `check_request` reports facts; it never proposes extra
+  shifts unless she asks for more. Fills the required count, not more.
+- Corroborated demand: Reddit seed theme `self-schedule-fairness`.
+
+### Identity — "sign in with Google", not "Gmail OAuth"
+
+The tenant is the Supabase user (`auth.users.id`); RLS already isolates it. The chain:
+
+```
+Host (ChatGPT/Claude/Gemini)  ──OAuth 2.1 + PKCE, DCR──▶  Supabase Auth OAuth server (beta)
+                                                             │ redirects to OUR consent page
+                                                             ▼
+                                 badgebudget.com/?authorization_id=…   ← "Continue with Google"
+                                                             │ (existing Google sign-in)
+                                                             ▼
+                                 approve → host receives a Supabase JWT → gateway → PostgREST as her
+```
+
+- **Request `openid email profile` only. Never a Gmail scope.** Gmail read scopes are Google
+  *restricted* scopes: they trigger an annual third-party security assessment (CASA) and would
+  turn a trust story into a liability. "Sign in with Google" gives the tenant and the trust without
+  touching her mail.
+- Supabase lets the consent page be **ours**. Serve it from `index.html` on an
+  `?authorization_id=` param rather than a new file, so the publish set (Invariant 8) does not
+  change.
+- Existing email/password users: Supabase links identities that share a verified email. Verify on
+  a throwaway account before relying on it — **unverified** here.
+- **The remaining ugly seam:** Google's own screen still says "continue to
+  `mnnlgcxnvodjwlhhiphq.supabase.co`" (`docs/domains.md` → Google OAuth consent screen). For a
+  link handed to strangers that is the one screen that reads as phishing. Fix = Supabase custom
+  domain (paid add-on). **Recommendation: pay for it before any public link, not before dogfood.**
+- Realistic click count for a nurse already signed in to Google: **Add → Connect → pick Google
+  account → Allow = 4.** Three only via a directory listing that pre-fills the server. Don't
+  promise two.
+
+### Hosts — friction, ranked
+
+| Host | How she adds it | UI in chat | Friction | Tier |
+|---|---|---|---|---|
+| **Claude** | Custom connector: paste URL, OAuth. All plans incl. Free (Free = 1 custom connector). Follows the account to mobile. | MCP Apps | Low. Dogfood here. | 1 |
+| **ChatGPT** | Two paths. *Developer Mode* self-add (plan availability **unverified** — sources conflict between Business-only and Plus/Pro; settle by checking Settings → Apps on a Plus account). *App directory* listing: one-click for any user, needs OpenAI review. | Apps SDK = MCP Apps | Dev mode: high, not for nurses. Directory: low, gated on review. | 1 (via directory) |
+| **dots** (OpenAI, launched 2026-09-29) | Uses her installed ChatGPT apps/plugins. Being a ChatGPT app *is* the dots integration. Pro tiers + Business Premium only. | via ChatGPT | Free once Tier 1 ChatGPT lands. Narrow audience (Pro). | rides ChatGPT |
+| **Gemini** (Spark, Connected Apps) | Any HTTPS MCP URL. **Personal Google accounts only** — not work/school. Fits the Google sign-in. | **unverified** | Medium. | 2 |
+| **Meta Muse** | No consumer MCP setting as of 2026-09-26. Muse writes its own connectors against APIs; Meta onboards developer connectors (MCP is one route). "Hosting direct" = applying to that program. | — | High / gated on Meta. | 3 |
+| **Siri / Apple Intelligence** | MCP support is landing **through App Intents**, which requires a native app. BadgeBudget is a web app with no iOS binary. | — | Very high: needs a native shell. Path B (Shortcut → ops inbox, below) is the cheap bridge. | 3 |
+| **Instinct** | Invite-only; operates a phone and computer like a person. No documented MCP. | — | Nothing to build: a website that works is the integration. | none |
+
+The ordering rule: **build once to the MCP spec + MCP Apps, and Claude, ChatGPT, dots and probably
+Gemini come with it.** Muse and Siri need per-vendor work and wait for demand.
+
+### Embedded UI — MCP Apps, not an iframe of the site
+
+What the owner called "AGUI in the connector" is, in spec terms, **MCP Apps** (`ui://` resources,
+`text/html;profile=mcp-app`, official 2026-01-26), rendered by Claude and ChatGPT. (AG-UI is a
+different protocol — agent ↔ *your own* frontend — and is not how a widget gets into someone
+else's chat.)
+
+The full app **cannot** be iframed in: hosts sandbox the widget with a deny-by-default CSP, and
+`index.html` compiles JSX in the browser (Babel standalone, needs `eval`) from five CDN scripts.
+So: small purpose-built widgets, precompiled, single-file, no network — the **paycheck card**
+(Flow A result, hero figure + breakdown) and the **request grid** (Flow B, six weeks, violations
+flagged). Each ends in an "Open in BadgeBudget" link for the full visual. Widgets render numbers
+the server computed; they do no math (Invariant 3 stays in one place).
+
+### Revised sequence
+
+1. **Extract the core** — unchanged from below. Everything after depends on one copy of the math.
+2. **Read-only gateway + identity.** Edge Function `mcp`, Supabase OAuth server, consent route in
+   `index.html`, Google upstream. Tools: `get_paycheck`, `list_shifts`, `preview_pay_setup`.
+   Connect on the owner's Claude. Gate: OAuth transcript; second-user token cannot read the first
+   user's blob; closure check matches the app's own figure on a real stub.
+3. **Paycheck widget** (MCP App). Gate: renders in Claude and in ChatGPT developer mode.
+4. **`apply_pay_setup`** (CAS write). Wage-adjacent: **owner approves**, per CLAUDE.md.
+5. **`schedule_rules` + `check_request` + request widget.** Schema change: owner approves.
+6. **Distribution:** ChatGPT directory submission (needs `privacy.html` update), Gemini Spark
+   test, custom auth domain, a "Connect your assistant" page modeled on Mercury's.
+7. **Dogfood on Courtney's account**; the honest metric is `tool_called` vs `shift_saved` over a
+   month (09-04 §Sequence 5).
+
+### Owner decisions added
+
+- Pay for the Supabase custom auth domain before step 6 (recommended) or ship with the
+  `supabase.co` Google screen.
+- Does `apply_pay_setup` write on her confirmation alone, or queue for owner review in v1?
+- One real unit's scheduling rules (needed before step 5 is designed).
+
+Sources (checked 2026-10-06): Claude custom connectors —
+support.claude.com/en/articles/11175166; ChatGPT developer mode —
+help.openai.com/en/articles/12584461 (403 to fetch; via secondary coverage); dots —
+learn.chatgpt.com/docs/dots; Gemini Spark — usecarly.com/blog/gemini-mcp; Muse —
+aiagentslibrary.com/blog/meta-muse-mcp; Apple MCP via App Intents — 9to5mac.com 2025-09-22;
+Instinct — vellum.ai/blog/official-instinct-breakdown; MCP Apps — mcpbundles.com/blog/mcp-apps-
+what-breaks-between-chatgpt-and-claude; Supabase OAuth server — supabase.com/docs/guides/auth/
+oauth-server and changelog 38022.
 
 ## The thesis, restated as a constraint
 
