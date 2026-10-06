@@ -370,6 +370,40 @@ and the push P0 it pointed at was fixed the same day.
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
 
+### P2 (new, groom 2026-10-06)
+- [ ] **An exhausted cloud hydration is still silent — she is not told that nothing is saving** —
+  `harness:drivable`. The retry shipped tonight (see Done log) covers the transient blip, which is
+  every occurrence in production so far, but when all three attempts fail the load is still one
+  where her edits reach neither the cloud nor localStorage and **no UI says anything**. The two
+  obvious fixes are both wrong, which is why this is its own item rather than part of tonight's
+  build:
+  (a) **Do not reuse `syncError`.** Its string is `Couldn't sync — saved on this device`, and on
+  this path that is a *lie* — the per-user backup is not written while un-hydrated, deliberately
+  (see (b)). Its `retrySync` is also gated on `hydratedForUser`, so the affordance would render a
+  button that does nothing.
+  (b) **Do not "fix" it by writing the backup from the failed path.** The state it would mirror is
+  whatever hydration failed to replace, so it wins the next load by being newer and clobbers her
+  real cloud row — the exact bug the `hydratedForUser` gate exists to prevent, one load later.
+  `tests/smoke.mjs` §34 pins against it.
+  So the shape is a *distinct* signal that says what is true: this device could not reach your
+  saved data, changes are not being saved, tap to retry — with the retry calling
+  `hydrateWithRetry`, not `retrySync`. It is a copy + affordance design call on the first screen,
+  which is why it is P2 and not folded into a build that had already answered its own question.
+  Drivable with §34's flaky stub: exhaust the budget, assert the signal renders, assert tapping it
+  re-attempts.
+- [x] **RESOLVED 2026-10-06 — the odd `anon_id` is `freshAnonId()`'s non-crypto fallback, not a
+  bug.** Filed 2026-10-05 as unverified; the note said "what would settle it: read `anonId()`'s
+  fallback branches against that shape", so this groom did. `muufca43b2i7uhlk16i` decodes exactly:
+  `parseInt('muufca43',36)` is **1791154832691 = 2026-10-04T23:00:32.691Z**, 0.94s before that
+  row's `created_at`, and the remaining 11 characters are the length
+  `Math.random().toString(36).slice(2)` produces. That is
+  `Date.now().toString(36)+Math.random().toString(36).slice(2)` — the branch `freshAnonId()` takes
+  when `window.crypto.randomUUID` is absent. It carries no `nostore-` prefix because it *did*
+  persist to localStorage, so it is a legitimate stable device id that simply is not uuid-shaped.
+  **Consequence for the cohort re-baseline:** a device-count query must not filter on uuid *shape*
+  — `anon_id not like 'nostore-%'` is the correct and sufficient exclusion, and it keeps this row,
+  which is right. Nothing to build.
+
 ### P3 (new, groom 2026-10-05)
 - [ ] **The four open PRs are all month-stale drafts and none of them can gate a nightly item any
   more** — housekeeping, recorded so no future run re-derives it. The nightly's rule is to skip a
@@ -1343,6 +1377,51 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-06 — **A failed cloud load used to sink the whole load silently; it retries now.**
+  `Load error: TypeError: Load failed` / `Failed to fetch` is the single most common thing the app
+  reports from the field — **10 of 22 `client_error` rows**, across 3 real devices (`592667f1` ×4,
+  `62dff5aa` ×2, `c0554c4d` ×3, plus one more), every one a transient blip at app open, the most
+  recent 2026-10-04 01:08. The groom went looking at it because it is the only error class in the
+  table that has never been explained, and reading the code made it the night's build.
+  **What was actually wrong was not "she sees stale data".** `hydrateFromCloud` threw, left
+  `hydratedForUser` unset — correctly; that is what stops default or stale state overwriting her
+  real cloud blob — and *everything* downstream is gated on that one ref: the debounced save
+  returns early (`index.html` ~3426), the unload flush skips its signed-in branch, the 15s
+  cross-device poll never runs, the iCal auto-sync never fires. So every edit she made for the
+  rest of that load was persisted **nowhere**: not the cloud, and not localStorage either, because
+  the per-user backup is only ever written by the save paths that had already returned. And
+  nothing told her — `syncError` is set by a failed *save* and never by a failed *load*, so the
+  "Couldn't sync — saved on this device" affordance never appeared, and its `retrySync` is gated
+  on the same ref anyway. A manual page reload was the only recovery, on a phone, which never
+  page-loads.
+  **Fix: `hydrateWithRetry`** — the first attempt is awaited exactly as before, two more are
+  **scheduled** at 1500ms and 4000ms, and a `visibilitychange` re-attempt (floor
+  `HYDRATE_RETRY_MIN_MS`, 5s) covers the phone that was opened with no signal and foregrounded
+  later. The attempt number rides the logged message (`Cloud load error (attempt 2 of 3)`), so the
+  ring buffer distinguishes *gave up* from *recovered* — `icalFailureDetail`'s lesson applied to
+  the load path.
+  **Two bounds that are each a worse bug than the one being fixed, and both are pinned.**
+  (a) The retries must not be *awaited*: `init` holds the splash until its hydrate call returns and
+  Invariant 1's boot watchdog replaces the app at 8s, so a serial chain trades a silent data
+  problem for a broken boot. The first version of that assertion was a stopwatch (`splash gone
+  inside 4s`) and a chain awaiting only its **first** retry passed it, because one 1500ms backoff
+  still fits — it is asserted causally now: when the splash goes, exactly one attempt has happened.
+  (b) The failed path must still write nothing. Writing the per-user backup from there is the
+  obvious-looking fix and it is a **regression**: the state it would mirror is whatever we failed
+  to replace, so it would win the next load by being newer and clobber her real cloud row — the
+  exact bug the gate exists to prevent, one load later.
+  **Two assertions were deleted for being unfalsifiable**, the standard §33 set a night earlier: a
+  backup check in the transient case (nothing ever writes a backup there, so it held with the fix
+  broken) and an anon-key leak check in the exhaustion case (hydration never lands there, so no
+  check against the cloud blob's marker can ever fail).
+  No wage-core function touched, no new stored data shape, no sanitizer branch, no invariant
+  weakened. `tests/smoke.mjs` §34, **16 assertions, 9 deliberate breaks** (no retry; a fully
+  awaited chain; a partially awaited chain; the attempt counter dropped; the backup written from
+  the failed path; the save gate dropped; the throttle removed; the foreground listener removed;
+  the sign-out guard removed). Suite 539 → 555.
+  **What this does NOT fix, and it is filed as a P2 below:** she is still not told. The retry
+  shrinks the window a great deal but an exhausted hydration is still a load where nothing saves
+  and nothing says so.
 - 2026-10-05 — **Her last edit before she pockets the phone now actually reaches the cloud.** The
   comment above `beaconInsert` has named `AbortError: Promise was rejected because the browsing
   context is going away` as the reason unload *telemetry* uses a raw keepalive fetch since

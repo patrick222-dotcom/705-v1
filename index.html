@@ -725,6 +725,29 @@ const withTimeout = (p, ms, label) => Promise.race([
   p,
   new Promise((_,rej)=>setTimeout(()=>rej(new Error((label||'operation')+' timed out')), ms))
 ]);
+const sleepMs = ms => new Promise(r=>setTimeout(r, ms));
+/* Backoff between cloud-hydration attempts, and the floor between foreground re-attempts.
+   A failed cloud load is TERMINAL for the whole load, which is why it is worth retrying at all.
+   `hydratedForUser` staying unset on failure is correct — it is what stops default or stale
+   state overwriting her real cloud blob — but everything downstream is gated on it: the
+   debounced save returns early, the unload flush skips its signed-in branch, the 15s
+   cross-device poll never runs and the iCal auto-sync never fires. So every edit she makes for
+   the rest of that load is persisted NOWHERE — not the cloud, and not localStorage either, since
+   the per-user backup is only ever written by the save paths that have already returned — and
+   nothing tells her, because `syncError` is set by a failed SAVE and never by a failed load.
+   This is the most common error the app reports from the field: `Load error: TypeError: Load
+   failed` / `Failed to fetch` is 10 of 22 `client_error` rows across 3 real devices, every one a
+   transient blip at app open, and until now a manual reload was the only recovery.
+   NOT fixable by writing the backup from the failed path: the state it would mirror is whatever
+   we failed to replace, so it would win the next load by being newer and clobber her real cloud
+   row — the exact bug the gate exists to prevent, one load later. */
+const HYDRATE_RETRY_MS = [1500, 4000];
+/* Floor between FOREGROUND re-attempts. Short on purpose: the cost of being wrong is one small
+   SELECT, and `loadingRef` already blocks a second attempt while one is in flight — so this
+   covers only the fast-failing case (an error that rejects immediately, which is most of them),
+   where tab-flipping could otherwise loop. Unlike ICAL_RESYNC_MIN_MS there is no third party to
+   be polite to here. */
+const HYDRATE_RETRY_MIN_MS = 5*1000;
 
 /* ---------- model ---------- */
 const STORE_KEY = 'nursingWagePlannerData';
@@ -3185,6 +3208,7 @@ function App(){
   const fileImport = useRef(null);
   const hydratedForUser = useRef(null);   // user.id whose cloud data is loaded & safe to overwrite
   const loadingRef = useRef(null);        // user.id currently being loaded (in-flight guard)
+  const lastHydrateAttemptAt = useRef(0); // last cloud-hydration attempt (throttles the foreground re-attempt)
   const prevUserId = useRef(null);         // last seen auth user id (detects real user changes)
   const snapshotRef = useRef(null);        // latest {user,data} for the pagehide flush
   const oversizeWarned = useRef(false);    // warn once if the blob outgrows the free-tier budget
@@ -3287,10 +3311,14 @@ function App(){
     setObStep(0);
   };
 
-  /* ---- load a user's cloud blob, then mark saves safe for that user ---- */
-  const hydrateFromCloud = async (userId, timeoutMs)=>{
+  /* ---- load a user's cloud blob, then mark saves safe for that user ----
+     ONE attempt. `attempt` rides the logged message only, so the error ring buffer says whether a
+     load gave up or recovered — the same reason `icalFailureDetail` puts the proxy's status in the
+     row rather than one generic sentence. hydrateWithRetry below is what retries, and why. */
+  const hydrateFromCloud = async (userId, timeoutMs, attempt)=>{
     if(loadingRef.current===userId || hydratedForUser.current===userId) return true; // no double-load
     loadingRef.current = userId;
+    lastHydrateAttemptAt.current = Date.now();
     try{
       const row = await withTimeout(loadCloudRow(userId), timeoutMs||6000, 'cloud load');
       const backup = readBackup(userId);
@@ -3312,12 +3340,53 @@ function App(){
       return true;
     }catch(e){
       // timeout / error: leave hydratedForUser unset so we never clobber cloud with stale/default state
-      console.error('Cloud load error:',e);
+      console.error('Cloud load error (attempt '+(attempt||1)+' of '+(HYDRATE_RETRY_MS.length+1)+'):',e);
       return false;
     }finally{
       loadingRef.current = null;
     }
   };
+
+  /* The first attempt is awaited; the rest are SCHEDULED, never awaited. `init` below holds the
+     splash until its hydrate call returns, and Invariant 1's boot watchdog replaces the app with
+     the error screen at 8s — so a serial retry chain inside the awaited call would trade a silent
+     data problem for a broken boot. Backing off in the background costs the nurse nothing: she
+     reads her local copy meanwhile, and the load becomes saveable the moment one attempt lands. */
+  const hydrateWithRetry = async (userId, timeoutMs)=>{
+    const first = await hydrateFromCloud(userId, timeoutMs, 1);
+    if(first) return true;
+    let i = 0;
+    const again = async ()=>{
+      if(i >= HYDRATE_RETRY_MS.length) return;
+      const attempt = i + 2;
+      await sleepMs(HYDRATE_RETRY_MS[i++]);
+      /* Signed out, or switched accounts, while we were waiting: `prevUserId` is the auth
+         handler's record of who is signed in and it is nulled on SIGNED_OUT, so retrying past
+         this point would hydrate a user who has left. */
+      if(prevUserId.current !== userId || hydratedForUser.current === userId) return;
+      if(await hydrateFromCloud(userId, timeoutMs, attempt)) return;
+      again();
+    };
+    again();
+    return false;
+  };
+
+  /* A phone never page-loads — the same fact the iCal foreground re-sync exists for — so without
+     this, a hydration that ran out of attempts at app open stays failed until she kills the tab,
+     and the whole load stays unsaveable. Idempotent by construction: hydrateFromCloud's own
+     loadingRef / hydratedForUser guards make a redundant call a no-op, so the throttle is about
+     not re-rolling a dead network every time she flips tabs, not about correctness. */
+  useEffect(()=>{
+    if(!supabase || !user) return;
+    const onVis = ()=>{
+      if(document.visibilityState !== 'visible') return;
+      if(hydratedForUser.current === user.id || loadingRef.current) return;
+      if(Date.now() - lastHydrateAttemptAt.current < HYDRATE_RETRY_MIN_MS) return;
+      hydrateWithRetry(user.id, 6000);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return ()=>document.removeEventListener('visibilitychange', onVis);
+  },[user]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* check auth session */
   useEffect(()=>{
@@ -3329,7 +3398,7 @@ function App(){
         setUser(session?.user ?? null);
         if(session?.user){
           prevUserId.current = session.user.id;
-          await hydrateFromCloud(session.user.id, 6000);
+          await hydrateWithRetry(session.user.id, 6000);
         }
       }catch(e){console.error('Auth session error:',e);}
       setReady(true);
@@ -3353,7 +3422,7 @@ function App(){
         if(event==='SIGNED_IN') track('signed_in', null, nextId);
         if(hydratedForUser.current === nextId) return;  // init already loaded this user
         hydratedForUser.current = null;                 // block cloud saves until loaded
-        setTimeout(()=>hydrateFromCloud(nextId, 6000), 0);
+        setTimeout(()=>hydrateWithRetry(nextId, 6000), 0);
       }else{
         // Signed out: wipe in-memory state so the debounced save can't leak this user's
         // wage data into the shared anonymous localStorage key, then restore pre-login anon data.
