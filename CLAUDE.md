@@ -126,8 +126,9 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
-| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **571 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync |
+| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (20). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **572 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "571" until the core-extraction probe 2026-10-07, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -170,7 +171,8 @@ the 47-day outage it exists to catch.
    indistinguishable from a CDN outage. **Blast** without it a CDN compromise runs arbitrary JS with
    the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
-   hero and the pattern lab since #65 — `calc`, `statOf`/`ptoStatOf`, `patternMetrics`,
+   hero and the pattern lab since #65 — `calc` and the **`periodPaycheck`** it calls, **`keepRatioOf`**
+   (both hoisted out of `App` 2026-10-07 so the gateway prices with the same function), `statOf`/`ptoStatOf`, `patternMetrics`,
    `patternCellToShift`, **`sampleNet`**, **`keepRatio`**, `firstActiveShiftType`, the
    rate/differential coercions in `sanitizeData`, the `BONUS`/`BONUS_LABEL` tables, and the helpers
    the public names wrap — `shiftGrossCents`, `hourlyRateCents`, `paidHoursOf`,
@@ -293,6 +295,12 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   single-file. Two god components, `App` and `SwapsSheet`. CDN deps are pinned with SRI
   (React/ReactDOM 18.2.0, Babel 7.24.7, pdf.js 3.11.174 with `isEvalSupported:false`, supabase-js
   2.45.4); the `<meta>` CSP must cover every runtime host.
+  **The core is marked, not moved** (2026-10-07): the pure math lives in `/* @core:begin <name> */ …
+  /* @core:end */` regions of `index.html`, and `scripts/extract_core.mjs` slices them into
+  `supabase/functions/_shared/badgebudget-core.mjs` for Node tests and the MCP gateway. The app stays
+  one file with no build step. **Edit a marked region → re-run `node scripts/extract_core.mjs` and
+  commit both**, or the gate fails. A marked region may reference nothing outside the core
+  (`window`, `localStorage`, `supabase`…); the extractor refuses to emit one that does.
 - **Data.** Signed-in → Supabase `user_data`, one `jsonb` blob per user, whole-blob last-writer-wins,
   debounced 500ms, capped at `MAX_BLOB_BYTES` (512KB); anonymous → localStorage. Every array goes
   through `sanitizeData` on load. Cross-device sync is a 15s visible-tab poll guarded by
@@ -579,7 +587,8 @@ through. It sees only agent pushes; CI stays the binding gate.
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
 `node scripts/check_build.mjs` (gate), `node scripts/test_groom_seed.mjs` (33),
-`node tests/smoke.mjs` (Playwright, iPhone 13). `tests/equality.mjs` is the wage-core check against
+`node tests/core.test.mjs` (20, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
+iPhone 13). `tests/equality.mjs` is the wage-core check against
 the **deployed** build — by hand only, needs network. Every new assertion is negative-tested. Scratch
 copies point `SUPABASE_URL` at `.invalid` so the harness can never write to production analytics.
 Not in git: the swap-matching suite and `rls_audit.js`, so those Done-log figures are unreproducible.

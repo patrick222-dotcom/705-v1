@@ -10,7 +10,7 @@
  */
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
 
@@ -104,6 +104,41 @@ const run = async () => {
     ok('wage: computeNet FICA on gross, income tax on gross-pretax',
       near(wage.net.fica, 76.5) && near(wage.net.fed, 108) && near(wage.net.st, 45) && near(wage.net.net, 620.5),
       `fica=${wage.net.fica} fed=${wage.net.fed} st=${wage.net.st} net=${wage.net.net}`);
+
+    /* ---- the extracted core is the app's math, not a copy of it (2026-10-07) ----------
+       App's hero now calls periodPaycheck() and the previews keepRatioOf(); the MCP gateway
+       imports both from supabase/functions/_shared/badgebudget-core.mjs. Same inputs through
+       the page's globals and through the module must produce byte-identical results, or the
+       gateway would quote her a different paycheck than the hero shows. */
+    {
+      const core = await import(pathToFileURL(join(ROOT, 'supabase/functions/_shared/badgebudget-core.mjs')).href);
+      const fx = {
+        taxes: { ficaType: 'standard', ficaPct: '', federalTaxRate: 12, stateTaxRate: 3,
+          pretaxDeductions: 80, posttaxDeductions: 25,
+          customWithholdings: [{ type: 'percent', amount: '1.5' }, { type: 'dollar', amount: '10' }] },
+        diffs: { base: { type: 'dollar', amount: 0 }, night: { type: 'dollar', amount: 6.5 },
+          'weekend-day': { type: 'dollar', amount: 11.5 } },
+        week: ['2026-10-05','2026-10-06','2026-10-07','2026-10-08','2026-10-09','2026-10-10','2026-10-11'],
+      };
+      const sh = (shiftType, extra = {}) => ({ id: 1, shiftType, hours: 12, bonusType: 'none',
+        customBonus: 0, isOvertime: false, ...extra });
+      fx.shifts = { '2026-10-05': [sh('night')], '2026-10-06': [sh('night', { bonusType: 'charge' })],
+        '2026-10-07': [sh('base')], '2026-10-10': [sh('weekend-day')] };
+      fx.events = { '2026-10-08': [{ kind: 'pto', hours: 4 }] };
+      const viaPage = await page.evaluate((f) => {
+        const job = makeJob({ id: 'job-1', baseRate: 52.25, differentials: f.diffs });
+        return JSON.stringify({ p: periodPaycheck({ shifts: f.shifts, dayEvents: f.events, dateKeys: f.week,
+          baseRate: 52.25, differentials: f.diffs, taxInputs: f.taxes, job }), k: keepRatioOf(f.taxes) });
+      }, fx);
+      const job = core.makeJob({ id: 'job-1', baseRate: 52.25, differentials: fx.diffs });
+      const viaCore = JSON.stringify({ p: core.periodPaycheck({ shifts: fx.shifts, dayEvents: fx.events,
+        dateKeys: fx.week, baseRate: 52.25, differentials: fx.diffs, taxInputs: fx.taxes, job }),
+        k: core.keepRatioOf(fx.taxes) });
+      const parsed = JSON.parse(viaCore);
+      ok('core: page periodPaycheck/keepRatioOf === extracted module (OT week, PTO, charge, % + $ withholding)',
+        viaPage === viaCore && parsed.p.ot.premiumCents > 0 && parsed.p.net > 0,
+        `page=${viaPage.slice(0, 120)} core=${viaCore.slice(0, 120)}`);
+    }
 
     /* ---- job record + integer cents: the structural spine ----------------------------
        Fixtures are Courtney's real Main Line Health and Aya Healthcare stubs, reconciled to
@@ -1709,7 +1744,9 @@ const run = async () => {
        surfaces over-promise against the hero. */
     const src15 = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
     ok('wage-core #8: keepRatio folds in percent custom withholdings',
-      /const keepRatio = Math\.max\(0, 1 - \(federalTaxRate\+stateTaxRate\+ficaForPreview\+pctWithholdings\)\/100\)/.test(src15));
+      // keepRatioOf() since 2026-10-07 (hoisted out of App for the MCP gateway); App must still use it.
+      /return Math\.max\(0, 1 - \(t\.federalTaxRate\+t\.stateTaxRate\+ficaForPreview\+pctWithholdings\)\/100\)/.test(src15)
+      && /const keepRatio = keepRatioOf\(taxInputs\);/.test(src15));
     ok('wage-core #8: it sums only the percent-typed ones (a flat $ is not a rate)',
       /w && w\.type==='percent' \? \(parseFloat\(w\.amount\)\|\|0\) : 0/.test(src15));
     /* #6 -- one tax model. sampleNet must call computeNet rather than rebuild it. */

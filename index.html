@@ -764,8 +764,10 @@ const MAX_BLOB_BYTES = 512 * 1024;  // cap the per-user cloud blob (free-tier sa
    path that writes user_data measures with this so the cap means one thing (council 2026-09-13,
    security-05: the check lived at one of three save sites, and flush/retry bypassed it). */
 function blobBytes(data){ try{ return new TextEncoder().encode(JSON.stringify(data)).length; }catch(_){ return JSON.stringify(data).length; } }
+/* @core:begin limits */
 const MAX_TEMPLATES = 12;  // cap on saved shift templates (keeps the quick-add list scannable)
 const MAX_GOALS = 12;      // cap on savings goals (bounds per-row blob growth; keeps the list scannable)
+/* @core:end */
 
 /* ---- grassroots sharing ----------------------------------------------------------------
    The app spreads by one nurse showing another her phone, and nurses on a unit are transient
@@ -785,6 +787,7 @@ const ARRIVED_VIA = (()=>{
   try{ const v = new URLSearchParams(location.search).get('via') || ''; return /^[a-z]{1,12}$/.test(v) ? v : ''; }
   catch(_){ return ''; }
 })();
+/* @core:begin dates */
 const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 /* ---- module-level date/period helpers (shared by App + the month-grid components) ---- */
@@ -803,6 +806,7 @@ const periodRangeLabel = (startISO) => {
   const o = {month:'short',day:'numeric'};
   return a.getMonth()===b.getMonth() ? `${a.toLocaleDateString('en-US',o)} – ${b.getDate()}` : `${a.toLocaleDateString('en-US',o)} – ${b.toLocaleDateString('en-US',o)}`;
 };
+/* @core:end */
 /* rAF-driven smooth scrollTop animation (deterministic duration — no reliance on the browser's
    native smooth-scroll timing, so callers know exactly when it's done) */
 const animateScrollTop = (el, target, duration=380) => {
@@ -818,6 +822,7 @@ const animateScrollTop = (el, target, duration=380) => {
   requestAnimationFrame(step);
 };
 
+/* @core:begin differentials */
 const DIFF_DEFAULTS = {
   'base':         { name:'Day (regular)',   amount:0,    type:'dollar',     active:true,  color:'#9A9082' },
   'night':        { name:'Night',           amount:10,   type:'dollar',     active:true,  color:'#34452A' },
@@ -865,6 +870,7 @@ function buildSampleShifts(startISO){
 
 const BONUS = { none:0, charge:3, preceptor:2, oncall:5, custom:0 };
 const BONUS_LABEL = { none:'None', charge:'Charge +$3/hr', preceptor:'Preceptor +$2/hr', oncall:'On-call +$5/hr', custom:'Custom (per shift)' };
+/* @core:end */
 
 /* Small colored glyphs (text, not emoji) that mark shift type on calendar cells + legend —
    replaces plain solid dots so shift type reads at a glance without needing the legend. */
@@ -875,6 +881,7 @@ const glyphFor = (type) => SHIFT_GLYPH[type] || '●';
 
 /* "Also on this day" life events (work-life calendar core). One entry per kind per day —
    the AddShiftSheet chips toggle, never stack. Only 'pto' (with hours) touches pay. */
+/* @core:begin day-events */
 const EVENT_KINDS = ['pto','education','appointment','off'];
 const EVENT_KIND_META = {
   pto:         { label:'PTO',        color:'#8A9A6B' },
@@ -885,6 +892,7 @@ const EVENT_KIND_META = {
 const MAX_DAY_EVENTS = 4;
 const MAX_NOTE_LEN = 240;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;   // "HH:MM" 24h, optional shift start
+/* @core:end */
 
 /* ---------- calendar (.ics) export helpers ---------- */
 /* Short, wage-free labels for the .ics SUMMARY line — deliberately NOT the same as BONUS_LABEL
@@ -917,12 +925,14 @@ function icsFold(line){
 }
 
 /* ---------- calendar (.ics) IMPORT helpers ---------- */
+/* @core:begin ics-limits */
 const ICS_UID_RE = /^[A-Za-z0-9@._-]{1,128}$/;
 const ICS_IMPORT_MAX_EVENTS = 200;       // hard cap per import
 const ICS_IMPORT_PAST_DAYS = 60;         // import window: 60 days back...
 const ICS_IMPORT_FUTURE_DAYS = 366;      // ...to 366 days forward
 const ICS_IGNORED_MAX = 500;             // remembered "not a shift, hide it" uids (bounds blob growth)
 const ICS_EVENT_KIND = 'appointment';    // dayEvents kind used for read-only imported calendar entries
+/* @core:end */
 /* Floor between foreground re-syncs. A schedule changes on the order of days, so ten minutes is
    generous; the number exists to stop tab-flipping from hammering the proxy and from re-rolling
    the 422 NurseGrid returns on the first hit of a load (BACKLOG P2, still unexplained). */
@@ -1209,6 +1219,7 @@ function groupLabel(g){
   return g.items.length>1 ? `${g.items.length} shifts like ${base}` : base;
 }
 
+/* @core:begin money */
 /* Pull the earnings rows out of a paystub's HOURS AND EARNINGS block.
 
    pdf.js joins a page's text items with a single space, so inside a page there are NO line
@@ -1920,6 +1931,49 @@ function computeNet(grossIn, t){
     pct: total>0 ? Math.round(net/total*100) : 0};
 }
 
+/* One pay period's paycheck: the hero figure and its Breakdown. Hoisted out of App's calc()
+   (2026-10-07) so the MCP gateway prices a period with this exact function instead of a copy —
+   App calls it with the same inputs it always read, and the body is calc()'s, statement for
+   statement, including the dollar-side accumulation order. `dateKeys` are the period's
+   YYYY-MM-DD keys; `job` is the active job from makeJob(). */
+function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, taxInputs, job}){
+  let gross=0, hours=0;
+  const periodKeys = new Set(dateKeys);
+  Object.keys(shifts).forEach(k=>{
+    if(!periodKeys.has(k)) return;
+    (shifts[k]||[]).forEach(s=>{
+      gross += shiftGross(baseRate, differentials[s.shiftType], s, job);
+      hours += paidHoursOf(s, job);
+    });
+  });
+  // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
+  // differentials/bonuses entirely — scoped to the active pay period same as shifts.
+  Object.keys(dayEvents).forEach(k=>{
+    if(!periodKeys.has(k)) return;
+    (dayEvents[k]||[]).forEach(e=>{
+      if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
+    });
+  });
+  /* Overtime is a property of the work period: shiftGross has already paid every hour at its
+     own rate, and this adds half the FLSA regular rate on the hours past the threshold. Hours
+     the nurse flagged by hand are excluded inside overtimePremiumCents, so a figure she is
+     already seeing cannot double. */
+  const ot = overtimePremiumCents(job, shifts, dateKeys);
+  gross += fromCents(ot.premiumCents);
+  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod};
+}
+
+/* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
+   Hoisted out of App 2026-10-07 for the same reason as periodPaycheck. Percent custom
+   withholdings are a marginal rate exactly like fed/state and count here; flat-dollar ones are a
+   per-paycheck amount, not a rate, so they stay out on purpose (council #8 / cross-surface-00). */
+function keepRatioOf(t){
+  const ficaForPreview = t.ficaType==='standard'?7.65:(t.ficaType==='percent'?(parseFloat(t.ficaPct)||0):0);
+  const pctWithholdings = (t.customWithholdings||[]).reduce((a,w)=>
+    a + (w && w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0);
+  return Math.max(0, 1 - (t.federalTaxRate+t.stateTaxRate+ficaForPreview+pctWithholdings)/100);
+}
+
 /* Everything the lab shows about a pattern — the money AND the shape of the life it makes.
    Money is averaged over lcm(cycle,14) days so a cycle that doesn't divide a fortnight (the 8-day
    "4 on 4 off") still yields an honest per-paycheck figure. Runs are cyclic: the pattern repeats,
@@ -1987,6 +2041,7 @@ function planPatternApply(pattern, shifts, differentials, opts){
   const endDt = new Date(start.getFullYear(),start.getMonth(),start.getDate()+total-1);
   return {adds, skipped, replaced, startKey:keyOfDate(start), endKey:keyOfDate(endDt)};
 }
+/* @core:end */
 
 /* ---------- supabase helpers ---------- */
 /* Returns the ISO updated_at written on success (truthy), or null on failure — callers
@@ -3886,37 +3941,12 @@ function App(){
     [pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
 
   /* ---- calculations ---- */
-  const calc = useMemo(()=>{
-    let gross=0, hours=0;
-    // Scope to the active pay period — a pay period is one paycheck, so taxes on this
-    // gross give a proper per-paycheck take-home estimate (and the hero matches its label).
-    const periodKeys = new Set(days.map(keyOf));
-    Object.keys(shifts).forEach(k=>{
-      if(!periodKeys.has(k)) return;
-      (shifts[k]||[]).forEach(s=>{
-        gross += shiftGross(baseRate, differentials[s.shiftType], s, activeJob);
-        hours += paidHoursOf(s, activeJob);
-      });
-    });
-    // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
-    // differentials/bonuses entirely — scoped to the active pay period same as shifts.
-    Object.keys(dayEvents).forEach(k=>{
-      if(!periodKeys.has(k)) return;
-      (dayEvents[k]||[]).forEach(e=>{
-        if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
-      });
-    });
-    /* Overtime. Until now this was a per-shift checkbox, so a 48-hour week with nothing ticked
-       projected zero overtime. It is a property of the work period: shiftGross has already paid
-       every hour at its own rate, and this adds half the FLSA regular rate on the hours past the
-       threshold. Hours the nurse flagged by hand are excluded inside overtimePremiumCents, so a
-       figure she is already seeing cannot double. */
-    const ot = overtimePremiumCents(activeJob, shifts, days.map(keyOf));
-    gross += fromCents(ot.premiumCents);
-    // The tax model itself lives in computeNet() (module level) so the pattern lab prices a
-    // rotation with exactly this math. Same inputs, same output shape as before.
-    return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:activeJob.workPeriod};
-  },[shifts,dayEvents,days,baseRate,differentials,taxInputs,activeJob]);
+  const calc = useMemo(()=>
+    // Scope to the active pay period — a pay period is one paycheck, so taxes on this gross give a
+    // proper per-paycheck take-home estimate (and the hero matches its label). The math itself is
+    // periodPaycheck() at module level, shared with the MCP gateway.
+    periodPaycheck({shifts, dayEvents, dateKeys:days.map(keyOf), baseRate, differentials, taxInputs, job:activeJob}),
+  [shifts,dayEvents,days,baseRate,differentials,taxInputs,activeJob]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
   const periodShiftCount = useMemo(()=>{
@@ -3924,17 +3954,8 @@ function App(){
     return Object.keys(shifts).reduce((a,k)=> a + (periodKeys.has(k) ? (shifts[k]?.length||0) : 0), 0);
   },[shifts,days]);
 
-  /* effective per-shift take-home ratio (for live previews) */
-  const ficaForPreview = ficaType==='standard'?7.65:(ficaType==='percent'?(parseFloat(ficaPct)||0):0);
-  /* Percent custom withholdings are a marginal rate exactly like fed/state, and computeNet
-     subtracts them (1243). Leaving them out here made the Add-Shift preview, both calendar
-     day-cell figures, the goal "≈N shifts" line and the weekend-pickup card over-promise
-     against the hero and the pattern lab — $467 vs $437 on the council's repro. Flat-dollar
-     withholdings stay out on purpose: they are a per-paycheck amount, not a rate, so they
-     cannot be expressed as a per-shift ratio (council #8 / cross-surface-00). */
-  const pctWithholdings = (customWithholdings||[]).reduce((a,w)=>
-    a + (w && w.type==='percent' ? (parseFloat(w.amount)||0) : 0), 0);
-  const keepRatio = Math.max(0, 1 - (federalTaxRate+stateTaxRate+ficaForPreview+pctWithholdings)/100);
+  /* effective per-shift take-home ratio (for live previews) — keepRatioOf() at module level */
+  const keepRatio = keepRatioOf(taxInputs);
 
   /* ---- handlers ---- */
   const num = (v,fb=0)=>{ const n=parseFloat(v); return isNaN(n)?fb:n; };

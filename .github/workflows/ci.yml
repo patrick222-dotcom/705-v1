@@ -40,6 +40,11 @@ jobs:
       - name: Invariant + parse gate
         run: node scripts/check_build.mjs
 
+      # The wage math the MCP gateway imports, generated from index.html's @core regions. The gate
+      # above already fails if that module is stale; this runs the money probes against it.
+      - name: Domain-core unit tests
+        run: node tests/core.test.mjs
+
       - name: Reddit groom-seed suite
         run: node scripts/test_groom_seed.mjs
 
