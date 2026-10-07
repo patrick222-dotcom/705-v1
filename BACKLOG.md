@@ -77,8 +77,17 @@ and the push P0 it pointed at was fixed the same day.
   still unverified for the same reason — environment settings are not readable from this session's
   tooling. Approving or clearing run 168 should drain the whole queue in one go, because 171 (and
   whatever lands after it) checks out the branch head, which carries #150 through tonight.
-  **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and tonight's
-  §35 banner. All four are merged and green; none is live.
+  **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and #154
+  (tonight's §35 banner). All five are merged and green; none is live.
+  **Confirmed after tonight's merge, so this is observation and not prediction.** #154 squash-merged
+  at 09:00:20 UTC as `568ddfa`, both required checks green; deploy run **172** was created at
+  09:00:22 and is `status:"pending"` with **zero jobs**, and run 171 flipped to `cancelled` the same
+  second. badgebudget.com was then polled five times over 2½ minutes: **468,257 characters, 5 SRI
+  pins, `load-banner` 0, `hydrateWithRetry` 0** every time. So the queue is 168 waiting → 169/170/171
+  cancelled → 172 pending, and the prediction that every merge from here ships nothing is now
+  measured. **The next run should re-read run 168 first:** if it has completed and the markers are
+  live, close this item with the date and what unblocked it; if it is still `waiting`, do not spend a
+  build item on anything that needs live verification.
 
 - [ ] **Courtney's synced shift times may jump an hour at the Nov 1 DST change** (P1 · source:groom ·
   harness:drivable) — her imported starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after;
