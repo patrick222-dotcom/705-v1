@@ -61,6 +61,24 @@ and the push P0 it pointed at was fixed the same day.
   its keep. **If a later run finds run 168 completed and the marker live, close this item with the
   date and what unblocked it**; if it finds a *second* night stuck the same way, that is a standing
   repo problem and belongs in CLAUDE.md → Deployment, not here.
+  **2026-10-07 — this is the second night, so it is now recorded in CLAUDE.md → Deployment as the
+  item said it should be. It got worse, not better: the queue behind run 168 is four runs deep and
+  nothing has shipped in 48 hours.** Read at 08:1x UTC: run **168** (`a64348b`, #150) is still
+  `status:"waiting"`, its one `deploy` job still `status:"waiting"`, `updated_at` unmoved since
+  2026-10-06 08:49:27 — **~23½ hours** in a state GitHub uses for an environment approval. Behind
+  it, run **169** (`bfbd944`, #151) and run **170** (`4caeb15`, #152) are both `cancelled`, and run
+  **171** (`8ae7b4d`, #153, created 13:02:15) is `status:"pending"` with **zero jobs ever created**.
+  badgebudget.com still serves the pre-#150 bytes — 468,258 bytes, 5 SRI pins, `hydrateWithRetry`
+  and `HYDRATE_RETRY_MS` both grep to **0**, so the site is healthy and three commits behind.
+  **What the new facts change.** The `concurrency: group:"pages"` reading in the note above is
+  confirmed by the shape: 169 and 170 were cancelled as later pushes superseded them, 171 queued,
+  and none of them will start while 168 holds the group. So **every merge from here lands in the
+  same queue and ships nothing**, including tonight's. The one-guess explanation is unchanged and
+  still unverified for the same reason — environment settings are not readable from this session's
+  tooling. Approving or clearing run 168 should drain the whole queue in one go, because 171 (and
+  whatever lands after it) checks out the branch head, which carries #150 through tonight.
+  **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and tonight's
+  §35 banner. All four are merged and green; none is live.
 
 - [ ] **Courtney's synced shift times may jump an hour at the Nov 1 DST change** (P1 · source:groom ·
   harness:drivable) — her imported starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after;
@@ -404,7 +422,22 @@ and the push P0 it pointed at was fixed the same day.
   brings that back. Read one real feed first.
 
 ### P2 (new, groom 2026-10-06)
-- [ ] **An exhausted cloud hydration is still silent — she is not told that nothing is saving** —
+- [x] ~~**An exhausted cloud hydration is still silent — she is not told that nothing is saving**~~
+  — SHIPPED 2026-10-07 (see Done log). Both fixes the note calls wrong stayed un-built, and both
+  are now pinned against rather than merely avoided: the banner's own text is asserted NOT to
+  contain `saved on this device` (wrong fix (a)'s string, which on this path is a lie), and
+  planting a `writeBackup` on the failed path FAILs the backup assertion (wrong fix (b)).
+  **One thing the note did not anticipate, and it is the reason the first draft of the test proved
+  nothing:** raising the signal on the *first* failure instead of on exhaustion is invisible to a
+  check that reads after the retry has landed — it flashes a red panel for the 1500ms of backoff
+  and is gone. The assertion reads **mid-chain** now (budget 2, read at 3000ms, attempt 3 still
+  pending), which is what makes "a blip raises nothing" falsifiable. A second assertion in the
+  same block was unfalsifiable for a different reason and is also fixed: `window.innerWidth`
+  **grows with a horizontal overflow** in the headless profile (658 for a 390pt viewport), so
+  `scrollWidth - innerWidth` cancels itself out and can never fail; it compares against
+  `clientWidth` now, the way §3 does. `tests/smoke.mjs` §35, 16 assertions, 9 deliberate breaks.
+  Original note below:
+- [ ] ~~**An exhausted cloud hydration is still silent — she is not told that nothing is saving**~~ —
   `harness:drivable`. The retry shipped tonight (see Done log) covers the transient blip, which is
   every occurrence in production so far, but when all three attempts fail the load is still one
   where her edits reach neither the cloud nor localStorage and **no UI says anything**. The two
@@ -1418,6 +1451,66 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-07 — **An exhausted cloud load finally says so: "Can't reach your saved data — nothing
+  you change now is being saved."** The retry that shipped 2026-10-06 (#150, §34) covers the
+  transient blip, which is every occurrence in production so far. This is the other half the 10-06
+  note filed as a P2: when all three attempts fail, the load persists **nothing** — not the cloud,
+  not localStorage, because the per-user backup is deliberately not written while un-hydrated — and
+  until tonight it went on looking entirely normal.
+  **Both of the note's named wrong fixes stayed un-built, and both are now pinned against rather
+  than merely avoided.** (a) Reusing `syncError` would print `Couldn't sync — saved on this device`,
+  which on this path is a *lie*, and its `retrySync` returns immediately unless `hydratedForUser`
+  is set — the exact flag this path lacks — so the affordance would do nothing: the banner's own
+  rendered text is asserted not to contain that string, and re-wiring the button to `retrySync`
+  FAILs five drive assertions plus the source pin. (b) Writing the backup from the failed path
+  would mirror un-replaced state, win the next load by being newer and clobber her real cloud row:
+  planting that `writeBackup` FAILs the backup assertion.
+  **Shape.** One new state, `cloudLoad` (`null` / `'failed'` / `'retrying'`), distinct from
+  `syncError` by design. `'failed'` is set only by `giveUp()` at the end of an exhausted chain —
+  never on the first failure — and never when `prevUserId`/`hydratedForUser` say the chain is no
+  longer hers (signed out mid-backoff, or another caller landed it). Only a **landed load** retires
+  it (`setCloudLoad(null)` on `hydrateFromCloud`'s success), so a save succeeding cannot clear it;
+  `clearSignedInState` clears it on sign-out. The banner sits above the greeting, `role="alert"`,
+  danger palette, and its button calls `hydrateWithRetry`, not `retrySync`.
+  **Two assertions in the first draft proved nothing, and that is the finding worth keeping.**
+  (1) "A transient blip raises nothing" read the DOM *after* the retry had landed — so raising the
+  banner in `hydrateFromCloud`'s catch, which flashes a red panel for the 1500ms of backoff, passed
+  it. It reads **mid-chain** now: budget 2, read at 3000ms, attempt 1 and 2 failed and attempt 3
+  not yet run. (2) The no-sideways-scroll check subtracted `window.innerWidth`, and **innerWidth
+  grows with the overflow** in this headless profile — a deliberately 640px-wide banner reported
+  `scrollWidth 658, innerWidth 658`, difference zero. It compares against
+  `documentElement.clientWidth` now (658 vs 390 → FAIL), the way §3 has all along. Third time this
+  repo has caught an assertion that could only pass (§33's timestamp equality, §34's two deletions,
+  these two) — the negative test is the only reason any of them were found.
+  No wage-core function touched, no new stored data shape, so no sanitizer branch; no invariant
+  weakened. `tests/smoke.mjs` **§35, 16 assertions, 9 deliberate breaks** (giveUp never fires;
+  `syncError`'s copy reused; the button wired to `retrySync`; raised on the first failure; the
+  signed-out guard dropped; a landed load no longer retires it; the backup written from the failed
+  path; the banner overflowing 390pt; and raised-early-plus-never-retired together, which is the
+  only break that reaches the "leaves nothing behind" assertion). Suite 555 → **571**.
+  Gate: 571/571 smoke, 11/11 build, 33/33 groom-seed, 39/39 silence-classifier.
+  **NOT LIVE.** Merged and green, and sitting in the Pages queue behind run 168 with #150–#153 —
+  see the P0. The loop's step 5 is what says so: `grep -c load-banner` against badgebudget.com is
+  **0**, and will be until the owner clears that run.
+  **Groom (2026-10-07, `silence_watch`: FRESH, newest event 9.5h old):**
+  - `events` 1218 rows, **24 in 48h**; `feedback` unchanged at 11 rows, newest **2026-09-14** — no
+    new feedback for 23 days.
+  - **One real session in the window**, device `8e0e32fe` at 2026-10-06 11:52–11:53 (iPhone, iOS
+    27.2): `app_open` → `ics_sync_result {up_to_date, nursegrid}` → `view_changed` →
+    `session_end {shifts:8, setup:true, secs:40}`. Everything else is crawler-shaped — `ob:0`,
+    `shifts:0`, 8–18s, and the `session_end` UA disagreeing with the `app_open` UA on the same
+    load, which is the known duplicate-UA artefact.
+  - **422 running count is now 2 in 28.** That one sync was a proxy call that got a parseable
+    calendar back. The rate keeps drifting toward noise. **Still do not build a retry.**
+  - **`client_error` is unchanged at 22 rows, newest 2026-10-04 01:08** — so nothing new has been
+    reported since #149 and #150 were written, and in particular the `AbortError: ...browsing
+    context is going away` string that #149 (keepalive unload save) was built for has **not
+    recurred** in the one real session since it deployed. n=1, so that is consistent with the fix,
+    not evidence of it. `icalFailureDetail` has **still** never put a status code in a production
+    row.
+  - Open PRs re-checked against tonight's region: **#82, #72, #70, #46**, all still month-stale
+    reverse-diff drafts (last activity 2026-08-24 to 2026-09-09), none touching `hydrateWithRetry`
+    or the `.wrap` header. The 10-05 P3 note holds and the owner call on them is still open.
 - 2026-10-06 — **A failed cloud load used to sink the whole load silently; it retries now.**
   `Load error: TypeError: Load failed` / `Failed to fetch` is the single most common thing the app
   reports from the field — **10 of 22 `client_error` rows**, across 3 real devices (`592667f1` ×4,

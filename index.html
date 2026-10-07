@@ -182,6 +182,14 @@
   .sync-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
   .sync-banner button{background:#4A4FC4;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .sync-banner button.ghost{background:transparent;color:#474DA0;border:1px solid #CFD5FA}
+  /* An exhausted cloud LOAD, not a failed save — see the `cloudLoad` state. Danger palette on
+     purpose: nothing she types is being kept while this is up, which is worse than the stale-row
+     case the top-bar sync link covers. */
+  .load-banner{background:var(--danger-soft);border:1px solid var(--danger);border-radius:17px;padding:14px 16px;margin-bottom:14px}
+  .load-banner .t{font-weight:700;font-size:13.5px;color:var(--danger)}
+  .load-banner .s{font-size:12.5px;line-height:1.5;color:var(--ink);margin-top:3px}
+  .load-banner button{margin-top:11px;background:var(--danger);color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
+  .load-banner button[disabled]{opacity:.65}
 
   /* NurseGrid how-to steps. No screenshots on purpose: the publish set is exactly five files
      (Invariant 8), so an image would have to ride inline as base64 inside this file -- which
@@ -3167,6 +3175,13 @@ function App(){
   const [session,setSession] = useState(null);  // auth session
   const [syncing,setSyncing] = useState(false);  // cloud sync in progress
   const [syncError,setSyncError] = useState(false);  // last cloud save failed
+  /* A cloud LOAD that ran out of attempts, which is a different and worse state than a failed
+     save: nothing on this load is being persisted at all. Deliberately NOT `syncError` — that
+     string says "saved on this device", which is a lie here (the per-user backup is not written
+     while un-hydrated, on purpose), and its retry is itself gated on `hydratedForUser`, so it
+     would render a button that does nothing. Three values: null (fine), 'failed' (gave up),
+     'retrying' (she tapped, an attempt is in flight). */
+  const [cloudLoad,setCloudLoad] = useState(null);
   const [paystub,setPaystub] = useState(null);
   const [parsing,setParsing] = useState(false);
   const [showFeedback,setShowFeedback] = useState(false);
@@ -3305,7 +3320,7 @@ function App(){
      signOut left the previous account's secret feed URL in Settings for the next sign-in. */
   const clearSignedInState = ()=>{
     hydratedForUser.current = null; lastSeenAt.current = null;
-    setSyncError(false);
+    setSyncError(false); setCloudLoad(null);
     setHydratedUserId(null); setIcalSub(null); setIcalUrl(''); icalSyncedForUser.current = null;
     resetToDefaults();
     setObStep(0);
@@ -3337,6 +3352,7 @@ function App(){
       hydratedForUser.current = userId;  // ONLY now are cloud saves for this user safe
       setHydratedUserId(userId);         // drives post-hydrate work (iCal auto-sync)
       setSyncError(false);
+      setCloudLoad(null);                // a landed load is the only thing that retires the banner
       return true;
     }catch(e){
       // timeout / error: leave hydratedForUser unset so we never clobber cloud with stale/default state
@@ -3356,8 +3372,17 @@ function App(){
     const first = await hydrateFromCloud(userId, timeoutMs, 1);
     if(first) return true;
     let i = 0;
+    /* Only an EXHAUSTED budget raises the banner, never the first failure: a single blip is every
+       occurrence in production so far and the retry swallows it, so warning on attempt 1 would
+       flash a scary panel at a nurse whose load is about to be fine. The two guards below are the
+       reasons an exhausted chain is NOT her problem — she signed out while it waited, or another
+       caller (a foreground re-attempt) landed it meanwhile — and neither should raise it. */
+    const giveUp = ()=>{
+      if(prevUserId.current !== userId || hydratedForUser.current === userId) return;
+      setCloudLoad('failed');
+    };
     const again = async ()=>{
-      if(i >= HYDRATE_RETRY_MS.length) return;
+      if(i >= HYDRATE_RETRY_MS.length){ giveUp(); return; }
       const attempt = i + 2;
       await sleepMs(HYDRATE_RETRY_MS[i++]);
       /* Signed out, or switched accounts, while we were waiting: `prevUserId` is the auth
@@ -3369,6 +3394,18 @@ function App(){
     };
     again();
     return false;
+  };
+
+  /* The affordance the banner below offers. It calls hydrateWithRetry and NOT `retrySync`:
+     retrySync is the failed-SAVE path and its first line returns unless `hydratedForUser` is
+     already set for this user, which on this path it is not, by definition — so wiring the button
+     to it would render an affordance that does nothing. `loadingRef` is checked because
+     hydrateFromCloud's own no-double-load guard answers TRUE for a load already in flight, and a
+     `true` with nothing hydrated would strand the button on 'Trying…' with nothing to clear it. */
+  const retryCloudLoad = ()=>{
+    if(!user || loadingRef.current || hydratedForUser.current === user.id) return;
+    setCloudLoad('retrying');
+    hydrateWithRetry(user.id, 6000);
   };
 
   /* A phone never page-loads — the same fact the iCal foreground re-sync exists for — so without
@@ -4611,6 +4648,22 @@ function App(){
       </div>
 
       <div className="wrap">
+        {/* The one state in the app where everything she does is thrown away, so it sits above
+            the greeting rather than beside the sync link in the top bar. The retry shipped
+            2026-10-06 covers the transient blip (every occurrence in production so far); this is
+            the case where all three attempts failed, and until now the load went on looking
+            completely normal while persisting nothing. The copy says what is true and nothing
+            more: it does NOT say "saved on this device", because the per-user backup is
+            deliberately not written from the failed path — writing it would mirror the state
+            hydration failed to replace, win the next load by being newer and clobber her real
+            cloud row. */}
+        {user && cloudLoad && (
+          <div className="load-banner" role="alert">
+            <div className="t">Can't reach your saved data</div>
+            <div className="s">Anything you change now is <b>not being saved</b> — not to the cloud, and not to this phone. Your shifts are safe where they are; this device just can't read them right now.</div>
+            <button onClick={retryCloudLoad} disabled={cloudLoad==='retrying'}>{cloudLoad==='retrying'?'Trying…':'Try again'}</button>
+          </div>
+        )}
         <div className="greet-row">
           <div className="greet"><div className="hi">{greeting()}</div><div className="name">{name==='there'?'Welcome back':name}</div></div>
           <div className="period" role="group" aria-label="Pay period"><button onClick={()=>movePeriod(-1)} aria-label="Previous pay period">‹</button><span className="num" aria-live="polite">{periodLabel}</span><button onClick={()=>movePeriod(1)} aria-label="Next pay period">›</button></div>
