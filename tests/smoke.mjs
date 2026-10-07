@@ -3747,7 +3747,10 @@ const run = async () => {
      (b) the failed path must still write nothing -- mirroring the un-replaced state into the
          per-user backup would make it win the next load by being newer and clobber her real cloud
          row, which is the exact bug the gate exists to prevent, one load later. */
-  if (want(34)) {
+  /* 34 is the retry itself; 35 is the banner that speaks for an EXHAUSTED retry. They share one
+     stub — the flaky `user_data` select below — so the sections share a block rather than the
+     stub being pasted twice and drifting. SMOKE_ONLY=35 still means only 35's assertions. */
+  if (want(34) || want(35)) {
     const UID = '34343434-3434-4343-8343-343434343434';
     const CLOUD = { name: 'Cloud Nurse', baseRate: 44.44, setupComplete: true, shifts: {}, differentials: {} };
 
@@ -3824,7 +3827,7 @@ const run = async () => {
 
     /* --- the transient case, which is every occurrence in production so far: one failure, then
            the retry lands and the load becomes saveable. */
-    {
+    if (want(34)) {
       const { ctx, page, errors, logs } = await flaky(1);
       await page.waitForTimeout(3000);   // attempt 2 is scheduled at +1500ms, then a 500ms save debounce
       const got = await page.evaluate(() => ({
@@ -3858,7 +3861,7 @@ const run = async () => {
            Invariant 1's 8s watchdog, which replaces the app with the boot error screen, so the
            wait is bounded just inside it and a timeout is reported as a FAIL rather than aborting
            the run. */
-    {
+    if (want(34)) {
       const { ctx, page } = await flaky(99);
       let cleared = false;
       try {
@@ -3873,7 +3876,7 @@ const run = async () => {
     }
 
     /* --- exhaustion: three attempts, then it stops, and it has still written nothing anywhere. */
-    {
+    if (want(34)) {
       const { ctx, page, logs } = await flaky(99);
       await page.waitForTimeout(7000);   // attempts at 0, +1500, +5500
       const got = await page.evaluate((k) => {
@@ -3913,12 +3916,129 @@ const run = async () => {
            `prevUserId`, the auth handler's record of who is signed in, nulled on SIGNED_OUT --
            firing it mid-backoff needs a timing window the harness cannot hold open, so it is
            pinned at the source the way §11 and §33 pin what a drive cannot see. */
-    {
+    if (want(34)) {
       const src = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
       ok('hydrate-retry: a retry is abandoned if she signed out while it waited',
         /if\(prevUserId\.current !== userId \|\| hydratedForUser\.current === userId\) return;/.test(src));
       ok('hydrate-retry: the awaited first attempt is the only one the splash waits on',
         /const first = await hydrateFromCloud\(userId, timeoutMs, 1\);/.test(src));
+    }
+
+    /* ======================= 35: the banner for an exhausted load =======================
+       The retry above covers the transient blip. This is the other half: when all three attempts
+       fail, the load persists NOTHING — not the cloud, not localStorage — and before this it went
+       on looking entirely normal. */
+    if (want(35)) {
+      /* --- the case the banner exists for, and the three things it must not be. */
+      {
+        const { ctx, page } = await flaky(99);
+        await page.waitForTimeout(7000);   // attempts at 0, +1500, +5500
+        const banner = page.locator('.load-banner');
+        const shown = await banner.count();
+        ok('load-banner: an exhausted cloud load finally says so', shown === 1, String(shown));
+        const text = shown ? (await banner.innerText()) : '';
+        ok('load-banner: and says the thing that is actually true — nothing is being saved',
+          /not being saved/i.test(text), JSON.stringify(text));
+        /* The note this was built from names reusing `syncError` as wrong fix #1: its string
+           claims the edit was kept locally, and on this path the per-user backup is deliberately
+           never written. A banner that repeated it would be telling her her work is safe. */
+        ok('load-banner: it does NOT repeat the failed-save copy, which would be a lie here',
+          !/saved on this device/i.test(text), JSON.stringify(text));
+        /* Wrong fix #2 — writing the backup from the failed path would clobber her real cloud row
+           on the next load. §34 pins the write itself; this pins that raising the banner did not
+           quietly bring it back. */
+        const backup = await page.evaluate((k) => localStorage.getItem(k), `${STORAGE_KEY}::${UID}`);
+        ok('load-banner: raising it still writes no per-user backup', !backup, String(backup));
+        /* It sits above the greeting on the first screen, so it has to fit one. Measured against
+           `clientWidth`, NOT `window.innerWidth`: innerWidth GROWS with the overflow in this
+           headless profile (658 for a 390pt viewport when a deliberately 640px-wide banner was
+           planted), so the obvious subtraction cancels itself out and the check can never fail.
+           §3 compares against the viewport width for the same reason. */
+        const over = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth,
+        }));
+        ok('load-banner: no sideways scroll on an iPhone 13 with the banner up',
+          over.scroll <= over.client, `${over.scroll} vs ${over.client}`);
+        await ctx.close();
+      }
+
+      /* --- the affordance: it re-attempts, and it re-attempts the LOAD.
+             Every step below is reachable with the banner missing entirely, because a click on a
+             selector that is not there THROWS and aborts the run — and an aborted run is not a
+             failed assertion, which is the first of the three ways the `harness` skill says this
+             check lies. Negative-testing this section by deleting the banner has to produce FAILs,
+             not a harness error. */
+      {
+        const { ctx, page } = await flaky(99);
+        await page.waitForTimeout(7000);
+        const btn = page.locator('.load-banner button');
+        const have = (await btn.count()) === 1;
+        ok('load-banner: it offers her something to do about it', have);
+        const before = await page.evaluate(() => window.__selects);
+        if (have) await btn.click();
+        await page.waitForTimeout(250);
+        const label = have ? await btn.innerText() : '';
+        ok('load-banner: tapping it says it heard her', /Trying/i.test(label), JSON.stringify(label));
+        const mid = await page.evaluate(() => window.__selects);
+        ok('load-banner: and tapping it actually re-attempts the load',
+          have && mid === before + 1, `${before} -> ${mid}`);
+
+        /* The recovery: let the next attempt land and the banner must retire itself — and the
+           load must be saveable again, which is the whole point of retrying rather than just
+           apologising. */
+        await page.evaluate(() => { window.__budget = 0; });
+        if (have) await btn.click().catch(() => {});
+        await page.waitForTimeout(6000);
+        const after = await page.evaluate(() => ({
+          banner: document.querySelectorAll('.load-banner').length,
+          upserts: window.__upserts,
+          name: (document.querySelector('.greet .name') || {}).textContent || '',
+        }));
+        ok('load-banner: a landed retry retires it', have && after.banner === 0, String(after.banner));
+        ok('load-banner: and the load is saveable again', have && after.upserts >= 1, String(after.upserts));
+        ok('load-banner: the blob it finally read is the cloud one',
+          have && after.name === 'Cloud Nurse', JSON.stringify(after.name));
+        await ctx.close();
+      }
+
+      /* --- the regression that would make it worse than nothing: a scary red panel on every
+             transient blip, which is every occurrence in production so far.
+             Budget 2, read at 3000ms: attempts 1 (0ms) and 2 (+1500ms) have failed and attempt 3
+             (+5500ms) has not run, so the chain is mid-flight and NOT exhausted. The first draft
+             of this used budget 1 and read at 3000ms, which passed with the break deliberately
+             in place — raising the banner in `hydrateFromCloud`'s catch flashes it for the 1500ms
+             before the retry lands, and reading after that window cannot see it. Checking
+             mid-chain is what makes it falsifiable. */
+      {
+        const { ctx, page } = await flaky(2);
+        await page.waitForTimeout(3000);
+        const mid = await page.evaluate(() => ({
+          banner: document.querySelectorAll('.load-banner').length, selects: window.__selects,
+        }));
+        ok('load-banner: a blip the retry is still working through raises nothing',
+          mid.banner === 0 && mid.selects === 2, `banner=${mid.banner} selects=${mid.selects}`);
+        await page.waitForTimeout(4000);
+        const end = await page.evaluate(() => ({
+          banner: document.querySelectorAll('.load-banner').length, selects: window.__selects,
+          name: (document.querySelector('.greet .name') || {}).textContent || '',
+        }));
+        ok('load-banner: and the attempt that finally lands leaves nothing behind',
+          end.banner === 0 && end.selects === 3 && end.name === 'Cloud Nurse',
+          `banner=${end.banner} selects=${end.selects} name=${JSON.stringify(end.name)}`);
+        await ctx.close();
+      }
+
+      /* --- what a drive cannot hold open: a sign-out mid-backoff, and the retry wiring. */
+      {
+        const src = readFileSync(join(SCRATCH, 'index.html'), 'utf8');
+        ok('load-banner: an exhausted chain she has already left raises nothing',
+          /const giveUp = \(\)=>\{\s*if\(prevUserId\.current !== userId \|\| hydratedForUser\.current === userId\) return;\s*setCloudLoad\('failed'\);/.test(src));
+        ok('load-banner: the button retries the LOAD, not the save — retrySync is gated on the very flag this path lacks',
+          /const retryCloudLoad = \(\)=>\{[\s\S]{0,400}?hydrateWithRetry\(user\.id, 6000\);/.test(src)
+          && /className="load-banner"[\s\S]{0,700}?<button onClick=\{retryCloudLoad\}/.test(src));
+        ok('load-banner: only a landed load retires it, so it cannot be cleared by a save succeeding',
+          /setCloudLoad\(null\);\s*\/\/ a landed load is the only thing that retires the banner/.test(src));
+      }
     }
   }
 

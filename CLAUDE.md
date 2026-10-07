@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **555 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **571 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -324,8 +324,16 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   from the failed path** — it would mirror the state hydration failed to replace, win the next load
   by being newer, and clobber her real cloud row. Pinned by `tests/smoke.mjs` §34, which asserts the
   boot bound *causally* (when the splash goes, exactly one attempt has happened) after a stopwatch
-  version let a partially-awaited chain through. She is still not told when all three attempts fail
-  — `BACKLOG.md` → P2.
+  version let a partially-awaited chain through. **When all three attempts fail she is told, since 2026-10-07**:
+  one `cloudLoad` state (`null`/`'failed'`/`'retrying'`), a `role="alert"` banner above the
+  greeting, and a button calling `hydrateWithRetry`. Deliberately **not** `syncError` — its string
+  says "saved on this device", which on this path is false, and its `retrySync` is itself gated on
+  `hydratedForUser`, so it would render an affordance that does nothing. `'failed'` is raised only
+  by an **exhausted** chain, never the first failure (that flashes a red panel for one 1500ms
+  backoff), and only a landed load retires it. Pinned by `tests/smoke.mjs` §35, whose own first
+  draft held two unfalsifiable assertions: a transient-blip check that read after the retry landed,
+  and a no-sideways-scroll check subtracting `window.innerWidth`, which **grows with the overflow**
+  — compare against `clientWidth`.
 - **Analytics.** `track(name, props)` → `events`, insert-only. Coarse `snake_case`
   `<surface>_<verb>` names only — **never wage or goal figures**. `session_end` goes through
   `beaconInsert()` (keepalive fetch), not `track()`, and the row to read is the LAST per load.
@@ -469,6 +477,20 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   ask the owner to merge; the two required checks are the gate. Exception: wage-core, schema or
   security changes wait for him, and the reply says so. (Owner decision, 2026-10-03.)
 - Delete merged branches; never the open PR heads or the two protected branches (Invariant 11).
+- **A merge is not a deploy, and since 2026-10-06 that has been literal.** Run **168** (`a64348b`,
+  PR #150) has sat `status:"waiting"` with its one `deploy` job `waiting` since 2026-10-06 08:49:27
+  — the status Actions uses for a **deployment protection rule** on the `github-pages` environment,
+  which the job declares. Because `concurrency: group:"pages"` holds the group, everything merged
+  behind it is stuck too: runs 169 and 170 `cancelled`, run 171 `pending` with zero jobs created.
+  As of 2026-10-07 badgebudget.com serves the pre-#150 bytes and **four merged, green changes are
+  unshipped**. Nothing in this repo can clear it — the fix is to open run 168 and approve it if it
+  offers *Review deployments*, otherwise Settings → Environments → `github-pages` and remove the
+  reviewer or wait timer; clearing 168 should drain the queue in one go, since the next run checks
+  out the branch head. Written down here rather than left in `BACKLOG.md` because it is now a
+  standing property of this repo's deploy path and it is **Invariant 9's blast shape arriving by a
+  different door** — everything merged after that point sits unshipped while looking merged. Treat
+  every merge as unshipped until the live `curl … | grep -c <marker>` against badgebudget.com says
+  otherwise; that step, not the green check, is what caught this.
 
 ## Autonomous nightly loop
 
