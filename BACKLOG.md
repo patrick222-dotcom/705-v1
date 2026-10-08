@@ -89,10 +89,36 @@ and the push P0 it pointed at was fixed the same day.
   are both current (nothing has changed them since 2026-09-24 and 2026-09-16) and `CNAME` serves
   `badgebudget.com`, so the publish set is intact and only `index.html` is stale. That precision
   is new because tonight's build is the tool that produces it: **`node scripts/deploy_watch.mjs`**,
-  now the loop's step-5 check. The owner step is unchanged and still the only thing that clears
-  this — open run 168 and approve it if it offers *Review deployments*, otherwise Settings →
-  Environments → `github-pages` and remove the reviewer or wait timer. Then
-  `node scripts/deploy_watch.mjs` should say `LIVE`.
+  now the loop's step-5 check. **And later the same day the cause was finally READ rather than guessed, which
+  disproved the standing hypothesis.** `GET /repos/patrick222-dotcom/705-v1/actions/runs/
+  37438695953/pending_deployments` returns `wait_timer: 0`, `wait_timer_started_at: null` and
+  `reviewers: []`. There is **no required reviewer and no wait timer** — so "open run 168 and
+  approve it if it offers *Review deployments*" was wrong for three nights, and so was "remove the
+  reviewer under Settings → Environments": neither control exists on this environment. What run 168
+  is, is an **orphaned pending deployment** — a run holding the `pages` concurrency group that can
+  never start and can never be approved.
+  **Why it stayed a guess so long, and how to check it next time:** the environments REST API
+  (`/repos/{o}/{r}/environments`) is **403 through this session's proxy** — *"Access to this GitHub
+  API path is not permitted"* — which is what every prior night ran into and recorded as "not
+  readable from this session's tooling". But `pending_deployments` is an **Actions** path and is
+  permitted. Reach for that one; it answers the question in a single call.
+  **So the owner step is CANCEL, not approve:** open the run and press *Cancel workflow*. That
+  frees the concurrency group, and the next run checks out the branch head and ships all eight
+  commits at once. (An agent session cannot do it — the cancel endpoint is blocked by the sandbox's
+  own classifier.) Then `node scripts/deploy_watch.mjs` should say `LIVE`.
+- [ ] **Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group** (P0 ·
+  `harness:unscoped` · **needs the owner or an approved session — editing a workflow file is
+  blocked for agent sessions in this sandbox**). This is the structural half of the item above, and
+  the reason 48 hours of silence was possible at all. `cancel-in-progress: false` is GitHub's
+  starter default and is written for busy repos with slow production deploys that should be allowed
+  to finish; here it means whatever holds the group holds it **forever**, including a run that will
+  never start. With `true`, the next merge cancels the holder and deploys itself, so a stall costs
+  one deploy cycle rather than every deploy after it. The cost is small and measurable: the job is
+  `cp` of five files plus `upload-pages-artifact` + `deploy-pages`, ~20s end to end on runs 164–167,
+  and anything interrupted is redone by the newer run seconds later. **One neat property, expected
+  but not yet proven:** the commit carrying this change would itself run under the new setting, so
+  it should cancel run 168 and self-clear the whole queue without any manual cancel. Treat that as
+  expected behaviour, not a verified claim, until a run demonstrates it.
   **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and #154
   (tonight's §35 banner). All five are merged and green; none is live.
   **Confirmed after tonight's merge, so this is observation and not prediction.** #154 squash-merged
