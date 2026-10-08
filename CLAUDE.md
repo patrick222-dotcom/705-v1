@@ -131,6 +131,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
+| `scripts/deploy_watch.mjs` + `scripts/test_deploy_watch.mjs` | is what is MERGED actually LIVE? Hashes the three HTML files of the publish set against the deploy branch's git blobs — `deploy.yml` copies them verbatim, so a sha256 match is conclusive and needs no marker string. Five verdicts (`LIVE` / `BEHIND` / `NOT_THE_APP` / `UNKNOWN_BUILD` / `UNREACHABLE`); `BEHIND` names the commit actually being served and how many changes are unshipped. Needs network, so like `silence_watch.mjs`'s live probes it is not in CI; its 55-assertion classifier suite is |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/ops-console-scope.md` | the ops console design record — why an artifact can never be live, the three read-path shapes and why security-definer functions won, the wedge that shipped, phases 2–4, and the written-down line on what the console may never show |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
@@ -489,8 +490,18 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   out the branch head. Written down here rather than left in `BACKLOG.md` because it is now a
   standing property of this repo's deploy path and it is **Invariant 9's blast shape arriving by a
   different door** — everything merged after that point sits unshipped while looking merged. Treat
-  every merge as unshipped until the live `curl … | grep -c <marker>` against badgebudget.com says
-  otherwise; that step, not the green check, is what caught this.
+  every merge as unshipped until a live check against badgebudget.com says otherwise; that step,
+  not the green check, is what caught this.
+  **Since 2026-10-08 that check is one command: `node scripts/deploy_watch.mjs`.** It replaces the
+  per-change `curl … | grep -c <marker>` ritual, which only ever worked when you already knew which
+  string was new, said nothing at all on a night that shipped no new string, and "passed" against
+  the ~162-byte github.io redirect body. Because `deploy.yml` copies the publish set verbatim the
+  served file is byte-for-byte a git blob, so the watch sha256s `index.html`, `privacy.html` and
+  `ops.html` against the deploy branch's own history and reports which commit is live — `BEHIND`
+  names it and counts the unshipped changes. `UNKNOWN_BUILD` is deliberately **not** green: a
+  build it cannot place is a check that could not be established, the same rule `silence_watch`'s
+  `UNKNOWN` encodes. It also checks `CNAME`, the one Invariant 8 failure that is a total outage
+  rather than a stale page.
 
 ## Autonomous nightly loop
 
@@ -531,8 +542,9 @@ Each run is **groom → build → gate → deploy → notify**:
    the boot error screen; zero non-network page errors; SRI intact (5); boot hardening + wage-core
    untouched; wage-math probes pass; money surfaces legible on iPhone 13.
 4. **Deploy** only on green: commit with the dated Done-log line, push the work branch
-   (`--force-with-lease`), PR to the deploy branch, squash-merge, confirm live at badgebudget.com. If
-   push is denied, put `git format-patch` output in the summary rather than losing the work.
+   (`--force-with-lease`), PR to the deploy branch, squash-merge, then confirm live with
+   `node scripts/deploy_watch.mjs` — a `LIVE` verdict, not a green check, is what counts as shipped.
+   If push is denied, put `git format-patch` output in the summary rather than losing the work.
 5. **Notify** — push + email fire from the Routine itself now; the run still ends with 1–2 lines
    saying what shipped (or why not) and the live-confirmation result.
 
