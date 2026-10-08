@@ -484,10 +484,24 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   which the job declares. Because `concurrency: group:"pages"` holds the group, everything merged
   behind it is stuck too: runs 169 and 170 `cancelled`, run 171 `pending` with zero jobs created.
   As of 2026-10-07 badgebudget.com serves the pre-#150 bytes and **four merged, green changes are
-  unshipped**. Nothing in this repo can clear it — the fix is to open run 168 and approve it if it
-  offers *Review deployments*, otherwise Settings → Environments → `github-pages` and remove the
-  reviewer or wait timer; clearing 168 should drain the queue in one go, since the next run checks
-  out the branch head. Written down here rather than left in `BACKLOG.md` because it is now a
+  unshipped**. Nothing in this repo can clear it.
+  **The cause was read from the API on 2026-10-08 and it is NOT what the three nights before it
+  guessed.** `GET /actions/runs/37438695953/pending_deployments` returns `wait_timer: 0` and
+  `reviewers: []` — **no required reviewer, no wait timer**. So there is nothing to approve and no
+  *Review deployments* button to press; the earlier advice in this file to approve it, or to remove
+  a reviewer under Settings → Environments, was wrong and pointed at a control that does not exist.
+  (The environments REST API is 403 through this session's proxy, which is why it stayed a guess
+  for three nights; `pending_deployments` is an Actions path and is permitted — reach for that one.)
+  It is an **orphaned pending deployment**: a run holding the `pages` concurrency group that can
+  never start and can never be released. **The fix is to CANCEL run 168**, which frees the group;
+  the next run then checks out the branch head and ships everything at once.
+  **The structural fix is `cancel-in-progress: true`** on `deploy.yml`'s `pages` concurrency group.
+  `false` (GitHub's starter default, written for busy repos with slow production deploys) makes any
+  stuck run a permanent blocker of every deploy after it. With `true` the next merge cancels the
+  holder and deploys itself, so a stall costs one cycle instead of all of them. What is given up is
+  small here — the job is `cp` of five files plus the Pages upload, ~20s end to end, and anything
+  interrupted is redone by the newer run seconds later. **Not yet applied:** editing a workflow file
+  is blocked for agent sessions in this sandbox, so it needs the owner or an approved session. Written down here rather than left in `BACKLOG.md` because it is now a
   standing property of this repo's deploy path and it is **Invariant 9's blast shape arriving by a
   different door** — everything merged after that point sits unshipped while looking merged. Treat
   every merge as unshipped until a live check against badgebudget.com says otherwise; that step,
