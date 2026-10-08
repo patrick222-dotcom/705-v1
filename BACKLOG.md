@@ -77,6 +77,22 @@ and the push P0 it pointed at was fixed the same day.
   still unverified for the same reason — environment settings are not readable from this session's
   tooling. Approving or clearing run 168 should drain the whole queue in one go, because 171 (and
   whatever lands after it) checks out the branch head, which carries #150 through tonight.
+  **2026-10-08 — third night, and it has got worse again: run 168 is now ~47½ hours in `waiting`
+  and SEVEN merged green commits are unshipped.** Read at 08:1x UTC: run **168** (`a64348b`, #150)
+  still `status:"waiting"`, `updated_at` unmoved since 2026-10-06 08:49:27. Behind it runs **169,
+  170, 171, 172 and 173** are all `cancelled` and run **174** (`429f25d`, #157, created
+  2026-10-07 23:26:29) is `status:"pending"` with zero jobs. Unshipped: #150, #151, #152, #153,
+  #154, #155, #157.
+  **And the live bytes are now identified exactly, not just "pre-#150".** badgebudget.com serves a
+  body whose sha256 is byte-identical to the `index.html` blob of commit **`41d2549`** — PR #149,
+  deployed by run 167 on 2026-10-05, 468,258 bytes on both sides. `privacy.html` and `ops.html`
+  are both current (nothing has changed them since 2026-09-24 and 2026-09-16) and `CNAME` serves
+  `badgebudget.com`, so the publish set is intact and only `index.html` is stale. That precision
+  is new because tonight's build is the tool that produces it: **`node scripts/deploy_watch.mjs`**,
+  now the loop's step-5 check. The owner step is unchanged and still the only thing that clears
+  this — open run 168 and approve it if it offers *Review deployments*, otherwise Settings →
+  Environments → `github-pages` and remove the reviewer or wait timer. Then
+  `node scripts/deploy_watch.mjs` should say `LIVE`.
   **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and #154
   (tonight's §35 banner). All five are merged and green; none is live.
   **Confirmed after tonight's merge, so this is observation and not prediction.** #154 squash-merged
@@ -429,6 +445,48 @@ and the push P0 it pointed at was fixed the same day.
   `toRemove` is empty. **Do not fix it blind, though:** the opposite error (a cancelled shift that
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
+
+### P3 (new, groom 2026-10-08)
+- [ ] **A third of devices report a DIFFERENT user agent at `session_end` than at `app_open`, in
+  the same load** — `harness:unscoped`, almost certainly a crawler artifact rather than an app
+  bug, and recorded only so the cohort re-baseline does not read it as two devices. Tonight three
+  of the four bot-shaped loads did it: `7e5bebba` opened as `Macintosh` at 08:58:54 and exited as
+  `X11; Linux x86_64` twelve seconds later; `863a4f49` opened as `Windows NT 10.0` and exited as
+  Linux seven seconds later; `8db7ff70` opened as `iPhone OS 26_3` and exited as Linux fifteen
+  seconds later. Across the whole table **8 of 24 devices that have both events disagree** — that
+  figure is an upper bound, because it groups by `anon_id` over all time and a genuine browser
+  upgrade counts too; the three above are same-load and are not.
+  **Why it is probably not ours.** Both senders build the row through the same `eventRow()`, which
+  reads `navigator.userAgent` once per call, and that value cannot change mid-load in a real
+  browser — the single row shape exists precisely so the two cannot drift. The shape fits a
+  prerender/preview service that renders with a spoofed UA and fires the unload beacon from the
+  real headless runner. Every one of tonight's three is `shifts:0`, `secs:8–15`, `last:ob_step`,
+  i.e. nothing a nurse did. **Unverified**, and deliberately nothing to build: the only consumer
+  that cares is the device classifier, which CLAUDE.md already records as broken and inflating
+  every activation figure since 2026-09-07. Fold it into that re-baseline — a UA-based classifier
+  sees two devices per bot load — rather than treating it as its own defect. It is the same shape
+  the 2026-09-27 `session_end` duplicate note found (`Ddg/26.6` vs `DuckDuckGo/7` on one load),
+  which is corroboration that the UA, not the id, is the unreliable column.
+- [x] **Second occurrence of the non-uuid `anon_id`, and it confirms the 2026-10-06 resolution
+  rather than reopening it.** `muymw08fqgtebelw1l` (2026-10-07 21:42:55.993, desktop Chrome on
+  Windows, `app_open` + `ob_step`, no `session_end`) decodes exactly the way the first one did:
+  `parseInt('muymw08f',36)` is 1791409375023 = **2026-10-07T21:42:55.023Z**, 970ms before that
+  row's own `created_at`, and the remaining 10 characters are what
+  `Math.random().toString(36).slice(2)` produces. That is `freshAnonId()`'s non-crypto fallback,
+  on a second crawler-shaped desktop Chrome load, and it persisted (no `nostore-` prefix). Nothing
+  to build; the cohort rule is unchanged and still correct: exclude on
+  `anon_id not like 'nostore-%'`, **never on uuid shape**.
+- [ ] **PR #156 is LIVE human work and it DOES gate nightly items — unlike the four stale drafts.**
+  Opened 2026-10-07 23:19, ready (not draft), base is the deploy branch: *"feat(core): extract the
+  wage math into an importable module for the MCP gateway"*. It changes `index.html` across
+  **twelve hunks from line 764 to 3954** — including `computeNet`'s neighbourhood (~1920–2041) and
+  the top of `App` (~3886–3954) — plus `tests/smoke.mjs`, `scripts/check_build.mjs`,
+  `.github/workflows/ci.yml` and `CLAUDE.md`. It also hoists `periodPaycheck` and `keepRatioOf`
+  out of `App`, i.e. **it is a wage-core change** (Invariant 3), so it is the owner's to merge, not
+  a nightly's. Practical consequence for the next run: treat essentially all of `index.html` and
+  the end of `tests/smoke.mjs` as occupied until #156 lands or closes. Tonight's build was chosen
+  to touch neither. The 2026-10-05 P3 below (the four month-stale reverse-diff drafts) still
+  stands and is unrelated — #156 is not one of them.
 
 ### P2 (new, groom 2026-10-06)
 - [x] ~~**An exhausted cloud hydration is still silent — she is not told that nothing is saving**~~
@@ -1460,6 +1518,63 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-08 — **`deploy_watch.mjs`: one command that answers "is what is MERGED actually LIVE?",
+  because for three nights running nothing in this repo could.** Pages run 168 has been
+  `status:"waiting"` since 2026-10-06 08:49:27; `concurrency: group:"pages"` holds everything
+  behind it, so runs 169–173 cancelled and 174 queued, and **seven merged green commits are
+  unshipped** while badgebudget.com serves the bytes of `41d2549` from 2026-10-05. Nothing noticed
+  on its own: the merges were green, the Actions tab looked busy, and each of the last three
+  nightlies caught it only because a human remembered to curl the live site for a string they
+  happened to know was new. That is Invariant 9's `Detect` line verbatim — *"deploys stop while
+  pushes keep succeeding, so nothing fails loudly"* — and three hand-runs of one check is the same
+  bar that produced `silence_watch.mjs` on 2026-09-26.
+  **What makes it automatable at all is that `deploy.yml` copies the publish set VERBATIM**
+  (`cp index.html _site/`), so the served file is byte-for-byte a git blob. Confirmed before
+  building anything: the live body's sha256 equals commit `41d2549`'s `index.html` blob exactly,
+  468,258 bytes both sides. A hash comparison is therefore **conclusive and needs no marker
+  string**, which retires three real weaknesses of the `curl … | grep -c <marker>` ritual it
+  replaces: it only ever worked when you already knew which string was new, it said nothing at all
+  on a night that shipped no new string, and it "passed" against the ~162-byte github.io redirect
+  body. It also identifies **which** commit is live, not merely that it is the wrong one.
+  Five verdicts: `LIVE` / `BEHIND` (names the served commit, its date, its subject and how many
+  later changes are unshipped) / `NOT_THE_APP` / `UNKNOWN_BUILD` / `UNREACHABLE`. Scope is the
+  three HTML files of Invariant 8's publish set plus a `CNAME` presence check — `CNAME` because
+  its absence is a total outage rather than a stale page, and not `pdf.worker.min.js` because it
+  is a megabyte and has never changed. Live run tonight, in 1.2s: `BEHIND`, `index.html` serving
+  `41d2549`, `privacy.html` and `ops.html` current, `CNAME` intact.
+  **Three judgement calls worth keeping.** (a) `UNKNOWN_BUILD` exits **2, not 0** — a build the
+  watch cannot place is a check that could not be established, the same rule `silence_watch`'s
+  `UNKNOWN` encodes, and reporting it green would be the exact failure this tool exists to
+  prevent. (b) The github.io guard is **imported** from `silence_watch.mjs` rather than copied,
+  because two copies of that rule is how one of them gets relaxed and nobody notices. (c) Hash is
+  checked **before** shape, which is what lets a 20-character `privacy.html` be `LIVE` without
+  holding it to `index.html`'s 50,000-character floor; reversing that order FAILs ten assertions.
+  **One wording bug was caught and fixed during the build, and it is the house failure mode:** the
+  first `BEHIND` string printed the LIVE commit's subject immediately after the HEAD commit's sha,
+  which reads as though the newest change were already out. There is now an assertion on the
+  ordering of the two shas and the subject between them.
+  `scripts/test_deploy_watch.mjs`: **55 assertions, 14 deliberate breaks**, every assertion family
+  reached by at least one. The first negative-test round **aborted instead of failing** — a null
+  deref on `matchCommit(...).behind` — which is the first of the three ways the `harness` skill
+  says this check lies, so the assertions were made null-safe and the whole round re-run until
+  every break produced real FAILs. The classifier suite is in the CI gate beside the groom-seed
+  and silence-watch suites; the live probes are not, same split and same reason.
+  Gate: 571/571 smoke, 11/11 build, 33/33 groom-seed, 39/39 silence-classifier, 55/55
+  deploy-classifier. **No `index.html` change at all** — deliberate, because PR #156 (live human
+  work, wage-core) occupies twelve hunks of it, and because nothing can be live-verified while the
+  Pages queue is stuck.
+  **NOT LIVE, and this one says so about itself:** tonight's merge joins the same stuck queue, so
+  the deploy-watch verdict after merging is still `BEHIND` — by design. It is reporting the truth
+  the loop has been unable to state mechanically for three nights.
+  Groom (silence_watch: **FRESH**, newest event 10.5h old): 1,224 events total, **23 in 48h with
+  exactly one real nurse session** (device `8e0e32fe`, iPhone OS 27_2, `ics_sync_result
+  {up_to_date, nursegrid}`, `session_end {shifts:8}`); everything else is bot-shaped. No new
+  feedback for 24 days (11 rows, newest 2026-09-14). `client_error` unchanged at **22 rows**,
+  newest 2026-10-04 — so the exhausted-load path #154 was built for has not fired, and neither has
+  the `AbortError` #149 was built for. The 422 running count is **2 in 29**; still do not build a
+  retry. Three new notes filed: the same-load user-agent mismatch, a second non-uuid `anon_id`
+  (which confirms rather than reopens the 10-06 resolution), and PR #156 as live work that gates
+  `index.html` for the next run.
 - 2026-10-07 — **An exhausted cloud load finally says so: "Can't reach your saved data — nothing
   you change now is being saved."** The retry that shipped 2026-10-06 (#150, §34) covers the
   transient blip, which is every occurrence in production so far. This is the other half the 10-06
