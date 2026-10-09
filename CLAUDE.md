@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **571 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **591 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -416,6 +416,22 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   shifts she actually worked. It shipped because the 10-03 claim that her 13 were "cleaned up by
   hand" was **false**: both her devices still reported `session_end {shifts:165}` eight hours after
   #145 deployed. Pinned by `tests/smoke.mjs` §32.
+  **An update says what it is about to change, not just how many** (2026-10-09): removals have
+  been spelled out by date since the stepper shipped, and updates were one clause —
+  `Update 128 that changed?`. On 2026-10-08 that is exactly what one real sync showed: 128 of her
+  131 synced shifts had their date, hours or start rewritten, and `ics_import_done` landed **1.8
+  seconds** after the stepper opened, because with no new events to classify the stepper opens
+  straight on the confirm card and there was nothing on it to read. An update is as wage-affecting
+  as a removal — the date picks the paycheck, hours and start pick the differential — so the card
+  now carries the kind of change (`3 move to a different day, 125 change time or length.`) and the
+  first four spelled out before → after (`Oct 12 → Oct 14; Nov 2, 12h → 24h, 7:00 AM → 7:00 PM
+  +124 more`). `icsPlanFromExisting` carries `prevHours`/`prevStart` for this and **nothing
+  applies them** — the shift is still rewritten from `hours`/`start`. The kind line comes first on
+  purpose: it is the only part that stays readable at 128. **Why those 128 changed is still open**
+  (`BACKLOG.md` → P1, unverified) — the disclosure is right under either answer. Pinned by
+  `tests/smoke.mjs` §36, whose own overflow assertion was unfalsifiable in its first draft for a
+  **second** reason beyond §35's: the sheet is `position:fixed`, so an overflowing child never
+  reaches `documentElement.scrollWidth` at all. Measure the block against the sheet.
   **A feed's times are converted to the viewer's clock** (2026-09-28): a trailing `Z` is UTC and a
   `TZID=` names a zone, both converted; a bare value is floating per RFC 5545 §3.3.5 and left as
   written; an unknown zone falls back to as-written rather than dropping the shift. It did not used
@@ -484,7 +500,13 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   which the job declares. Because `concurrency: group:"pages"` holds the group, everything merged
   behind it is stuck too: runs 169 and 170 `cancelled`, run 171 `pending` with zero jobs created.
   As of 2026-10-07 badgebudget.com serves the pre-#150 bytes and **four merged, green changes are
-  unshipped**. Nothing in this repo can clear it.
+  unshipped**. Nothing in this repo can clear it. **2026-10-09, fourth night: run 168 has now been
+  `waiting` for ~72 hours and NINE merged green commits are unshipped** (#150, #151, #152, #153,
+  #154, #155, #157, #158, #159), two of which change `index.html`. Run 176 (`078a4d8`) is
+  `pending` with zero jobs; 169–175 are all `cancelled`. `deploy_watch.mjs` places the live
+  `index.html` at `41d2549` (2026-10-05) with `privacy.html`, `ops.html` and `CNAME` all current,
+  so the site is healthy and only stale. The owner step is
+  unchanged and is one click: **Cancel workflow on run 168.**
   **The cause was read from the API on 2026-10-08 and it is NOT what the three nights before it
   guessed.** `GET /actions/runs/37438695953/pending_deployments` returns `wait_timer: 0` and
   `reviewers: []` — **no required reviewer, no wait timer**. So there is nothing to approve and no

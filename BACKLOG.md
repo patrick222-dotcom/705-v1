@@ -106,6 +106,16 @@ and the push P0 it pointed at was fixed the same day.
   frees the concurrency group, and the next run checks out the branch head and ships all eight
   commits at once. (An agent session cannot do it — the cancel endpoint is blocked by the sandbox's
   own classifier.) Then `node scripts/deploy_watch.mjs` should say `LIVE`.
+  **2026-10-09 — fourth night, ~72 hours, NINE commits unshipped, and nothing about the diagnosis
+  changed.** Re-read first, as the 10-07 note instructed: run **168** (`a64348b`, #150) is still
+  `status:"waiting"`, `updated_at` still unmoved since 2026-10-06 08:49:27. Runs **169–175** are
+  all `cancelled` and run **176** (`078a4d8`, #159, created 2026-10-08 11:41:37) is
+  `status:"pending"` with zero jobs. Unshipped: #150, #151, #152, #153, #154, #155, #157, #158,
+  #159 — plus tonight's, which will make ten. `node scripts/deploy_watch.mjs` in 1.3s: **BEHIND**,
+  `index.html` serving `41d2549` (2026-10-05, "the unload save rides keepalive"), 2 later changes
+  to that file unshipped, `privacy.html` / `ops.html` / `CNAME` all `ok`. So the site is healthy
+  and four days stale, and the one owner click is unchanged: **Cancel workflow on run 168.**
+  Tonight's build was again chosen to need no live verification.
 - [ ] **Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group** (P0 ·
   `harness:unscoped` · **needs the owner or an approved session — editing a workflow file is
   blocked for agent sessions in this sandbox**). This is the structural half of the item above, and
@@ -471,6 +481,66 @@ and the push P0 it pointed at was fixed the same day.
   `toRemove` is empty. **Do not fix it blind, though:** the opposite error (a cancelled shift that
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
+
+### P1 (new, groom 2026-10-09)
+- [x] ~~**A sync rewrote 128 of her shifts and the confirm card said only "Update 128 that
+  changed?"**~~ — SHIPPED 2026-10-09 (see Done log). Pinned by `tests/smoke.mjs` §36, 20
+  assertions, 10 deliberate breaks. **One assertion was unfalsifiable in its first draft and the
+  reason is new**, so it is worth carrying: the no-sideways-scroll check compared
+  `documentElement.scrollWidth` against `clientWidth`, and a deliberate `whiteSpace:'nowrap'` on
+  128 before→after pairs changed **neither** — the sheet is `position:fixed`, so an overflowing
+  child never reaches the document's scroll width at all. It measures the block against the sheet
+  now (346 vs 390), where the same break FAILs. That is §35's lesson arriving by a second door:
+  `innerWidth` grew with the overflow there, and here the overflow never arrives. Original note:
+- [ ] ~~**A sync rewrote 128 of her shifts and the confirm card said only "Update 128 that
+  changed?"**~~ — `harness:drivable`. Found in tonight's groom. Device `f184ffa5` (iPhone iOS
+  18.7 — not the owner's phone), 2026-10-08 18:21:21: `ics_sync_result {changes, nursegrid}` →
+  `ics_sync_done {events:128}` → `ics_import_done {added:0, updated:128, removed:0, skipped:0,
+  shown:0}` at 18:21:23. **`updated:128` means 128 genuinely changed** — the sync path filters
+  `plan.toUpdate` on `changed`, which is a strict compare of dateKey, hours and start — and
+  `added:0` means `groups.length===0`, so the stepper opened **straight on the confirm card**.
+  That card's entire account of 128 rewrites was one clause, `update 128 that changed`, with no
+  days, no before and no after. The gap between the stepper opening and `ics_import_done` is
+  **1.8 seconds**: there was nothing on the card to read.
+  Removals have been itemised by date since the stepper shipped, with a comment saying why ("this
+  is the only destructive thing the stepper does"). An update is the same kind of thing one step
+  removed: the date decides which paycheck the shift lands in and hours/start decide the
+  differential, so a rewrite she cannot inspect moves her estimate exactly as a deletion would.
+  Fix is display only — the kind of change first (it is the one line that stays readable at 128),
+  then the first four spelled out before → after. `prevHours`/`prevStart` ride on the plan for it
+  and nothing applies them.
+- [ ] **Why 128 of 131 synced shifts changed at once is UNVERIFIED, and nothing in the app can
+  currently say** (P1 · source:groom · `harness:unscoped`). This is the other half of the item
+  above and it is deliberately not built against. What is known: device `f184ffa5` imported 131
+  shifts on 2026-10-03 (`added:131`), then **no `app_open` at all** until 2026-10-08, when one
+  sync found 128 of them changed. Its `session_end` shift count went 165 (10-03) → **134**
+  (10-08), so ~31 shifts left the blob in a window that produced no telemetry, and `removed:0`
+  says the sync did not take them. Eleven `shift_saved` rows follow the import over 90 seconds,
+  i.e. she then hand-edited shifts.
+  **Candidate explanations, none of them read:** (a) NurseGrid genuinely republished her schedule;
+  (b) the device's timezone changed between the two syncs, which re-dates every `Z`-stamped feed
+  time through `parseICSDateTime`; (c) an interaction with the Nov 1 DST change already filed as a
+  P1 above — her starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after. Note that
+  f184ffa5 is the **only** device that has ever got a `changes` result (2 of 22
+  `ics_sync_result` rows, both of them its own); device `8e0e32fe` has 18 `up_to_date` and no
+  change ever.
+  **What would settle it, cheapest first:** (1) the owner compares one of her November shifts in
+  BadgeBudget against NurseGrid's own screen — the same side-by-side the DST item already asks
+  for, and it answers both; (2) a coarse change-kind split on `ics_import_done`
+  (`moved`/`retimed` counts, no hours, no wage figure) so the **next** occurrence says which
+  column moved. (2) is a one-line build but it only pays off on a future sync, and tonight's
+  disclosure already shows her the split on screen; do it if a third mass-update lands.
+  **Do not change `parseICSDateTime` on this note** — it is a pay figure, so it needs a dedicated
+  session under the `wage-core` protocol.
+- [ ] **PR #156 is still open, still ready, still live human work, and still gates `index.html`
+  lines 764–3954** — re-checked 2026-10-09 against the deploy branch: twelve `index.html` hunks,
+  the highest ending at new-side line **3957**, plus `tests/smoke.mjs` hunks at lines 13, 108 and
+  1744 (inside §1's wage block, not the end of the file). It hoists `periodPaycheck` and
+  `keepRatioOf` out of `App`, so it is a wage-core change (Invariant 3) and the owner's to merge.
+  Tonight's build was chosen below it (`icsPlanFromExisting` at ~2430 is inside #156's span by
+  line number but not inside any of its hunks; `IcsImportSheet` at ~5100 and smoke §36 at the end
+  of the file are clear of it) — **check the hunk list, not the line range**, which is what the
+  10-08 note's "treat essentially all of `index.html` as occupied" over-stated.
 
 ### P3 (new, groom 2026-10-08)
 - [ ] **A third of devices report a DIFFERENT user agent at `session_end` than at `app_open`, in
@@ -1544,6 +1614,57 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-09 — **The import confirm card now says what an update is about to DO, instead of how
+  many.** Found in the groom, not the queue. Device `f184ffa5`, 2026-10-08 18:21:21:
+  `ics_sync_result {changes, nursegrid}` → `ics_sync_done {events:128}` → `ics_import_done
+  {updated:128, added:0, removed:0}` at 18:21:23. `updated` counts only shifts whose date, hours
+  or start actually differ (the sync filters `toUpdate` on `changed`), and `added:0` means there
+  were no new events to classify — so the stepper opened straight on the confirm card, and that
+  card's whole account of 128 rewrites of shifts she had already logged was `Update 128 that
+  changed?`. **1.8 seconds** separate the stepper opening from `ics_import_done`: there was
+  nothing on it to read.
+  Removals have been spelled out by date since the stepper shipped, with a comment saying why. An
+  update is the same thing one step removed — the date decides which paycheck the shift lands in,
+  hours and start decide the differential — so it now gets the same treatment: the kind of change
+  first (`3 move to a different day, 125 change time or length.`), then the first four spelled out
+  (`Oct 12 → Oct 14; Nov 2, 12h → 24h, 7:00 AM → 7:00 PM +124 more`). The kind line leads because
+  it is the only part that stays readable at 128; the examples are capped at 4 rather than the
+  removals' 6 because each one is a before → after pair.
+  `icsPlanFromExisting` carries `prevHours`/`prevStart` for the card and **nothing applies them** —
+  the shift is still rewritten from `hours`/`start`, byte for byte as before. No wage-core
+  function touched, no new stored data shape, so no sanitizer branch, no invariant weakened.
+  `tests/smoke.mjs` §36: 20 assertions, 10 deliberate breaks, every assertion family reached by at
+  least one. Suite 571 → 591.
+  **One assertion proved nothing in its first draft, for a reason §35 had not already recorded.**
+  The no-sideways-scroll check compared `documentElement.scrollWidth` with `clientWidth`, and a
+  deliberate `whiteSpace:'nowrap'` on 128 before→after pairs moved **neither number**: the sheet is
+  `position:fixed`, so an overflowing child never reaches the document's scroll width at all. It
+  measures the block against the sheet it sits in now (346 vs 390), where that same break FAILs.
+  §35 lost an assertion to `innerWidth` *growing* with an overflow; this is the same trap with the
+  overflow never arriving.
+  **Why those 128 changed is NOT answered and is filed as its own P1, unverified.** The device
+  imported 131 shifts on 10-03, fired no `app_open` at all until 10-08, and its `session_end`
+  shift count went 165 → 134 in between with `removed:0` on the sync. Candidates are a genuine
+  NurseGrid republish, a device timezone change, or the Nov 1 DST item already in the queue; the
+  owner's one side-by-side against NurseGrid's own screen answers both notes at once. The
+  disclosure shipped tonight is right under any of those answers, which is why it did not wait.
+  Gate: 11/11 build, **591/591** smoke, 33/33 groom-seed, 39/39 silence-classifier, 55/55
+  deploy-classifier.
+  **NOT LIVE, fourth night running.** `node scripts/deploy_watch.mjs`: **BEHIND** — `index.html`
+  serving `41d2549` from 2026-10-05, `privacy.html`/`ops.html`/`CNAME` current. Pages run 168 has
+  been `status:"waiting"` since 2026-10-06 08:49:27 (~72h) and holds the `pages` concurrency group;
+  169–175 cancelled, 176 pending with zero jobs. Nine merged green commits were already unshipped
+  before tonight. One owner click clears it: **Cancel workflow on run 168.**
+  GROOM: `silence_watch` **FRESH** (newest event 13.9h old); 1,241 events, 23 in 48h, and the one
+  real nurse session is the 128-update sync above. No new `feedback` for **25 days** (11 rows,
+  newest 2026-09-14). `client_error` **unchanged at 22 rows**, so neither the exhausted-load banner
+  (#154) nor the keepalive flush (#149) has had anything to report — and `icalFailureDetail` has
+  still never put a status code in a production row. `ics_sync_result` now 22 rows, **zero
+  `failed`**; the 422 running count is **2 in 30** — still do not build a retry. Two notes
+  corrected rather than left standing: the 10-08 line "treat essentially all of `index.html` as
+  occupied by #156" is too broad (its twelve hunks all end by line 3957 — check hunks, not the
+  span), and the 19 `up_to_date` rows the 10-04 note mentions are device `8e0e32fe`'s, not
+  `f184ffa5`'s, which has only ever produced the two `changes` rows.
 - 2026-10-08 — **`deploy_watch.mjs`: one command that answers "is what is MERGED actually LIVE?",
   because for three nights running nothing in this repo could.** Pages run 168 has been
   `status:"waiting"` since 2026-10-06 08:49:27; `concurrency: group:"pages"` holds everything

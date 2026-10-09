@@ -2430,8 +2430,12 @@ function icsPlanFromExisting(events, existingByUid, opts){
       const changed = !(match.dateKey===ev.dateKey
         && Number(prev.hours)===Number(ev.hours)
         && (prev.start||null)===(ev.start||null));
+      /* prevHours/prevStart are carried for DISPLAY only — the confirm step spells out what an
+         update is about to do to a shift she has already logged, the way removals are spelled out
+         by date. Nothing applies them: the shift is rewritten from `hours`/`start` exactly as
+         before. They are here because this is the only place the old values are in hand. */
       toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start, changed,
-        prevDateKey:match.dateKey, prevShiftId:match.shift.id,
+        prevDateKey:match.dateKey, prevShiftId:match.shift.id, prevHours:prev.hours, prevStart:prev.start||null,
         shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
     } else {
       toClassify.push(ev);
@@ -5093,6 +5097,27 @@ function fmtRemovalDate(dateKey){
   if(!y||!m||!d) return dateKey;
   return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 }
+/* One line saying what an update is about to DO to a shift she has already logged:
+   "Oct 12 -> Oct 14", "Oct 14, 12h -> 24h", "Oct 14, 7:00 AM -> 7:00 PM".
+
+   This exists because of 2026-10-08: one foreground sync rewrote the date/hours/start of 128 of
+   her 131 synced shifts and the confirm step said only "Update 128 that changed?" — no days, no
+   before, no after. She confirmed it 1.8 seconds later. An update is as wage-affecting as a
+   removal (the date picks the paycheck; hours and start pick the differential), and removals have
+   been spelled out by date since the stepper shipped, so updates are spelled out too. Display
+   only — the shift is still rewritten from `hours`/`start` exactly as before. */
+function fmtShiftUpdate(u){
+  if(!u) return '';
+  const parts = [];
+  parts.push(u.prevDateKey && u.prevDateKey!==u.dateKey
+    ? `${fmtRemovalDate(u.prevDateKey)} → ${fmtRemovalDate(u.dateKey)}`
+    : fmtRemovalDate(u.dateKey));
+  const ph = Number(u.prevHours), nh = Number(u.hours);
+  if(Number.isFinite(ph) && Number.isFinite(nh) && ph!==nh) parts.push(`${ph}h → ${nh}h`);
+  const ps = fmtTime12(u.prevStart), ns = fmtTime12(u.start);
+  if((u.prevStart||null)!==(u.start||null)) parts.push(`${ps||'no start time'} → ${ns||'no start time'}`);
+  return parts.join(', ');
+}
 function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
   const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
   const toRemove = state.toRemove || [];
@@ -5125,6 +5150,15 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
     const toSkip = groups.reduce((n,g)=> n + (answers[g.key]==='skip' ? g.items.length : 0), 0);
     const toShow = groups.reduce((n,g)=> n + (answers[g.key]==='event' ? g.items.length : 0), 0);
     const removals = [...toRemove, ...toRemoveEvents];
+    /* Split by what the change actually is. A moved shift lands in a different paycheck period;
+       a retimed or relengthened one keeps its day but changes what it is worth. Both are things
+       she can only object to if she is told about them. */
+    const movedDay = toUpdate.filter(u=>u.prevDateKey && u.prevDateKey!==u.dateKey).length;
+    const retimed = toUpdate.length - movedDay;
+    const kindClauses = [];
+    if(movedDay>0) kindClauses.push(`${movedDay} ${movedDay===1?'moves':'move'} to a different day`);
+    if(retimed>0) kindClauses.push(`${retimed} ${retimed===1?'changes':'change'} time or length`);
+    const updateKindNote = kindClauses.join(', ').replace(/^./,c=>c.toUpperCase()) + '.';
     const clauses = [];
     if(toAdd>0) clauses.push(`add ${toAdd} ${toAdd===1?'shift':'shifts'}`);
     if(toUpdate.length>0) clauses.push(`update ${toUpdate.length} that changed`);
@@ -5150,6 +5184,18 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
             <div style={{fontSize:12.5,color:'var(--muted-2)',lineHeight:1.5,margin:'0 0 20px'}}>
               Removing {removals.slice(0,6).map(r=>fmtRemovalDate(r.dateKey)).join(', ')}
               {removals.length>6 ? ` +${removals.length-6} more` : ''} — gone from your calendar feed.
+            </div>}
+          {/* Updates rewrite shifts she has already logged, so they get the same treatment: the
+              kind of change first (it is the one line that stays readable at 128 updates), then
+              the first few spelled out. Capped at 4 rather than the removals' 6 because each
+              line is a before -> after pair. */}
+          {toUpdate.length>0 &&
+            <div className="ics-updates" style={{fontSize:12.5,color:'var(--muted-2)',lineHeight:1.5,margin:'0 0 20px'}}>
+              <div>{updateKindNote}</div>
+              <div style={{marginTop:4}}>
+                {toUpdate.slice(0,4).map(fmtShiftUpdate).join('; ')}
+                {toUpdate.length>4 ? ` +${toUpdate.length-4} more` : ''}
+              </div>
             </div>}
           <div style={{display:'flex',gap:10}}>
             {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
