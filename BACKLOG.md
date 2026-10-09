@@ -29,8 +29,11 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P0
-- [ ] **The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
-  `waiting` with its one job unstarted.** Needs the owner; nothing in this repo can clear it.
+- [x] ~~**The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
+  `waiting` with its one job unstarted.**~~ — **RESOLVED 2026-10-09 12:02:47 UTC by the owner
+  cancelling run 168, exactly as the 10-08 diagnosis said it would be.** See the closing note at
+  the end of this item; the history below is kept because the lesson is the detection gap, not the
+  button. Needs the owner; nothing in this repo can clear it.
   **Facts, not inference.** PR #150 squash-merged to the deploy branch at **08:49 UTC** as
   `a64348b`, both required checks green. Deploy workflow run **168**
   (`https://github.com/patrick222-dotcom/705-v1/actions/runs/37438695953`) was created at
@@ -116,6 +119,22 @@ and the push P0 it pointed at was fixed the same day.
   to that file unshipped, `privacy.html` / `ops.html` / `CNAME` all `ok`. So the site is healthy
   and four days stale, and the one owner click is unchanged: **Cancel workflow on run 168.**
   Tonight's build was again chosen to need no live verification.
+  **CLOSED 2026-10-09 — the owner cancelled run 168 at 12:02:47 UTC and the queue drained in 18
+  seconds.** Run **177** (`b468e5d`, #160) went `pending` → `completed/success` at **12:03:05**,
+  and `node scripts/deploy_watch.mjs` reads **LIVE**: `index.html` serving `b468e5d` (2026-10-09),
+  `privacy.html` `3855545`, `ops.html` `7cfa100`, `CNAME` `badgebudget.com`. All **ten** commits
+  that had been merged-but-unshipped (#150 through #160) are live in one deploy, which is exactly
+  what the 10-08 reading predicted would happen — the first prediction in this four-night item to
+  be confirmed rather than disproved.
+  **What is kept, and what is NOT fixed.** The diagnosis that mattered was read from
+  `GET /actions/runs/{id}/pending_deployments` (`wait_timer: 0`, `reviewers: []`), after three
+  nights of guessing at a reviewer that did not exist — reach for that endpoint first next time,
+  because `/repos/{o}/{r}/environments` is 403 through the agent proxy. **The structural fault is
+  still live:** `cancel-in-progress: false` on `deploy.yml`'s `pages` group is what made one
+  orphaned run a permanent blocker of every deploy behind it, and it is unchanged. The P0 below is
+  therefore the only open half of this, and it is the one that stops this recurring. Until it
+  lands, keep treating a green merge as unshipped until `deploy_watch.mjs` says `LIVE` — four
+  nights of this item is what that rule bought.
 - [ ] **Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group** (P0 ·
   `harness:unscoped` · **needs the owner or an approved session — editing a workflow file is
   blocked for agent sessions in this sandbox**). This is the structural half of the item above, and
@@ -1655,6 +1674,12 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   been `status:"waiting"` since 2026-10-06 08:49:27 (~72h) and holds the `pages` concurrency group;
   169–175 cancelled, 176 pending with zero jobs. Nine merged green commits were already unshipped
   before tonight. One owner click clears it: **Cancel workflow on run 168.**
+  **LIVE AS OF 12:03:05 UTC — the owner cancelled run 168 at 12:02:47 and run 177 (`b468e5d`)
+  shipped 18 seconds later.** `deploy_watch.mjs`: **LIVE**, `index.html` serving `b468e5d`. All
+  ten merged-but-unshipped commits (#150–#160) went out in that one deploy. The "NOT LIVE" above
+  was true when it was written at 08:42 and is kept rather than rewritten; this is the correction,
+  not a replacement. `cancel-in-progress: true` is still NOT applied, so the same stall can still
+  block every deploy behind it.
   GROOM: `silence_watch` **FRESH** (newest event 13.9h old); 1,241 events, 23 in 48h, and the one
   real nurse session is the 128-update sync above. No new `feedback` for **25 days** (11 rows,
   newest 2026-09-14). `client_error` **unchanged at 22 rows**, so neither the exhausted-load banner

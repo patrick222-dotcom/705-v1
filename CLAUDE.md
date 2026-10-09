@@ -494,8 +494,18 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   ask the owner to merge; the two required checks are the gate. Exception: wage-core, schema or
   security changes wait for him, and the reply says so. (Owner decision, 2026-10-03.)
 - Delete merged branches; never the open PR heads or the two protected branches (Invariant 11).
-- **A merge is not a deploy, and since 2026-10-06 that has been literal.** Run **168** (`a64348b`,
-  PR #150) has sat `status:"waiting"` with its one `deploy` job `waiting` since 2026-10-06 08:49:27
+- **A merge is not a deploy. From 2026-10-06 to 2026-10-09 that was literal, and it cost four
+  nights.** **RESOLVED 2026-10-09 12:02:47 UTC**: the owner cancelled run 168, run **177**
+  (`b468e5d`) completed `success` **18 seconds later** at 12:03:05, and `deploy_watch.mjs` reads
+  `LIVE` — all **ten** merged-but-unshipped commits (#150 through #160) shipped in that one
+  deploy. **What is NOT fixed is the thing that made it possible:** `cancel-in-progress: false`
+  on the `pages` concurrency group, still unchanged, still turns any orphaned run into a permanent
+  blocker of every deploy behind it (see below). So the operating rule stands unchanged — **treat
+  every merge as unshipped until `node scripts/deploy_watch.mjs` says `LIVE`**; that step, not the
+  green check, is what caught this on night one and every night after. The history below is kept
+  because the lesson is the four-night detection gap and the three nights of guessing, not the
+  button that ended it. Run **168** (`a64348b`,
+  PR #150) had sat `status:"waiting"` with its one `deploy` job `waiting` since 2026-10-06 08:49:27
   — the status Actions uses for a **deployment protection rule** on the `github-pages` environment,
   which the job declares. Because `concurrency: group:"pages"` holds the group, everything merged
   behind it is stuck too: runs 169 and 170 `cancelled`, run 171 `pending` with zero jobs created.
