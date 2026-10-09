@@ -4042,6 +4042,160 @@ const run = async () => {
     }
   }
 
+  /* ======================= 36: an update says what it is about to change =================
+     2026-10-08, device f184ffa5, one foreground NurseGrid sync: `ics_sync_result {changes}` ->
+     `ics_sync_done {events:128}` -> `ics_import_done {updated:128, added:0, removed:0}`, and
+     `ics_import_done` landed 1.8 SECONDS after the stepper opened. With no new events to
+     classify the stepper opens straight on the confirm card, and all that card said about 128
+     rewrites of shifts she had already logged was one clause: "Update 128 that changed?". No
+     days, no before, no after, nothing to object to. She tapped Confirm.
+     An update is as wage-affecting as a removal -- the date decides which paycheck the shift
+     lands in, and hours/start decide the differential -- and removals have been spelled out by
+     date since the stepper shipped ("Removing Sep 5, Sep 7 ... gone from your calendar feed").
+     Updates now get the same treatment: the kind of change first, because that is the one line
+     that stays readable at 128, then the first four spelled out before -> after.
+     WHY the 128 changed at all is a separate and still-open question (BACKLOG P1) -- this
+     section pins the disclosure, which is right under either answer. */
+  if (want(36)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof window.icsPlanFromExisting === 'function', null, { timeout: 20000 });
+
+    /* --- the plan has to carry the OLD values, or the card has nothing to print. Driven against
+           the top-level planner, the way §28 drives the removal bound. */
+    const plan = await page.evaluate(() => {
+      const existing = {
+        moved:   { dateKey: '2026-10-12', shift: { id: 'moved', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'moved' } },
+        longer:  { dateKey: '2026-10-14', shift: { id: 'longer', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'longer' } },
+        flipped: { dateKey: '2026-10-16', shift: { id: 'flipped', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'flipped' } },
+        same:    { dateKey: '2026-10-18', shift: { id: 'same', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'same' } },
+      };
+      const out = window.icsPlanFromExisting([
+        { dateKey: '2026-10-14', uid: 'moved', hours: 12, start: '07:00' },      // moved two days later
+        { dateKey: '2026-10-14', uid: 'longer', hours: 24, start: '07:00' },     // 12h -> 24h
+        { dateKey: '2026-10-16', uid: 'flipped', hours: 12, start: '19:00' },    // day -> night start
+        { dateKey: '2026-10-18', uid: 'same', hours: 12, start: '07:00' },       // nothing moved
+      ], existing, { todayKey: '2026-10-09' });
+      const byUid = {};
+      out.toUpdate.forEach((u) => { byUid[u.uid] = u; });
+      return byUid;
+    });
+
+    ok('ics update: the plan carries the shift\'s PREVIOUS day, hours and start',
+      plan.moved.prevDateKey === '2026-10-12' && plan.moved.prevHours === 12 && plan.moved.prevStart === '07:00',
+      JSON.stringify(plan.moved));
+    ok('ics update: prevHours is the OLD length, not a copy of the new one',
+      plan.longer.prevHours === 12 && Number(plan.longer.hours) === 24,
+      `prev=${plan.longer.prevHours} new=${plan.longer.hours}`);
+    ok('ics update: prevStart is the OLD start, not a copy of the new one',
+      plan.flipped.prevStart === '07:00' && plan.flipped.start === '19:00',
+      `prev=${plan.flipped.prevStart} new=${plan.flipped.start}`);
+    /* An unchanged match is still planned (the sync filters on `changed`, the planner does not),
+       and it must carry the same fields -- otherwise a file import, which also filters, would
+       print undefined for anything that slipped through. */
+    ok('ics update: an unchanged match is still flagged unchanged and still carries its old values',
+      plan.same.changed === false && plan.same.prevHours === 12 && plan.same.prevStart === '07:00',
+      JSON.stringify(plan.same));
+
+    /* --- the card itself. Mounted on its own (the JSX block compiles to a classic script, so its
+           top-level components are globals -- the property §26 leans on for IcalHowToSheet). */
+    const render = async (toUpdate, extra) => page.evaluate(async ([ups, ex]) => {
+      /* One container, one root per render: unmount the previous root rather than blanking the
+         container under it, which leaves React holding a detached tree and warns. */
+      if (window.__updRoot) { window.__updRoot.unmount(); window.__updRoot = null; }
+      const host = document.getElementById('upd-probe') || document.createElement('div');
+      host.id = 'upd-probe';
+      if (!host.parentNode) document.body.appendChild(host);
+      const root = ReactDOM.createRoot(host);
+      window.__updRoot = root;
+      root.render(React.createElement(IcsImportSheet, {
+        state: Object.assign({ groups: [], toUpdate: ups, toRemove: [], toUpdateEvents: [],
+          toRemoveEvents: [], answers: {}, stepIdx: 0, dropNotice: '' }, ex || {}),
+        differentials: {}, onAnswer: () => {}, onBack: () => {}, onNext: () => {},
+        onConfirm: () => {}, onCancel: () => {}, onDismissNotices: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 160));
+      const block = host.querySelector('.ics-updates');
+      return {
+        sentence: (host.querySelector('.sheet p') || {}).innerText || '',
+        block: block ? block.innerText.replace(/\s+/g, ' ').trim() : null,
+        all: host.innerText.replace(/\s+/g, ' ').trim(),
+        /* Measured on the BLOCK against the sheet it sits in, not on documentElement: the sheet
+           is position:fixed, so an overflowing child never reaches the document's scrollWidth and
+           a document-level check here can never fail (confirmed by a deliberate nowrap). This is
+           the §35 lesson in a second shape -- the earlier one was innerWidth growing with the
+           overflow; this one is the overflow never arriving at all. */
+        blockW: block ? block.scrollWidth : 0,
+        sheetW: host.querySelector('.sheet') ? host.querySelector('.sheet').clientWidth : 0,
+      };
+    }, [toUpdate, extra]);
+
+    /* The production shape: 3 moved days and 125 retimed, which is what 128 silent rewrites
+       would have looked like had anyone been told. */
+    const many = [];
+    for (let i = 0; i < 3; i++) {
+      many.push({ uid: `m${i}`, dateKey: '2026-10-14', prevDateKey: '2026-10-12',
+        hours: 12, prevHours: 12, start: '07:00', prevStart: '07:00' });
+    }
+    for (let i = 0; i < 125; i++) {
+      many.push({ uid: `r${i}`, dateKey: '2026-11-02', prevDateKey: '2026-11-02',
+        hours: 24, prevHours: 12, start: '19:00', prevStart: '07:00' });
+    }
+    const big = await render(many);
+
+    ok('ics update: the confirm card no longer leaves 128 rewrites as a bare count',
+      big.block !== null, JSON.stringify(big.all.slice(0, 200)));
+    ok('ics update: it says how many moved to a different day',
+      /3 move to a different day/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: and how many changed time or length',
+      /125 change time or length/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: the old one-clause summary is kept, not replaced',
+      /update 128 that changed/i.test(big.sentence), JSON.stringify(big.sentence));
+    /* Spelled out, capped, and the remainder counted -- the same shape removals use. */
+    ok('ics update: the first few are spelled out, before and after',
+      /Oct 12 \u2192 Oct 14/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: a changed length is named in hours',
+      /12h \u2192 24h/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: a changed start is named on a 12-hour clock, the way the rest of the app reads it',
+      /7:00 AM \u2192 7:00 PM/.test(big.block || '') && !/07:00 \u2192 19:00/.test(big.block || ''),
+      JSON.stringify(big.block));
+    ok('ics update: it is capped and the remainder is counted, not dumped',
+      /\+124 more/.test(big.block || '') && (big.block || '').split(';').length <= 4,
+      JSON.stringify((big.block || '').slice(0, 240)));
+    ok('ics update: 128 updates wrap inside the sheet instead of running off the side',
+      big.sheetW > 0 && big.blockW <= big.sheetW + 1, `block=${big.blockW} sheet=${big.sheetW}`);
+
+    /* One update, singular grammar, and no "+N more" to count. */
+    const one = await render([{ uid: 'o', dateKey: '2026-10-14', prevDateKey: '2026-10-14',
+      hours: 12.5, prevHours: 12, start: '07:00', prevStart: '07:00' }]);
+    ok('ics update: one retimed shift reads in the singular',
+      /^1 changes time or length\./.test((one.block || '').trim()), JSON.stringify(one.block));
+    ok('ics update: a fractional length survives the label',
+      /12h \u2192 12\.5h/.test(one.block || ''), JSON.stringify(one.block));
+    ok('ics update: and one update is not followed by a remainder count',
+      !/more/.test(one.block || ''), JSON.stringify(one.block));
+
+    /* The regression this could introduce: a stray line (or a lone full stop) on the card every
+       nurse sees, including the ordinary first import where nothing is being updated at all. */
+    const none = await render([], { groups: [] });
+    ok('ics update: no update block at all when nothing is being updated',
+      none.block === null, JSON.stringify(none.all.slice(0, 200)));
+    ok('ics update: and no orphan punctuation left on the card',
+      !/(^|\s)\.(\s|$)/.test(none.all), JSON.stringify(none.all.slice(0, 200)));
+
+    /* Removals keep their own spelled-out line when both land in the same import. */
+    const both = await render(
+      [{ uid: 'u', dateKey: '2026-10-14', prevDateKey: '2026-10-12', hours: 12, prevHours: 12, start: '07:00', prevStart: '07:00' }],
+      { toRemove: [{ uid: 'r', dateKey: '2026-10-20', shiftId: 'r', hours: 12, shiftType: 'base' }] });
+    ok('ics update: an update line does not displace the removal line',
+      /Removing Oct 20/.test(both.all) && /1 moves to a different day/.test(both.block || ''),
+      JSON.stringify(both.all.slice(0, 300)));
+
+    const real36 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('ics update: no page errors while driving the confirm card', real36.length === 0, real36.join(' | '));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
