@@ -201,13 +201,58 @@ check('core', 'Extracted core in sync with index.html', () => {
   return `${regions.length} regions, ${exports.length} exports`;
 });
 
+/* ---- personas: starting values, never pay rules (onboarding v2, 2026-10-10) --------------
+   CLAUDE.md -> Beyond nurses: "A persona sets starting values and which cards show. It is never
+   read by the pay math." The moment one wage function branches on a persona, two nurses with
+   identical shifts and rates get different paychecks for reasons no Settings screen shows. So
+   every wage-core definition is walked as an AST and may not name a persona, a work status, a
+   union answer, a funnel answer or the preset table. Each name must also be FOUND: a renamed
+   function that silently drops out of this list would turn the check into a pass by omission. */
+check(3, 'Pay math never reads the persona', () => {
+  const Babel = require('@babel/standalone');
+  const open = html.indexOf('<script type="text/babel" data-presets="react">');
+  const start = html.indexOf('>', open) + 1;
+  const src = html.slice(start, html.indexOf('</script>', start));
+  const WAGE = ['shiftGross', 'hourlyRate', 'shiftGrossCents', 'hourlyRateCents', 'paidHoursOf',
+    'straightTimeCents', 'workPeriodChunks', 'overtimePremiumCents', 'groupHoursByJob', 'makeJob',
+    'computeNet', 'periodPaycheck', 'keepRatioOf', 'keepRatio', 'calc', 'statOf', 'ptoStatOf',
+    'sampleNet', 'patternMetrics', 'patternCellToShift', 'patternCellShiftType', 'firstActiveShiftType',
+    'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL'];
+  /* Two patterns, because the case matters for one of them: `ob` + capital is the funnel's own
+     namespace (obSeedOpts, obExtrasOn, OB_SCREENS…) and must not match `Object`. */
+  const FORBIDDEN_I = /persona|preset/i, FORBIDDEN_CS = /^(workStatus|union|obShift|obPay)$|^ob[A-Z]|^OB_/;
+  const FORBIDDEN = { test: (x) => FORBIDDEN_I.test(x) || FORBIDDEN_CS.test(x) };
+  const found = new Set(), hits = [];
+  const isFn = (n) => n && /Function|Arrow/.test(n.type);
+  const scan = (name, path) => {
+    found.add(name);
+    path.traverse({
+      Identifier(p) { if (FORBIDDEN.test(p.node.name)) hits.push(`${name} -> ${p.node.name}`); },
+      StringLiteral(p) { if (/^(healthcare|other)$/.test(p.node.value) || FORBIDDEN.test(p.node.value)) hits.push(`${name} -> '${p.node.value}'`); },
+    });
+  };
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      FunctionDeclaration(p) { if (WAGE.includes(p.node.id && p.node.id.name)) scan(p.node.id.name, p); },
+      VariableDeclarator(p) { if (p.node.id.type === 'Identifier' && WAGE.includes(p.node.id.name)) scan(p.node.id.name, p); },
+      ObjectProperty(p) {
+        const k = p.node.key && (p.node.key.name || p.node.key.value);
+        if (WAGE.includes(k) && isFn(p.node.value)) scan(k, p);
+      },
+    } })] });
+  const missing = WAGE.filter((n) => !found.has(n));
+  must(!missing.length, `wage-core definitions not found (renamed? update this list): ${missing.join(', ')}`);
+  must(!hits.length, `the pay math reads the persona — a persona may only set starting values: ${hits.join('; ')}`);
+  return `${WAGE.length} wage definitions, none names a persona`;
+});
+
 /* ---- report ---------------------------------------------------------------------------- */
 const pad = (s, n) => String(s).padEnd(n);
 console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core, 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {

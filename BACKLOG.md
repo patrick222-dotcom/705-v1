@@ -634,6 +634,13 @@ and the push P0 it pointed at was fixed the same day.
   10-08 note's "treat essentially all of `index.html` as occupied" over-stated.
 
 ### P2 (new, groom 2026-10-10)
+- [ ] **The planner scrolls sideways by 31 px on a 320 pt phone (first-gen iPhone SE)**
+  `harness:drivable`. Found 2026-10-10 by onboarding v2's §38, and **pre-existing**: the production
+  build seeded straight onto the planner measures `scrollWidth − clientWidth = 31` at 320 pt, the
+  overflowing elements being `.top-actions` / `.acct` / `.avatar` (signed out, so the *Sign in*
+  button is in the row) and the `.fab`. §3 only checks the avatar at 360 px, which is why nothing
+  caught it. Fix within the top bar's own row; **never by hiding the avatar** (Architecture → Top
+  bar). Add a 320 pt no-sideways-scroll assertion on the planner, measured against `clientWidth`.
 - [ ] **Four brand-new devices arrived via QR in one hour, and two of them bounced before a
   single shift** — `harness:unscoped`, and the first real top-of-funnel signal this repo has had.
   Between 07:29 and 08:14 UTC, four iOS 18.7 devices with `via:'qr'` appeared: `74c55984`
@@ -987,7 +994,8 @@ and the push P0 it pointed at was fixed the same day.
   Evidence: `docs/pay-rule-patterns.md`. Mockup: https://claude.ai/artifact/Xt6xNpBXCrbTaFLBaAHMrV.
   One session each, in this order. Never two at once: sessions 2–4 all touch `overtimePremiumCents`
   and `shiftGrossCents`.
-  1. **Onboarding v2 (Healthcare + Other hourly) + funnel tracking** `harness:drivable`. Write
+  1. ~~**Onboarding v2 (Healthcare + Other hourly) + funnel tracking**~~ — **SHIPPED 2026-10-10**
+     (see Done log; spec `docs/onboarding-funnel-spec.md`). Original brief kept below. Write
      `docs/onboarding-funnel-spec.md` first: every screen, the fields its answer sets, and the event
      it fires. Then build. Personas are a preset table in a `@core` region; the pay math never reads
      the persona. The Healthcare preset must equal today's defaults exactly, pinned by a test. Add
@@ -1005,6 +1013,22 @@ and the push P0 it pointed at was fixed the same day.
      question (FICA → custom 1.45%), and their cards.
   6. **Jobs**: the `jobId` stamp below → activate the spine → job switcher → migration 008 (one
      calendar feed per job).
+- [ ] **A synced calendar should offer to replace the onboarding schedule (found 2026-10-10,
+  session 1).** `harness:drivable`. Onboarding v2 seeds a starting fortnight from her answers
+  (tagged `SAMPLE_PATTERN_ID`). A nurse who then connects NurseGrid gets her real shifts **on top
+  of** the seeded ones until she taps *Clear the sample* — the estimate banner stays up while any
+  seeded shift remains, so it is labelled, but the hero is inflated in the meantime. The old
+  *Show me an example* path had the same hazard; v2 makes it the common path. Fix shape: the import
+  stepper's confirm card offers "Also clear the N starting shifts?" (never silent — Architecture →
+  Calendar sync). Dedicated, not nightly: it is the import commit path and moves the hero, so it
+  wants the equality check.
+- [ ] **The landing's sample card and the example path disagree (pre-existing, found 2026-10-10).**
+  `harness:drivable`, **wage-core** (`sampleNet`). The landing card prices a fixed mix (3 nights,
+  2 weekend days, 1 day) while *Use an example rate* seeds `buildSampleShifts`, whose mix depends on
+  the weekday the period starts — on 2026-10-10 the card read **$4,147** and the example path
+  landed on **$4,053**, both "72 hrs". True before v2 too (old welcome card vs. old example path).
+  Fix: have `sampleNet` price `buildSampleShifts(currentPeriodStart(…))` through `periodPaycheck`,
+  so the card is the figure she lands on. Invariant 3 protocol; §15's "derived figure" probes stay.
 - [ ] **Redeploy `ical-proxy` — the deployed copy still carries the webcal no-op** (filed
   2026-09-29). The fix that makes sync work shipped in `index.html`, which is the proxy's only
   caller, so **nothing is broken by leaving this** — the deployed function simply never sees a
@@ -1760,6 +1784,41 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **Onboarding v2 (Healthcare + Other hourly) + first-party funnel tracking** —
+  session 1 of the multi-persona plan. Spec first, committed before the build:
+  `docs/onboarding-funnel-spec.md`. What shipped:
+  - **Seven screens, one question each:** landing → profession → shift length → *How much do you
+    work?* (Full-time / Part-time / PRN) → union → pay (stub / hourly / salary / example) → extras,
+    then straight onto the planner hero. A header meter shows take-home from the moment a rate
+    exists; it is `periodPaycheck` over exactly what finish writes, so **meter = hero** (§38).
+  - **Personas are a preset table in `@core:begin personas`**; the Healthcare preset **is** today's
+    defaults — App's initial state and `resetToDefaults` now read it, and `tests/core.test.mjs`
+    pins every value against literals. Only Healthcare and Other hourly tiles; no police/fire, no
+    24-hour tile, no waitlist.
+  - **FT/PT/PRN seed the first estimate through `buildSampleShifts`**, which gained optional
+    `{hours, perWeek, mix}` and returns exactly today's fortnight with none (pinned). Full-time
+    3×12 = 72 h. Seeded shifts carry `SAMPLE_PATTERN_ID`; the estimate banner now stays up, with
+    *Clear the sample*, while any remains.
+  - **New saved fields** `persona` / `workStatus` / `union`, whitelisted in `sanitizeData`.
+  - **Events** `ob_view {screen}`, `ob_answer {q,a}`, `ob_back {from}`, all through the core's
+    `obEventProps` whitelist; `ob_step` (now indices 0–6) and `setup_completed {mode}` unchanged
+    in contract. Funnel query: `scripts/onboarding_funnel.sql` (harness pair, `nostore-`,
+    insiders and crawlers excluded — with "crawler" redefined, since `ob_step 0` and `ob_view
+    landing` fire on arrival). Validated read-only against production.
+  - **Gate:** `check_build.mjs` now fails if any of 27 wage-core definitions names a persona,
+    work status, union answer or the preset table (5 breaks negative-tested). The stub now
+    *continues* the funnel instead of ending setup on an empty planner.
+  - **No wage-core function changed.** `sampleNet` untouched; salary is an input conversion
+    (÷2080, printed before she continues), not a salaried pay model.
+
+  Tests: core 20 → 51 (every new one negative-tested against a mutated module); smoke §38 adds 53
+  on iPhone 13 + first-gen iPhone SE, every one seen failing across 17 mutated copies (a control
+  copy passed 53/53 first); §2's back-button re-count was found never to have been driven (it
+  looked the button up by its glyph and swallowed the miss) and is now real, and §11's sign-out
+  check was re-driven through the new funnel — both negative-tested too. Retired with the done screen: the done-line contrast
+  pin and #34c's name-field check. Found and filed, not fixed here: the planner's 31 px sideways
+  scroll at 320 pt (P2), the seeded schedule surviving a calendar sync, and the landing card vs.
+  example-path mismatch (both dedicated).
 - 2026-10-10 — **Research only, no app change: can the pay model serve police and other hourly
   work?** #164 (`docs/police-pay-rules-draft.md`, Upper Darby) and #165
   (`docs/pay-rule-patterns.md`, 30 public contracts). Outcome:

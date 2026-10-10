@@ -451,6 +451,31 @@
   .ob-footlink{width:100%;margin-top:16px;padding:15px 8px;background:none;border:0;border-top:1px solid var(--line-2);font:inherit;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
   .ob-footlink b{font-weight:700;color:var(--sage)}
   .pill{display:inline-flex;align-self:flex-start;background:var(--sage-soft);color:var(--sage);padding:6px 12px;border-radius:999px;font-weight:600;font-size:12px}
+  /* onboarding v2 (2026-10-10). Selection is sage, the one next tap is clay (palette rule above). */
+  .ob-top{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .ob-meter{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;flex:0 0 auto;min-width:72px}
+  .ob-meter .k{font-size:11px;font-weight:600;color:var(--muted)}
+  .ob-meter .v{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;color:var(--money-ink)}
+  .ob-opts{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+  .ob-opt{display:flex;align-items:center;gap:12px;width:100%;min-height:72px;padding:14px 16px;border-radius:18px;text-align:left;background:#fff;border:2px solid var(--line-2);color:var(--ink)}
+  .ob-opt[aria-pressed="true"]{border-color:var(--sage);background:var(--sage-soft)}
+  .ob-opt .tx{flex:1;min-width:0}
+  .ob-opt .t{display:block;font-size:17px;font-weight:700}
+  .ob-opt .s{display:block;font-size:13px;line-height:1.4;color:var(--muted);margin-top:3px}
+  .ob-opt .ch{flex:0 0 auto;color:var(--muted-2);font-size:22px;line-height:1}
+  .ob-stub{background:#fff;border:1.5px solid var(--line);border-radius:18px;padding:14px;margin-top:20px}
+  .ob-stub .s{font-size:12.5px;line-height:1.45;color:var(--muted);margin-top:8px;text-align:center}
+  .ob-or{display:flex;align-items:center;gap:12px;color:var(--muted-2);font-size:13px;margin-top:18px}
+  .ob-or::before,.ob-or::after{content:'';flex:1;height:1px;background:var(--line-2)}
+  .ob-seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:var(--r-pill);background:#E9E4D9;margin-top:14px}
+  .ob-seg button{min-height:44px;border-radius:var(--r-pill);font-size:15px;font-weight:700;color:var(--muted)}
+  .ob-seg button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .ob-lab{display:block;font-size:13.5px;font-weight:600;margin:16px 0 7px}
+  .ob-x .tx{flex:1;min-width:0}
+  .ob-x .nm{white-space:normal}
+  .ob-x .s{font-size:12px;line-height:1.4;color:var(--muted);margin-top:2px}
+  .ob-note{margin-top:8px;padding:13px 15px;border-radius:15px;background:var(--sage-soft);color:var(--sage-ink);font-size:13px;line-height:1.5}
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 
   /* share sheet — the QR has to survive being read off a screen at arm's length in bad light,
      so it gets a solid white plate regardless of theme, never the frosted glass. */
@@ -855,14 +880,29 @@ function migrateDiffColor(k, v){
 const SAMPLE_PATTERN_ID = '__sample__';
 /* Six 12h shifts over the fortnight from `startISO`, day-of-week deciding weekend vs night —
    the same inference the .ics import uses, so the mix reads as a real nurse's schedule
-   whatever weekday the pay period happens to begin on. */
-function buildSampleShifts(startISO){
+   whatever weekday the pay period happens to begin on.
+   `opts` (onboarding v2, 2026-10-10) shapes the same fortnight from the funnel's answers:
+   `hours` per shift, `perWeek` shifts on days 1..n of each week, and `mix` -- 'rotating' is the
+   nurse mix above, 'days' makes every shift a plain day ('base'). Input only: what these shifts
+   are worth is still periodPaycheck's call. Called with no opts it returns exactly what it always
+   has (tests/core.test.mjs pins it), which the Healthcare equality rests on. Days 1..n keep each
+   7-day chunk at or under 40 h for every hours x perWeek the funnel offers, so a seeded estimate
+   carries no overtime under the 40-hour week both presets use. (Under 8/80 a 10- or 12-hour
+   shift is overtime past hour 8 by definition -- that is real overtime, not a seeding artefact.) */
+function buildSampleShifts(startISO, opts){
+  const o = opts || {};
+  const hours = (Number(o.hours) > 0 && Number(o.hours) <= 24) ? Number(o.hours) : 12;
+  const perWeek = Math.max(1, Math.min(6, Math.floor(Number(o.perWeek)) || 3));
+  const mix = o.mix === 'days' ? 'days' : 'rotating';
+  const offs = [];
+  for(let i=1;i<=perWeek;i++) offs.push(i);
+  for(let i=1;i<=perWeek;i++) offs.push(7+i);
   const out = {};
-  [1,2,3,8,9,10].forEach(off=>{
+  offs.forEach(off=>{
     const d = parseISODate(startISO); d.setDate(d.getDate()+off);
     const dow = d.getDay();
-    const shiftType = (dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base');
-    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours:12, bonusType:'none',
+    const shiftType = mix==='days' ? 'base' : ((dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base'));
+    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours, bonusType:'none',
                            customBonus:0, isOvertime:false, patternId:SAMPLE_PATTERN_ID }];
   });
   return out;
@@ -1406,6 +1446,12 @@ function sanitizeData(d){
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
   if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
+  /* Onboarding v2's three answers (2026-10-10). Not pay inputs -- a persona picks starting values
+     and cards, never a rule -- but whitelisted the same way: anything else is dropped, never
+     coerced, so a corrupt blob reads as "never answered" rather than as somebody's profession. */
+  if(PERSONA_IDS.indexOf(d.persona)>=0) out.persona = d.persona;
+  if(WORK_STATUSES.indexOf(d.workStatus)>=0) out.workStatus = d.workStatus;
+  if(UNION_ANSWERS.indexOf(d.union)>=0) out.union = d.union;
   // shifts: object of date-key -> array of shift objects; keep only well-formed entries.
   if(d.shifts && typeof d.shifts==='object' && !Array.isArray(d.shifts)){
     const s = {};
@@ -2073,6 +2119,116 @@ function planPatternApply(pattern, shifts, differentials, opts){
   }
   const endDt = new Date(start.getFullYear(),start.getMonth(),start.getDate()+total-1);
   return {adds, skipped, replaced, startKey:keyOfDate(start), endKey:keyOfDate(endDt)};
+}
+/* @core:end */
+
+/* ---------- personas: starting values, never pay rules (onboarding v2, 2026-10-10) ----------
+   A persona sets STARTING VALUES and decides which cards show. It is never read by the pay
+   math: every dollar figure still comes from periodPaycheck over the fields below, and
+   scripts/check_build.mjs fails if a wage-core function so much as names a persona. Spec:
+   docs/onboarding-funnel-spec.md. Two tiles today; Law enforcement and Fire & EMS join only
+   after the configurable work period lands (CLAUDE.md -> Beyond nurses), because on 12-hour
+   schedules today's 40-hour and 8/80 rules invent overtime. */
+/* @core:begin personas */
+const PERSONA_IDS = ['healthcare','other'];
+const WORK_STATUSES = ['ft','pt','prn'];
+const UNION_ANSWERS = ['yes','no','unsure'];
+const OB_SHIFT_LENGTHS = [8,10,12];
+/* Healthcare IS today's defaults -- App's initial state, resetToDefaults and the example-rate
+   path all read this object, and tests/core.test.mjs pins every value against a literal, so
+   neither the preset nor the defaults can move without a red test. Taxes are user-level (see
+   makeJob) and identical across presets; applyPersona never writes them. */
+const PERSONA_PRESETS = {
+  healthcare: {
+    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
+    mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included', differentials:DIFF_DEFAULTS,
+    sampleMix:'rotating', extras:['diffs','holiday'], cards:{nursegrid:true},
+  },
+  /* Illustrative starting amounts, inside the $0.35-$2.75/h range docs/pay-rule-patterns.md saw
+     for non-nurse differentials. They cannot move this persona's first estimate (its sample is
+     all day shifts) and the estimate banner says to sharpen them. */
+  other: {
+    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
+    mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included',
+    differentials:{...DIFF_DEFAULTS,
+      'night':       {...DIFF_DEFAULTS['night'],       amount:1.5, active:true},
+      'weekday-eve': {...DIFF_DEFAULTS['weekday-eve'], amount:1,   active:true},
+      'weekend-day': {...DIFF_DEFAULTS['weekend-day'], amount:1,   active:false},
+      'weekend-eve': {...DIFF_DEFAULTS['weekend-eve'], amount:1.5, active:false}},
+    sampleMix:'days', extras:['evenings','weekend','holiday'], cards:{nursegrid:false},
+  },
+};
+const personaPreset = id => PERSONA_PRESETS[PERSONA_IDS.indexOf(id)>=0 ? id : 'healthcare'];
+const DEFAULT_PRESET = PERSONA_PRESETS.healthcare;
+/* Which differential keys each extras toggle on screen 6 flips. `active` only -- amounts stay
+   whatever the preset or a stub set, and live in Settings. */
+const OB_EXTRA_KEYS = {
+  diffs:    ['night','weekend-day','weekend-eve'],
+  evenings: ['weekday-eve','night'],
+  weekend:  ['weekend-day','weekend-eve'],
+  holiday:  ['holiday'],
+};
+/* Shifts per week that seed the first estimate. Full-time 12h is 3 a week = 72 h a period,
+   not 80 (owner, 2026-10-10). Part-time is ~24 h a week; PRN one shift a week. */
+const OB_SHIFTS_PER_WEEK = { ft:{8:5,10:4,12:3}, pt:{8:3,10:2,12:2}, prn:{8:1,10:1,12:1} };
+/* The funnel's answers -> buildSampleShifts' opts. Nights and weekends are seeded only when the
+   persona's mix rotates AND that extra is on: `active:false` never stops pricing a shift already
+   tagged night, so seeding nights she said she doesn't get would price them anyway. */
+function obSeedOpts(shiftLen, workStatus, sampleMix, extrasOn){
+  const hours = OB_SHIFT_LENGTHS.indexOf(Number(shiftLen))>=0 ? Number(shiftLen) : 12;
+  const st = WORK_STATUSES.indexOf(workStatus)>=0 ? workStatus : 'ft';
+  const rotate = sampleMix==='rotating' && !!(extrasOn && extrasOn.diffs);
+  return { hours, perWeek: OB_SHIFTS_PER_WEEK[st][hours], mix: rotate ? 'rotating' : 'days' };
+}
+/* Add a seeded fortnight to whatever she already has, never replacing a shift. The header meter
+   and finish() both price through this, so the meter's figure is the hero's figure. */
+function mergeSeed(prev, seed){
+  const next = {...(prev||{})};
+  Object.keys(seed||{}).forEach(k=>{ next[k] = (next[k]||[]).concat(seed[k]); });
+  return next;
+}
+/* An extra reads as ON when every differential it governs is active. Derived from the
+   differentials themselves rather than stored, so a stub that lit some of them is reflected. */
+function obExtrasOn(differentials){
+  const d = differentials || {};
+  const out = {};
+  Object.keys(OB_EXTRA_KEYS).forEach(x=>{ out[x] = OB_EXTRA_KEYS[x].every(k=>!!(d[k] && d[k].active)); });
+  return out;
+}
+/* Annual salary -> the hourly rate the planner prices with, on the standard 2,080-hour year.
+   An INPUT conversion, not a salaried pay model (that is primitive 4 in pay-rule-patterns.md,
+   and wage-core): right for an 80-hour fortnight, ~10% low for a 72-hour one, which is why the
+   pay screen prints the rate it will use before she continues. */
+const SALARY_HOURS_PER_YEAR = 2080;
+const salaryToHourly = annual => {
+  const n = Number(annual);
+  return (isFinite(n) && n > 0) ? Math.round(n / SALARY_HOURS_PER_YEAR * 100) / 100 : 0;
+};
+
+/* The funnel's analytics contract. Every ob_* event passes through obEventProps, which returns
+   only whitelisted keys with enumerated values, or null -- and a null is never sent. Nothing she
+   typed is ever a value: `pay` records HOW she answered, never the amount. */
+const OB_SCREENS = ['landing','persona','shift','status','union','pay','extras'];
+const OB_ANSWERS = {
+  persona: PERSONA_IDS,
+  shift: OB_SHIFT_LENGTHS.map(String),
+  status: WORK_STATUSES,
+  union: UNION_ANSWERS,
+  pay: ['stub','hourly','salary','example'],
+  x_diffs: ['on','off'], x_evenings: ['on','off'], x_weekend: ['on','off'], x_holiday: ['on','off'],
+};
+function obEventProps(name, props){
+  const p = (props && typeof props==='object') ? props : {};
+  if(name==='ob_view') return OB_SCREENS.indexOf(p.screen)>=0 ? {screen:p.screen} : null;
+  if(name==='ob_back') return OB_SCREENS.indexOf(p.from)>=0 ? {from:p.from} : null;
+  if(name==='ob_answer'){
+    const allowed = Object.prototype.hasOwnProperty.call(OB_ANSWERS, p.q) ? OB_ANSWERS[p.q] : null;
+    const a = (typeof p.a==='string' || typeof p.a==='number') ? String(p.a) : '';
+    return (Array.isArray(allowed) && allowed.indexOf(a)>=0) ? {q:p.q, a} : null;
+  }
+  return null;
 }
 /* @core:end */
 
@@ -3205,11 +3361,22 @@ function App(){
      record is not the source of truth for the rate yet, so while there is exactly one job they
      live here beside baseRate and the migration in sanitizeData mirrors them onto it. When the
      multi-job UI lands, the direction flips and these read from the active job. */
-  const [workPeriod,setWorkPeriod] = useState('40');
-  const [otMethod,setOtMethod] = useState('regular-rate');
-  const [mealBreakMins,setMealMins] = useState(DEFAULT_MEAL_MINS);
-  const [mealBreakMode,setMealMode] = useState('included');
-  const [obStep,setObStep] = useState(0); // 0 welcome..4 done
+  /* First-run values come from the Healthcare preset, which IS today's defaults
+     (tests/core.test.mjs pins it against literals) -- one source, so a preset and the defaults
+     can never quietly disagree. */
+  const [workPeriod,setWorkPeriod] = useState(DEFAULT_PRESET.workPeriod);
+  const [otMethod,setOtMethod] = useState(DEFAULT_PRESET.otMethod);
+  const [mealBreakMins,setMealMins] = useState(DEFAULT_PRESET.mealBreakMins);
+  const [mealBreakMode,setMealMode] = useState(DEFAULT_PRESET.mealBreakMode);
+  const [obStep,setObStep] = useState(0); // index into OB_SCREENS: 0 landing .. 6 extras
+  /* Onboarding v2's saved answers (docs/onboarding-funnel-spec.md). '' = never answered: a blob
+     from before 2026-10-10 has none, and none of them defaults to Healthcare silently. */
+  const [persona,setPersona] = useState('');
+  const [workStatus,setWorkStatus] = useState('');
+  const [union,setUnion] = useState('');
+  /* ...and two transient ones: they seed the first estimate and are not saved. */
+  const [obShift,setObShift] = useState(null);   // 8 | 10 | 12
+  const [obPay,setObPay] = useState('');         // '' | 'stub' | 'hourly' | 'salary' | 'example'
   /* Onboarding funnel. app_open -> setup_completed was a 132-device to 9-device cliff with no
      event in between, so there was no way to tell a bounce off the welcome screen from one off
      the rate input. Fires once per furthest step reached: back-navigation and "Edit my setup"
@@ -3229,19 +3396,25 @@ function App(){
      mount, because `setupComplete` is still false while the saved blob is loading and a returning
      nurse would otherwise be counted as a fresh welcome-screen bounce every time she opened it. */
   useEffect(()=>{ if(ready && !setupComplete) markObStep(0); },[ready,setupComplete]);
+  /* Onboarding v2's per-screen events (2026-10-10). Every ob_* event goes through the core's
+     obEventProps whitelist; a null is never sent, so nothing she typed can ride an event.
+     ob_view fires on EVERY showing (back-navigation included) -- ob_step stays the deduped
+     "furthest reached" -- under the same visible-onboarding guard as ob_step 0. */
+  const trackOb = (name, props)=>{ const p = obEventProps(name, props); if(p) track(name, p, null); };
+  useEffect(()=>{ if(ready && !setupComplete) trackOb('ob_view', {screen:OB_SCREENS[obStep]}); },[ready,setupComplete,obStep]);
 
   const [name,setName] = useState('there');
-  const [baseRate,setBaseRate] = useState(65.15);
-  const [federalTaxRate,setFederal] = useState(12);
-  const [stateTaxRate,setState] = useState(2.5);
-  const [pretaxDeductions,setPretax] = useState(0);
-  const [posttaxDeductions,setPosttax] = useState(0);
-  const [ficaType,setFicaType] = useState('standard');
-  const [ficaPct,setFicaPct] = useState(7.65);
+  const [baseRate,setBaseRate] = useState(DEFAULT_PRESET.baseRate);
+  const [federalTaxRate,setFederal] = useState(DEFAULT_PRESET.federalTaxRate);
+  const [stateTaxRate,setState] = useState(DEFAULT_PRESET.stateTaxRate);
+  const [pretaxDeductions,setPretax] = useState(DEFAULT_PRESET.pretaxDeductions);
+  const [posttaxDeductions,setPosttax] = useState(DEFAULT_PRESET.posttaxDeductions);
+  const [ficaType,setFicaType] = useState(DEFAULT_PRESET.ficaType);
+  const [ficaPct,setFicaPct] = useState(DEFAULT_PRESET.ficaPct);
   const [payPeriodStart,setPPS] = useState(todayISO());
   const [shifts,setShifts] = useState({});
   const [customWithholdings,setCW] = useState([]);
-  const [differentials,setDiff] = useState(DIFF_DEFAULTS);
+  const [differentials,setDiff] = useState(DEFAULT_PRESET.differentials);
   const [templates,setTemplates] = useState([]);   // saved shift presets for quick logging
   const [goals,setGoals] = useState([]);           // savings goals [{id,name,target}] — a shift's worth toward a goal
   const [dayEvents,setDayEvents] = useState({});   // 'YYYY-MM-DD' -> [{id,kind,hours?}] (PTO/education/appt/off)
@@ -3357,7 +3530,7 @@ function App(){
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
     payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,
-    workPeriod,otMethod,mealBreakMins,mealBreakMode
+    workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union
   });
 
   /* ---- single hydrator (used by every load path: cloud init, auth change, localStorage, import) ---- */
@@ -3398,17 +3571,22 @@ function App(){
     if(OT_METHODS.indexOf(d.otMethod)>=0) setOtMethod(d.otMethod);
     if(d.mealBreakMins!=null && isFinite(Number(d.mealBreakMins))) setMealMins(Number(d.mealBreakMins));
     if(MEAL_MODES.indexOf(d.mealBreakMode)>=0) setMealMode(d.mealBreakMode);
+    /* Authoritative, like estimateMode: a blob without them clears them, so an account's blob is
+       never left carrying a different visitor's answers from this device. */
+    setPersona(d.persona || ''); setWorkStatus(d.workStatus || ''); setUnion(d.union || '');
     setSetupComplete(d.setupComplete!==false);
   };
 
   /* ---- reset every field back to first-run defaults (sign-out) ---- */
   const resetToDefaults = ()=>{
-    setName('there'); setBaseRate(65.15); setFederal(12); setState(2.5);
-    setPretax(0); setPosttax(0); setFicaType('standard'); setFicaPct(7.65);
-    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(DIFF_DEFAULTS); setTemplates([]);
+    const P = DEFAULT_PRESET;
+    setName('there'); setBaseRate(P.baseRate); setFederal(P.federalTaxRate); setState(P.stateTaxRate);
+    setPretax(P.pretaxDeductions); setPosttax(P.posttaxDeductions); setFicaType(P.ficaType); setFicaPct(P.ficaPct);
+    setPPS(todayISO()); setShifts({}); setCW([]); setDiff(P.differentials); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
-    setWorkPeriod('40'); setOtMethod('regular-rate');
-    setMealMins(DEFAULT_MEAL_MINS); setMealMode('included');
+    setWorkPeriod(P.workPeriod); setOtMethod(P.otMethod);
+    setMealMins(P.mealBreakMins); setMealMode(P.mealBreakMode);
+    setPersona(''); setWorkStatus(''); setUnion(''); setObShift(null); setObPay('');
   };
   /* Everything a signed-in session leaves in memory that must never survive into the next one:
      the cloud-hydration marks, the sync bookkeeping, the calendar subscription (Invariant 13 —
@@ -3654,7 +3832,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -3993,6 +4171,9 @@ function App(){
   [shifts,dayEvents,days,baseRate,differentials,taxInputs,activeJob]);
 
   const shiftCount = useMemo(()=> Object.values(shifts).reduce((a,arr)=>a+(arr?arr.length:0),0),[shifts]);
+  /* Any seeded (onboarding / example) shift still in the planner. Keeps the estimate banner up,
+     with "Clear the sample", for as long as one is there. */
+  const hasSampleShifts = useMemo(()=> Object.values(shifts).some(arr=>(arr||[]).some(x=>x && x.patternId===SAMPLE_PATTERN_ID)),[shifts]);
   const periodShiftCount = useMemo(()=>{
     const periodKeys = new Set(days.map(keyOf));
     return Object.keys(shifts).reduce((a,k)=> a + (periodKeys.has(k) ? (shifts[k]?.length||0) : 0), 0);
@@ -4660,26 +4841,79 @@ function App(){
       });
       setDiff(nd);
     }
-    setPaystub(null); setSetupComplete(true); setObStep(0);
+    setPaystub(null);
+    if(!setupComplete){
+      /* Onboarding v2: the stub answers the pay question and the funnel CONTINUES to the extras
+         screen, so finish() still seeds her schedule -- it used to end setup on the spot, which
+         landed her on an empty $0 planner. */
+      setObPay('stub'); trackOb('ob_answer', {q:'pay', a:'stub'}); goObStep(OB_SCREENS.indexOf('extras'));
+    } else { setSetupComplete(true); setObStep(0); }
     track('paystub_imported', {shifts: (p.shifts&&p.shifts.length)||0}, user?.id);
   };
+
+  /* The funnel's answers as buildSampleShifts opts. Reads the persona for its sample MIX only --
+     which shifts get seeded, an input -- never for how they are priced. */
+  const obSeedPlan = ()=> obSeedOpts(obShift, workStatus, personaPreset(persona).sampleMix, obExtrasOn(differentials));
 
   if(!ready) return null;
 
   /* ============== ONBOARDING ============== */
   if(!setupComplete){
     return <>
-      <Onboarding {...{obStep,setObStep:goObStep,name,setName,baseRate,setBaseRate,num,
-      differentials,setDiff,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-      pretaxDeductions,setPretax,posttaxDeductions,setPosttax,
-      onPaystub,parsing,
-      /* mode: 'full' (walked all four steps), 'rough' (own rate, default differentials + taxes),
-         'sample' (nothing of theirs — seed a fortnight so the planner shows a real number).
-         Guarded because step 4's button passes finish straight to onClick, so the first arg
-         can be a click event rather than a string. */
-      finish:(mode)=>{
-        const m = (mode==='rough'||mode==='sample') ? mode : 'full';
-        if(m==='sample'){ setBaseRate(65.15); setShifts(buildSampleShifts(currentPeriodStart(todayISO()))); }
+      <Onboarding {...{obStep,go:goObStep,num,baseRate,differentials,posttaxDeductions,setPosttax,
+      persona,workStatus,union,obShift,obPay,onPaystub,parsing,
+      back:()=>{ trackOb('ob_back', {from:OB_SCREENS[obStep]}); setObStep(Math.max(0, obStep-1)); },
+      /* A persona sets the EMPLOYER-side starting values. Taxes are user-level and identical in
+         every preset, so they are never written here; a rate she already gave, or anything a stub
+         wrote, survives a change of mind about her profession. */
+      pickPersona:(id)=>{
+        const P = personaPreset(id);
+        setPersona(id);
+        if(!obPay || obPay==='example') setBaseRate(P.baseRate);   // an example rate follows the profession
+        if(obPay!=='stub') setDiff(P.differentials);
+        setWorkPeriod(P.workPeriod); setOtMethod(P.otMethod); setMealMins(P.mealBreakMins); setMealMode(P.mealBreakMode);
+        trackOb('ob_answer', {q:'persona', a:id}); goObStep(OB_SCREENS.indexOf('shift'));
+      },
+      pickShift:(h)=>{ setObShift(h); trackOb('ob_answer', {q:'shift', a:h}); goObStep(OB_SCREENS.indexOf('status')); },
+      pickStatus:(st)=>{ setWorkStatus(st); trackOb('ob_answer', {q:'status', a:st}); goObStep(OB_SCREENS.indexOf('union')); },
+      pickUnion:(u)=>{ setUnion(u); trackOb('ob_answer', {q:'union', a:u}); goObStep(OB_SCREENS.indexOf('pay')); },
+      answerPay:(kind, rate)=>{
+        if(!(rate>0)) return;
+        setBaseRate(rate); setObPay(kind);
+        trackOb('ob_answer', {q:'pay', a:kind}); goObStep(OB_SCREENS.indexOf('extras'));
+      },
+      useExample:()=>{
+        setBaseRate(personaPreset(persona).baseRate); setObPay('example');
+        trackOb('ob_answer', {q:'pay', a:'example'}); goObStep(OB_SCREENS.indexOf('extras'));
+      },
+      toggleExtra:(x)=>{
+        const on = !obExtrasOn(differentials)[x];
+        const nd = {...differentials};
+        (OB_EXTRA_KEYS[x]||[]).forEach(k=>{ if(nd[k]) nd[k] = {...nd[k], active:on}; });
+        setDiff(nd);
+        trackOb('ob_answer', {q:'x_'+x, a:on?'on':'off'});
+      },
+      /* The header meter: periodPaycheck -- the hero's own function -- over exactly the inputs
+         finish() is about to write. No arithmetic of its own, so the number she watches climb is
+         the number the hero shows (tests/smoke.mjs §38 asserts the two are equal). */
+      estimate:(rate)=>{
+        if(!(rate>0)) return null;
+        const start = currentPeriodStart(payPeriodStart);
+        const seeded = mergeSeed(shifts, buildSampleShifts(start, obSeedPlan()));
+        const job = makeJob({ id:DEFAULT_JOB_ID, baseRate:rate, differentials, workPeriod, otMethod, mealBreakMins, mealBreakMode });
+        return periodPaycheck({shifts:seeded, dayEvents, dateKeys:Array.from({length:14},(_,i)=>addDaysISO(start,i)),
+          baseRate:rate, differentials, taxInputs, job}).net;
+      },
+      /* setup_completed keeps its three modes: 'full' = her own figures beyond the rate (a stub),
+         'rough' = her rate on default differentials + taxes, 'sample' = nothing of hers. Every
+         path now seeds a schedule from her answers -- tagged SAMPLE_PATTERN_ID, so "Clear the
+         sample" removes exactly that -- and lands on the period it was seeded into. */
+      finish:()=>{
+        const m = obPay==='stub' ? 'full' : (obPay==='example' ? 'sample' : 'rough');
+        const start = currentPeriodStart(payPeriodStart);
+        const seed = buildSampleShifts(start, obSeedPlan());
+        setShifts(prev=>mergeSeed(prev, seed));
+        setPPS(start);
         setEstimateMode(m==='full' ? '' : m);
         setSetupComplete(true);
         track('setup_completed', {mode:m}, user?.id);
@@ -4768,7 +5002,10 @@ function App(){
             Shown only to a signed-in nurse with no subscription yet -- the feed row is per-user,
             so there is nothing to offer a signed-out visitor. One dismissal and it is gone for
             good on this device; Settings keeps the same how-to for anyone who waved it off. */}
-        {user && !icalSub && !icalCtaOff && (
+        {/* A persona decides which cards show (spec): Other hourly work has no NurseGrid to sync.
+            '' (never answered, every pre-2026-10-10 blob) reads as Healthcare, so no existing
+            nurse loses the card. */}
+        {user && !icalSub && !icalCtaOff && personaPreset(persona).cards.nursegrid && (
           <div className="whatif" style={{marginBottom:14}}>
             <div style={{flex:1}}>
               <div className="t">Want to sync your NurseGrid calendar to load shifts?</div>
@@ -4809,15 +5046,21 @@ function App(){
             and one of them reaches it without the nurse's own hourly rate at all. This says so,
             in the same view as the number it is qualifying — the app's whole promise is that the
             figure isn't a surprise, so an unqualified estimate would be the one lie it can't tell. */}
-        {estimateMode && (
+        {(estimateMode || hasSampleShifts) && (
           <div className="est-banner">
-            <div className="t">{estimateMode==='sample' ? 'These are example numbers' : 'Rough estimate'}</div>
+            <div className="t">{estimateMode==='sample' ? 'These are example numbers' : (estimateMode ? 'Rough estimate' : 'Starting schedule')}</div>
             <div className="s">{estimateMode==='sample'
-              ? 'A sample fortnight at $65.15/hr, so you can see how it works. Add your own rate to make it yours.'
-              : `Based on your $${num(baseRate)}/hr with typical differentials and tax rates. It'll get more accurate once you add your own — but for a two-week pay period, here's roughly what it looks like.`}</div>
+              ? `A sample fortnight at $${num(baseRate)}/hr, so you can see how it works. Add your own rate to make it yours.`
+              : estimateMode
+                ? (hasSampleShifts
+                    ? `Based on your $${num(baseRate)}/hr and a starting schedule from your answers, with typical differentials and tax rates. Add your real shifts, then clear the sample.`
+                    : `Based on your $${num(baseRate)}/hr with typical differentials and tax rates. It'll get more accurate once you add your own — but for a two-week pay period, here's roughly what it looks like.`)
+                : 'Your rates came from your stub. The shifts here are a starting schedule from your answers — clear them once your real ones are in.'}</div>
             <div className="row">
-              <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>
-              {estimateMode==='sample'
+              {estimateMode && <button onClick={()=>{ setShowSettings(true); track('estimate_sharpened', {mode:estimateMode}, user?.id); }}>{estimateMode==='sample' ? 'Enter my rate' : 'Sharpen it'}</button>}
+              {/* "Clear the sample" whenever seeded shifts remain, so a starting schedule can never
+                  sit in the hero unlabelled -- and "Got it" only when there is nothing to clear. */}
+              {hasSampleShifts
                 ? <button className="ghost" onClick={clearSample}>Clear the sample</button>
                 : <button className="ghost" onClick={()=>{ setEstimateMode(''); focusHero(); track('estimate_dismissed', null, user?.id); }}>Got it</button>}
             </div>
@@ -7410,140 +7653,204 @@ function ShareSheet({onClose, userId, surface}){
   );
 }
 
+/* Onboarding v2 (2026-10-10): one question per screen, a live take-home meter, a number in
+   about a minute. Spec: docs/onboarding-funnel-spec.md. Every answer lands in a field the app
+   already had (or persona / workStatus / union, which no pay function reads); every figure on
+   these screens comes from sampleNet() or periodPaycheck() via `estimate`, never from arithmetic
+   here. Copy below is UI-only and deliberately outside the @core personas table. */
+const PERSONA_COPY = {
+  healthcare: { label:'Healthcare',        sub:'Nurses, techs, therapists — night and weekend differentials' },
+  other:      { label:'Other hourly work', sub:'Transit, utilities, trades, retail, warehouse' },
+};
+const STATUS_LABEL = { ft:'Full-time', pt:'Part-time', prn:'PRN / per diem' };
+const UNION_COPY = {
+  yes:    { label:'Yes',      sub:"We'll add a line for union dues." },
+  no:     { label:'No',       sub:'Your employer sets your pay directly.' },
+  unsure: { label:'Not sure', sub:"That's fine — your pay stub usually says." },
+};
+const EXTRA_LABEL = { diffs:'Night & weekend differentials', evenings:'Evening & night differential',
+  weekend:'Weekend premium', holiday:'Holiday premium' };
+const EXTRA_SHORT = { 'night':'Nights', 'weekday-eve':'Evenings', 'weekend-day':'Weekend days',
+  'weekend-eve':'Weekend nights', 'holiday':'Holidays' };
+
 function Onboarding(props){
-  const {obStep,setObStep,name,setName,baseRate,setBaseRate,num,differentials,setDiff,
-    federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,onPaystub,parsing,finish,sampleNet,onSignIn}=props;
+  const {obStep,go,back,num,baseRate,differentials,posttaxDeductions,setPosttax,
+    persona,workStatus,union,obShift,obPay,onPaystub,parsing,
+    pickPersona,pickShift,pickStatus,pickUnion,answerPay,useExample,toggleExtra,
+    estimate,finish,sampleNet,onSignIn}=props;
+  const [payKind,setPayKind] = useState('hourly');
+  const [rateStr,setRateStr] = useState('');
+  const [salaryStr,setSalaryStr] = useState('');
+  const screen = OB_SCREENS[obStep] || 'landing';
 
-  const upd=(k,f,v)=>setDiff({...differentials,[k]:{...differentials[k],[f]: f==='amount'?(parseFloat(v)||0):v}});
-  const tog=k=>setDiff({...differentials,[k]:{...differentials[k],active:!differentials[k].active}});
-
-  /* 0 — welcome */
-  const obSample = sampleNet();
-  if(obStep===0) return (
-    <div className="ob">
-      <div className="brand">badgebudget<span className="b-dot"></span></div>
-      <div className="spacer"></div>
-      <span className="pill" style={{marginBottom:16}}>For bedside nurses</span>
-      <h1 className="display" style={{fontWeight:700,fontSize:28,lineHeight:1.18}}>Know your real take-home before you pick up the shift.</h1>
-      <div className="help">Nights, weekends, holidays, that charge bonus — we do the messy math so the number's never a surprise.</div>
-      <div className="hero" style={{marginTop:22}}>
-        {/* Both figures come from sampleNet() — the same function the done screen uses — rather
-            than a literal. The figure that used to be hard-coded here had drifted from what the
-            app actually computes for this exact schedule, so the first number a nurse ever saw
-            was one the product could not reproduce (council #6 / product-design-05). */}
-        <div className="lbl">Sample · {obSample.hours} hrs this period</div>
-        <div className="num" style={{fontSize:38,margin:'6px 0 4px'}}>{fmt(obSample.net)}</div>
-        <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
+  /* 0 — landing. The sample card is the old welcome card, unchanged: sampleNet() is the figure
+     the council pinned as derived rather than typed (wage-core #6). */
+  if(screen==='landing'){
+    const obSample = sampleNet();
+    return (
+      <div className="ob">
+        <div className="brand">badgebudget<span className="b-dot"></span></div>
+        <div className="spacer"></div>
+        <h1 className="display" style={{fontWeight:700,fontSize:29,lineHeight:1.14}}>Know your paycheck before you work the shift.</h1>
+        <div className="help">Differentials, overtime and taxes, priced the way your employer pays them — for nurses, techs and hourly work. Nurses can sync their NurseGrid schedule too.</div>
+        <div className="hero" style={{marginTop:22}}>
+          <div className="lbl">Sample · {obSample.hours} hrs this period</div>
+          <div className="num" style={{fontSize:38,margin:'6px 0 4px'}}>{fmt(obSample.net)}</div>
+          <div style={{fontSize:12,color:'#7E8290',fontWeight:500}}>estimated take-home</div>
+        </div>
+        <div className="spacer"></div>
+        <button className="btn btn-primary" onClick={()=>go(1)}>See my next paycheck</button>
+        <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:10,fontWeight:500}}>About a minute. No account needed.</div>
+        <button type="button" className="ob-footlink" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
       </div>
-      <div className="spacer"></div>
-      {/* One hourly rate is enough for a believable number, so that is the road. The paystub
-          scan is a side door: it had produced exactly ONE successful import in two months as the
-          primary CTA, because getting a PDF out of Workday on a phone is a three-app errand. */}
-      <button className="btn btn-primary" onClick={()=>setObStep(1)}>Get my estimate</button>
-      <div style={{textAlign:'center',fontSize:12,color:'var(--muted-2)',marginTop:10,marginBottom:14,fontWeight:500}}>One number to start · about 20 seconds</div>
-      <label className="btn btn-ghost" style={{position:'relative'}}>{parsing?'Reading paystub…':'Scan a paystub instead'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
-      <div style={{textAlign:'center',fontSize:11.5,color:'var(--muted-2)',marginTop:8,fontWeight:500}}>PDF paystub · read on your device, never uploaded.</div>
-      <button type="button" className="ob-footlink" onClick={onSignIn}>Already have an account? <b>Sign in</b></button>
-    </div>
-  );
+    );
+  }
 
-  const Head = ({step,label})=>(
-    <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
-      <button className="back" onClick={()=>setObStep(obStep-1)} aria-label="Back">‹</button>
-      <div className="prog"><i style={{width:(step*25)+'%'}}></i></div>
-    </div>
-  );
-
-  /* 1 — base rate */
-  if(obStep===1) return (
-    <div className="ob">
-      <Head step={1}/>
-      <div className="eyebrow">YOUR PAY</div>
-      <h1 className="q">What's your base hourly rate?</h1>
-      <div className="help">The rate before any differentials or bonuses — on your paystub it's usually listed as "Pay Rate." Close is good enough to start; a paystub sharpens it later. <b>The amount below is just an example — enter your own rate.</b></div>
-      <div className="inp pre" style={{marginTop:28}}>
-        <span className="pfx" style={{fontSize:22}}>$</span>
-        <NumInput value={baseRate} onCommit={setBaseRate} min={0} ariaLabel="Base hourly rate" style={{fontSize:32,fontWeight:700,padding:'18px 14px 18px 34px',fontFamily:"'Bricolage Grotesque'"}}/>
-        <span className="sfx">/ hr</span>
+  const typedRate = payKind==='salary' ? salaryToHourly(salaryStr) : (num(rateStr) > 0 ? num(rateStr) : 0);
+  /* The meter shows "—" until a rate exists: the one she is typing on the pay screen, else the
+     one the pay question already set. */
+  const meterRate = (screen==='pay' && typedRate>0) ? typedRate : (obPay ? baseRate : 0);
+  const meter = meterRate>0 ? estimate(meterRate) : null;
+  const head = (
+    <div className="ob-top">
+      <button className="back" onClick={back} aria-label="Back">‹</button>
+      <div className="prog"><i style={{width:Math.round(obStep/(OB_SCREENS.length-1)*100)+'%'}}></i></div>
+      <div className="ob-meter" aria-live="polite">
+        <span className="k">Next check</span>
+        <span className="v num" data-ob-meter>{meter==null ? '—' : fmt(meter)}</span>
       </div>
-      <div className="spacer"></div>
-      {/* Straight to a real number. Differentials and taxes still matter, but asking for them
-          before she has seen anything is what the funnel died on — every one of them has a
-          usable default, and the planner says plainly that this is an estimate. */}
-      <button className="btn btn-primary" onClick={()=>finish('rough')}>See my estimate</button>
-      <button className="btn btn-ghost" style={{marginTop:8}} onClick={()=>setObStep(2)}>Add my differentials &amp; taxes now</button>
-      <button type="button" className="ob-footlink" onClick={()=>finish('sample')}>Don't have your rate handy? <b>Show me an example</b></button>
+    </div>
+  );
+  const opt = (key, on, onClick, t, sub) => (
+    <button key={key} type="button" className="ob-opt" aria-pressed={on} onClick={onClick}>
+      <span className="tx"><span className="t">{t}</span>{sub && <span className="s">{sub}</span>}</span>
+      <span className="ch" aria-hidden="true">›</span>
+    </button>
+  );
+
+  if(screen==='persona') return (
+    <div className="ob">
+      {head}
+      <div className="eyebrow">YOUR WORK</div>
+      <h1 className="q">What kind of work do you do?</h1>
+      <div className="help">We start you with the pay rules your field usually has. You can change any of them later.</div>
+      <div className="ob-opts">
+        {PERSONA_IDS.map(id=>opt(id, persona===id, ()=>pickPersona(id), PERSONA_COPY[id].label, PERSONA_COPY[id].sub))}
+      </div>
     </div>
   );
 
-  /* 2 — differentials */
-  if(obStep===2) return (
+  if(screen==='shift') return (
     <div className="ob">
-      <Head step={2}/>
-      <div className="eyebrow">OPTIONAL · DIFFERENTIALS</div>
-      <h1 className="q">How does your pay change by shift?</h1>
-      <div className="help">These pay bumps for night, weekend, and other shifts are called <b>differentials</b> — the word you'll see on your paystub. We pre-filled common amounts; toggle what applies — you can fine-tune the amounts anytime in Settings.</div>
+      {head}
+      <div className="eyebrow">YOUR SCHEDULE</div>
+      <h1 className="q">How long is your usual shift?</h1>
+      <div className="help">This sets the hours in your first estimate. You can log any length later.</div>
+      <div className="ob-opts">
+        {OB_SHIFT_LENGTHS.map(h=>opt(h, obShift===h, ()=>pickShift(h), h+' hours',
+          'Usually '+OB_SHIFTS_PER_WEEK.ft[h]+' a week, full-time'))}
+      </div>
+    </div>
+  );
+
+  const len = OB_SHIFT_LENGTHS.indexOf(obShift)>=0 ? obShift : 12;
+  if(screen==='status') return (
+    <div className="ob">
+      {head}
+      <div className="eyebrow">YOUR SCHEDULE</div>
+      <h1 className="q">How much do you work?</h1>
+      <div className="help">We start your estimate from a typical schedule. Your calendar replaces it as you add real shifts.</div>
+      <div className="ob-opts">
+        {WORK_STATUSES.map(st=>{
+          const n = OB_SHIFTS_PER_WEEK[st][len];
+          const sub = st==='prn'
+            ? 'Hours vary — we start you at 1 shift a week ('+(n*len*2)+' h a pay period)'
+            : n+' × '+len+'-hour shifts a week · '+(n*len*2)+' h a pay period';
+          return opt(st, workStatus===st, ()=>pickStatus(st), STATUS_LABEL[st], sub);
+        })}
+      </div>
+    </div>
+  );
+
+  if(screen==='union') return (
+    <div className="ob">
+      {head}
+      <div className="eyebrow">YOUR CONTRACT</div>
+      <h1 className="q">Is your pay set by a union contract?</h1>
+      <div className="help">Contracts change what lands in a check. We only use this to ask the right follow-ups.</div>
+      <div className="ob-opts">
+        {UNION_ANSWERS.map(u=>opt(u, union===u, ()=>pickUnion(u), UNION_COPY[u].label, UNION_COPY[u].sub))}
+      </div>
+    </div>
+  );
+
+  if(screen==='pay'){
+    const isSalary = payKind==='salary';
+    return (
+      <div className="ob">
+        {head}
+        <div className="eyebrow">YOUR PAY</div>
+        <h1 className="q">Let's find your pay.</h1>
+        <div className="help">A pay stub is fastest and most accurate. Typing a rate works too.</div>
+        <div className="ob-stub">
+          <label className="btn btn-ghost" style={{position:'relative',background:'#fff'}}>{parsing?'Reading pay stub…':'Scan a pay stub (PDF)'}<input type="file" accept=".pdf" onChange={onPaystub} disabled={parsing} style={{display:'none'}}/></label>
+          <div className="s">Read on your device, never uploaded. You check every number before it's used.</div>
+        </div>
+        <div className="ob-or">or type it</div>
+        <div className="ob-seg" role="group" aria-label="How you're paid">
+          <button type="button" aria-pressed={!isSalary} onClick={()=>setPayKind('hourly')}>Hourly</button>
+          <button type="button" aria-pressed={isSalary} onClick={()=>setPayKind('salary')}>Salary</button>
+        </div>
+        <label className="ob-lab" htmlFor="ob-pay">{isSalary ? 'Annual salary' : 'Base hourly rate'}</label>
+        <div className="inp pre suf">
+          <span className="pfx" style={{fontSize:20}}>$</span>
+          <input id="ob-pay" type="number" inputMode="decimal" min="0" step={isSalary?'1':'0.01'}
+            value={isSalary ? salaryStr : rateStr} placeholder={isSalary ? '85000' : '42.50'}
+            onChange={e=>(isSalary ? setSalaryStr : setRateStr)(e.target.value)}
+            style={{fontSize:24,fontWeight:700,padding:'16px 64px 16px 32px',fontFamily:"'Bricolage Grotesque'"}}/>
+          <span className="sfx">{isSalary ? '/ yr' : '/ hr'}</span>
+        </div>
+        <div className="help" style={{marginTop:8,fontSize:13}}>{isSalary
+          ? (typedRate>0
+              ? <>We'll price your hours at <b>${typedRate.toFixed(2)}/hr</b> — your salary over a 2,080-hour year.</>
+              : 'We turn it into an hourly rate on a 2,080-hour year.')
+          : 'The rate before differentials — on your stub it\'s usually "Pay Rate".'}</div>
+        <div className="spacer"></div>
+        <button className="btn btn-primary" disabled={!(typedRate>0)} onClick={()=>answerPay(payKind, typedRate)}>Continue</button>
+        <button type="button" className="ob-footlink" onClick={useExample}>Don't have it handy? <b>Use an example rate</b></button>
+      </div>
+    );
+  }
+
+  /* 6 — extras: the persona's toggles, union dues when she said yes, and the overtime rule in
+     use stated plainly -- switching it is a pay-rule choice the funnel does not make for her. */
+  const P = personaPreset(persona);
+  const on = obExtrasOn(differentials);
+  const amt = k => { const d = differentials[k]; if(!d) return '';
+    return EXTRA_SHORT[k]+' '+(d.type==='multiplier' ? d.amount+'×' : (d.type==='percent' ? '+'+d.amount+'%' : '+$'+Number(d.amount).toFixed(2))); };
+  return (
+    <div className="ob">
+      {head}
+      <div className="eyebrow">YOUR CHECK</div>
+      <h1 className="q">What else shows up on your check?</h1>
+      <div className="help">Turn on what applies. Amounts are typical starting points — fine-tune them in Settings.</div>
       <div style={{marginTop:18}}>
-        {Object.entries(differentials).filter(([k])=>k!=='overtime').map(([k,d])=>(
-          <div className={'drow'+(d.active?'':' off')} key={k}>
-            <i style={{width:10,height:10,borderRadius:'50%',background:d.color||'#9A9082',flex:'0 0 auto'}}></i>
-            <span className="nm">{d.name}</span>
-            <span className="amt num">{d.type==='multiplier'? d.amount+'× rate' : '+$'+d.amount.toFixed(2)+'/hr'}</span>
-            <button type="button" role="switch" aria-checked={d.active} aria-label={d.name} className={'tg'+(d.active?' on':'')} onClick={()=>tog(k)}><div className="knob"></div></button>
+        {P.extras.map(x=>(
+          <div className={'drow ob-x'+(on[x]?'':' off')} key={x}>
+            <div className="tx"><div className="nm">{EXTRA_LABEL[x]}</div><div className="s">{OB_EXTRA_KEYS[x].map(amt).join(' · ')}</div></div>
+            <button type="button" role="switch" aria-checked={!!on[x]} aria-label={EXTRA_LABEL[x]} className={'tg'+(on[x]?' on':'')} onClick={()=>toggleExtra(x)}><div className="knob"></div></button>
           </div>
         ))}
+        {union==='yes' && (
+          <div className="drow ob-x">
+            <div className="tx"><div className="nm">Union dues</div><div className="s">Per paycheck, taken out after tax</div></div>
+            <div className="inp pre" style={{width:110,flex:'0 0 auto'}}><span className="pfx">$</span><NumInput value={posttaxDeductions} onCommit={setPosttax} min={0} step="1" ariaLabel="Union dues per paycheck" style={{textAlign:'right',fontWeight:700}}/></div>
+          </div>
+        )}
       </div>
+      <div className="ob-note"><b>Overtime:</b> after 40 hours in a week. If your employer pays it after 8 in a day (8/80), switch it in Settings.</div>
       <div className="spacer"></div>
-      <button className="btn btn-primary" onClick={()=>setObStep(3)}>Continue</button>
-    </div>
-  );
-
-  /* 3 — taxes */
-  if(obStep===3) return (
-    <div className="ob">
-      <Head step={3}/>
-      <div className="eyebrow">STEP 3 OF 4 · TAXES & DEDUCTIONS</div>
-      <h1 className="q">Last thing — taxes & take-outs.</h1>
-      <div className="help">We estimated these from typical nurse withholdings. Adjust anything you know.</div>
-      <div style={{marginTop:18,display:'flex',flexDirection:'column',gap:10}}>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Federal income tax</div><span className="tag est">ESTIMATED</span></div>
-          <div className="inp suf" style={{width:90}}><NumInput value={federalTaxRate} onCommit={setFederal} min={0} step="0.1" ariaLabel="Federal income tax percent" style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>State tax</div><span className="tag est">ESTIMATED</span></div>
-          <div className="inp suf" style={{width:90}}><NumInput value={stateTaxRate} onCommit={setState} min={0} step="0.1" ariaLabel="State tax percent" style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>FICA</div><span className="tag auto">AUTO 7.65%</span><div style={{fontSize:11.5,color:'var(--muted-2)',marginTop:2}}>Social Security + Medicare — required, same for everyone</div></div>
-          <div style={{fontFamily:"'Bricolage Grotesque'",fontWeight:700,fontSize:18}}>7.65%</div></div>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Pre-tax · 401k, health</div><div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
-          <div className="inp pre" style={{width:110}}><span className="pfx">$</span><NumInput value={pretaxDeductions} onCommit={setPretax} min={0} step="1" ariaLabel="Pre-tax deductions per pay period" style={{textAlign:'right',fontWeight:700}}/></div></div>
-        <div className="row-item"><div><div style={{fontWeight:600,fontSize:14}}>Post-tax · union dues</div><div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
-          <div className="inp pre" style={{width:110}}><span className="pfx">$</span><NumInput value={posttaxDeductions} onCommit={setPosttax} min={0} step="1" ariaLabel="Post-tax deductions per pay period" style={{textAlign:'right',fontWeight:700}}/></div></div>
-      </div>
-      <div className="spacer"></div>
-      <button className="btn btn-primary" onClick={()=>setObStep(4)}>See my estimate</button>
-    </div>
-  );
-
-  /* 4 — done */
-  const sample = sampleNet();
-  return (
-    <div className="ob dark" style={{alignItems:'center',textAlign:'center'}}>
-      <div className="spacer"></div>
-      <div style={{width:74,height:74,borderRadius:'50%',background:'var(--mint)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 0 0 12px rgba(52,211,153,.14)'}}>{Ic.check}</div>
-      <h1 className="display" style={{fontWeight:700,fontSize:27,marginTop:26}}>{name&&name!=='there'?`You're all set, ${name}.`:"You're all set."}</h1>
-      <div className="help" style={{color:'#9A9DAB'}}>Based on a typical two-week schedule, here's what you'd take home:</div>
-      <div style={{width:'100%',background:'var(--ink-2)',borderRadius:22,padding:24,marginTop:24}}>
-        <div style={{fontSize:12,fontWeight:600,color:'#9A9DAB'}}>Projected take-home</div>
-        <div className="num" style={{fontFamily:"'Bricolage Grotesque'",fontWeight:800,fontSize:54,color:'var(--mint)',letterSpacing:'-.03em',margin:'8px 0',lineHeight:1}}>{fmt(sample.net)}</div>
-        <div style={{fontSize:13,color:'#9A9DAB',fontWeight:500}}>{sample.hours} hrs · 6 shifts · gross {fmt(sample.gross)}</div>
-      </div>
-      <div style={{width:'100%',marginTop:14}}>
-        <div className="field" style={{margin:0,textAlign:'left'}}>
-          <div className="inp"><input placeholder="What should we call you?" aria-label="Your name" value={name==='there'?'':name} onChange={e=>setName(e.target.value||'there')} style={{background:'#21242F',border:'1.5px solid #2E3140',color:'#fff'}}/></div>
-        </div>
-      </div>
-      <div className="spacer"></div>
-      <button className="btn btn-primary" style={{width:'100%'}} onClick={finish}>Go to my planner</button>
-      <button className="btn" style={{width:'100%',color:'#9A9DAB'}} onClick={()=>setObStep(1)}>Edit my setup</button>
+      <button className="btn btn-primary" onClick={finish}>See my paycheck</button>
     </div>
   );
 }

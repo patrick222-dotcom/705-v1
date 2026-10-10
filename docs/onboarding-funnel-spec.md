@@ -86,8 +86,9 @@ sample** removes exactly what was seeded.
 | Part-time (~24 h/week) | 3 (48 h) | 2 (40 h) | 2 (48 h) |
 | PRN | 1 (16 h) | 1 (20 h) | 1 (24 h) |
 
-Days 1..n of each week, so no seeded week passes 40 hours: the first estimate never carries
-overtime, under either work-period rule. Mix is `rotating` only when the persona's mix is rotating
+Days 1..n of each week, so no seeded week passes 40 hours: under the 40-hour week both presets
+use, the first estimate never carries overtime. (Under 8/80 a 10- or 12-hour shift is overtime past
+hour 8 by definition — real overtime, not a seeding artefact — and the funnel never selects 8/80.) Mix is `rotating` only when the persona's mix is rotating
 **and** the night/weekend extra is on — turning differentials off must not leave seeded night shifts
 priced with them (`active:false` never stops pricing a shift already tagged with it).
 

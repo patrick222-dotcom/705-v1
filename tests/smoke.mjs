@@ -482,7 +482,7 @@ const run = async () => {
     await page.waitForSelector('#root > *', { timeout: 15000 }).catch(() => {});
     /* track() fires into a Supabase the sandbox can't reach, so intercept the function itself. */
     await page.evaluate(() => { const o = window.track; window.track = (n, p) => { window.__tracked.push([n, p]); }; void o; });
-    const cta = page.getByRole('button', { name: /get my estimate/i });
+    const cta = page.getByRole('button', { name: /see my next paycheck/i });
     const sawWelcome = await cta.isVisible().catch(() => false);
     ok('onboarding: welcome screen is the first paint', sawWelcome);
     if (sawWelcome) {
@@ -493,10 +493,13 @@ const run = async () => {
       ok('onboarding: leaving the welcome screen emits ob_step',
         ev.some(([n, p]) => n === 'ob_step' && p && p.step === 1), JSON.stringify(ev));
       await page.evaluate(() => { window.__tracked = []; });
-      /* Going back and forward again must not re-count: it is a funnel, not a click counter. */
-      await page.getByRole('button', { name: '‹' }).click().catch(() => {});
+      /* Going back and forward again must not re-count: it is a funnel, not a click counter.
+         The back button's accessible name is its aria-label, "Back" -- this used to look it up by
+         its glyph '‹', matched nothing, and swallowed the miss in a .catch, so the re-count it
+         claims to test had never actually been driven (found 2026-10-10). Unguarded now. */
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
       await page.waitForTimeout(200);
-      await page.getByRole('button', { name: /get my estimate/i }).click().catch(() => {});
+      await page.getByRole('button', { name: /see my next paycheck/i }).click();
       await page.waitForTimeout(300);
       const again = await page.evaluate(() => window.__tracked);
       ok('onboarding: re-reaching a step does not double count',
@@ -1025,13 +1028,19 @@ const run = async () => {
       const { ctx, page } = await fakeAuth(false);
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#root > *', { timeout: 20000 });
-      await page.getByRole('button', { name: /get my estimate/i }).click();
-      await page.getByRole('button', { name: /see my estimate/i }).click();
+      /* The shortest road through onboarding v2: landing -> four taps -> example rate -> finish. */
+      await page.getByRole('button', { name: /see my next paycheck/i }).click();
+      await page.getByRole('button', { name: /^healthcare/i }).click();
+      await page.getByRole('button', { name: /^12 hours/i }).click();
+      await page.getByRole('button', { name: /^full-time/i }).click();
+      await page.getByRole('button', { name: /^no\b/i }).click();
+      await page.getByRole('button', { name: /use an example rate/i }).click();
+      await page.getByRole('button', { name: /see my paycheck/i }).click();
       await page.waitForSelector('.avatar', { timeout: 10000 });
       await signOutViaMenu(page);
       await page.waitForTimeout(600);
-      const welcome = await page.getByRole('button', { name: /get my estimate/i }).count();
-      const rateStep = await page.locator('.q:has-text("base hourly rate")').count();
+      const welcome = await page.getByRole('button', { name: /see my next paycheck/i }).count();
+      const rateStep = await page.locator('.ob .q').count();
       ok('council: sign-out returns onboarding to the welcome screen, not the last step reached', welcome === 1 && rateStep === 0, `welcome=${welcome} rateStep=${rateStep}`);
       await ctx.close();
     }
@@ -1309,14 +1318,16 @@ const run = async () => {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#root > *', { timeout: 20000 });
       ok('a11y: the welcome title is a heading', await page.evaluate(() => !!document.querySelector('.ob h1.display')));
-      await page.getByRole('button', { name: /get my estimate/i }).click();
+      await page.getByRole('button', { name: /see my next paycheck/i }).click();
       await page.waitForSelector('.ob .q', { timeout: 5000 });
       const ob = await page.evaluate(() => ({ h1: !!document.querySelector('.ob h1.q'), back: (document.querySelector('.ob button.back') || {}).getAttribute ? document.querySelector('.ob button.back').getAttribute('aria-label') : null,
         m: getComputedStyle(document.querySelector('.ob .q')).marginTop }));
       ok('a11y: each onboarding question is an h1 with no stray margin', ob.h1 && ob.m === '0px', JSON.stringify(ob));
       ok('a11y: the onboarding back button has an accessible name', ob.back === 'Back', JSON.stringify(ob.back));
-      const doneLine = src.slice(src.indexOf('hrs · 6 shifts · gross') - 120, src.indexOf('hrs · 6 shifts · gross'));
-      ok("a11y: the done screen's gross line uses the 5.7:1 grey", /#9A9DAB/.test(doneLine) && !/#7E8290/.test(doneLine));
+      /* "a11y: the done screen's gross line uses the 5.7:1 grey" lived here. Onboarding v2
+         (2026-10-10) removed the done screen -- the planner hero is the result now -- so that
+         line no longer exists to be checked; the assertion went with it rather than being left
+         to pass against a string that is not there. */
       await ctx.close();
     }
 
@@ -1988,30 +1999,10 @@ const run = async () => {
       await ctx.close();
     }
 
-    /* -- #34c: the done step's name field ---------------------------------------------------
-       Reached only by the long onboarding road (welcome -> rate -> differentials -> taxes); the
-       short road finishes at rough and never renders this screen, which is why no drive had ever
-       landed on it. The input has a placeholder and no visible <label>, so the aria-label is the
-       only accessible name it has. */
-    {
-      const { ctx, page, errors } = await newPage(browser, url, { seed: false });
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('#root > *', { timeout: 20000 });
-      await page.getByRole('button', { name: /get my estimate/i }).click();
-      await page.getByRole('button', { name: /add my differentials/i }).click();
-      await page.getByRole('button', { name: /^continue$/i }).click();
-      await page.getByRole('button', { name: /see my estimate/i }).click();
-      const onDone = await page.waitForSelector('h1:has-text("all set")', { timeout: 8000 })
-        .then(() => true).catch(() => false);
-      ok('council: the long onboarding road still ends on the done step', onDone);
-      const named = await page.locator('input[aria-label="Your name"]').count();
-      ok('council: the done step\'s name field has an accessible name, not just a placeholder',
-        named === 1, `${named} labelled inputs`);
-      ok('council: no page errors walking the long onboarding road',
-        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
-        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
-      await ctx.close();
-    }
+    /* -- #34c: the done step's name field --------------------------------------------------
+       Retired 2026-10-10 with the done step itself: onboarding v2 lands on the planner hero, and
+       her name is set in Settings, whose field carries a visible <label>. The long road it walked
+       (welcome -> rate -> differentials -> taxes) no longer exists; §38 drives the new one. */
 
     /* -- #32: Escape closes the swap sheet -------------------------------------------------- */
     {
@@ -2863,8 +2854,10 @@ const run = async () => {
 
     /* The card's gate and its dismissal are source-shape: needs-live-auth, as above. */
     const src26 = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    /* Since 2026-10-10 the gate also asks the persona's preset (Other hourly has no NurseGrid);
+       §38-E drives that clause end to end with a signed-in stub, Healthcare as the control. */
     ok('connect card: gated on a signed-in user with no subscription yet',
-      /\{user && !icalSub && !icalCtaOff && \(/.test(src26));
+      /\{user && !icalSub && !icalCtaOff && personaPreset\(persona\)\.cards\.nursegrid && \(/.test(src26));
     ok('connect card: "Not now" is remembered on this device',
       /localStorage\.setItem\(ICAL_CTA_KEY,'1'\)/.test(src26));
     ok('connect card: the dismissal key is prefixed like the rest (Invariant 5)',
@@ -4506,6 +4499,357 @@ const run = async () => {
       const real37b = errors.filter((e) => !isExpectedNetwork(e));
       ok('resync wiring: no page errors across five foreground returns', real37b.length === 0, real37b.join(' | '));
       await ctx.close();
+    }
+  }
+
+  /* == 38. Onboarding v2: the funnel, its events, and the Healthcare equality (2026-10-10) =======
+     Session 1 of the multi-persona plan (docs/onboarding-funnel-spec.md). Seven screens, one
+     question each, a live take-home meter, and three new events. What this section exists to hold:
+
+     · The figure never comes from the funnel. The header meter calls periodPaycheck over exactly
+       what finish() writes, so meter = hero, and both = the extracted core's periodPaycheck over
+       the same seeded fortnight, computed here in Node with no browser in the loop.
+     · Healthcare IS today's default path. Healthcare · 12 h · Full-time · example rate must land
+       on the same hero as a planner seeded with exactly what the old "Show me an example" wrote
+       (65.15, today's six-shift fortnight, estimateMode 'sample'). tests/core.test.mjs pins the
+       preset's values; this pins the screen.
+     · Every ob_* row on the WIRE is already in obEventProps' whitelisted shape, and no row carries
+       the rate, salary or dues she typed, or the figure she was shown. Captured by intercepting
+       /rest/v1/events, the way §13 captures ob_step -- not by trusting the call sites.
+     · Driven on the iPhone 13 and on the first-gen iPhone SE (320 pt), and every funnel screen is
+       measured for sideways overflow against clientWidth -- never innerWidth, which grows with the
+       overflow (§35) -- and element by element, since a fixed child never reaches scrollWidth (§36).
+       The PLANNER at 320 pt is not asserted here: it already overflows by 31 px on the production
+       build (the signed-out top bar), logged in BACKLOG.md rather than widened into this change. */
+  if (want(38)) {
+    const core = await import(pathToFileURL(join(ROOT, 'supabase/functions/_shared/badgebudget-core.mjs')).href);
+    const fmt0 = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const RATE = '43.21', SALARY = '91234', DUES = '37';
+    const fortnight = (start) => Array.from({ length: 14 }, (_, i) => {
+      const d = core.parseISODate(start); return core.keyOfDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + i)); });
+    /* The core's answer for a funnel run, priced in Node: the persona's starting values, the
+       schedule her answers seed, and nothing from the page. */
+    const priceNode = ({ preset, diffs, rate, shiftLen, status, extrasOn, posttax }) => {
+      const start = core.todayISO();
+      const d = diffs || preset.differentials;
+      const seed = core.buildSampleShifts(start, core.obSeedOpts(shiftLen, status, preset.sampleMix, extrasOn));
+      const job = core.makeJob({ id: 'job-1', baseRate: rate, differentials: d, workPeriod: preset.workPeriod,
+        otMethod: preset.otMethod, mealBreakMins: preset.mealBreakMins, mealBreakMode: preset.mealBreakMode });
+      return core.periodPaycheck({ shifts: seed, dayEvents: {}, dateKeys: fortnight(start), baseRate: rate, differentials: d, job,
+        taxInputs: { ficaType: preset.ficaType, ficaPct: preset.ficaPct, federalTaxRate: preset.federalTaxRate,
+          stateTaxRate: preset.stateTaxRate, pretaxDeductions: preset.pretaxDeductions,
+          posttaxDeductions: posttax == null ? preset.posttaxDeductions : posttax, customWithholdings: [] } });
+    };
+    const open38 = async (dev, init) => {
+      const ctx = await browser.newContext({ ...devices[dev] });
+      const page = await ctx.newPage();
+      if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+      const errors = [], rows = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      if (init) await page.addInitScript(init.fn, init.arg);
+      await page.route('**/rest/v1/events*', async (route) => {
+        try {
+          const body = JSON.parse(route.request().postData() || 'null');
+          (Array.isArray(body) ? body : [body]).forEach((r) => { if (r && r.name) rows.push({ name: r.name, props: r.props }); });
+        } catch (_) {}
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+      });
+      return { ctx, page, errors, rows };
+    };
+    const sideways = (page) => page.evaluate(() => {
+      const de = document.documentElement, w = de.clientWidth;
+      const over = [...document.querySelectorAll('.ob *')]
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > w + 0.5; })
+        .map((e) => (e.className && typeof e.className === 'string' ? e.className : e.tagName)).slice(0, 3);
+      return { doc: de.scrollWidth - w, over };
+    });
+    const meterText = (page) => page.locator('[data-ob-meter]').innerText();
+    const heroText = async (page) => {
+      await page.waitForSelector('.hero .num', { timeout: 10000 });
+      return page.locator('.hero .num').first().innerText();
+    };
+    const tap = (page, re) => page.getByRole('button', { name: re }).first().click();
+    const obRows = (rows) => rows.filter((r) => /^ob_(view|answer|back)$/.test(r.name));
+    const answers = (rows) => rows.filter((r) => r.name === 'ob_answer').map((r) => `${r.props.q}=${r.props.a}`);
+
+    /* -- A. Healthcare, typed rate, with a Back -- on both phones ---------------------------- */
+    for (const dev of ['iPhone 13', 'iPhone SE']) {
+      const tag = dev === 'iPhone SE' ? 'SE' : '13';
+      const { ctx, page, errors, rows } = await open38(dev);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ob', { timeout: 20000 });
+      const widths = [];
+      const measure = async (screen) => widths.push({ screen, ...(await sideways(page)) });
+      await measure('landing');
+      await tap(page, /see my next paycheck/i);
+      await measure('persona');
+      const meterBefore = await meterText(page);
+      await tap(page, /^healthcare/i);  await measure('shift');
+      await tap(page, /^12 hours/i);    await measure('status');
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await tap(page, /^12 hours/i);
+      await tap(page, /^full-time/i);   await measure('union');
+      await tap(page, /^no\b/i);        await measure('pay');
+      await page.fill('#ob-pay', RATE);
+      const meterPay = await meterText(page);
+      await tap(page, /^continue$/i);   await measure('extras');
+      const meterExtras = await meterText(page);
+      await tap(page, /see my paycheck/i);
+      const hero = await heroText(page);
+      await page.waitForTimeout(900);   // the debounced save + the last track() round trip
+
+      const want = priceNode({ preset: core.PERSONA_PRESETS.healthcare, rate: Number(RATE), shiftLen: 12, status: 'ft',
+        extrasOn: { diffs: true, holiday: true } });
+      const views = rows.filter((r) => r.name === 'ob_view').map((r) => r.props.screen);
+      ok(`funnel ${tag}: every screen fires ob_view, in order, including the one Back returned to`,
+        views.join(',') === 'landing,persona,shift,status,shift,status,union,pay,extras', views.join(','));
+      ok(`funnel ${tag}: ob_answer carries each enumerated answer`,
+        answers(rows).join(',') === 'persona=healthcare,shift=12,shift=12,status=ft,union=no,pay=hourly', answers(rows).join(','));
+      const backs = rows.filter((r) => r.name === 'ob_back').map((r) => r.props.from);
+      ok(`funnel ${tag}: ob_back names the screen she left`, backs.join(',') === 'status', backs.join(','));
+      const steps = rows.filter((r) => r.name === 'ob_step').map((r) => r.props.step);
+      ok(`funnel ${tag}: ob_step still fires once per furthest step (0..6, no repeat after Back)`,
+        steps.join(',') === '0,1,2,3,4,5,6', steps.join(','));
+      const done = rows.filter((r) => r.name === 'setup_completed').map((r) => r.props.mode);
+      ok(`funnel ${tag}: setup_completed keeps its contract -- one row, mode 'rough' for a typed rate`,
+        done.join(',') === 'rough', done.join(','));
+      const bad = obRows(rows).filter((r) => JSON.stringify(core.obEventProps(r.name, r.props)) !== JSON.stringify(r.props));
+      ok(`funnel ${tag}: every ob_* row on the wire is already in its whitelisted shape`,
+        obRows(rows).length >= 16 && bad.length === 0, JSON.stringify(bad.slice(0, 2)));
+      const wire = JSON.stringify(rows);
+      const heroDigits = hero.replace(/[^0-9]/g, '');
+      ok(`funnel ${tag}: no event carries the typed rate, a dollar sign, or the figure she was shown`,
+        !wire.includes(RATE) && !wire.includes(RATE.replace('.', '')) && !wire.includes('$')
+          && heroDigits.length >= 3 && !wire.includes(heroDigits), wire.match(/.{0,30}(43\.?21|\$).{0,30}/)?.[0] || '');
+      ok(`funnel ${tag}: the meter reads "—" until a rate exists`, meterBefore === '—', meterBefore);
+      ok(`funnel ${tag}: the meter prices the rate as she types it`, /^\$[\d,]+$/.test(meterPay), meterPay);
+      ok(`funnel ${tag}: the meter on the last screen is the hero she lands on`, meterExtras === hero, `${meterExtras} vs ${hero}`);
+      ok(`funnel ${tag}: and the hero is the extracted core's periodPaycheck over the seeded fortnight`,
+        hero === fmt0(want.net) && want.hours === 72, `${hero} vs ${fmt0(want.net)} (${want.hours} h)`);
+      const wide = widths.filter((x) => x.doc > 0 || x.over.length);
+      ok(`funnel ${tag}: no funnel screen scrolls sideways`, widths.length === 7 && wide.length === 0, JSON.stringify(wide));
+      const blob = await page.evaluate((k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (_) { return null; } }, STORAGE_KEY);
+      ok(`funnel ${tag}: persona, work status and union are saved`,
+        blob && blob.persona === 'healthcare' && blob.workStatus === 'ft' && blob.union === 'no',
+        blob ? JSON.stringify({ p: blob.persona, w: blob.workStatus, u: blob.union }) : 'no blob');
+      const banner = await page.locator('.est-banner').innerText().catch(() => '');
+      ok(`funnel ${tag}: the seeded schedule is labelled, with a way to clear it`,
+        /Rough estimate/.test(banner) && /starting schedule/.test(banner) && /Clear the sample/.test(banner), banner.replace(/\s+/g, ' '));
+      if (tag === '13') {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        const again = await heroText(page);
+        /* Read after the next debounced save, not before it: a sanitizer that dropped the fields
+           would hydrate them as '' and that save is what would write the loss back. */
+        await page.waitForTimeout(900);
+        const blob2 = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), STORAGE_KEY);
+        ok('funnel 13: a reload lands on the same hero, with the answers still saved (they survive sanitizeData)',
+          again === hero && blob2 && blob2.persona === 'healthcare' && blob2.workStatus === 'ft' && blob2.union === 'no',
+          `${again} vs ${hero}`);
+      }
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok(`funnel ${tag}: no page errors across the drive`, real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
+
+    /* -- B. The Healthcare equality: today's default path, three ways --------------------------- */
+    {
+      const { ctx, page, errors, rows } = await open38('iPhone 13');
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ob', { timeout: 20000 });
+      await tap(page, /see my next paycheck/i);
+      await tap(page, /^healthcare/i);
+      await tap(page, /^12 hours/i);
+      await tap(page, /^full-time/i);
+      await tap(page, /^not sure/i);
+      await tap(page, /use an example rate/i);
+      await tap(page, /see my paycheck/i);
+      const viaFunnel = await heroText(page);
+      const banner = (await page.locator('.est-banner').innerText().catch(() => '')).replace(/\s+/g, ' ');
+      await page.waitForTimeout(500);
+      const mode = rows.filter((r) => r.name === 'setup_completed').map((r) => r.props.mode).join(',');
+      await ctx.close();
+
+      /* What the pre-2026-10-10 finish('sample') wrote, verbatim: setBaseRate(65.15), today's
+         six-shift fortnight, estimateMode 'sample'. Every other field left at its default. */
+      const oldPath = { setupComplete: true, baseRate: 65.15, estimateMode: 'sample',
+        shifts: core.buildSampleShifts(core.todayISO()) };
+      const seeded = await open38('iPhone 13', { fn: ([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        arg: [STORAGE_KEY, oldPath] });
+      await seeded.page.goto(url, { waitUntil: 'domcontentloaded' });
+      const viaOldState = await heroText(seeded.page);
+      await seeded.ctx.close();
+      const viaCore = fmt0(priceNode({ preset: core.PERSONA_PRESETS.healthcare, rate: 65.15, shiftLen: 12, status: 'ft',
+        extrasOn: { diffs: true, holiday: true } }).net);
+
+      ok('equality: Healthcare · 12 h · Full-time · example rate = the old "Show me an example" hero',
+        viaFunnel === viaOldState, `${viaFunnel} vs ${viaOldState}`);
+      ok('equality: ...= the extracted core over today\'s sample fortnight at today\'s defaults',
+        viaFunnel === viaCore, `${viaFunnel} vs ${viaCore}`);
+      ok('equality: the example path still reports setup_completed {mode:"sample"} and says it is an example',
+        mode === 'sample' && /These are example numbers/.test(banner) && /\$65\.15\/hr/.test(banner), `${mode} | ${banner}`);
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok('equality: no page errors on the example path', real.length === 0, real.join(' | '));
+    }
+
+    /* -- C. Other hourly, salary, union dues, part-time 8 h -- on the iPhone SE ------------------ */
+    {
+      const { ctx, page, errors, rows } = await open38('iPhone SE');
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ob', { timeout: 20000 });
+      const widths = [];
+      const measure = async (screen) => widths.push({ screen, ...(await sideways(page)) });
+      await tap(page, /see my next paycheck/i);
+      const personaText = (await page.locator('.ob').innerText()).replace(/\s+/g, ' ');
+      const tiles = await page.locator('.ob-opt').count();
+      ok('funnel other: exactly two profession tiles, no Law enforcement / Fire & EMS, no waitlist',
+        tiles === 2 && !/law enforcement|police|fire|ems|waitlist|early access/i.test(personaText), `${tiles} tiles | ${personaText.slice(0, 160)}`);
+      await tap(page, /^other hourly/i);
+      const shiftTiles = await page.locator('.ob-opt .t').allInnerTexts();
+      ok('funnel other: shift lengths are 8 / 10 / 12 -- no 24-hour tile until the work period lands',
+        shiftTiles.join('|') === '8 hours|10 hours|12 hours', shiftTiles.join('|'));
+      await tap(page, /^8 hours/i);
+      await tap(page, /^part-time/i);
+      await tap(page, /^yes\b/i);
+      await page.getByRole('button', { name: 'Salary', exact: true }).click();
+      await page.fill('#ob-pay', SALARY);
+      const hint = (await page.locator('.ob .help').last().innerText()).replace(/\s+/g, ' ');
+      ok('funnel other: a salary is shown as the hourly rate it will be priced at, before she continues',
+        /\$43\.86\/hr/.test(hint) && /2,080/.test(hint), hint);
+      await measure('pay');
+      await tap(page, /^continue$/i);
+      await measure('extras');
+      const extras = await page.locator('.ob-x .nm').allInnerTexts();
+      ok('funnel other: extras are Other hourly\'s own list, plus union dues because she said yes',
+        extras.join('|') === 'Evening & night differential|Weekend premium|Holiday premium|Union dues', extras.join('|'));
+      await page.getByRole('switch', { name: 'Weekend premium' }).click();
+      await page.fill('input[aria-label="Union dues per paycheck"]', DUES);
+      await page.locator('input[aria-label="Union dues per paycheck"]').blur();
+      await page.waitForTimeout(150);
+      const meter = await meterText(page);
+      await tap(page, /see my paycheck/i);
+      const hero = await heroText(page);
+      await page.waitForTimeout(900);
+      const wantDiffs = { ...core.PERSONA_PRESETS.other.differentials,
+        'weekend-day': { ...core.PERSONA_PRESETS.other.differentials['weekend-day'], active: true },
+        'weekend-eve': { ...core.PERSONA_PRESETS.other.differentials['weekend-eve'], active: true } };
+      const want = priceNode({ preset: core.PERSONA_PRESETS.other, diffs: wantDiffs, rate: core.salaryToHourly(SALARY),
+        shiftLen: 8, status: 'pt', extrasOn: core.obExtrasOn(wantDiffs), posttax: Number(DUES) });
+      ok('funnel other: answers recorded as enumerations, the weekend toggle included',
+        answers(rows).join(',') === 'persona=other,shift=8,status=pt,union=yes,pay=salary,x_weekend=on', answers(rows).join(','));
+      ok('funnel other: meter = hero = the core over 3 × 8 h day shifts a week at $43.86, less $37 dues',
+        meter === hero && hero === fmt0(want.net) && want.hours === 48, `${meter} / ${hero} / ${fmt0(want.net)} (${want.hours} h)`);
+      const wire = JSON.stringify(rows);
+      ok('funnel other: no event carries the salary, its hourly rate or the dues',
+        !wire.includes(SALARY) && !wire.includes('43.86') && !wire.includes('4386') && !/"37"|:37\b/.test(wire),
+        wire.match(/.{0,30}(91234|43\.?86|37).{0,30}/)?.[0] || '');
+      const blob = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), STORAGE_KEY);
+      ok('funnel other: the planner is saved as Other hourly / part-time / union, with the dues and the preset\'s differentials',
+        blob && blob.persona === 'other' && blob.workStatus === 'pt' && blob.union === 'yes' && blob.posttaxDeductions === 37
+          && blob.differentials && blob.differentials.night.amount === 1.5 && blob.baseRate === 43.86,
+        blob ? JSON.stringify({ p: blob.persona, w: blob.workStatus, u: blob.union, d: blob.posttaxDeductions, r: blob.baseRate }) : 'no blob');
+      const wide = widths.filter((x) => x.doc > 0 || x.over.length);
+      ok('funnel other: the pay and extras screens fit 320 pt (the longest two)', wide.length === 0, JSON.stringify(wide));
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok('funnel other: no page errors across the drive', real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
+
+    /* -- D. The stub answers the pay question and the funnel CONTINUES ---------------------------
+       It used to end setup on the spot: applyPaystub set setupComplete, so a nurse who scanned a
+       stub skipped every question after it and landed on an empty planner. */
+    {
+      const { ctx, page, errors, rows } = await open38('iPhone 13');
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.ob', { timeout: 20000 });
+      await tap(page, /see my next paycheck/i);
+      await tap(page, /^healthcare/i);
+      await tap(page, /^12 hours/i);
+      await tap(page, /^full-time/i);
+      await tap(page, /^no\b/i);
+      const pdf = makeMinimalPdf(['Pay Begin Date: 08/11/2025', 'Pay End Date: 08/24/2025',
+        'Employee ID: Department: Location: Job Title: Pay Rate:', '57786 B01035 STAT Nurse 5 $70.810000 Hourly',
+        'HOURS AND EARNINGS', 'Description Rate Hours Earnings Hours Earnings',
+        'Regular 70.810000 47.10 3,335.15 1,065.65 74,092.42', '3rd Shift Differential 7.000000 20.00 140.00 485.60 3,399.20',
+        'TAXES', 'Description Current YTD', 'Fed W/H 327.42 8,859.89', 'Fed MED/EE 58.04 1,500.50', 'Fed OASDI/EE 248.16 6,415.92',
+        'PA W/H 122.49 3,166.88', 'TOTAL GROSS FED TAXABLE GROSS TOTAL TAXES TOTAL DEDUCTIONS NET PAY',
+        'Current 4,007.93 3,927.77 911.29 1,057.76 2,038.88']);
+      await page.locator('.ob input[type=file][accept=".pdf"]').setInputFiles({ name: 'stub.pdf', mimeType: 'application/pdf', buffer: pdf });
+      await page.waitForFunction(() => /Review your paystub|Couldn't read that paystub/.test(document.body.innerText), null, { timeout: 25000 }).catch(() => {});
+      await page.getByRole('button', { name: /apply to my planner/i }).click();
+      await page.waitForTimeout(400);
+      const q = await page.locator('.ob .q').innerText().catch(() => '(no question -- setup ended)');
+      ok('funnel stub: applying a stub continues to the extras screen instead of ending setup',
+        /What else shows up/.test(q), q);
+      /* Guarded, not bare: if the stub ended setup (the defect this drive pins) there is no
+         "See my paycheck" button, and an unguarded click would abort the run instead of letting
+         the assertions below report it -- an aborted run is not a failed assertion. */
+      const meter = await page.locator('[data-ob-meter]').innerText({ timeout: 3000 }).catch(() => '');
+      await page.getByRole('button', { name: /see my paycheck/i }).click({ timeout: 3000 }).catch(() => {});
+      const hero = await heroText(page).catch(() => '(no hero)');
+      const banner = (await page.locator('.est-banner').innerText().catch(() => '')).replace(/\s+/g, ' ');
+      await page.waitForTimeout(500);
+      const done = rows.filter((r) => r.name === 'setup_completed').map((r) => r.props.mode);
+      ok('funnel stub: pay=stub is an answer, the import still reports, and setup_completed says full',
+        answers(rows).includes('pay=stub') && rows.some((r) => r.name === 'paystub_imported') && done.join(',') === 'full',
+        `${answers(rows).join(',')} | ${done.join(',')}`);
+      ok('funnel stub: the meter on extras is the hero she lands on',
+        /^\$[\d,]+$/.test(meter) && meter === hero, `${meter} vs ${hero}`);
+      ok('funnel stub: no rough-estimate claim, but the seeded schedule is still labelled and clearable',
+        /Starting schedule/.test(banner) && /Clear the sample/.test(banner) && !/Rough estimate|example numbers/.test(banner), banner);
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      ok('funnel stub: no page errors across the stub drive', real.length === 0, real.join(' | '));
+      await ctx.close();
+    }
+
+    /* -- E. A persona decides which cards show: Other hourly has no NurseGrid to sync ------------
+       The card needs a signed-in user, so supabase-js is stubbed the way §11's fakeAuth stubs it:
+       a session, and a table-aware client that answers "no row" -- which is a brand-new signup,
+       who stays in onboarding. Healthcare is the positive control: without it, "the card is
+       absent" would also pass if the card were simply broken. */
+    {
+      const signedIn = () => {
+        const A = { user: { id: '33333333-3333-4333-8333-333333333333', email: 'c@example.com' }, access_token: 'c', refresh_token: 'c' };
+        let real;
+        Object.defineProperty(window, 'supabase', { configurable: true, get() { return real; }, set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => { const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = () => { const qq = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single']) qq[m] = () => qq;
+                  qq.insert = () => { qq._op = 'insert'; return qq; }; qq.upsert = () => { qq._op = 'upsert'; return qq; };
+                  qq.then = (res, rej) => Promise.resolve(qq._op === 'select' ? { data: null, error: { code: 'PGRST116', message: 'no row' } } : { error: null }).then(res, rej);
+                  return qq; };
+              } catch (_) {}
+              return c; };
+          }
+          real = v; } });
+      };
+      const cardFor = async (personaRe) => {
+        const { ctx, page, errors } = await open38('iPhone 13', { fn: signedIn });
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('.ob', { timeout: 20000 });
+        await tap(page, /see my next paycheck/i);
+        await tap(page, personaRe);
+        await tap(page, /^12 hours/i);
+        await tap(page, /^full-time/i);
+        await tap(page, /^no\b/i);
+        await tap(page, /use an example rate/i);
+        await tap(page, /see my paycheck/i);
+        await heroText(page);
+        await page.waitForTimeout(600);
+        const shown = await page.locator('.whatif:has-text("sync your NurseGrid calendar")').count();
+        const real = errors.filter((e) => !isExpectedNetwork(e));
+        await ctx.close();
+        return { shown, real };
+      };
+      const hc = await cardFor(/^healthcare/i);
+      const ot = await cardFor(/^other hourly/i);
+      ok('cards: a signed-in Healthcare user still gets the NurseGrid sync card (control)', hc.shown === 1, String(hc.shown));
+      ok('cards: a signed-in Other hourly user does not -- there is no NurseGrid to sync', ot.shown === 0, String(ot.shown));
+      ok('cards: no page errors signed in', hc.real.length + ot.real.length === 0, [...hc.real, ...ot.real].join(' | '));
     }
   }
 
