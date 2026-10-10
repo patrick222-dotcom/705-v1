@@ -1024,6 +1024,33 @@ and the push P0 it pointed at was fixed the same day.
   stepper's confirm card offers "Also clear the N starting shifts?" (never silent — Architecture →
   Calendar sync). Dedicated, not nightly: it is the import commit path and moves the hero, so it
   wants the equality check.
+- [ ] **FICA is charged on pre-tax health premiums — take-home understated (found 2026-10-10,
+  verified three ways).** `harness:drivable`, **wage-core** (`computeNet`). Section 125 health, dental and
+  vision premiums are exempt from Social Security and Medicare; 401(k)/403(b)/457(b) deferrals are not.
+  `computeNet` keeps `ficaBase = gross` and has ONE `pretaxDeductions` field ("Pre-tax · 401k, health"),
+  so a nurse who enters her health premium there pays 7.65% of it in phantom FICA — ~$20 a check on a
+  $266 premium. Evidence: a real California police stub where Medicare = 1.45% × (gross − health
+  premium) to the cent; LaSalle IL's payroll table back-solved per health tier; IRS Pub 15 / 15-B and the
+  cafeteria-plan FAQ (`docs/pay-rule-patterns.md` (g) 1). **This contradicts a decision written into the
+  `wage-core` skill** ("FICA is levied on gross") — right for retirement deferrals, wrong for health. Fix
+  shape: split the field into *retirement (FICA-taxable)* and *health / Section 125 (FICA-exempt)*;
+  existing blobs keep their value in the retirement bucket so no figure moves until she re-files it;
+  the paystub import maps medical/dental/vision lines to the new bucket. Full Invariant 3 protocol,
+  including the equality check against the deployed build. Confirm against one of Courtney's stubs
+  first: Social Security ÷ 0.062 vs. gross − medical.
+- [ ] **"Paid on this check / the next check" for a custom work period (found 2026-10-10).**
+  `harness:drivable`, **wage-core** (`workPeriodChunks`). Session 2 counts a 7(k) period's overtime in
+  the paycheck whose dates hold its last day — the federal default (29 CFR 778.106) and what aligned
+  28-day calendars do. Cambria CSD (CA) pays its 24-day cycles **one check later** in 27 of 31 cycles,
+  and a California grand jury found policies allowing "one pay period after"
+  (`docs/pay-rule-patterns.md` (g) 3). Add a per-job lag, 0 or +1 paychecks, default 0 so no figure
+  moves. Do it **before session 5** (Fire & EMS persona); it changes nothing for 14-day police periods
+  or nurses.
+- [ ] **Session 5 inputs the field evidence adds (2026-10-10).** For the Law enforcement and Fire & EMS
+  personas: ask the Social Security question (Medicare-only on 115 of 115 Illinois officer rows; IAFF
+  ~75% of firefighters); take the **hourly divisor** as an input instead of onboarding's ÷2,080 (police
+  1,950–2,088, fire 2,080–2,994, up to 44% apart); and expect **leveled** fire pay (9 verified) to need
+  primitive 4 (salaried base). Evidence: `docs/pay-rule-patterns.md` (g).
 - [ ] **The landing's sample card and the example path disagree (pre-existing, found 2026-10-10).**
   `harness:drivable`, **wage-core** (`sampleNet`). The landing card prices a fixed mix (3 nights,
   2 weekend days, 1 day) while *Use an example rate* seeds `buildSampleShifts`, whose mix depends on
@@ -1786,6 +1813,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **Docs only: field evidence against the pay model.** Two documents the owner supplied (a
+  Philadelphia PD FY2026 pay schedule and a redacted California police stub) and three research
+  passes (police, fire/EMS, nurse) are written up as `docs/pay-rule-patterns.md` (g), with links.
+  Real public stubs were scarce (Reddit, imgur and nurse forums blocked automated access), so most
+  evidence is payroll calendars, payroll tables, policies and statutes. Three items filed under
+  "Needs a dedicated session": FICA charged on pre-tax health premiums (a wage-core bug,
+  verified three ways), a 0 / +1 paycheck lag for custom work periods, and session 5's inputs
+  (Social Security question, hourly divisor, leveled fire pay).
 - 2026-10-10 — **Configurable work period (session 2 of the multi-persona plan; wage-core, so the
   PR waits for the owner's merge).** Two new rules beside the 40-hour week and 8/80:
   - **"Only the shifts I mark as overtime"** (`workPeriod:'flagged'`): no derived overtime at all.

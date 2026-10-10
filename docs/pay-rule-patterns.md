@@ -252,3 +252,88 @@ individual user, the input is their stub, not their contract.
    `corpus/nj/rve/all.json` in the session scratchpad, not in git). A coded sample of ~100 current police
    contracts from those two would turn "13 of 21" into a defensible share. Only worth doing before
    committing to rows 4 or 10, the two expensive ones.
+
+## (g) Field evidence, 2026-10-10: two real documents and three research passes
+
+Gathered after sessions 1–2 shipped, to test the model against real pay rather than contract text.
+**Real public pay stubs are scarce to an automated search:** the places workers post them (Reddit,
+imgur, allnurses, union forums) blocked automated access, and every "police pay stub" page that did
+load was a vendor template. So the evidence is two documents the owner supplied, plus official
+payroll calendars, payroll tables, policies, statutes and court records. The three full reports
+(examples tables, per-question tallies, every search tried) lived in the session scratchpad and are
+gone when the container is reclaimed; the sources that carry each finding are linked here.
+
+**The two documents the owner supplied.**
+- **Philadelphia PD pay schedule, FY2026** (effective 2025-07-01, 3% raise, "261 Pay Days").
+  Hourly = annual ÷ 261 days ÷ 8 = **annual ÷ 2,088**. The biweekly check is 10 × the daily rate.
+  "Stress" pay is exactly **6% of base**, and longevity is paid **per day** (annual amount ÷ 261);
+  both are inside the 1.5× overtime rate (e.g. step 5 OT 66.7823 + stress OT 4.0069 + longevity OT
+  = 1.5 × the combined hourly). So a Philadelphia officer prices exactly today with one combined
+  hourly rate, base × 1.06 + longevity ÷ 2,088, and FICA set to custom 1.45%.
+- **A California police stub** (department redacted; period 2024-11-11 to 11-24, check 11-29).
+  - **Medicare = 1.45% × (gross − health premium) exactly:** ($9,820.04 − $266.03) × 1.45% = $138.53.
+    **No Social Security line.**
+  - The night differential is paid at 1× on 161.5 hours, which includes the 85.5 overtime hours,
+    beside a separate $274.67 "Overtime Special" line (unverified: plausibly a federal regular-rate
+    top-up).
+  - **Overtime rate $66.59 is 1.87× the listed $35.70 base, not 1.5×.** Unexplained, most likely a
+    pay component not printed on the stub. Today's model cannot reproduce that line; session 3's
+    per-shift multiplier could.
+
+**Findings, by how much they change the plan.**
+
+1. **The app overcharges FICA on pre-tax health premiums — a wage-core bug, verified three ways.**
+   Section 125 health, dental and vision premiums are exempt from Social Security and Medicare;
+   401(k), 403(b) salary-reduction and 457(b) deferrals are not ([IRS cafeteria-plan FAQ](https://www.irs.gov/government-entities/federal-state-local-governments/faqs-for-government-entities-regarding-cafeteria-plans),
+   [Pub 15](https://www.irs.gov/publications/p15), [Pub 15-B](https://www.irs.gov/publications/p15b)).
+   The California stub shows it to the cent. A pension pick-up stays in the Medicare base
+   ([IRS employer pick-ups](https://www.irs.gov/node/4221)): LaSalle IL's 2023 payroll table
+   ([PDF](https://www.lasalle-il.gov/sites/default/files/forms-documents/2024-02/2023.pdf)) back-solves
+   to a Medicare base equal to salary plus sick buyback for an officer with no health coverage (gap
+   −$2.56) and a constant gap per health tier (≈$1,618 single, ≈$4,990 family) that does not scale with
+   salary, as a 9.91% pension exclusion would. `computeNet` taxes FICA on full gross and has one
+   "Pre-tax · 401k, health" field, so **a nurse who enters a $266 premium has take-home understated by
+   ~$20 a check at 7.65%**. Filed in `BACKLOG.md` (dedicated, wage-core).
+2. **Police and fire are often Medicare-only.** LaSalle and Bolingbrook IL
+   ([2018 table](https://www.bolingbrook.gov/uploads/dm/11529/2018_Salaries__Benefits)): no Social
+   Security on 115 of 115 officer rows, while civilians on the same sheets pay it. The firefighters'
+   union estimates ~75% of its members are outside Social Security
+   ([IAFF](https://www.iaff.org/wp-content/uploads/Events/LEGCON/2020/LegCon2019_documents_SocialSecurity.pdf));
+   Fresno fire is Medicare-only. Plus Philadelphia and the California stub. This settles open question
+   (f) 2 for the plan: **ask the Social Security question of police and fire** in session 5. Not
+   checked: how many police *do* pay it (NYPD reportedly does).
+3. **Which paycheck a 24–28-day period's overtime lands in is not one rule.** The federal default is
+   the check for the pay period in which the work period ends ([29 CFR 778.106](https://www.law.cornell.edu/cfr/text/29/778.106)),
+   which is what session 2 built, and what aligned calendars do (Guadalupe County TX
+   [payroll dates](https://www.guadalupetx.gov/page/open/1331/0/Payroll_Dates.pdf); Holly Springs NC,
+   partial). But **Cambria CSD (CA) pays a 24-day cycle one check later in 27 of 31 cycles**
+   ([2024](https://cambriacsd.specialdistrict.org/files/5b19ff6de/2024+Payroll+Calendar+Final.pdf),
+   [2025](https://cambriacsd.specialdistrict.org/files/67cd8299d/2025+Payroll+Calendar+FINAL.pdf)
+   calendars), a California grand jury found policies allowing "no later than one pay period after"
+   ([Tuolumne](https://www.tuolumne.courts.ca.gov/system/files/general/2025-2026-tuolumne-county-civil-grand-jury-twain-harte-fire-district-payroll-practices-report.pdf)),
+   and a Texas city pays per-period checks plus a settlement check
+   ([DOL FLSA2018-5](https://www.dol.gov/sites/dolgov/files/WHD/legacy/files/2018_01_05_05_FLSA.pdf)).
+   One verified misaligned calendar, so how common "+1 check" is stays **unverified**. Filed: a
+   "paid on this check / the next check" setting, before the Fire & EMS persona.
+4. **The salary-to-hourly divisor varies far more than 2,080.** Police: 2,080 (San Diego, Phoenix,
+   Boston, NY State, Somerville), 2,088 (Philadelphia, South Dakota), 2,087 (federal), 1,950 (Agawam MA,
+   for overtime). Fire: 2,080 to 2,994 (2,756 federal, 2,912 and 2,920 common) — **up to 44% apart**.
+   Onboarding's ÷2,080 is fine for Healthcare and Other hourly; Law enforcement and Fire & EMS need the
+   divisor as an input. Filed against session 5.
+5. **Fire pay is often leveled.** Same regular hours every check whatever the shifts fall on: 9
+   verified (e.g. Waco, Springfield OR [CBA](https://springfield-or.gov/wp-content/uploads/2024/03/2021-2024-IAFF-FF-CBA.pdf),
+   federal 106 h a check [OPM/DoD](https://dcpas.osd.mil/sites/default/files/2021-04/FederalFirefighterPay.pdf),
+   Coconut Creek 96 h), against 11 of 13 Tennessee cities paying actual hours
+   ([MTAS survey](https://mtas.tennessee.edu/system/files/mrln/mknowledge/main/MTAS%20Firefighter%20Scheduling%20Survey%20Results%20July%202024.pdf)).
+   Confirms primitive 4 (salaried / leveled base) is needed before fire is priced per check.
+6. **Overtime is 1.5× everywhere it was stated** (8 police sources, 14 fire). Whether differentials
+   and incentives sit inside the overtime rate varies, and three police departments (Agawam, Oakland,
+   Portland) left them out until a court, lawsuit or grievance put them in. No source paid a
+   differential as its own 1.5× line. Hospital practice varies too: UC pays straight time plus a
+   separate premium line ([earn codes](https://bfs.ucr.edu/sites/default/files/2020-08/Earn_Codes_List_Expanded.pdf)),
+   a Washington contract puts the differential inside the overtime rate and pays overtime only past
+   12 h a day or 40 a week ([MultiCare](https://cdn.wsna.org/assets/entry-assets/906542/MBNIC-contract-APPENDIX-B.pdf)).
+   Both support keeping the work period and OT method as settings rather than one rule.
+7. **Pay lag** from period end to check: 5–7 days (police, fire, the California stub), 11 days at UC
+   ([Berkeley dates](https://controller.berkeley.edu/sites/default/files/2025_biweekly_pay_dates.pdf)).
+   Nothing in the model depends on it today.
