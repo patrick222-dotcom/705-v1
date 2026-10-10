@@ -91,7 +91,11 @@ pinned by an assertion in `tests/smoke.mjs`:
   `customBonus` once.
 - **FICA is levied on gross; income tax on gross minus pre-tax.** `computeNet` keeps
   `ficaBase = gross` and `incomeTaxBase = max(0, gross - pretax)` separate. Collapsing them
-  is the single easiest way to silently overstate take-home.
+  is the single easiest way to silently overstate take-home. **Known to be half wrong
+  (2026-10-10):** right for 401(k)/403(b)/457(b) deferrals, wrong for Section 125 health
+  premiums, which are FICA-exempt — a real stub shows Medicare = 1.45% × (gross − health
+  premium) to the cent. The fix splits the pre-tax field, never collapses the two bases;
+  see `BACKLOG.md` → "FICA is charged on pre-tax health premiums".
 - **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispPost`
   are display-only; `net` uses the uncapped figures.
 
