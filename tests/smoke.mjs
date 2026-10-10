@@ -2749,8 +2749,14 @@ const run = async () => {
        modal) and it is throttled. */
     const src25 = readFileSync(join(ROOT, 'index.html'), 'utf8');
     ok('resync: the foreground sync asks for quiet mode', /runIcalSync\(\{quiet:true, url:icalSub\.icalUrl\}\)/.test(src25));
+    /* Reshaped 2026-10-10 by §37: the quiet branch grew a guard against re-raising a plan she
+       already declined, so the one-line form this used to match is gone. What still has to hold
+       is the property the assertion was written for -- quiet mode fills the BANNER and never
+       opens the stepper -- plus the fact that `setIcsImport` is reachable only from the else. */
     ok('resync: quiet mode fills the banner instead of opening the stepper',
-      /if\(quiet\)\{ setIcsPending\(payload\); /.test(src25));
+      /if\(quiet\)\{[\s\S]{0,400}?setIcsPending\(payload\); track\('ics_resync_found'/.test(src25));
+    ok('resync: and the stepper is opened only on the NON-quiet path',
+      /\}\s*\n\s*else setIcsImport\(payload\);/.test(src25));
     ok('resync: it is throttled', /Date\.now\(\) - lastIcalSyncAt\.current < ICAL_RESYNC_MIN_MS/.test(src25));
     ok('resync: and never stacks on an open sheet or an unread banner',
       /if\(icsImport \|\| icsPending \|\| icalInFlight\.current\) return;/.test(src25));
@@ -4076,6 +4082,430 @@ const run = async () => {
         ok('load-banner: only a landed load retires it, so it cannot be cleared by a save succeeding',
           /setCloudLoad\(null\);\s*\/\/ a landed load is the only thing that retires the banner/.test(src));
       }
+    }
+  }
+
+  /* ======================= 36: an update says what it is about to change =================
+     2026-10-08, device f184ffa5, one foreground NurseGrid sync: `ics_sync_result {changes}` ->
+     `ics_sync_done {events:128}` -> `ics_import_done {updated:128, added:0, removed:0}`, and
+     `ics_import_done` landed 1.8 SECONDS after the stepper opened. With no new events to
+     classify the stepper opens straight on the confirm card, and all that card said about 128
+     rewrites of shifts she had already logged was one clause: "Update 128 that changed?". No
+     days, no before, no after, nothing to object to. She tapped Confirm.
+     An update is as wage-affecting as a removal -- the date decides which paycheck the shift
+     lands in, and hours/start decide the differential -- and removals have been spelled out by
+     date since the stepper shipped ("Removing Sep 5, Sep 7 ... gone from your calendar feed").
+     Updates now get the same treatment: the kind of change first, because that is the one line
+     that stays readable at 128, then the first four spelled out before -> after.
+     WHY the 128 changed at all is a separate and still-open question (BACKLOG P1) -- this
+     section pins the disclosure, which is right under either answer. */
+  if (want(36)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof window.icsPlanFromExisting === 'function', null, { timeout: 20000 });
+
+    /* --- the plan has to carry the OLD values, or the card has nothing to print. Driven against
+           the top-level planner, the way §28 drives the removal bound. */
+    const plan = await page.evaluate(() => {
+      const existing = {
+        moved:   { dateKey: '2026-10-12', shift: { id: 'moved', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'moved' } },
+        longer:  { dateKey: '2026-10-14', shift: { id: 'longer', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'longer' } },
+        flipped: { dateKey: '2026-10-16', shift: { id: 'flipped', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'flipped' } },
+        same:    { dateKey: '2026-10-18', shift: { id: 'same', hours: 12, start: '07:00', shiftType: 'base', icsUid: 'same' } },
+      };
+      const out = window.icsPlanFromExisting([
+        { dateKey: '2026-10-14', uid: 'moved', hours: 12, start: '07:00' },      // moved two days later
+        { dateKey: '2026-10-14', uid: 'longer', hours: 24, start: '07:00' },     // 12h -> 24h
+        { dateKey: '2026-10-16', uid: 'flipped', hours: 12, start: '19:00' },    // day -> night start
+        { dateKey: '2026-10-18', uid: 'same', hours: 12, start: '07:00' },       // nothing moved
+      ], existing, { todayKey: '2026-10-09' });
+      const byUid = {};
+      out.toUpdate.forEach((u) => { byUid[u.uid] = u; });
+      return byUid;
+    });
+
+    ok('ics update: the plan carries the shift\'s PREVIOUS day, hours and start',
+      plan.moved.prevDateKey === '2026-10-12' && plan.moved.prevHours === 12 && plan.moved.prevStart === '07:00',
+      JSON.stringify(plan.moved));
+    ok('ics update: prevHours is the OLD length, not a copy of the new one',
+      plan.longer.prevHours === 12 && Number(plan.longer.hours) === 24,
+      `prev=${plan.longer.prevHours} new=${plan.longer.hours}`);
+    ok('ics update: prevStart is the OLD start, not a copy of the new one',
+      plan.flipped.prevStart === '07:00' && plan.flipped.start === '19:00',
+      `prev=${plan.flipped.prevStart} new=${plan.flipped.start}`);
+    /* An unchanged match is still planned (the sync filters on `changed`, the planner does not),
+       and it must carry the same fields -- otherwise a file import, which also filters, would
+       print undefined for anything that slipped through. */
+    ok('ics update: an unchanged match is still flagged unchanged and still carries its old values',
+      plan.same.changed === false && plan.same.prevHours === 12 && plan.same.prevStart === '07:00',
+      JSON.stringify(plan.same));
+
+    /* --- the card itself. Mounted on its own (the JSX block compiles to a classic script, so its
+           top-level components are globals -- the property §26 leans on for IcalHowToSheet). */
+    const render = async (toUpdate, extra) => page.evaluate(async ([ups, ex]) => {
+      /* One container, one root per render: unmount the previous root rather than blanking the
+         container under it, which leaves React holding a detached tree and warns. */
+      if (window.__updRoot) { window.__updRoot.unmount(); window.__updRoot = null; }
+      const host = document.getElementById('upd-probe') || document.createElement('div');
+      host.id = 'upd-probe';
+      if (!host.parentNode) document.body.appendChild(host);
+      const root = ReactDOM.createRoot(host);
+      window.__updRoot = root;
+      root.render(React.createElement(IcsImportSheet, {
+        state: Object.assign({ groups: [], toUpdate: ups, toRemove: [], toUpdateEvents: [],
+          toRemoveEvents: [], answers: {}, stepIdx: 0, dropNotice: '' }, ex || {}),
+        differentials: {}, onAnswer: () => {}, onBack: () => {}, onNext: () => {},
+        onConfirm: () => {}, onCancel: () => {}, onDismissNotices: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 160));
+      const block = host.querySelector('.ics-updates');
+      return {
+        sentence: (host.querySelector('.sheet p') || {}).innerText || '',
+        block: block ? block.innerText.replace(/\s+/g, ' ').trim() : null,
+        all: host.innerText.replace(/\s+/g, ' ').trim(),
+        /* Measured on the BLOCK against the sheet it sits in, not on documentElement: the sheet
+           is position:fixed, so an overflowing child never reaches the document's scrollWidth and
+           a document-level check here can never fail (confirmed by a deliberate nowrap). This is
+           the §35 lesson in a second shape -- the earlier one was innerWidth growing with the
+           overflow; this one is the overflow never arriving at all. */
+        blockW: block ? block.scrollWidth : 0,
+        sheetW: host.querySelector('.sheet') ? host.querySelector('.sheet').clientWidth : 0,
+      };
+    }, [toUpdate, extra]);
+
+    /* The production shape: 3 moved days and 125 retimed, which is what 128 silent rewrites
+       would have looked like had anyone been told. */
+    const many = [];
+    for (let i = 0; i < 3; i++) {
+      many.push({ uid: `m${i}`, dateKey: '2026-10-14', prevDateKey: '2026-10-12',
+        hours: 12, prevHours: 12, start: '07:00', prevStart: '07:00' });
+    }
+    for (let i = 0; i < 125; i++) {
+      many.push({ uid: `r${i}`, dateKey: '2026-11-02', prevDateKey: '2026-11-02',
+        hours: 24, prevHours: 12, start: '19:00', prevStart: '07:00' });
+    }
+    const big = await render(many);
+
+    ok('ics update: the confirm card no longer leaves 128 rewrites as a bare count',
+      big.block !== null, JSON.stringify(big.all.slice(0, 200)));
+    ok('ics update: it says how many moved to a different day',
+      /3 move to a different day/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: and how many changed time or length',
+      /125 change time or length/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: the old one-clause summary is kept, not replaced',
+      /update 128 that changed/i.test(big.sentence), JSON.stringify(big.sentence));
+    /* Spelled out, capped, and the remainder counted -- the same shape removals use. */
+    ok('ics update: the first few are spelled out, before and after',
+      /Oct 12 \u2192 Oct 14/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: a changed length is named in hours',
+      /12h \u2192 24h/.test(big.block || ''), JSON.stringify(big.block));
+    ok('ics update: a changed start is named on a 12-hour clock, the way the rest of the app reads it',
+      /7:00 AM \u2192 7:00 PM/.test(big.block || '') && !/07:00 \u2192 19:00/.test(big.block || ''),
+      JSON.stringify(big.block));
+    ok('ics update: it is capped and the remainder is counted, not dumped',
+      /\+124 more/.test(big.block || '') && (big.block || '').split(';').length <= 4,
+      JSON.stringify((big.block || '').slice(0, 240)));
+    ok('ics update: 128 updates wrap inside the sheet instead of running off the side',
+      big.sheetW > 0 && big.blockW <= big.sheetW + 1, `block=${big.blockW} sheet=${big.sheetW}`);
+
+    /* One update, singular grammar, and no "+N more" to count. */
+    const one = await render([{ uid: 'o', dateKey: '2026-10-14', prevDateKey: '2026-10-14',
+      hours: 12.5, prevHours: 12, start: '07:00', prevStart: '07:00' }]);
+    ok('ics update: one retimed shift reads in the singular',
+      /^1 changes time or length\./.test((one.block || '').trim()), JSON.stringify(one.block));
+    ok('ics update: a fractional length survives the label',
+      /12h \u2192 12\.5h/.test(one.block || ''), JSON.stringify(one.block));
+    ok('ics update: and one update is not followed by a remainder count',
+      !/more/.test(one.block || ''), JSON.stringify(one.block));
+
+    /* The regression this could introduce: a stray line (or a lone full stop) on the card every
+       nurse sees, including the ordinary first import where nothing is being updated at all. */
+    const none = await render([], { groups: [] });
+    ok('ics update: no update block at all when nothing is being updated',
+      none.block === null, JSON.stringify(none.all.slice(0, 200)));
+    ok('ics update: and no orphan punctuation left on the card',
+      !/(^|\s)\.(\s|$)/.test(none.all), JSON.stringify(none.all.slice(0, 200)));
+
+    /* Removals keep their own spelled-out line when both land in the same import. */
+    const both = await render(
+      [{ uid: 'u', dateKey: '2026-10-14', prevDateKey: '2026-10-12', hours: 12, prevHours: 12, start: '07:00', prevStart: '07:00' }],
+      { toRemove: [{ uid: 'r', dateKey: '2026-10-20', shiftId: 'r', hours: 12, shiftType: 'base' }] });
+    ok('ics update: an update line does not displace the removal line',
+      /Removing Oct 20/.test(both.all) && /1 moves to a different day/.test(both.block || ''),
+      JSON.stringify(both.all.slice(0, 300)));
+
+    const real36 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('ics update: no page errors while driving the confirm card', real36.length === 0, real36.join(' | '));
+    await ctx.close();
+  }
+
+  /* ======================= 37: "Not now" means not this, not "ask me again in ten minutes" ====
+     2026-10-10 groom, device f184ffa5 (the one real NurseGrid account), ONE page load:
+       07:09:15 app_open -> ics_sync_result{changes} + ics_sync_done{events:127}  (cold load, stepper)
+       07:24:25 ics_sync_result{changes} + ics_resync_found   -> 07:28:12 ics_resync_dismissed
+       07:41:12 ics_sync_result{changes} + ics_resync_found   -> 07:43:57 ics_resync_dismissed
+       07:55:40 ics_sync_result{changes} + ics_resync_found   -> 08:08:55 ics_resync_dismissed
+     Three identical 127-event plans in 47 minutes, every one declined, and ZERO ics_import_done
+     all day. "Not now" only cleared the banner's state, so the next foreground re-sync rebuilt
+     the same plan from the same unchanged feed and asked again. In the gaps she was editing
+     shifts by hand -- session_end shifts went 135 -> 114 -> 114 -> 112 -- so the app was asking
+     her, every ten minutes, to overwrite the work she had just finished doing.
+     The fix is a fingerprint, not a mute: a quiet re-sync whose plan is byte-identical to the one
+     she declined stays silent, and anything that differs by one field raises the banner again.
+     The dangerous direction here is SUPPRESSING A REAL CHANGE -- a missed removal keeps a
+     cancelled shift inflating her paycheck estimate -- so most of this section is spent proving
+     the digest is exact rather than proving it matches. */
+  if (want(37)) {
+    /* --- (A) the digest itself, driven directly. It is a top-level pure function, the same
+           property §25 leans on for icsPendingSummary and §28/§32/§36 for the planners. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => typeof window.icsPlanFingerprint === 'function', null, { timeout: 20000 });
+
+      const fp = await page.evaluate(() => {
+        const base = () => ({
+          groups: [{ key: 'g', items: [
+            { uid: 'new-a', dateKey: '2026-10-20', hours: 12, start: '07:00' },
+            { uid: 'new-b', dateKey: '2026-10-22', hours: 12, start: '07:00' },
+          ] }],
+          toUpdate: [{ uid: 'upd', dateKey: '2026-10-14', hours: 12, start: '19:00' }],
+          toRemove: [{ uid: 'rem', dateKey: '2026-10-28' }],
+          toUpdateEvents: [{ uid: 'ue', dateKey: '2026-11-02' }],
+          toRemoveEvents: [{ uid: 're', dateKey: '2026-11-04' }],
+        });
+        const f = window.icsPlanFingerprint;
+        const a = f(base());
+        const mut = (fn) => { const p = base(); fn(p); return f(p); };
+        return {
+          nullPlan: f(null),
+          emptyPlan: f({ groups: [], toUpdate: [], toRemove: [], toUpdateEvents: [], toRemoveEvents: [] }),
+          partialPlan: f({ toUpdate: [{ uid: 'u', dateKey: '2026-10-14', hours: 12, start: '07:00' }] }),
+          same: a === f(base()),
+          /* Order independence: a feed is under no obligation to hand the same events back in the
+             same order, and Object.keys order drives toRemove's source. A digest that flipped on
+             re-ordering would never suppress anything and the nag would be back. */
+          reordered: a === mut((p) => { p.groups[0].items.reverse(); }),
+          /* Every field the stepper would WRITE has to move the digest. */
+          addedDay:   a !== mut((p) => { p.groups[0].items[0].dateKey = '2026-10-21'; }),
+          addedHours: a !== mut((p) => { p.groups[0].items[0].hours = 8; }),
+          addedStart: a !== mut((p) => { p.groups[0].items[0].start = '19:00'; }),
+          addedOff:   a !== mut((p) => { p.groups[0].items[0].offHint = true; }),
+          oneMoreAdd: a !== mut((p) => { p.groups[0].items.push({ uid: 'new-c', dateKey: '2026-10-24', hours: 12, start: '07:00' }); }),
+          oneFewerAdd: a !== mut((p) => { p.groups[0].items.pop(); }),
+          updDay:     a !== mut((p) => { p.toUpdate[0].dateKey = '2026-10-15'; }),
+          updHours:   a !== mut((p) => { p.toUpdate[0].hours = 24; }),
+          updStart:   a !== mut((p) => { p.toUpdate[0].start = '07:00'; }),
+          /* A removal is the one irreversible thing the stepper does. It must move the digest
+             both ways: a new removal, and a removal that has gone away. */
+          oneMoreRemove: a !== mut((p) => { p.toRemove.push({ uid: 'rem2', dateKey: '2026-10-29' }); }),
+          noRemove:      a !== mut((p) => { p.toRemove = []; }),
+          dayEventMoved: a !== mut((p) => { p.toUpdateEvents[0].dateKey = '2026-11-03'; }),
+          dayEventGone:  a !== mut((p) => { p.toRemoveEvents = []; }),
+          /* A uid swap with identical dates is a DIFFERENT shift: the digest is keyed by uid, so
+             a bucket-shaped summary ("1 changed") cannot stand in for it. */
+          uidSwap: a !== mut((p) => { p.toUpdate[0].uid = 'other'; }),
+          /* Buckets must not be interchangeable: moving the same uid+date from "remove" to
+             "update" is a completely different outcome for her pay history. */
+          bucketMatters: f({ groups: [], toUpdate: [], toRemove: [{ uid: 'x', dateKey: '2026-10-20' }], toUpdateEvents: [], toRemoveEvents: [] })
+            !== f({ groups: [], toUpdate: [], toRemove: [], toUpdateEvents: [], toRemoveEvents: [{ uid: 'x', dateKey: '2026-10-20' }] }),
+          /* Hours arrive as a string from some paths (sanitizeData coerces, the feed parser does
+             not have to), and a shift is not "changed" because one side spelled 12 as '12.00'.
+             The first draft of this used '12' vs 12, which passes with the Number() coercion
+             DELETED -- template interpolation already makes those the same string. '12.00' is
+             the case that actually needs the coercion. */
+          numericHours: f({ toUpdate: [{ uid: 'u', dateKey: '2026-10-14', hours: '12.00', start: '07:00' }] })
+            === f({ toUpdate: [{ uid: 'u', dateKey: '2026-10-14', hours: 12, start: '07:00' }] }),
+          /* Invariant 13: the digest is uids and dates. No title ever reaches it, and it holds no
+             feed URL -- it is the only new thing this change remembers. */
+          noTitle: !/ICU|SUMMARY|http/i.test(a),
+        };
+      });
+
+      ok('resync fp: a null plan digests to the empty string', fp.nullPlan === '', JSON.stringify(fp.nullPlan));
+      ok('resync fp: an empty plan digests to the empty string', fp.emptyPlan === '', JSON.stringify(fp.emptyPlan));
+      ok('resync fp: a plan missing whole buckets does not throw', typeof fp.partialPlan === 'string' && fp.partialPlan.length > 0, JSON.stringify(fp.partialPlan));
+      ok('resync fp: the same plan twice digests the same (this is what suppresses the nag)', fp.same === true);
+      ok('resync fp: re-ordering the same events does not change the digest', fp.reordered === true);
+      ok('resync fp: a new shift on a different DAY changes it', fp.addedDay === true);
+      ok('resync fp: a new shift with different HOURS changes it', fp.addedHours === true);
+      ok('resync fp: a new shift with a different START changes it', fp.addedStart === true);
+      ok('resync fp: a new shift flipped to time-off changes it', fp.addedOff === true);
+      ok('resync fp: one MORE shift to classify changes it', fp.oneMoreAdd === true);
+      ok('resync fp: one FEWER shift to classify changes it', fp.oneFewerAdd === true);
+      ok('resync fp: an update moving to a different day changes it', fp.updDay === true);
+      ok('resync fp: an update changing hours changes it', fp.updHours === true);
+      ok('resync fp: an update changing start changes it', fp.updStart === true);
+      ok('resync fp: one MORE removal changes it — the irreversible bucket', fp.oneMoreRemove === true);
+      ok('resync fp: a removal that has gone away changes it', fp.noRemove === true);
+      ok('resync fp: a moved day event changes it', fp.dayEventMoved === true);
+      ok('resync fp: a day-event removal that has gone away changes it', fp.dayEventGone === true);
+      ok('resync fp: the same date on a DIFFERENT uid changes it', fp.uidSwap === true);
+      ok('resync fp: remove and remove-event are not interchangeable', fp.bucketMatters === true);
+      ok('resync fp: hours "12.00" and 12 are the same shift', fp.numericHours === true);
+      ok('resync fp: the digest carries no title and no URL (Invariant 13)', fp.noTitle === true);
+      const real37a = errors.filter((e) => !isExpectedNetwork(e));
+      ok('resync fp: no page errors while driving the digest', real37a.length === 0, real37a.join(' | '));
+      await ctx.close();
+    }
+
+    /* --- (B) the wiring, driven end to end. §27's stub is what makes this reachable: a signed-in
+           session, a `ical_subscriptions` row and an `ical-proxy` whose body this section can
+           REASSIGN mid-load, which is how "the feed changed" is expressed. The 10-minute throttle
+           is crossed by moving Date.now forward rather than waiting, so the drive is the real
+           visibilitychange handler and the real guard, not a re-implementation. */
+    {
+      const FEED_URL = 'https://app.nursegrid.com/calendars/777/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+      const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+        return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+      const feedWith = (specs) => ['BEGIN:VCALENDAR', 'VERSION:2.0',
+        ...specs.flatMap(([uid, days]) => ['BEGIN:VEVENT', `UID:${uid}`,
+          `DTSTART:${dayOut(days)}T190000Z`, `DTEND:${dayOut(days)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT']),
+        'END:VCALENDAR'].join('\r\n');
+      const FEED_A = feedWith([['ng-a', 5]]);
+      const FEED_B = feedWith([['ng-a', 5], ['ng-b', 9]]);   // same plan plus one genuinely new shift
+
+      const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+      const page = await ctx.newPage();
+      if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+        [STORAGE_KEY, SEEDED_STATE]);
+      await page.addInitScript(([feedA, feedUrl]) => {
+        window.__ev = []; window.__feed = feedA; window.__invokes = 0;
+        /* Date.now is advanced by this offset so the ICAL_RESYNC_MIN_MS throttle can be crossed
+           without the test sleeping ten minutes. Patched before the app loads, so the app's own
+           reads of Date.now() go through it -- including the one lastIcalSyncAt stamps. */
+        window.__skew = 0;
+        const realNow = Date.now;
+        Date.now = () => realNow() + window.__skew;
+        const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+          access_token: 'a', refresh_token: 'a' };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const orig = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = orig(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                  c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                  c.from = (table) => {
+                    const q = { _op: 'select' };
+                    for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                    q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                    q.upsert = () => { q._op = 'upsert'; return q; };
+                    q.then = (res, rej) => {
+                      if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                      if (table === 'ical_subscriptions') {
+                        return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                      }
+                      return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                    };
+                    return q;
+                  };
+                  /* `functions` is a prototype GETTER returning a fresh client per access
+                     (supabase-js 2.45.4) — shadowing it with an own property is the only form
+                     that takes. §27 learned this the hard way; __invokes is the proof it took. */
+                  const fx = { invoke: async () => { window.__invokes++; return { data: window.__feed, error: null }; } };
+                  Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, [FEED_A, FEED_URL]);
+
+      const names = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+      const count = async (n) => (await names()).filter((x) => x === n).length;
+      /* Cross the throttle and fire the handler the phone fires when she comes back to the tab. */
+      const foreground = async () => {
+        const before = await page.evaluate(() => window.__invokes);
+        await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+        await page.waitForFunction((b) => window.__invokes > b, before, { timeout: 15000 });
+        await page.waitForTimeout(600);   // let the plan build and the banner render
+      };
+
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'),
+        null, { timeout: 15000 });
+
+      /* The cold-load sync opens the stepper, exactly as it always has. Close it without
+         confirming -- that is what the real device did, and it is what leaves a live plan the
+         foreground re-sync will rebuild. */
+      ok('resync wiring: the stub actually reached the proxy (the drive is real, not a no-op)',
+        (await page.evaluate(() => window.__invokes)) === 1, String(await page.evaluate(() => window.__invokes)));
+      await page.waitForSelector('.sheet', { timeout: 8000 });
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet', { state: 'detached', timeout: 6000 }).catch(() => {});
+
+      /* (1) First foreground return: the banner is supposed to appear. */
+      await foreground();
+      ok('resync wiring: coming back to the app raises the quiet banner',
+        await page.locator('.sync-banner').isVisible(), (await names()).join(','));
+      ok('resync wiring: and records it once', (await count('ics_resync_found')) === 1, (await names()).join(','));
+      ok('resync wiring: nothing was suppressed yet', (await count('ics_resync_suppressed')) === 0);
+
+      /* (2) "Not now". */
+      await page.locator('.sync-banner button.ghost').click();
+      await page.waitForSelector('.sync-banner', { state: 'detached', timeout: 6000 });
+      ok('resync wiring: "Not now" dismisses it and says so',
+        (await count('ics_resync_dismissed')) === 1, (await names()).join(','));
+
+      /* (3) Come back again on the UNCHANGED feed. This is the production loop: before the fix the
+             banner reappeared here with the identical plan. It must stay down -- and the sync must
+             still have RUN and still have reported `changes`, because the feed really does differ
+             from the app and misreporting that would break §27's five-state contract. */
+      const resultsBefore = await count('ics_sync_result');
+      await foreground();
+      ok('resync wiring: the same plan does NOT raise the banner a second time',
+        !(await page.locator('.sync-banner').isVisible()), (await names()).join(','));
+      ok('resync wiring: ics_resync_found did not fire again', (await count('ics_resync_found')) === 1, (await names()).join(','));
+      ok('resync wiring: the withheld nag is recorded as ics_resync_suppressed',
+        (await count('ics_resync_suppressed')) === 1, (await names()).join(','));
+      ok('resync wiring: the sync still ran and still reported its result honestly',
+        (await count('ics_sync_result')) === resultsBefore + 1, (await names()).join(','));
+      ok('resync wiring: and that result is still `changes`, not a lie to save a row',
+        (await page.evaluate(() => (window.__ev || []).filter((r) => r && r.name === 'ics_sync_result').pop().props.result)) === 'changes');
+
+      /* (4) The feed genuinely changes. A dismissal must never outlive the plan it was about:
+             this is the direction that costs her money if it is wrong. */
+      await page.evaluate((b) => { window.__feed = b; }, FEED_B);
+      await foreground();
+      ok('resync wiring: a feed with one NEW shift raises the banner again',
+        await page.locator('.sync-banner').isVisible(), (await names()).join(','));
+      ok('resync wiring: and that is a second ics_resync_found', (await count('ics_resync_found')) === 2, (await names()).join(','));
+      ok('resync wiring: still only one suppression', (await count('ics_resync_suppressed')) === 1, (await names()).join(','));
+
+      /* (5) "Review" is not a decline, so it must CLEAR the remembered dismissal -- otherwise the
+             one affordance that shows her the detail quietly mutes a plan she never declined.
+             Getting this falsifiable took a second attempt and the reason is worth keeping:
+             reviewing plan B and then re-checking plan B proves nothing, because the remembered
+             fingerprint is still A's and a mismatch raises the banner either way. So the feed is
+             rolled BACK to A after the review: with the clear, A is unremembered and raises; with
+             the clear removed, A is still the dismissed fingerprint and the banner stays down.
+             A first draft of this assertion passed with `icsDismissedPlan.current=null` deleted. */
+      await page.locator('.sync-banner button:not(.ghost)').first().click();
+      await page.waitForSelector('.sheet', { timeout: 8000 });
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet', { state: 'detached', timeout: 6000 }).catch(() => {});
+      await page.evaluate((a) => { window.__feed = a; }, FEED_A);
+      await foreground();
+      ok('resync wiring: a Review un-remembers the dismissal, so the old plan can be offered again',
+        await page.locator('.sync-banner').isVisible(), (await names()).join(','));
+      ok('resync wiring: and that is a third ics_resync_found', (await count('ics_resync_found')) === 3, (await names()).join(','));
+      ok('resync wiring: still only one suppression after a Review', (await count('ics_resync_suppressed')) === 1, (await names()).join(','));
+
+      const real37b = errors.filter((e) => !isExpectedNetwork(e));
+      ok('resync wiring: no page errors across five foreground returns', real37b.length === 0, real37b.join(' | '));
+      await ctx.close();
     }
   }
 

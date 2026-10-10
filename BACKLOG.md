@@ -29,8 +29,11 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P0
-- [ ] **The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
-  `waiting` with its one job unstarted.** Needs the owner; nothing in this repo can clear it.
+- [x] ~~**The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
+  `waiting` with its one job unstarted.**~~ — **RESOLVED 2026-10-09 12:02:47 UTC by the owner
+  cancelling run 168, exactly as the 10-08 diagnosis said it would be.** See the closing note at
+  the end of this item; the history below is kept because the lesson is the detection gap, not the
+  button. Needs the owner; nothing in this repo can clear it.
   **Facts, not inference.** PR #150 squash-merged to the deploy branch at **08:49 UTC** as
   `a64348b`, both required checks green. Deploy workflow run **168**
   (`https://github.com/patrick222-dotcom/705-v1/actions/runs/37438695953`) was created at
@@ -77,6 +80,88 @@ and the push P0 it pointed at was fixed the same day.
   still unverified for the same reason — environment settings are not readable from this session's
   tooling. Approving or clearing run 168 should drain the whole queue in one go, because 171 (and
   whatever lands after it) checks out the branch head, which carries #150 through tonight.
+  **2026-10-08 — third night, and it has got worse again: run 168 is now ~47½ hours in `waiting`
+  and SEVEN merged green commits are unshipped.** Read at 08:1x UTC: run **168** (`a64348b`, #150)
+  still `status:"waiting"`, `updated_at` unmoved since 2026-10-06 08:49:27. Behind it runs **169,
+  170, 171, 172 and 173** are all `cancelled` and run **174** (`429f25d`, #157, created
+  2026-10-07 23:26:29) is `status:"pending"` with zero jobs. Unshipped: #150, #151, #152, #153,
+  #154, #155, #157.
+  **And the live bytes are now identified exactly, not just "pre-#150".** badgebudget.com serves a
+  body whose sha256 is byte-identical to the `index.html` blob of commit **`41d2549`** — PR #149,
+  deployed by run 167 on 2026-10-05, 468,258 bytes on both sides. `privacy.html` and `ops.html`
+  are both current (nothing has changed them since 2026-09-24 and 2026-09-16) and `CNAME` serves
+  `badgebudget.com`, so the publish set is intact and only `index.html` is stale. That precision
+  is new because tonight's build is the tool that produces it: **`node scripts/deploy_watch.mjs`**,
+  now the loop's step-5 check. **And later the same day the cause was finally READ rather than guessed, which
+  disproved the standing hypothesis.** `GET /repos/patrick222-dotcom/705-v1/actions/runs/
+  37438695953/pending_deployments` returns `wait_timer: 0`, `wait_timer_started_at: null` and
+  `reviewers: []`. There is **no required reviewer and no wait timer** — so "open run 168 and
+  approve it if it offers *Review deployments*" was wrong for three nights, and so was "remove the
+  reviewer under Settings → Environments": neither control exists on this environment. What run 168
+  is, is an **orphaned pending deployment** — a run holding the `pages` concurrency group that can
+  never start and can never be approved.
+  **Why it stayed a guess so long, and how to check it next time:** the environments REST API
+  (`/repos/{o}/{r}/environments`) is **403 through this session's proxy** — *"Access to this GitHub
+  API path is not permitted"* — which is what every prior night ran into and recorded as "not
+  readable from this session's tooling". But `pending_deployments` is an **Actions** path and is
+  permitted. Reach for that one; it answers the question in a single call.
+  **So the owner step is CANCEL, not approve:** open the run and press *Cancel workflow*. That
+  frees the concurrency group, and the next run checks out the branch head and ships all eight
+  commits at once. (An agent session cannot do it — the cancel endpoint is blocked by the sandbox's
+  own classifier.) Then `node scripts/deploy_watch.mjs` should say `LIVE`.
+  **2026-10-09 — fourth night, ~72 hours, NINE commits unshipped, and nothing about the diagnosis
+  changed.** Re-read first, as the 10-07 note instructed: run **168** (`a64348b`, #150) is still
+  `status:"waiting"`, `updated_at` still unmoved since 2026-10-06 08:49:27. Runs **169–175** are
+  all `cancelled` and run **176** (`078a4d8`, #159, created 2026-10-08 11:41:37) is
+  `status:"pending"` with zero jobs. Unshipped: #150, #151, #152, #153, #154, #155, #157, #158,
+  #159 — plus tonight's, which will make ten. `node scripts/deploy_watch.mjs` in 1.3s: **BEHIND**,
+  `index.html` serving `41d2549` (2026-10-05, "the unload save rides keepalive"), 2 later changes
+  to that file unshipped, `privacy.html` / `ops.html` / `CNAME` all `ok`. So the site is healthy
+  and four days stale, and the one owner click is unchanged: **Cancel workflow on run 168.**
+  Tonight's build was again chosen to need no live verification.
+  **CLOSED 2026-10-09 — the owner cancelled run 168 at 12:02:47 UTC and the queue drained in 18
+  seconds.** Run **177** (`b468e5d`, #160) went `pending` → `completed/success` at **12:03:05**,
+  and `node scripts/deploy_watch.mjs` reads **LIVE**: `index.html` serving `b468e5d` (2026-10-09),
+  `privacy.html` `3855545`, `ops.html` `7cfa100`, `CNAME` `badgebudget.com`. All **ten** commits
+  that had been merged-but-unshipped (#150 through #160) are live in one deploy, which is exactly
+  what the 10-08 reading predicted would happen — the first prediction in this four-night item to
+  be confirmed rather than disproved.
+  **What is kept, and what is NOT fixed.** The diagnosis that mattered was read from
+  `GET /actions/runs/{id}/pending_deployments` (`wait_timer: 0`, `reviewers: []`), after three
+  nights of guessing at a reviewer that did not exist — reach for that endpoint first next time,
+  because `/repos/{o}/{r}/environments` is 403 through the agent proxy. **The structural fault is
+  still live:** `cancel-in-progress: false` on `deploy.yml`'s `pages` group is what made one
+  orphaned run a permanent blocker of every deploy behind it, and it is unchanged. The P0 below is
+  therefore the only open half of this, and it is the one that stops this recurring. Until it
+  lands, keep treating a green merge as unshipped until `deploy_watch.mjs` says `LIVE` — four
+  nights of this item is what that rule bought.
+- [x] ~~**Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group**~~ —
+  **DONE 2026-10-09 13:28 UTC by the owner**, commit `f1aa7a6` ("Enable cancellation of
+  in-progress deployments", #162), one line: `cancel-in-progress: false` → `true`. Verified in the
+  checked-out `deploy.yml` tonight. So both halves of the four-night Pages stall are now closed —
+  the orphaned run was cancelled on 10-09 and the thing that let one orphan block every deploy
+  behind it is gone. **The item's own "neat property" was never tested and now cannot be:** it
+  predicted the commit carrying this change would run under the new setting and self-clear the
+  queue, but the owner cancelled run 168 **eighty-one minutes earlier**, so the queue was already
+  empty when #162 merged. Leave it as an untested expectation rather than claiming it held.
+  **What does NOT change: keep running `node scripts/deploy_watch.mjs` and treating a merge as
+  unshipped until it says `LIVE`.** `cancel-in-progress` shortens a stall from "every deploy
+  after this one" to "one cycle"; it does not make a merge a deploy, and the four nights of
+  detection gap were bought by the live check, not by the concurrency setting.
+  Original note below:
+- [ ] ~~**Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group**~~ (P0 ·
+  `harness:unscoped` · **needs the owner or an approved session — editing a workflow file is
+  blocked for agent sessions in this sandbox**). This is the structural half of the item above, and
+  the reason 48 hours of silence was possible at all. `cancel-in-progress: false` is GitHub's
+  starter default and is written for busy repos with slow production deploys that should be allowed
+  to finish; here it means whatever holds the group holds it **forever**, including a run that will
+  never start. With `true`, the next merge cancels the holder and deploys itself, so a stall costs
+  one deploy cycle rather than every deploy after it. The cost is small and measurable: the job is
+  `cp` of five files plus `upload-pages-artifact` + `deploy-pages`, ~20s end to end on runs 164–167,
+  and anything interrupted is redone by the newer run seconds later. **One neat property, expected
+  but not yet proven:** the commit carrying this change would itself run under the new setting, so
+  it should cancel run 168 and self-clear the whole queue without any manual cancel. Treat that as
+  expected behaviour, not a verified claim, until a run demonstrates it.
   **What is sitting unshipped:** #150 (the cloud-load retry), #151–#153 (docs only) and #154
   (tonight's §35 banner). All five are merged and green; none is live.
   **Confirmed after tonight's merge, so this is observation and not prediction.** #154 squash-merged
@@ -429,6 +514,198 @@ and the push P0 it pointed at was fixed the same day.
   `toRemove` is empty. **Do not fix it blind, though:** the opposite error (a cancelled shift that
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
+
+### P1 (new, groom 2026-10-10)
+- [x] ~~**"Not now" on the re-sync banner meant "ask me again in ten minutes" — she declined the
+  same plan three times in 47 minutes**~~ — SHIPPED 2026-10-10 (see Done log). Pinned by
+  `tests/smoke.mjs` §37, 40 assertions, 13 deliberate breaks. **Two of its own assertions were
+  unfalsifiable in their first draft and both are worth carrying.** (a) The "a Review
+  un-remembers the dismissal" check reviewed plan B and then re-checked plan B — which raises the
+  banner either way, because the remembered fingerprint was still A's. It rolls the feed back to
+  A after the review now, where deleting `icsDismissedPlan.current=null` FAILs it. (b) The
+  numeric-hours check compared `'12'` against `12`, which passes with the `Number()` coercion
+  deleted — template interpolation already makes those the same string. `'12.00'` is the case
+  that needs the coercion. That is the §33/§35/§36 lesson arriving by two more doors; the first
+  is a new shape — **a drive whose setup has already moved past the state the assertion is about.**
+  Original note below:
+- [ ] ~~**"Not now" on the re-sync banner meant "ask me again in ten minutes"**~~ —
+  `harness:drivable`. Found in tonight's groom, device `f184ffa5` (the one real NurseGrid
+  account), inside ONE page load:
+  ```
+  07:09:15 app_open -> ics_sync_result{changes} + ics_sync_done{events:127}   (cold load -> stepper)
+  07:24:25 ics_sync_result{changes} + ics_resync_found  -> 07:28:12 ics_resync_dismissed
+  07:41:12 ics_sync_result{changes} + ics_resync_found  -> 07:43:57 ics_resync_dismissed
+  07:55:40 ics_sync_result{changes} + ics_resync_found  -> 08:08:55 ics_resync_dismissed
+  ```
+  **Zero `ics_import_done` all day.** The same 127-event feed, the same unapplied plan, offered
+  four times and declined four times, because `"Not now"` ran `setIcsPending(null)` and remembered
+  nothing — so the next `visibilitychange` past `ICAL_RESYNC_MIN_MS` rebuilt the identical plan
+  from the identical feed. There was no exit short of deleting the subscription.
+  **What makes it worse than an annoyance:** in the gaps she was editing shifts by hand — her
+  `session_end` shift count went **135 -> 114 -> 114 -> 112** across those four loads' exits, and
+  eleven `shift_saved` rows sit between the banners. So the app spent 47 minutes asking her to
+  overwrite the work she had just finished doing by hand. That is the substitution half of the
+  positioning (CLAUDE.md -> Positioning) actively training the one user it exists for to stop
+  coming back, which is the exact failure the "quiet, never a modal" rule was written to avoid —
+  the rule stopped the sheet stealing the screen and did nothing about the nag.
+  **The fix is a fingerprint, not a mute**, because the dangerous direction here is suppressing a
+  *real* change: a missed removal leaves a cancelled shift inflating her paycheck estimate, which
+  is the wrong direction of error for a wage app. `icsPlanFingerprint` digests every field the
+  stepper would write (uid, dateKey, hours, start, the time-off flag, and which bucket each is in),
+  sorted so neither feed order nor `Object.keys` order can shift it; a quiet re-sync whose plan
+  matches the declined one tracks `ics_resync_suppressed` and stays silent, and anything differing
+  by one field raises the banner again. `ics_sync_result` still reports `changes` — the five-state
+  contract §27 pins is about the feed, not the UI.
+- [ ] **Why device `f184ffa5`'s NurseGrid feed reports `changes` on EVERY sync is still
+  unverified, and it is now four nights running** (P1 · source:groom · `harness:unscoped`). This
+  is the 2026-10-09 item below, re-confirmed and sharpened, not a new one. New facts tonight: the
+  feed is **127 events** (was 128 on 10-08, 131 on 10-03), and **every one of the four syncs on
+  10-10 reported `result:'changes'`** — so the plan the app builds has differed from her saved
+  shifts on 10-03, 10-08 and four times on 10-10. Device `8e0e32fe` has never once got `changes`.
+  **What tonight's build changes about this item: nothing, and that is deliberate.** The
+  fingerprint suppresses the *repeat offer*, not the underlying difference, and
+  `ics_resync_suppressed` now makes the two countable separately — `found + suppressed` is how
+  often the feed differed, `found` alone is how often she was asked. Before tonight those were
+  the same number, which is why "the feed keeps differing" and "she keeps being nagged" could not
+  be told apart in `events`.
+  **The cheapest thing that would settle it is still the owner's side-by-side** (one November
+  shift in BadgeBudget against NurseGrid's own screen) — the same read the DST P1 above asks for,
+  and it answers both. **Do not change `parseICSDateTime`**: it is a pay figure and needs a
+  dedicated session under the `wage-core` protocol.
+
+### P1 (new, groom 2026-10-09)
+- [x] ~~**A sync rewrote 128 of her shifts and the confirm card said only "Update 128 that
+  changed?"**~~ — SHIPPED 2026-10-09 (see Done log). Pinned by `tests/smoke.mjs` §36, 20
+  assertions, 10 deliberate breaks. **One assertion was unfalsifiable in its first draft and the
+  reason is new**, so it is worth carrying: the no-sideways-scroll check compared
+  `documentElement.scrollWidth` against `clientWidth`, and a deliberate `whiteSpace:'nowrap'` on
+  128 before→after pairs changed **neither** — the sheet is `position:fixed`, so an overflowing
+  child never reaches the document's scroll width at all. It measures the block against the sheet
+  now (346 vs 390), where the same break FAILs. That is §35's lesson arriving by a second door:
+  `innerWidth` grew with the overflow there, and here the overflow never arrives. Original note:
+- [ ] ~~**A sync rewrote 128 of her shifts and the confirm card said only "Update 128 that
+  changed?"**~~ — `harness:drivable`. Found in tonight's groom. Device `f184ffa5` (iPhone iOS
+  18.7 — not the owner's phone), 2026-10-08 18:21:21: `ics_sync_result {changes, nursegrid}` →
+  `ics_sync_done {events:128}` → `ics_import_done {added:0, updated:128, removed:0, skipped:0,
+  shown:0}` at 18:21:23. **`updated:128` means 128 genuinely changed** — the sync path filters
+  `plan.toUpdate` on `changed`, which is a strict compare of dateKey, hours and start — and
+  `added:0` means `groups.length===0`, so the stepper opened **straight on the confirm card**.
+  That card's entire account of 128 rewrites was one clause, `update 128 that changed`, with no
+  days, no before and no after. The gap between the stepper opening and `ics_import_done` is
+  **1.8 seconds**: there was nothing on the card to read.
+  Removals have been itemised by date since the stepper shipped, with a comment saying why ("this
+  is the only destructive thing the stepper does"). An update is the same kind of thing one step
+  removed: the date decides which paycheck the shift lands in and hours/start decide the
+  differential, so a rewrite she cannot inspect moves her estimate exactly as a deletion would.
+  Fix is display only — the kind of change first (it is the one line that stays readable at 128),
+  then the first four spelled out before → after. `prevHours`/`prevStart` ride on the plan for it
+  and nothing applies them.
+- [ ] **Why 128 of 131 synced shifts changed at once is UNVERIFIED, and nothing in the app can
+  currently say** (P1 · source:groom · `harness:unscoped`). This is the other half of the item
+  above and it is deliberately not built against. What is known: device `f184ffa5` imported 131
+  shifts on 2026-10-03 (`added:131`), then **no `app_open` at all** until 2026-10-08, when one
+  sync found 128 of them changed. Its `session_end` shift count went 165 (10-03) → **134**
+  (10-08), so ~31 shifts left the blob in a window that produced no telemetry, and `removed:0`
+  says the sync did not take them. Eleven `shift_saved` rows follow the import over 90 seconds,
+  i.e. she then hand-edited shifts.
+  **Candidate explanations, none of them read:** (a) NurseGrid genuinely republished her schedule;
+  (b) the device's timezone changed between the two syncs, which re-dates every `Z`-stamped feed
+  time through `parseICSDateTime`; (c) an interaction with the Nov 1 DST change already filed as a
+  P1 above — her starts cluster at 01:00/04:00 before Nov 1 and 02:00/05:00 after. Note that
+  f184ffa5 is the **only** device that has ever got a `changes` result (2 of 22
+  `ics_sync_result` rows, both of them its own); device `8e0e32fe` has 18 `up_to_date` and no
+  change ever.
+  **What would settle it, cheapest first:** (1) the owner compares one of her November shifts in
+  BadgeBudget against NurseGrid's own screen — the same side-by-side the DST item already asks
+  for, and it answers both; (2) a coarse change-kind split on `ics_import_done`
+  (`moved`/`retimed` counts, no hours, no wage figure) so the **next** occurrence says which
+  column moved. (2) is a one-line build but it only pays off on a future sync, and tonight's
+  disclosure already shows her the split on screen; do it if a third mass-update lands.
+  **Do not change `parseICSDateTime` on this note** — it is a pay figure, so it needs a dedicated
+  session under the `wage-core` protocol.
+- [ ] **PR #156 is still open, still ready, still live human work, and still gates `index.html`
+  lines 764–3954** — re-checked 2026-10-09 against the deploy branch: twelve `index.html` hunks,
+  the highest ending at new-side line **3957**, plus `tests/smoke.mjs` hunks at lines 13, 108 and
+  1744 (inside §1's wage block, not the end of the file). It hoists `periodPaycheck` and
+  `keepRatioOf` out of `App`, so it is a wage-core change (Invariant 3) and the owner's to merge.
+  Tonight's build was chosen below it (`icsPlanFromExisting` at ~2430 is inside #156's span by
+  line number but not inside any of its hunks; `IcsImportSheet` at ~5100 and smoke §36 at the end
+  of the file are clear of it) — **check the hunk list, not the line range**, which is what the
+  10-08 note's "treat essentially all of `index.html` as occupied" over-stated.
+
+### P2 (new, groom 2026-10-10)
+- [ ] **Four brand-new devices arrived via QR in one hour, and two of them bounced before a
+  single shift** — `harness:unscoped`, and the first real top-of-funnel signal this repo has had.
+  Between 07:29 and 08:14 UTC, four iOS 18.7 devices with `via:'qr'` appeared: `74c55984`
+  (completed setup, saved **13** shifts, shared the app three times), `4cbd5341` (completed setup,
+  saved 3 shifts), `4ae82531` (`app_open` -> `ob_step{step:0}` -> `session_end{secs:82, shifts:0}`
+  — never finished step 1), and the same hour `f184ffa5` shared from the top bar twice. So the
+  invite went out and landed: **two activations, one bounce at the very first onboarding step, one
+  sharer.** Also worth noting against the positioning: `74c55984` typed 13 shifts by hand and the
+  NurseGrid connect card is offered only to a signed-in nurse with no subscription, so whether she
+  ever saw it is unknown from `events`.
+  **Deliberately not a build yet.** n=1 bounce is an anecdote and `ob_step{step:0}` fires on every
+  load, so it does not distinguish "read the first screen and left" from "never rendered". What
+  would make it a build: a second QR cohort with the same step-0 drop, or an `ob_step` that
+  carries how far she got. Recorded now so the next run with traffic adds to the denominator —
+  the same discipline the `estimate_dismissed` and `ical_cta_dismissed` notes are kept under.
+  **And the standing caveat applies:** CLAUDE.md records every activation figure since 2026-09-07
+  as inflated by harness and bot rows until the device classifier is fixed. These four are
+  hand-read as real (iOS 18.7, `via:qr`, minutes apart, real `shift_saved` counts), which is not
+  the same as a sound activation rate — do not quote one off this note.
+- [ ] **`client_error` has been empty for six days, and that is a result rather than a silence**
+  — housekeeping, so the next run does not read zero rows as a broken channel. The table's newest
+  `client_error` is **2026-10-04 01:08** (`Load error: TypeError: Load failed`, device
+  `592667f1`), and the three `AbortError: ... browsing context is going away` rows are all
+  2026-10-03 on `8e0e32fe`. Both classes have a shipped fix behind them — the keepalive unload
+  flush (#154-era, §33) and `hydrateWithRetry` (§34) — and both shipped inside the Pages stall, so
+  they only reached badgebudget.com on **2026-10-09 12:03**. So six days of quiet is mostly *the
+  stall*, not the fix: there has been **one day** of real exposure. Do not call either fix
+  field-verified yet; re-read this in a week. The 422 running count is also unchanged at **2 in
+  27** — the four syncs tonight were all `200`, and `icalFailureDetail` has still never put a
+  status code in a production row.
+
+### P3 (new, groom 2026-10-08)
+- [ ] **A third of devices report a DIFFERENT user agent at `session_end` than at `app_open`, in
+  the same load** — `harness:unscoped`, almost certainly a crawler artifact rather than an app
+  bug, and recorded only so the cohort re-baseline does not read it as two devices. Tonight three
+  of the four bot-shaped loads did it: `7e5bebba` opened as `Macintosh` at 08:58:54 and exited as
+  `X11; Linux x86_64` twelve seconds later; `863a4f49` opened as `Windows NT 10.0` and exited as
+  Linux seven seconds later; `8db7ff70` opened as `iPhone OS 26_3` and exited as Linux fifteen
+  seconds later. Across the whole table **8 of 24 devices that have both events disagree** — that
+  figure is an upper bound, because it groups by `anon_id` over all time and a genuine browser
+  upgrade counts too; the three above are same-load and are not.
+  **Why it is probably not ours.** Both senders build the row through the same `eventRow()`, which
+  reads `navigator.userAgent` once per call, and that value cannot change mid-load in a real
+  browser — the single row shape exists precisely so the two cannot drift. The shape fits a
+  prerender/preview service that renders with a spoofed UA and fires the unload beacon from the
+  real headless runner. Every one of tonight's three is `shifts:0`, `secs:8–15`, `last:ob_step`,
+  i.e. nothing a nurse did. **Unverified**, and deliberately nothing to build: the only consumer
+  that cares is the device classifier, which CLAUDE.md already records as broken and inflating
+  every activation figure since 2026-09-07. Fold it into that re-baseline — a UA-based classifier
+  sees two devices per bot load — rather than treating it as its own defect. It is the same shape
+  the 2026-09-27 `session_end` duplicate note found (`Ddg/26.6` vs `DuckDuckGo/7` on one load),
+  which is corroboration that the UA, not the id, is the unreliable column.
+- [x] **Second occurrence of the non-uuid `anon_id`, and it confirms the 2026-10-06 resolution
+  rather than reopening it.** `muymw08fqgtebelw1l` (2026-10-07 21:42:55.993, desktop Chrome on
+  Windows, `app_open` + `ob_step`, no `session_end`) decodes exactly the way the first one did:
+  `parseInt('muymw08f',36)` is 1791409375023 = **2026-10-07T21:42:55.023Z**, 970ms before that
+  row's own `created_at`, and the remaining 10 characters are what
+  `Math.random().toString(36).slice(2)` produces. That is `freshAnonId()`'s non-crypto fallback,
+  on a second crawler-shaped desktop Chrome load, and it persisted (no `nostore-` prefix). Nothing
+  to build; the cohort rule is unchanged and still correct: exclude on
+  `anon_id not like 'nostore-%'`, **never on uuid shape**.
+- [ ] **PR #156 is LIVE human work and it DOES gate nightly items — unlike the four stale drafts.**
+  Opened 2026-10-07 23:19, ready (not draft), base is the deploy branch: *"feat(core): extract the
+  wage math into an importable module for the MCP gateway"*. It changes `index.html` across
+  **twelve hunks from line 764 to 3954** — including `computeNet`'s neighbourhood (~1920–2041) and
+  the top of `App` (~3886–3954) — plus `tests/smoke.mjs`, `scripts/check_build.mjs`,
+  `.github/workflows/ci.yml` and `CLAUDE.md`. It also hoists `periodPaycheck` and `keepRatioOf`
+  out of `App`, i.e. **it is a wage-core change** (Invariant 3), so it is the owner's to merge, not
+  a nightly's. Practical consequence for the next run: treat essentially all of `index.html` and
+  the end of `tests/smoke.mjs` as occupied until #156 lands or closes. Tonight's build was chosen
+  to touch neither. The 2026-10-05 P3 below (the four month-stale reverse-diff drafts) still
+  stands and is unrelated — #156 is not one of them.
 
 ### P2 (new, groom 2026-10-06)
 - [x] ~~**An exhausted cloud hydration is still silent — she is not told that nothing is saving**~~
@@ -1460,6 +1737,144 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **"Not now" on the re-sync banner now means "not this", instead of "ask me again
+  in ten minutes".** Found in the groom, not the queue. Device `f184ffa5`, one page load: the
+  identical 127-event NurseGrid plan was offered at 07:24:25, 07:41:12 and 07:55:40 and declined
+  at 07:28:12, 07:43:57 and 08:08:55, with **zero `ics_import_done` all day** — and eleven
+  `shift_saved` rows in the gaps, her shift count falling 135 -> 112, i.e. the app kept asking her
+  to overwrite work she had just done by hand. `"Not now"` cleared the banner's state and
+  remembered nothing, so each foreground re-sync past `ICAL_RESYNC_MIN_MS` rebuilt the same plan
+  from the same feed; there was no exit short of deleting the subscription.
+  New top-level `icsPlanFingerprint(plan)` digests every field the stepper would write — uid,
+  dateKey, hours (coerced), start, the time-off flag, and which of the five buckets each item is
+  in — sorted, so neither feed order nor `Object.keys` order can move it. `"Not now"` stores it in
+  the `icsDismissedPlan` ref; a quiet re-sync whose plan matches tracks the new
+  `ics_resync_suppressed` and stays silent; **anything differing by one field raises the banner
+  again**, which is the half that matters, because suppressing a real removal would leave a
+  cancelled shift inflating her paycheck estimate. `"Review"` clears the memory — looking is not
+  declining. `ics_sync_result` still reports `changes` on a suppressed sync: §27's five-state
+  contract is about the feed, not about the UI, and `found + suppressed` is now how often the feed
+  differed while `found` alone is how often she was asked.
+  A ref and not localStorage on purpose: every observed occurrence was inside one page load, and a
+  cold load opens the stepper anyway, so persisting it would only mute a surface this does not
+  touch. Display/UX only — no wage core, no arithmetic, no invariant. `tests/smoke.mjs` §37, **40
+  assertions, 13 deliberate breaks** (and one reshaped assertion in §25, whose old one-line regex
+  the new guard retired), **two of them unfalsifiable in the first draft and fixed** — see the P1.
+  Smoke is **632 assertions** now.
+- 2026-10-09 — **The import confirm card now says what an update is about to DO, instead of how
+  many.** Found in the groom, not the queue. Device `f184ffa5`, 2026-10-08 18:21:21:
+  `ics_sync_result {changes, nursegrid}` → `ics_sync_done {events:128}` → `ics_import_done
+  {updated:128, added:0, removed:0}` at 18:21:23. `updated` counts only shifts whose date, hours
+  or start actually differ (the sync filters `toUpdate` on `changed`), and `added:0` means there
+  were no new events to classify — so the stepper opened straight on the confirm card, and that
+  card's whole account of 128 rewrites of shifts she had already logged was `Update 128 that
+  changed?`. **1.8 seconds** separate the stepper opening from `ics_import_done`: there was
+  nothing on it to read.
+  Removals have been spelled out by date since the stepper shipped, with a comment saying why. An
+  update is the same thing one step removed — the date decides which paycheck the shift lands in,
+  hours and start decide the differential — so it now gets the same treatment: the kind of change
+  first (`3 move to a different day, 125 change time or length.`), then the first four spelled out
+  (`Oct 12 → Oct 14; Nov 2, 12h → 24h, 7:00 AM → 7:00 PM +124 more`). The kind line leads because
+  it is the only part that stays readable at 128; the examples are capped at 4 rather than the
+  removals' 6 because each one is a before → after pair.
+  `icsPlanFromExisting` carries `prevHours`/`prevStart` for the card and **nothing applies them** —
+  the shift is still rewritten from `hours`/`start`, byte for byte as before. No wage-core
+  function touched, no new stored data shape, so no sanitizer branch, no invariant weakened.
+  `tests/smoke.mjs` §36: 20 assertions, 10 deliberate breaks, every assertion family reached by at
+  least one. Suite 571 → 591.
+  **One assertion proved nothing in its first draft, for a reason §35 had not already recorded.**
+  The no-sideways-scroll check compared `documentElement.scrollWidth` with `clientWidth`, and a
+  deliberate `whiteSpace:'nowrap'` on 128 before→after pairs moved **neither number**: the sheet is
+  `position:fixed`, so an overflowing child never reaches the document's scroll width at all. It
+  measures the block against the sheet it sits in now (346 vs 390), where that same break FAILs.
+  §35 lost an assertion to `innerWidth` *growing* with an overflow; this is the same trap with the
+  overflow never arriving.
+  **Why those 128 changed is NOT answered and is filed as its own P1, unverified.** The device
+  imported 131 shifts on 10-03, fired no `app_open` at all until 10-08, and its `session_end`
+  shift count went 165 → 134 in between with `removed:0` on the sync. Candidates are a genuine
+  NurseGrid republish, a device timezone change, or the Nov 1 DST item already in the queue; the
+  owner's one side-by-side against NurseGrid's own screen answers both notes at once. The
+  disclosure shipped tonight is right under any of those answers, which is why it did not wait.
+  Gate: 11/11 build, **591/591** smoke, 33/33 groom-seed, 39/39 silence-classifier, 55/55
+  deploy-classifier.
+  **NOT LIVE, fourth night running.** `node scripts/deploy_watch.mjs`: **BEHIND** — `index.html`
+  serving `41d2549` from 2026-10-05, `privacy.html`/`ops.html`/`CNAME` current. Pages run 168 has
+  been `status:"waiting"` since 2026-10-06 08:49:27 (~72h) and holds the `pages` concurrency group;
+  169–175 cancelled, 176 pending with zero jobs. Nine merged green commits were already unshipped
+  before tonight. One owner click clears it: **Cancel workflow on run 168.**
+  **LIVE AS OF 12:03:05 UTC — the owner cancelled run 168 at 12:02:47 and run 177 (`b468e5d`)
+  shipped 18 seconds later.** `deploy_watch.mjs`: **LIVE**, `index.html` serving `b468e5d`. All
+  ten merged-but-unshipped commits (#150–#160) went out in that one deploy. The "NOT LIVE" above
+  was true when it was written at 08:42 and is kept rather than rewritten; this is the correction,
+  not a replacement. `cancel-in-progress: true` is still NOT applied, so the same stall can still
+  block every deploy behind it.
+  GROOM: `silence_watch` **FRESH** (newest event 13.9h old); 1,241 events, 23 in 48h, and the one
+  real nurse session is the 128-update sync above. No new `feedback` for **25 days** (11 rows,
+  newest 2026-09-14). `client_error` **unchanged at 22 rows**, so neither the exhausted-load banner
+  (#154) nor the keepalive flush (#149) has had anything to report — and `icalFailureDetail` has
+  still never put a status code in a production row. `ics_sync_result` now 22 rows, **zero
+  `failed`**; the 422 running count is **2 in 30** — still do not build a retry. Two notes
+  corrected rather than left standing: the 10-08 line "treat essentially all of `index.html` as
+  occupied by #156" is too broad (its twelve hunks all end by line 3957 — check hunks, not the
+  span), and the 19 `up_to_date` rows the 10-04 note mentions are device `8e0e32fe`'s, not
+  `f184ffa5`'s, which has only ever produced the two `changes` rows.
+- 2026-10-08 — **`deploy_watch.mjs`: one command that answers "is what is MERGED actually LIVE?",
+  because for three nights running nothing in this repo could.** Pages run 168 has been
+  `status:"waiting"` since 2026-10-06 08:49:27; `concurrency: group:"pages"` holds everything
+  behind it, so runs 169–173 cancelled and 174 queued, and **seven merged green commits are
+  unshipped** while badgebudget.com serves the bytes of `41d2549` from 2026-10-05. Nothing noticed
+  on its own: the merges were green, the Actions tab looked busy, and each of the last three
+  nightlies caught it only because a human remembered to curl the live site for a string they
+  happened to know was new. That is Invariant 9's `Detect` line verbatim — *"deploys stop while
+  pushes keep succeeding, so nothing fails loudly"* — and three hand-runs of one check is the same
+  bar that produced `silence_watch.mjs` on 2026-09-26.
+  **What makes it automatable at all is that `deploy.yml` copies the publish set VERBATIM**
+  (`cp index.html _site/`), so the served file is byte-for-byte a git blob. Confirmed before
+  building anything: the live body's sha256 equals commit `41d2549`'s `index.html` blob exactly,
+  468,258 bytes both sides. A hash comparison is therefore **conclusive and needs no marker
+  string**, which retires three real weaknesses of the `curl … | grep -c <marker>` ritual it
+  replaces: it only ever worked when you already knew which string was new, it said nothing at all
+  on a night that shipped no new string, and it "passed" against the ~162-byte github.io redirect
+  body. It also identifies **which** commit is live, not merely that it is the wrong one.
+  Five verdicts: `LIVE` / `BEHIND` (names the served commit, its date, its subject and how many
+  later changes are unshipped) / `NOT_THE_APP` / `UNKNOWN_BUILD` / `UNREACHABLE`. Scope is the
+  three HTML files of Invariant 8's publish set plus a `CNAME` presence check — `CNAME` because
+  its absence is a total outage rather than a stale page, and not `pdf.worker.min.js` because it
+  is a megabyte and has never changed. Live run tonight, in 1.2s: `BEHIND`, `index.html` serving
+  `41d2549`, `privacy.html` and `ops.html` current, `CNAME` intact.
+  **Three judgement calls worth keeping.** (a) `UNKNOWN_BUILD` exits **2, not 0** — a build the
+  watch cannot place is a check that could not be established, the same rule `silence_watch`'s
+  `UNKNOWN` encodes, and reporting it green would be the exact failure this tool exists to
+  prevent. (b) The github.io guard is **imported** from `silence_watch.mjs` rather than copied,
+  because two copies of that rule is how one of them gets relaxed and nobody notices. (c) Hash is
+  checked **before** shape, which is what lets a 20-character `privacy.html` be `LIVE` without
+  holding it to `index.html`'s 50,000-character floor; reversing that order FAILs ten assertions.
+  **One wording bug was caught and fixed during the build, and it is the house failure mode:** the
+  first `BEHIND` string printed the LIVE commit's subject immediately after the HEAD commit's sha,
+  which reads as though the newest change were already out. There is now an assertion on the
+  ordering of the two shas and the subject between them.
+  `scripts/test_deploy_watch.mjs`: **55 assertions, 14 deliberate breaks**, every assertion family
+  reached by at least one. The first negative-test round **aborted instead of failing** — a null
+  deref on `matchCommit(...).behind` — which is the first of the three ways the `harness` skill
+  says this check lies, so the assertions were made null-safe and the whole round re-run until
+  every break produced real FAILs. The classifier suite is in the CI gate beside the groom-seed
+  and silence-watch suites; the live probes are not, same split and same reason.
+  Gate: 571/571 smoke, 11/11 build, 33/33 groom-seed, 39/39 silence-classifier, 55/55
+  deploy-classifier. **No `index.html` change at all** — deliberate, because PR #156 (live human
+  work, wage-core) occupies twelve hunks of it, and because nothing can be live-verified while the
+  Pages queue is stuck.
+  **NOT LIVE, and this one says so about itself:** tonight's merge joins the same stuck queue, so
+  the deploy-watch verdict after merging is still `BEHIND` — by design. It is reporting the truth
+  the loop has been unable to state mechanically for three nights.
+  Groom (silence_watch: **FRESH**, newest event 10.5h old): 1,224 events total, **23 in 48h with
+  exactly one real nurse session** (device `8e0e32fe`, iPhone OS 27_2, `ics_sync_result
+  {up_to_date, nursegrid}`, `session_end {shifts:8}`); everything else is bot-shaped. No new
+  feedback for 24 days (11 rows, newest 2026-09-14). `client_error` unchanged at **22 rows**,
+  newest 2026-10-04 — so the exhausted-load path #154 was built for has not fired, and neither has
+  the `AbortError` #149 was built for. The 422 running count is **2 in 29**; still do not build a
+  retry. Three new notes filed: the same-load user-agent mismatch, a second non-uuid `anon_id`
+  (which confirms rather than reopens the 10-06 resolution), and PR #156 as live work that gates
+  `index.html` for the next run.
 - 2026-10-07 — **An exhausted cloud load finally says so: "Can't reach your saved data — nothing
   you change now is being saved."** The retry that shipped 2026-10-06 (#150, §34) covers the
   transient blip, which is every occurrence in production so far. This is the other half the 10-06

@@ -55,6 +55,13 @@ jobs:
       - name: Silence-watch classifier suite
         run: node scripts/test_silence_watch.mjs
 
+      # Same split for the same reason: deploy_watch.mjs needs network (it fetches the live site)
+      # and git history, but its classifier does not. The classifier holds the rule that an
+      # unplaceable build is NOT reported green, and inherits the 162-byte-redirect guard from
+      # silence_watch rather than keeping a second copy of it.
+      - name: Deploy-watch classifier suite
+        run: node scripts/test_deploy_watch.mjs
+
   # Separate job on purpose: the parse gate above must report in seconds, and should not wait on
   # a browser download. This one drives the real app on an iPhone 13 profile and asserts the four
   # gate clauses from CLAUDE.md plus the wage-math probes.

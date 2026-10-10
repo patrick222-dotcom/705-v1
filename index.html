@@ -1175,6 +1175,39 @@ function icsPendingSummary(p){
   return segs.join(' · ');
 }
 
+/* An exact digest of everything a pending plan would CHANGE, so "Not now" can mean "not this,
+   and don't ask me again" without ever meaning "stop telling me about my schedule".
+   Why it exists: on 2026-10-10 device f184ffa5 was shown the identical 127-event plan three
+   times in 47 minutes of ONE page load -- `ics_resync_found` at 07:24:25, 07:41:12 and 07:55:40,
+   each dismissed (07:28:12, 07:43:57, 08:08:55), zero `ics_import_done` all day -- because
+   "Not now" only cleared the banner's state and the next foreground re-sync rebuilt the same
+   plan from the same feed. She was hand-editing shifts in the gaps (135 -> 112 shifts across
+   four `session_end` rows), i.e. the app kept asking her to overwrite the work she had just
+   done by hand. A nag with no exit short of deleting the feed is how the substitution half of
+   the positioning loses the one user it exists for.
+   The digest must be EXACT, never a count: "3 changed" is the same string whether the three are
+   the ones she declined or three new ones, and suppressing a genuinely new change is the
+   dangerous direction for a wage app. So every field the stepper would write is in it --
+   dateKey, hours, start -- keyed by uid and sorted, because neither the feed's order nor
+   Object.keys order is guaranteed stable between fetches. Nothing identifying goes in: uids and
+   dates only, never a title (Invariant 13), and it never leaves the device. */
+function icsPlanFingerprint(p){
+  if(!p) return '';
+  const norm = (uid, dk, hours, start) =>
+    `${uid||''}@${dk||''}/${hours==null?'':Number(hours)}/${start||''}`;
+  const parts = [];
+  (p.groups||[]).forEach(g=>{
+    (g.items||[]).forEach(ev=>{
+      parts.push('a:'+norm(ev.uid, ev.dateKey, ev.hours, ev.start)+(ev.offHint?'/off':''));
+    });
+  });
+  (p.toUpdate||[]).forEach(u=>{ parts.push('u:'+norm(u.uid, u.dateKey, u.hours, u.start)); });
+  (p.toRemove||[]).forEach(r=>{ parts.push('r:'+norm(r.uid, r.dateKey, null, null)); });
+  (p.toUpdateEvents||[]).forEach(e=>{ parts.push('ue:'+norm(e.uid, e.dateKey, null, null)); });
+  (p.toRemoveEvents||[]).forEach(e=>{ parts.push('re:'+norm(e.uid, e.dateKey, null, null)); });
+  return parts.sort().join('|');
+}
+
 /* Group parsed events for the questionnaire: one card per (weekday-class, start-time-or-allday,
    hours) combination — matching shifts get confirmed together instead of one card each. Time-off
    entries never share a card with shifts at the same time and length: one answer per card. */
@@ -2485,8 +2518,12 @@ function icsPlanFromExisting(events, existingByUid, opts){
       const changed = !(match.dateKey===ev.dateKey
         && Number(prev.hours)===Number(ev.hours)
         && (prev.start||null)===(ev.start||null));
+      /* prevHours/prevStart are carried for DISPLAY only — the confirm step spells out what an
+         update is about to do to a shift she has already logged, the way removals are spelled out
+         by date. Nothing applies them: the shift is rewritten from `hours`/`start` exactly as
+         before. They are here because this is the only place the old values are in hand. */
       toUpdate.push({ uid:ev.uid, dateKey:ev.dateKey, hours:ev.hours, start:ev.start, changed,
-        prevDateKey:match.dateKey, prevShiftId:match.shift.id,
+        prevDateKey:match.dateKey, prevShiftId:match.shift.id, prevHours:prev.hours, prevStart:prev.start||null,
         shiftType:match.shift.shiftType, bonusType:match.shift.bonusType, customBonus:match.shift.customBonus });
     } else {
       toClassify.push(ev);
@@ -3269,6 +3306,13 @@ function App(){
     try{ return localStorage.getItem(ICS_LONG_REVIEW_KEY)==='1'; }catch(_){ return false; }
   });
   const lastIcalSyncAt = useRef(0);                  // ms of the last sync ATTEMPT — throttles the foreground re-sync
+  /* icsPlanFingerprint of the plan she last waved off with "Not now". A quiet re-sync whose plan
+     is byte-identical to it stays silent; anything that differs by one field raises the banner
+     again. Deliberately a ref and not localStorage: every observed occurrence of the nag was
+     inside ONE page load (2026-10-10, three in 47 minutes, no app_open between them), and a cold
+     load opens the stepper anyway, so persisting it would only suppress a surface this does not
+     touch. Cleared on "Review" — handing the plan to the stepper is not declining it. */
+  const icsDismissedPlan = useRef(null);
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -4477,8 +4521,20 @@ function App(){
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
         answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true, provider };
       // A quiet sync never steals the screen. Coming back to the app and being asked to delete a
-      // shift is how you teach someone to stop coming back to the app.
-      if(quiet){ setIcsPending(payload); track('ics_resync_found', {}, user.id); }
+      // shift is how you teach someone to stop coming back to the app. And re-raising a plan she
+      // has already declined teaches the same lesson one notch slower: suppress it while the plan
+      // is unchanged, raise it the moment any field differs (icsPlanFingerprint). `result` stays
+      // 'changes' either way — the sync DID find changes, and misreporting that to save a row
+      // would break the five-state contract §27 pins. The suppression gets its own event instead,
+      // so a nag that was correctly withheld is still legible from `events`.
+      if(quiet){
+        const fp = icsPlanFingerprint(payload);
+        if(icsDismissedPlan.current && fp === icsDismissedPlan.current){
+          track('ics_resync_suppressed', {}, user.id);
+        } else {
+          setIcsPending(payload); track('ics_resync_found', {}, user.id);
+        }
+      }
       else setIcsImport(payload);
       result = 'changes';
       track('ics_sync_done', {events:parsed.events.length, provider}, user.id);
@@ -4700,8 +4756,8 @@ function App(){
             <div className="t">Your schedule changed</div>
             <div className="s">{icsPendingSummary(icsPending) || 'There are updates from your calendar.'}</div>
             <div className="row">
-              <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
-              <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); setIcsPending(null); }}>Not now</button>
+              <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); icsDismissedPlan.current=null; setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
+              <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); icsDismissedPlan.current=icsPlanFingerprint(icsPending); setIcsPending(null); }}>Not now</button>
             </div>
           </div>
         )}
@@ -5114,6 +5170,27 @@ function fmtRemovalDate(dateKey){
   if(!y||!m||!d) return dateKey;
   return new Date(y,m-1,d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 }
+/* One line saying what an update is about to DO to a shift she has already logged:
+   "Oct 12 -> Oct 14", "Oct 14, 12h -> 24h", "Oct 14, 7:00 AM -> 7:00 PM".
+
+   This exists because of 2026-10-08: one foreground sync rewrote the date/hours/start of 128 of
+   her 131 synced shifts and the confirm step said only "Update 128 that changed?" — no days, no
+   before, no after. She confirmed it 1.8 seconds later. An update is as wage-affecting as a
+   removal (the date picks the paycheck; hours and start pick the differential), and removals have
+   been spelled out by date since the stepper shipped, so updates are spelled out too. Display
+   only — the shift is still rewritten from `hours`/`start` exactly as before. */
+function fmtShiftUpdate(u){
+  if(!u) return '';
+  const parts = [];
+  parts.push(u.prevDateKey && u.prevDateKey!==u.dateKey
+    ? `${fmtRemovalDate(u.prevDateKey)} → ${fmtRemovalDate(u.dateKey)}`
+    : fmtRemovalDate(u.dateKey));
+  const ph = Number(u.prevHours), nh = Number(u.hours);
+  if(Number.isFinite(ph) && Number.isFinite(nh) && ph!==nh) parts.push(`${ph}h → ${nh}h`);
+  const ps = fmtTime12(u.prevStart), ns = fmtTime12(u.start);
+  if((u.prevStart||null)!==(u.start||null)) parts.push(`${ps||'no start time'} → ${ns||'no start time'}`);
+  return parts.join(', ');
+}
 function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
   const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
   const toRemove = state.toRemove || [];
@@ -5146,6 +5223,15 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
     const toSkip = groups.reduce((n,g)=> n + (answers[g.key]==='skip' ? g.items.length : 0), 0);
     const toShow = groups.reduce((n,g)=> n + (answers[g.key]==='event' ? g.items.length : 0), 0);
     const removals = [...toRemove, ...toRemoveEvents];
+    /* Split by what the change actually is. A moved shift lands in a different paycheck period;
+       a retimed or relengthened one keeps its day but changes what it is worth. Both are things
+       she can only object to if she is told about them. */
+    const movedDay = toUpdate.filter(u=>u.prevDateKey && u.prevDateKey!==u.dateKey).length;
+    const retimed = toUpdate.length - movedDay;
+    const kindClauses = [];
+    if(movedDay>0) kindClauses.push(`${movedDay} ${movedDay===1?'moves':'move'} to a different day`);
+    if(retimed>0) kindClauses.push(`${retimed} ${retimed===1?'changes':'change'} time or length`);
+    const updateKindNote = kindClauses.join(', ').replace(/^./,c=>c.toUpperCase()) + '.';
     const clauses = [];
     if(toAdd>0) clauses.push(`add ${toAdd} ${toAdd===1?'shift':'shifts'}`);
     if(toUpdate.length>0) clauses.push(`update ${toUpdate.length} that changed`);
@@ -5171,6 +5257,18 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
             <div style={{fontSize:12.5,color:'var(--muted-2)',lineHeight:1.5,margin:'0 0 20px'}}>
               Removing {removals.slice(0,6).map(r=>fmtRemovalDate(r.dateKey)).join(', ')}
               {removals.length>6 ? ` +${removals.length-6} more` : ''} — gone from your calendar feed.
+            </div>}
+          {/* Updates rewrite shifts she has already logged, so they get the same treatment: the
+              kind of change first (it is the one line that stays readable at 128 updates), then
+              the first few spelled out. Capped at 4 rather than the removals' 6 because each
+              line is a before -> after pair. */}
+          {toUpdate.length>0 &&
+            <div className="ics-updates" style={{fontSize:12.5,color:'var(--muted-2)',lineHeight:1.5,margin:'0 0 20px'}}>
+              <div>{updateKindNote}</div>
+              <div style={{marginTop:4}}>
+                {toUpdate.slice(0,4).map(fmtShiftUpdate).join('; ')}
+                {toUpdate.length>4 ? ` +${toUpdate.length-4} more` : ''}
+              </div>
             </div>}
           <div style={{display:'flex',gap:10}}>
             {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
