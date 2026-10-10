@@ -982,6 +982,29 @@ and the push P0 it pointed at was fixed the same day.
   question is whether the estimate card is a result or an obstacle, which is a design call.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+- [ ] **Multi-persona onboarding and the engine primitives behind it — the owner-approved plan
+  (2026-10-10).** Decision record: `docs/session-2026-10-10-pay-patterns-and-onboarding.md`.
+  Evidence: `docs/pay-rule-patterns.md`. Mockup: https://claude.ai/artifact/Xt6xNpBXCrbTaFLBaAHMrV.
+  One session each, in this order. Never two at once: sessions 2–4 all touch `overtimePremiumCents`
+  and `shiftGrossCents`.
+  1. **Onboarding v2 (Healthcare + Other hourly) + funnel tracking** `harness:drivable`. Write
+     `docs/onboarding-funnel-spec.md` first: every screen, the fields its answer sets, and the event
+     it fires. Then build. Personas are a preset table in a `@core` region; the pay math never reads
+     the persona. The Healthcare preset must equal today's defaults exactly, pinned by a test. Add
+     "How much do you work?" (Full-time / Part-time / PRN). New events: `ob_view {screen}`,
+     `ob_answer {q,a}` (whitelisted enumerated answers, never dollar figures), `ob_back {from}`,
+     plus a funnel query. Law enforcement and Fire & EMS tiles stay hidden; there is **no waitlist**
+     (owner, 2026-10-10).
+  2. **Configurable work period** (wage-core): "only overtime I flag" plus N hours in D days. The
+     probes in `pay-rule-patterns.md` (c) become assertions: zero phantom OT on 12 h Pitman, 12 h +
+     Kelly day, 3/3 10.5 h and 4/10.
+  3. **Per-shift multiplier + minimum-hours events** (wage-core): court, call-back, report pay.
+     Replaces the hard-coded `otMult`.
+  4. **Dated pay items** (wage-core): lump sums and periodic pays, summed in `periodPaycheck` by date.
+  5. **Law enforcement + Fire & EMS personas**, on top of 2–4: presets, the Social Security
+     question (FICA → custom 1.45%), and their cards.
+  6. **Jobs**: the `jobId` stamp below → activate the spine → job switcher → migration 008 (one
+     calendar feed per job).
 - [ ] **Redeploy `ical-proxy` — the deployed copy still carries the webcal no-op** (filed
   2026-09-29). The fix that makes sync work shipped in `index.html`, which is the proxy's only
   caller, so **nothing is broken by leaving this** — the deployed function simply never sees a
@@ -1737,6 +1760,15 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **Research only, no app change: can the pay model serve police and other hourly
+  work?** #164 (`docs/police-pay-rules-draft.md`, Upper Darby) and #165
+  (`docs/pay-rule-patterns.md`, 30 public contracts). Outcome:
+  - Right-to-Know requests aren't needed.
+  - 12-hour schedules get phantom overtime under every setting.
+  - Five wage-core primitives close most of the gap.
+
+  The owner approved a multi-persona onboarding plan, now the first item under "Needs a dedicated
+  session". Decision record: `docs/session-2026-10-10-pay-patterns-and-onboarding.md`.
 - 2026-10-10 — **"Not now" on the re-sync banner now means "not this", instead of "ask me again
   in ten minutes".** Found in the groom, not the queue. Device `f184ffa5`, one page load: the
   identical 127-event NurseGrid plan was offered at 07:24:25, 07:41:12 and 07:55:40 and declined

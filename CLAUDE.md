@@ -76,6 +76,17 @@ see Positioning.
   `tests/smoke.mjs` §24. This exists because diagnosing the two failures above required the Edge
   Function's edge log, **which retains 24 hours** — the 09-29 groom read it with 4h11m to spare and
   the 09-30 groom with 4h42m. Two consecutive nights one bad night away from losing the evidence.
+- **Beyond nurses (owner decision, 2026-10-10).** The nurse positioning above still leads.
+  The app broadens through **persona presets on one engine**: Healthcare, Law enforcement,
+  Fire & EMS, Other hourly. A persona sets starting values and which cards show. **It is never
+  read by the pay math**: every dollar figure still comes from `periodPaycheck`. Union is a
+  follow-up question, not a persona. Extra employers are **jobs** (the dormant spine), not
+  "sub-accounts". Healthcare and Other hourly ship first on today's math. **Law enforcement and
+  Fire & EMS appear only after the configurable work period lands**: on 12-hour schedules today's
+  40-hour and 8/80 rules add +4.8% to +16.7% phantom overtime. There is no waitlist. Tracking stays
+  first-party (`track()` → `events`); PostHog was considered and deferred. Plan and reasons:
+  `docs/session-2026-10-10-pay-patterns-and-onboarding.md`; the queue is the first item under
+  "Needs a dedicated session" in `BACKLOG.md`.
 - **Two goals:** (1) ship a polished app; (2) **meta-goal** — refine a reusable multi-agent
   "development council" process: context preservation between agents, automated fix→re-review
   until every lens scores 8/10, less manual synthesis by the orchestrator, real mobile testing.
@@ -142,6 +153,8 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `docs/state-brief-2026-09-02.md` | adversarially-verified repo survey + a 23-item prioritized cleanup list |
 | `docs/agent-gateway-scope.md` | the "one domain, two surfaces" (UI + MCP) design: core extraction, versioned ops, an MCP Edge Function on Supabase OAuth, an ops manifest. Design only — nothing implemented |
 | `docs/scaling-and-burn.md` | capacity + cost ladder to 100k users, the pre-scoped infra levers with trigger thresholds, the density/retention metric definitions (runnable SQL), and the transferability checklist. Strategy only |
+| `docs/pay-rule-patterns.md` | 30 public contracts (21 police, 4 nurse, 5 other hourly): the pay-rule patterns, the pay model broken into primitives, probes of phantom overtime by schedule, 12 missing primitives ranked, and why no records request is needed. Research only. Its Upper Darby predecessor: `docs/police-pay-rules-draft.md` |
+| `docs/session-2026-10-10-pay-patterns-and-onboarding.md` | decision record for the multi-persona onboarding plan: personas as presets, PRN/part-time, first-party funnel tracking, and the six-session build order |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 | `.claude/skills/{ship,wage-core,harness}/` | the project's own skills — the deploy ritual, the Invariant 3 protocol, and the test rig. See Skills |
