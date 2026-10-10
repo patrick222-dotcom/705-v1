@@ -197,7 +197,14 @@ Host-native memory cannot do that; it is the portability argument for the whole 
 
 ### Revised sequence
 
-1. **Extract the core** — unchanged from below. Everything after depends on one copy of the math.
+1. **Extract the core** — **done 2026-10-07, inverted from the 09-04 design below.** The math is
+   *marked in place* (`/* @core:begin … */` regions of `index.html`) and `scripts/extract_core.mjs`
+   generates `supabase/functions/_shared/badgebudget-core.mjs` from it, rather than moving it to
+   `core/` and building it back into the app. Same outcome — one copy of the math, importable by
+   Node tests and the gateway — without a build step on the deploy path, without changing how the
+   nightly loop edits the app, and with the deployed file unchanged except for comments and two
+   hoisted functions (`periodPaycheck`, `keepRatioOf`, lifted out of `App` so the gateway's
+   `get_paycheck` is the hero's own function). The gate fails if the generated module is stale.
 2. **Read-only gateway + identity.** Edge Function `mcp`, Supabase OAuth server, consent route in
    `index.html`, Google upstream. Tools: `get_context`, `get_paycheck`, `list_shifts`,
    `preview_pay_setup`, `report_issue`. Connect on the owner's Claude. Gate: OAuth transcript;

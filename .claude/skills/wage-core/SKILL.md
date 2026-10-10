@@ -1,6 +1,6 @@
 ---
 name: wage-core
-description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
+description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
 ---
 
 # Wage core
@@ -44,7 +44,9 @@ tap) instead of a code change.
 ## What counts as wage core
 
 `shiftGross`, `hourlyRate`, `computeNet` (the per-paycheck tax model shared by the hero and
-the pattern lab since #65), `calc`, `statOf` / `ptoStatOf`, `patternMetrics` and the
+the pattern lab since #65), `calc` and the `periodPaycheck` it calls, `keepRatioOf` (both
+hoisted to module level 2026-10-07 and extracted for the MCP gateway — after editing either, re-run
+`node scripts/extract_core.mjs` and `node tests/core.test.mjs`), `statOf` / `ptoStatOf`, `patternMetrics` and the
 `patternCellToShift` it prices cells through, and the rate/differential coercions in
 `sanitizeData`. The `BONUS` table too (and `BONUS_LABEL`, which must agree with it) — changing
 a bonus rate changes every historical shift's displayed value. **The helpers underneath them

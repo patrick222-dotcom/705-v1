@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
+import { buildCore, OUT as CORE_OUT } from './extract_core.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -183,6 +184,21 @@ check('events', 'Harness cannot write to production', () => {
     && /neutralizeSupabase\(html, 'ops\.html'\)/.test(h),
     'a scratch page is built without neutralising its Supabase host');
   return 'scratch copies point at .invalid';
+});
+
+/* The MCP gateway imports the wage math from a module generated out of index.html's @core
+   regions (scripts/extract_core.mjs). A stale copy would price shifts with old math while every
+   in-browser probe stayed green, so the committed module must equal a fresh extraction, and the
+   regions must not reach outside themselves (window, localStorage, supabase…). */
+check('core', 'Extracted core in sync with index.html', () => {
+  const { module, regions, exports } = buildCore(html);
+  let committed = '';
+  try { committed = readFileSync(CORE_OUT, 'utf8'); } catch (_) {}
+  must(committed === module,
+    'supabase/functions/_shared/badgebudget-core.mjs is stale — run: node scripts/extract_core.mjs');
+  must(['periodPaycheck', 'computeNet', 'shiftGross', 'sanitizeData'].every(n => exports.includes(n)),
+    'the core no longer exports the functions the gateway prices with');
+  return `${regions.length} regions, ${exports.length} exports`;
 });
 
 /* ---- report ---------------------------------------------------------------------------- */
