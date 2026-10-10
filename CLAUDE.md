@@ -127,7 +127,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9 |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **591 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **632 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
@@ -386,6 +386,21 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   `ICAL_RESYNC_MIN_MS` (10 min) and **quiet**, parking the plan in a banner rather than opening the
   import stepper. Never make it a modal: it fires when she returns to the app. The cold-load sync
   still opens the stepper. Pinned by `tests/smoke.mjs` §25.
+  **And "Not now" on that banner means "not this", not "ask me again in ten minutes"**
+  (2026-10-10): quiet was never the whole problem. Dismissing the banner cleared its state and
+  remembered nothing, so the next foreground re-sync rebuilt the identical plan from the identical
+  feed — the one real NurseGrid account declined the same 127-event plan **three times in 47
+  minutes of one page load**, with zero `ics_import_done`, while hand-editing shifts in the gaps
+  (135 → 112). `icsPlanFingerprint` digests every field the stepper would write (uid, dateKey,
+  hours coerced, start, time-off flag, and which bucket) and sorts it, so neither feed order nor
+  `Object.keys` order can move it; a match tracks `ics_resync_suppressed` and stays silent.
+  **Never widen that into a mute** — anything differing by one field must raise the banner again,
+  because a suppressed removal leaves a cancelled shift inflating her estimate, and `"Review"`
+  clears the memory (looking is not declining). `ics_sync_result` still says `changes` on a
+  suppressed sync: the five-state contract is about the feed, not the UI, so `found + suppressed`
+  is how often the feed differed and `found` alone is how often she was asked. The memory is a
+  ref, not localStorage, on purpose: a cold load opens the stepper anyway. Pinned by
+  `tests/smoke.mjs` §37.
   **The sync is now offered, not just available** (2026-10-01): it shipped 2026-09-03 and lived at
   the bottom of Settings behind a label that assumed a feed URL was already in hand — the owner's
   own first real sync took a hand-held walkthrough. A home-screen card ("Want to sync your
@@ -498,11 +513,15 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   nights.** **RESOLVED 2026-10-09 12:02:47 UTC**: the owner cancelled run 168, run **177**
   (`b468e5d`) completed `success` **18 seconds later** at 12:03:05, and `deploy_watch.mjs` reads
   `LIVE` — all **ten** merged-but-unshipped commits (#150 through #160) shipped in that one
-  deploy. **What is NOT fixed is the thing that made it possible:** `cancel-in-progress: false`
-  on the `pages` concurrency group, still unchanged, still turns any orphaned run into a permanent
-  blocker of every deploy behind it (see below). So the operating rule stands unchanged — **treat
-  every merge as unshipped until `node scripts/deploy_watch.mjs` says `LIVE`**; that step, not the
-  green check, is what caught this on night one and every night after. The history below is kept
+  deploy. **And the thing that made it possible is now fixed too**, 2026-10-09 13:28 UTC: the
+  owner set `cancel-in-progress: true` on the `pages` concurrency group (`f1aa7a6`, #162), so the
+  next merge cancels a stuck holder and deploys itself — a stall costs one cycle instead of every
+  deploy after it. **That does not retire the operating rule — treat every merge as unshipped
+  until `node scripts/deploy_watch.mjs` says `LIVE`**; `cancel-in-progress` bounds how long a
+  stall lasts, it does not make a merge a deploy, and the live check, not the green check, is what
+  caught this on night one and every night after. (The expectation below that the commit carrying
+  the flip would itself self-clear the queue was never tested: run 168 was cancelled eighty-one
+  minutes before #162 merged, so the queue was already empty.) The history below is kept
   because the lesson is the four-night detection gap and the three nights of guessing, not the
   button that ended it. Run **168** (`a64348b`,
   PR #150) had sat `status:"waiting"` with its one `deploy` job `waiting` since 2026-10-06 08:49:27
@@ -532,8 +551,8 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   stuck run a permanent blocker of every deploy after it. With `true` the next merge cancels the
   holder and deploys itself, so a stall costs one cycle instead of all of them. What is given up is
   small here — the job is `cp` of five files plus the Pages upload, ~20s end to end, and anything
-  interrupted is redone by the newer run seconds later. **Not yet applied:** editing a workflow file
-  is blocked for agent sessions in this sandbox, so it needs the owner or an approved session. Written down here rather than left in `BACKLOG.md` because it is now a
+  interrupted is redone by the newer run seconds later. **Applied 2026-10-09 by the owner** (`f1aa7a6`, #162) — it needed
+  him because editing a workflow file is blocked for agent sessions in this sandbox. Written down here rather than left in `BACKLOG.md` because it is now a
   standing property of this repo's deploy path and it is **Invariant 9's blast shape arriving by a
   different door** — everything merged after that point sits unshipped while looking merged. Treat
   every merge as unshipped until a live check against badgebudget.com says otherwise; that step,

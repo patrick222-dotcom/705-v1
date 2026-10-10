@@ -90,6 +90,12 @@ does not resurrect shipped themes.
   rather than an excavation of a 24-hour edge log. Pinned by `tests/smoke.mjs` §27.
   `ics_resync_found`,
   `ics_resync_opened`/`ics_resync_dismissed` (the quiet foreground re-sync banner),
+  `ics_resync_suppressed` — a re-sync that found changes but withheld the banner because the plan
+  is byte-identical to the one she last dismissed (2026-10-10, `icsPlanFingerprint`). It exists so
+  a nag that was correctly *not* shown is still countable: `ics_resync_found + ics_resync_suppressed`
+  is how often the feed differed from the app, and `ics_resync_found` alone is how often she was
+  asked. `ics_sync_result` still reports `changes` on a suppressed sync — the sync's five-state
+  contract is about the feed, not about the UI. Pinned by `tests/smoke.mjs` §37,
   `ical_howto_opened` `{surface:'card'|'settings'|'calendar'}`, `ical_cta_dismissed`,
   `pattern_lab_opened`, `pattern_saved` `{cycle}`,
   `pattern_applied` `{shifts,weeks}`, `pattern_shifts_removed` `{n}`,
