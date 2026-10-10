@@ -83,7 +83,11 @@ see Positioning.
   follow-up question, not a persona. Extra employers are **jobs** (the dormant spine), not
   "sub-accounts". Healthcare and Other hourly ship first on today's math. **Law enforcement and
   Fire & EMS appear only after the configurable work period lands**: on 12-hour schedules today's
-  40-hour and 8/80 rules add +4.8% to +16.7% phantom overtime. There is no waitlist. Tracking stays
+  40-hour and 8/80 rules add +4.8% to +16.7% phantom overtime. There is no waitlist.
+  **Session 1 shipped 2026-10-10** (`docs/onboarding-funnel-spec.md`): a seven-screen funnel, the
+  presets in `@core:begin personas` (Healthcare **is** today's defaults — App's first-run state
+  reads it, `tests/core.test.mjs` pins it), and `ob_view`/`ob_answer`/`ob_back`.
+  `check_build.mjs` now fails if a wage-core definition so much as names a persona. Tracking stays
   first-party (`track()` → `events`); PostHog was considered and deferred. Plan and reasons:
   `docs/session-2026-10-10-pay-patterns-and-onboarding.md`; the queue is the first item under
   "Needs a dedicated session" in `BACKLOG.md`.
@@ -137,11 +141,12 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
-| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync |
-| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (20). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **633 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 (read "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync and (since 2026-10-10) that no wage-core definition names a persona |
+| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (51 — 20 until onboarding v2's presets and whitelist 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **682 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
+| `docs/onboarding-funnel-spec.md` + `scripts/onboarding_funnel.sql` | onboarding v2's spec (every screen, the field each answer sets, the event it fires) and its funnel query — devices per screen, answer mix, back-outs, completion, with the harness pair, `nostore-`, insiders and crawlers excluded |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `scripts/deploy_watch.mjs` + `scripts/test_deploy_watch.mjs` | is what is MERGED actually LIVE? Hashes the three HTML files of the publish set against the deploy branch's git blobs — `deploy.yml` copies them verbatim, so a sha256 match is conclusive and needs no marker string. Five verdicts (`LIVE` / `BEHIND` / `NOT_THE_APP` / `UNKNOWN_BUILD` / `UNREACHABLE`); `BEHIND` names the commit actually being served and how many changes are unshipped. Needs network, so like `silence_watch.mjs`'s live probes it is not in CI; its 55-assertion classifier suite is |
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
@@ -201,7 +206,8 @@ the 47-day outage it exists to catch.
    displayed dollar figure, i.e. the one thing the app is for. **Verify** the `wage-core` skill:
    baseline probes, a new assertion for the changed behaviour, then the equality check against the
    **deployed** build. Probes live in `tests/smoke.mjs` §1; `check_build.mjs` reports this UNCHECKED
-   on purpose.
+   on purpose — except one rule inside it, gated since 2026-10-10: no wage-core definition may name
+   a persona, work status, union answer or the preset table (a persona sets starting values only).
 4. **`saveToSupabase` upserts with `{onConflict:'user_id'}`.** The table's PK is a generated `id` and
    `user_id` carries a separate unique constraint; without the option every save after the first fails
    with 23505. That silently broke cloud sync for every signed-in user from 2026-07-07 to 2026-08-23.
@@ -357,7 +363,9 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   and a no-sideways-scroll check subtracting `window.innerWidth`, which **grows with the overflow**
   — compare against `clientWidth`.
 - **Analytics.** `track(name, props)` → `events`, insert-only. Coarse `snake_case`
-  `<surface>_<verb>` names only — **never wage or goal figures**. `session_end` goes through
+  `<surface>_<verb>` names only — **never wage or goal figures**. The onboarding funnel's `ob_*`
+  events go through the core's `obEventProps` whitelist (enumerated values only, a `null` is never
+  sent), so nothing she types can ride one. `session_end` goes through
   `beaconInsert()` (keepalive fetch), not `track()`, and the row to read is the LAST per load.
   `nostore-<uuid>` anon_ids are visits, never returning devices — exclude them from device counts.
   `client_error` is one row per load, money-redacted, read-and-clear. Full event list and funnel
@@ -677,7 +685,7 @@ through. It sees only agent pushes; CI stays the binding gate.
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
 `node scripts/check_build.mjs` (gate), `node scripts/test_groom_seed.mjs` (33),
-`node tests/core.test.mjs` (20, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
+`node tests/core.test.mjs` (51, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
 iPhone 13). `tests/equality.mjs` is the wage-core check against
 the **deployed** build — by hand only, needs network. Every new assertion is negative-tested. Scratch
 copies point `SUPABASE_URL` at `.invalid` so the harness can never write to production analytics.

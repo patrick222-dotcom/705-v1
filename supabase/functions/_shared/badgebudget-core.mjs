@@ -59,14 +59,29 @@ function migrateDiffColor(k, v){
 const SAMPLE_PATTERN_ID = '__sample__';
 /* Six 12h shifts over the fortnight from `startISO`, day-of-week deciding weekend vs night —
    the same inference the .ics import uses, so the mix reads as a real nurse's schedule
-   whatever weekday the pay period happens to begin on. */
-function buildSampleShifts(startISO){
+   whatever weekday the pay period happens to begin on.
+   `opts` (onboarding v2, 2026-10-10) shapes the same fortnight from the funnel's answers:
+   `hours` per shift, `perWeek` shifts on days 1..n of each week, and `mix` -- 'rotating' is the
+   nurse mix above, 'days' makes every shift a plain day ('base'). Input only: what these shifts
+   are worth is still periodPaycheck's call. Called with no opts it returns exactly what it always
+   has (tests/core.test.mjs pins it), which the Healthcare equality rests on. Days 1..n keep each
+   7-day chunk at or under 40 h for every hours x perWeek the funnel offers, so a seeded estimate
+   carries no overtime under the 40-hour week both presets use. (Under 8/80 a 10- or 12-hour
+   shift is overtime past hour 8 by definition -- that is real overtime, not a seeding artefact.) */
+function buildSampleShifts(startISO, opts){
+  const o = opts || {};
+  const hours = (Number(o.hours) > 0 && Number(o.hours) <= 24) ? Number(o.hours) : 12;
+  const perWeek = Math.max(1, Math.min(6, Math.floor(Number(o.perWeek)) || 3));
+  const mix = o.mix === 'days' ? 'days' : 'rotating';
+  const offs = [];
+  for(let i=1;i<=perWeek;i++) offs.push(i);
+  for(let i=1;i<=perWeek;i++) offs.push(7+i);
   const out = {};
-  [1,2,3,8,9,10].forEach(off=>{
+  offs.forEach(off=>{
     const d = parseISODate(startISO); d.setDate(d.getDate()+off);
     const dow = d.getDay();
-    const shiftType = (dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base');
-    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours:12, bonusType:'none',
+    const shiftType = mix==='days' ? 'base' : ((dow===0||dow===6) ? 'weekend-day' : (off%2 ? 'night' : 'base'));
+    out[keyOfDate(d)] = [{ id:Date.now()+Math.random(), shiftType, hours, bonusType:'none',
                            customBonus:0, isOvertime:false, patternId:SAMPLE_PATTERN_ID }];
   });
   return out;
@@ -249,6 +264,12 @@ function sanitizeData(d){
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
   if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
+  /* Onboarding v2's three answers (2026-10-10). Not pay inputs -- a persona picks starting values
+     and cards, never a rule -- but whitelisted the same way: anything else is dropped, never
+     coerced, so a corrupt blob reads as "never answered" rather than as somebody's profession. */
+  if(PERSONA_IDS.indexOf(d.persona)>=0) out.persona = d.persona;
+  if(WORK_STATUSES.indexOf(d.workStatus)>=0) out.workStatus = d.workStatus;
+  if(UNION_ANSWERS.indexOf(d.union)>=0) out.union = d.union;
   // shifts: object of date-key -> array of shift objects; keep only well-formed entries.
   if(d.shifts && typeof d.shifts==='object' && !Array.isArray(d.shifts)){
     const s = {};
@@ -918,6 +939,108 @@ function planPatternApply(pattern, shifts, differentials, opts){
   return {adds, skipped, replaced, startKey:keyOfDate(start), endKey:keyOfDate(endDt)};
 }
 
+/* ---- region: personas ---- */
+const PERSONA_IDS = ['healthcare','other'];
+const WORK_STATUSES = ['ft','pt','prn'];
+const UNION_ANSWERS = ['yes','no','unsure'];
+const OB_SHIFT_LENGTHS = [8,10,12];
+/* Healthcare IS today's defaults -- App's initial state, resetToDefaults and the example-rate
+   path all read this object, and tests/core.test.mjs pins every value against a literal, so
+   neither the preset nor the defaults can move without a red test. Taxes are user-level (see
+   makeJob) and identical across presets; applyPersona never writes them. */
+const PERSONA_PRESETS = {
+  healthcare: {
+    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
+    mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included', differentials:DIFF_DEFAULTS,
+    sampleMix:'rotating', extras:['diffs','holiday'], cards:{nursegrid:true},
+  },
+  /* Illustrative starting amounts, inside the $0.35-$2.75/h range docs/pay-rule-patterns.md saw
+     for non-nurse differentials. They cannot move this persona's first estimate (its sample is
+     all day shifts) and the estimate banner says to sharpen them. */
+  other: {
+    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
+    mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included',
+    differentials:{...DIFF_DEFAULTS,
+      'night':       {...DIFF_DEFAULTS['night'],       amount:1.5, active:true},
+      'weekday-eve': {...DIFF_DEFAULTS['weekday-eve'], amount:1,   active:true},
+      'weekend-day': {...DIFF_DEFAULTS['weekend-day'], amount:1,   active:false},
+      'weekend-eve': {...DIFF_DEFAULTS['weekend-eve'], amount:1.5, active:false}},
+    sampleMix:'days', extras:['evenings','weekend','holiday'], cards:{nursegrid:false},
+  },
+};
+const personaPreset = id => PERSONA_PRESETS[PERSONA_IDS.indexOf(id)>=0 ? id : 'healthcare'];
+const DEFAULT_PRESET = PERSONA_PRESETS.healthcare;
+/* Which differential keys each extras toggle on screen 6 flips. `active` only -- amounts stay
+   whatever the preset or a stub set, and live in Settings. */
+const OB_EXTRA_KEYS = {
+  diffs:    ['night','weekend-day','weekend-eve'],
+  evenings: ['weekday-eve','night'],
+  weekend:  ['weekend-day','weekend-eve'],
+  holiday:  ['holiday'],
+};
+/* Shifts per week that seed the first estimate. Full-time 12h is 3 a week = 72 h a period,
+   not 80 (owner, 2026-10-10). Part-time is ~24 h a week; PRN one shift a week. */
+const OB_SHIFTS_PER_WEEK = { ft:{8:5,10:4,12:3}, pt:{8:3,10:2,12:2}, prn:{8:1,10:1,12:1} };
+/* The funnel's answers -> buildSampleShifts' opts. Nights and weekends are seeded only when the
+   persona's mix rotates AND that extra is on: `active:false` never stops pricing a shift already
+   tagged night, so seeding nights she said she doesn't get would price them anyway. */
+function obSeedOpts(shiftLen, workStatus, sampleMix, extrasOn){
+  const hours = OB_SHIFT_LENGTHS.indexOf(Number(shiftLen))>=0 ? Number(shiftLen) : 12;
+  const st = WORK_STATUSES.indexOf(workStatus)>=0 ? workStatus : 'ft';
+  const rotate = sampleMix==='rotating' && !!(extrasOn && extrasOn.diffs);
+  return { hours, perWeek: OB_SHIFTS_PER_WEEK[st][hours], mix: rotate ? 'rotating' : 'days' };
+}
+/* Add a seeded fortnight to whatever she already has, never replacing a shift. The header meter
+   and finish() both price through this, so the meter's figure is the hero's figure. */
+function mergeSeed(prev, seed){
+  const next = {...(prev||{})};
+  Object.keys(seed||{}).forEach(k=>{ next[k] = (next[k]||[]).concat(seed[k]); });
+  return next;
+}
+/* An extra reads as ON when every differential it governs is active. Derived from the
+   differentials themselves rather than stored, so a stub that lit some of them is reflected. */
+function obExtrasOn(differentials){
+  const d = differentials || {};
+  const out = {};
+  Object.keys(OB_EXTRA_KEYS).forEach(x=>{ out[x] = OB_EXTRA_KEYS[x].every(k=>!!(d[k] && d[k].active)); });
+  return out;
+}
+/* Annual salary -> the hourly rate the planner prices with, on the standard 2,080-hour year.
+   An INPUT conversion, not a salaried pay model (that is primitive 4 in pay-rule-patterns.md,
+   and wage-core): right for an 80-hour fortnight, ~10% low for a 72-hour one, which is why the
+   pay screen prints the rate it will use before she continues. */
+const SALARY_HOURS_PER_YEAR = 2080;
+const salaryToHourly = annual => {
+  const n = Number(annual);
+  return (isFinite(n) && n > 0) ? Math.round(n / SALARY_HOURS_PER_YEAR * 100) / 100 : 0;
+};
+
+/* The funnel's analytics contract. Every ob_* event passes through obEventProps, which returns
+   only whitelisted keys with enumerated values, or null -- and a null is never sent. Nothing she
+   typed is ever a value: `pay` records HOW she answered, never the amount. */
+const OB_SCREENS = ['landing','persona','shift','status','union','pay','extras'];
+const OB_ANSWERS = {
+  persona: PERSONA_IDS,
+  shift: OB_SHIFT_LENGTHS.map(String),
+  status: WORK_STATUSES,
+  union: UNION_ANSWERS,
+  pay: ['stub','hourly','salary','example'],
+  x_diffs: ['on','off'], x_evenings: ['on','off'], x_weekend: ['on','off'], x_holiday: ['on','off'],
+};
+function obEventProps(name, props){
+  const p = (props && typeof props==='object') ? props : {};
+  if(name==='ob_view') return OB_SCREENS.indexOf(p.screen)>=0 ? {screen:p.screen} : null;
+  if(name==='ob_back') return OB_SCREENS.indexOf(p.from)>=0 ? {from:p.from} : null;
+  if(name==='ob_answer'){
+    const allowed = Object.prototype.hasOwnProperty.call(OB_ANSWERS, p.q) ? OB_ANSWERS[p.q] : null;
+    const a = (typeof p.a==='string' || typeof p.a==='number') ? String(p.a) : '';
+    return (Array.isArray(allowed) && allowed.indexOf(a)>=0) ? {q:p.q, a} : null;
+  }
+  return null;
+}
+
 export {
   MAX_TEMPLATES,
   MAX_GOALS,
@@ -1000,4 +1123,21 @@ export {
   keepRatioOf,
   patternMetrics,
   planPatternApply,
+  PERSONA_IDS,
+  WORK_STATUSES,
+  UNION_ANSWERS,
+  OB_SHIFT_LENGTHS,
+  PERSONA_PRESETS,
+  personaPreset,
+  DEFAULT_PRESET,
+  OB_EXTRA_KEYS,
+  OB_SHIFTS_PER_WEEK,
+  obSeedOpts,
+  mergeSeed,
+  obExtrasOn,
+  SALARY_HOURS_PER_YEAR,
+  salaryToHourly,
+  OB_SCREENS,
+  OB_ANSWERS,
+  obEventProps,
 };

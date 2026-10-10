@@ -75,7 +75,11 @@ does not resurrect shipped themes.
   48 in the table. (The count read 41 from 2026-10-01 to 2026-10-02 while the prose below already
   named all six of the events it was missing: regenerate the number with the grep, don't trust it.) `app_open` `{via}` (present only when the URL
   carried a recognized `?via=` arrival tag — `qr` or `link` from the share sheet),
-  `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took,
+  `setup_completed` `{mode:'full'|'rough'|'sample'}` — which onboarding path they took (since
+  onboarding v2, 2026-10-10: `full` = a stub, `rough` = a typed rate or salary, `sample` = the
+  example rate), `ob_view` `{screen}`, `ob_answer` `{q,a}` and `ob_back` `{from}` — the v2 funnel,
+  every prop passed through the core's `obEventProps` whitelist so no typed figure can ride one
+  (`docs/onboarding-funnel-spec.md`; query `scripts/onboarding_funnel.sql`),
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
   `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
   `ics_import_parsed`, `ics_import_done` `{added,updated,skipped,removed,shown,provider}`,
@@ -122,8 +126,11 @@ does not resurrect shipped themes.
   public.events group by name order by 2 desc;`
   **`ob_step` is the onboarding funnel.** `app_open`→`setup_completed` was a 132-device to 9-device
   cliff with no event in between, so a bounce off the welcome screen was indistinguishable from one
-  off the rate input. It fires once per *furthest* step reached (0 welcome … 4 done), so
-  back-navigation and "Edit my setup" don't double count. **Stage 0 never actually fired until
+  off the rate input. It fires once per *furthest* step reached, so back-navigation doesn't
+  double count. **Its indices changed meaning on 2026-10-10** (onboarding v2): before, 0 welcome …
+  4 done; from then, 0 landing, 1 profession, 2 shift length, 3 how much, 4 union, 5 pay, 6 extras.
+  0 and 1 mean what they always meant (saw it / left it); never compare 2+ across that date — read
+  `ob_view {screen}` instead, which names the screen. **Stage 0 never actually fired until
   2026-09-16** and every historical `ob_step` row therefore starts at 1: `obMax` was seeded at `0`
   so `n > obMax.current` rejected step 0, *and* nothing called `goObStep(0)` on arrival — Onboarding
   only reports a step when the nurse moves. So the welcome-screen bounce, the most common outcome

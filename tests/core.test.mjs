@@ -100,5 +100,161 @@ ok('keep: never negative', C.keepRatioOf({ ...taxes, federalTaxRate: 120 }) === 
   ok('sanitize: drops a non-date shift key', !(d.shifts && 'bad' in d.shifts));
 }
 
+/* ---- onboarding v2: personas are starting values, and Healthcare IS today's defaults ------
+   The literals below are the app's defaults as of 2026-10-10 (App's useState initializers and
+   resetToDefaults, before they were pointed at the preset). Written out by hand on purpose: a
+   test comparing the preset to DIFF_DEFAULTS or to itself could never fail. */
+const TODAY_DEFAULTS = {
+  baseRate: 65.15, federalTaxRate: 12, stateTaxRate: 2.5, pretaxDeductions: 0, posttaxDeductions: 0,
+  ficaType: 'standard', ficaPct: 7.65, workPeriod: '40', otMethod: 'regular-rate',
+  mealBreakMins: 30, mealBreakMode: 'included',
+  differentials: {
+    'base':           { name: 'Day (regular)',   amount: 0,    type: 'dollar',     active: true,  color: '#9A9082' },
+    'night':          { name: 'Night',           amount: 10,   type: 'dollar',     active: true,  color: '#34452A' },
+    'weekday-eve':    { name: 'Weekday evening', amount: 3,    type: 'dollar',     active: false, color: '#6E665A' },
+    'weekend-day':    { name: 'Weekend day',     amount: 11.5, type: 'dollar',     active: true,  color: '#B65D45' },
+    'weekend-eve':    { name: 'Weekend night',   amount: 16.5, type: 'dollar',     active: true,  color: '#8C4A38' },
+    'holiday':        { name: 'Holiday',         amount: 1.5,  type: 'multiplier', active: true,  color: '#D9A33C' },
+    'overtime':       { name: 'Overtime (1.5×)', amount: 1.5,  type: 'multiplier', active: true,  color: '#11A86B' },
+    'bonus-incentive':{ name: 'Bonus incentive', amount: 15,   type: 'dollar',     active: true,  color: '#11A86B' },
+  },
+};
+{
+  const H = C.PERSONA_PRESETS.healthcare;
+  const payFields = Object.keys(TODAY_DEFAULTS);
+  const picked = Object.fromEntries(payFields.map((k) => [k, H[k]]));
+  ok('persona: the Healthcare preset equals today\'s defaults exactly (every pay input + every differential)',
+    JSON.stringify(picked) === JSON.stringify(TODAY_DEFAULTS),
+    payFields.filter((k) => JSON.stringify(H[k]) !== JSON.stringify(TODAY_DEFAULTS[k])).join(', '));
+  ok('persona: the preset carries no field the pay math reads beyond those (no hidden rule)',
+    Object.keys(H).filter((k) => !payFields.includes(k)).sort().join(',') === 'cards,extras,sampleMix',
+    Object.keys(H).join(','));
+  ok('persona: only Healthcare and Other hourly exist — no police or fire tiles yet',
+    JSON.stringify(C.PERSONA_IDS) === '["healthcare","other"]' && Object.keys(C.PERSONA_PRESETS).length === 2);
+  ok('persona: an unknown id falls back to Healthcare, never to undefined',
+    C.personaPreset('police') === H && C.personaPreset(undefined) === H && C.personaPreset('other') === C.PERSONA_PRESETS.other);
+  const O = C.PERSONA_PRESETS.other;
+  ok('persona: Other hourly shares the user-level taxes (a persona never moves tax)',
+    ['federalTaxRate', 'stateTaxRate', 'pretaxDeductions', 'posttaxDeductions', 'ficaType', 'ficaPct']
+      .every((k) => O[k] === H[k]));
+}
+
+/* ---- seeding: today's sample fortnight is unchanged, and the funnel's shapes are input only --- */
+const strip = (m) => JSON.stringify(Object.fromEntries(Object.entries(m).map(([k, a]) =>
+  [k, a.map(({ id, ...rest }) => rest)])));
+{
+  const start = '2026-10-04';   // a Sunday, so the weekend inference is exercised
+  const legacy = C.buildSampleShifts(start);
+  // Hand-written: what the pre-2026-10-10 buildSampleShifts returned for this start.
+  const expect = {};
+  [[1, 'night'], [2, 'base'], [3, 'night'], [8, 'base'], [9, 'night'], [10, 'base']].forEach(([off, t]) => {
+    const d = new Date(2026, 9, 4 + off);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    expect[k] = [{ shiftType: t, hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false, patternId: '__sample__' }];
+  });
+  ok('seed: buildSampleShifts(start) with no opts is exactly today\'s six 12h shifts', strip(legacy) === JSON.stringify(expect),
+    strip(legacy).slice(0, 160));
+  const sat = C.buildSampleShifts('2026-10-09');   // Friday start: days 1 and 9 are Saturdays
+  ok('seed: the weekend inference still applies', sat['2026-10-10'][0].shiftType === 'weekend-day'
+    && sat['2026-10-18'][0].shiftType === 'weekend-day', JSON.stringify(Object.values(sat).map((a) => a[0].shiftType)));
+  const hc = C.buildSampleShifts(start, C.obSeedOpts(12, 'ft', C.PERSONA_PRESETS.healthcare.sampleMix, { diffs: true, holiday: true }));
+  ok('seed: Healthcare · 12h · Full-time seeds today\'s fortnight, shift for shift', strip(hc) === strip(legacy));
+  const hours = (m) => Object.values(m).reduce((a, arr) => a + arr.reduce((b, s) => b + s.hours, 0), 0);
+  ok('seed: Full-time 3×12 is 72 hours a pay period, not 80', hours(hc) === 72, String(hours(hc)));
+  const table = [];
+  for (const st of C.WORK_STATUSES) for (const h of C.OB_SHIFT_LENGTHS) {
+    const o = C.obSeedOpts(h, st, 'rotating', { diffs: true });
+    table.push(`${st}${h}:${o.perWeek * h * 2}`);
+  }
+  ok('seed: hours per period across status × length match the spec table',
+    table.join(' ') === 'ft8:80 ft10:80 ft12:72 pt8:48 pt10:40 pt12:48 prn8:16 prn10:20 prn12:24', table.join(' '));
+  ok('seed: differentials off -> no seeded night or weekend shift (an inactive chip is still priced)',
+    C.obSeedOpts(12, 'ft', 'rotating', { diffs: false }).mix === 'days'
+      && Object.values(C.buildSampleShifts(start, C.obSeedOpts(12, 'ft', 'rotating', { diffs: false })))
+        .every((a) => a[0].shiftType === 'base'));
+  ok('seed: Other hourly seeds day shifts whatever its toggles say',
+    C.obSeedOpts(8, 'pt', C.PERSONA_PRESETS.other.sampleMix, { diffs: true, evenings: true }).mix === 'days');
+
+  /* No seeded fortnight carries overtime under the 40-hour week both presets use. */
+  const days14 = Array.from({ length: 14 }, (_, i) => { const d = new Date(2026, 9, 4 + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
+  const withOt = [];
+  for (const st of C.WORK_STATUSES) for (const h of C.OB_SHIFT_LENGTHS) {
+    const sh = C.buildSampleShifts(start, C.obSeedOpts(h, st, 'rotating', { diffs: true }));
+    const j = C.makeJob({ id: 'job-1', baseRate: 30, differentials: TODAY_DEFAULTS.differentials, workPeriod: '40' });
+    const p = C.periodPaycheck({ shifts: sh, dayEvents: {}, dateKeys: days14, baseRate: 30,
+      differentials: TODAY_DEFAULTS.differentials, taxInputs: taxes, job: j });
+    if (p.ot.premiumCents !== 0) withOt.push(`${st}${h}`);
+  }
+  ok('seed: no status × length seeds overtime under the 40-hour week', withOt.length === 0, withOt.join(','));
+
+  /* The Healthcare path's number is today's number: price the seeded fortnight once with the
+     preset and once with the hand-written literals above. */
+  const price = (src, sh) => {
+    const j = C.makeJob({ id: 'job-1', baseRate: src.baseRate, differentials: src.differentials,
+      workPeriod: src.workPeriod, otMethod: src.otMethod, mealBreakMins: src.mealBreakMins, mealBreakMode: src.mealBreakMode });
+    return C.periodPaycheck({ shifts: sh, dayEvents: {}, dateKeys: days14, baseRate: src.baseRate,
+      differentials: src.differentials, job: j, taxInputs: { ficaType: src.ficaType, ficaPct: src.ficaPct,
+        federalTaxRate: src.federalTaxRate, stateTaxRate: src.stateTaxRate, pretaxDeductions: src.pretaxDeductions,
+        posttaxDeductions: src.posttaxDeductions, customWithholdings: [] } });
+  };
+  const viaPreset = price(C.PERSONA_PRESETS.healthcare, hc), viaToday = price(TODAY_DEFAULTS, legacy);
+  ok('seed: Healthcare preset + its seed prices to today\'s sample paycheck to the cent',
+    JSON.stringify(viaPreset) === JSON.stringify(viaToday) && viaToday.net > 0, `${viaPreset.net} vs ${viaToday.net}`);
+  const oth = C.buildSampleShifts(start, C.obSeedOpts(8, 'ft', 'days', {}));
+  const pOther = price(C.PERSONA_PRESETS.other, oth);
+  ok('seed: Other hourly full-time 8h prices to rate × 80 h before tax (its differentials cannot reach it)',
+    near(pOther.gross, 25 * 80), String(pOther.gross));
+}
+
+/* ---- the pay screen's inputs ----------------------------------------------------------------- */
+ok('pay: salary converts on a 2,080-hour year, to the cent',
+  C.salaryToHourly(91234) === 43.86 && C.salaryToHourly('85000') === 40.87, `${C.salaryToHourly(91234)} ${C.salaryToHourly('85000')}`);
+ok('pay: a blank, negative or junk salary is no rate at all',
+  C.salaryToHourly('') === 0 && C.salaryToHourly(-5) === 0 && C.salaryToHourly('abc') === 0 && C.salaryToHourly(Infinity) === 0);
+{
+  const on = C.obExtrasOn(C.PERSONA_PRESETS.healthcare.differentials);
+  const onO = C.obExtrasOn(C.PERSONA_PRESETS.other.differentials);
+  ok('extras: Healthcare starts with differentials and holiday on (today\'s defaults)', on.diffs && on.holiday, JSON.stringify(on));
+  ok('extras: Other hourly starts with evenings + holiday on, weekends off', onO.evenings && onO.holiday && !onO.weekend, JSON.stringify(onO));
+  const partial = { ...C.DIFF_DEFAULTS, 'weekend-eve': { ...C.DIFF_DEFAULTS['weekend-eve'], active: false } };
+  ok('extras: an extra is on only when every differential it governs is active', C.obExtrasOn(partial).diffs === false);
+}
+
+/* ---- the three new saved fields go through the sanitizer's whitelist ----------------------- */
+{
+  const good = C.sanitizeData({ persona: 'other', workStatus: 'prn', union: 'unsure' });
+  ok('sanitize: keeps a whitelisted persona, work status and union answer',
+    good.persona === 'other' && good.workStatus === 'prn' && good.union === 'unsure', JSON.stringify(good));
+  const bad = C.sanitizeData({ persona: 'police', workStatus: 'FT', union: true });
+  ok('sanitize: drops anything off the whitelist rather than coercing it',
+    !('persona' in bad) && !('workStatus' in bad) && !('union' in bad), JSON.stringify(bad));
+  const odd = C.sanitizeData({ persona: { toString: () => 'healthcare' }, workStatus: ['ft'], union: 'constructor' });
+  ok('sanitize: an object, array or prototype key is not an answer',
+    !('persona' in odd) && !('workStatus' in odd) && !('union' in odd));
+  ok('sanitize: a blob without them stays without them (never defaults to Healthcare)',
+    !('persona' in C.sanitizeData({ baseRate: 40 })));
+}
+
+/* ---- the funnel's analytics whitelist -------------------------------------------------------- */
+{
+  const E = C.obEventProps;
+  ok('events: every enumerated answer passes, exactly as sent',
+    Object.entries(C.OB_ANSWERS).every(([q, as]) => as.every((a) => JSON.stringify(E('ob_answer', { q, a })) === JSON.stringify({ q, a }))));
+  ok('events: a numeric shift length is sent as its enumerated string', JSON.stringify(E('ob_answer', { q: 'shift', a: 12 })) === '{"q":"shift","a":"12"}');
+  ok('events: a typed rate, salary or dollar figure is never an answer',
+    E('ob_answer', { q: 'pay', a: '43.21' }) === null && E('ob_answer', { q: 'pay', a: 91234 }) === null
+      && E('ob_answer', { q: 'rate', a: 'hourly' }) === null && E('ob_answer', { q: 'shift', a: '$12' }) === null);
+  ok('events: prototype keys are not questions', E('ob_answer', { q: 'constructor', a: 'on' }) === null
+    && E('ob_answer', { q: '__proto__', a: 'on' }) === null && E('ob_answer', { q: 'toString', a: 'on' }) === null);
+  ok('events: extra keys are stripped, not forwarded',
+    JSON.stringify(E('ob_answer', { q: 'status', a: 'ft', rate: 43.21 })) === '{"q":"status","a":"ft"}'
+      && JSON.stringify(E('ob_view', { screen: 'pay', net: 1234 })) === '{"screen":"pay"}');
+  ok('events: ob_view / ob_back only name one of the seven screens',
+    C.OB_SCREENS.every((s) => E('ob_view', { screen: s }) && E('ob_back', { from: s }))
+      && E('ob_view', { screen: 'done' }) === null && E('ob_back', { from: 'Pay' }) === null && E('ob_view', null) === null);
+  ok('events: obEventProps refuses every other event name', E('setup_completed', { mode: 'rough' }) === null);
+}
+
 console.log(`\n==== core: ${pass} passed / ${fail} failed ====`);
 process.exit(fail ? 1 : 0);
