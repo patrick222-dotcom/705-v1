@@ -1003,7 +1003,9 @@ and the push P0 it pointed at was fixed the same day.
      `ob_answer {q,a}` (whitelisted enumerated answers, never dollar figures), `ob_back {from}`,
      plus a funnel query. Law enforcement and Fire & EMS tiles stay hidden; there is **no waitlist**
      (owner, 2026-10-10).
-  2. **Configurable work period** (wage-core): "only overtime I flag" plus N hours in D days. The
+  2. ~~**Configurable work period**~~ — **BUILT 2026-10-10, PR awaiting the owner's merge**
+     (wage-core: it does not auto-merge). See the Done log. Original brief: (wage-core): "only
+     overtime I flag" plus N hours in D days. The
      probes in `pay-rule-patterns.md` (c) become assertions: zero phantom OT on 12 h Pitman, 12 h +
      Kelly day, 3/3 10.5 h and 4/10.
   3. **Per-shift multiplier + minimum-hours events** (wage-core): court, call-back, report pay.
@@ -1784,6 +1786,32 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **Configurable work period (session 2 of the multi-persona plan; wage-core, so the
+  PR waits for the owner's merge).** Two new rules beside the 40-hour week and 8/80:
+  - **"Only the shifts I mark as overtime"** (`workPeriod:'flagged'`): no derived overtime at all.
+    How 13 of 21 police contracts pay ("outside the scheduled tour").
+  - **N hours in a D-day period, D 7–28** (`'custom'` + `otPeriodHours` / `otPeriodDays` /
+    `otPeriodStart`): the FLSA 7(k) shape. A period may straddle two paychecks; it is counted in
+    the one whose dates hold its **last** day and reaches back for the earlier hours. Picking it
+    fills 86 h / 14 days / this pay period's start **in front of her** in Settings.
+  - **`'40'` and `'8-80'` run their original code path line for line.** New pure resolver
+    `workPeriodRule(job)` (an incomplete custom period falls back to the 40-hour week, never to "no
+    overtime"); `periodPaycheck` now also returns `otRule`; the Breakdown names the custom rule and
+    explains "flagged".
+
+  Verification, per the `wage-core` protocol:
+  - **Baseline:** 74/0 on the wage and overtime probes before the change.
+  - **The phantom-overtime table:** `pay-rule-patterns.md` (c)'s ten cells are reproduced exactly and
+    pinned in `tests/core.test.mjs`. All five schedules carry **zero** under "flagged" and under 86
+    in 14.
+  - **Core tests:** 51 → 71, every new assertion negative-tested. One break was first missed:
+    nudging 8/80's 80 to 81 — the daily half always won — so a period-half fixture was added.
+  - **Smoke tests:** §39 adds 12 in-browser assertions, every one seen failing across 7 mutated copies (a control copy passed 12/12 first).
+  - **`tests/equality.mjs` against badgebudget.com:** 14 cases **IDENTICAL**, 0 unintended
+    differences, and both differences named before the run seen. The script now carries named
+    intended differences and fails if one does *not* show.
+  - **Open question 2 answered:** "flagged" pays at least what 7(k) does in the case the session doc
+    asked about.
 - 2026-10-10 — **Onboarding v2 (Healthcare + Other hourly) + first-party funnel tracking** —
   session 1 of the multi-persona plan. Spec first, committed before the build:
   `docs/onboarding-funnel-spec.md`. What shipped:

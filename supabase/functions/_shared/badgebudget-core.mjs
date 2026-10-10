@@ -12,6 +12,8 @@ const todayISO = () => { const d=new Date(); return `${d.getFullYear()}-${String
 /* ---- module-level date/period helpers (shared by App + the month-grid components) ---- */
 const parseISODate = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
 const keyOfDate = dt => `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+/* A real calendar date in YYYY-MM-DD, not just that shape: 2026-02-30 round-trips to March. */
+const isISODate = s => typeof s==='string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && keyOfDate(parseISODate(s))===s;
 /* the 14-day pay-period start (phase-aligned to `anchorISO`) that contains `dateISO` — any
    period-aligned anchor works since every period start shares the same mod-14 phase class. */
 const periodStartOf = (dateISO, anchorISO) => {
@@ -257,6 +259,12 @@ function sanitizeData(d){
      ever land on the safe default ('40' + the FLSA regular rate) rather than silently switching
      a nurse onto an 8/80 schedule and inventing overtime she is not owed. */
   if(WORK_PERIODS.indexOf(d.workPeriod)>=0) out.workPeriod = d.workPeriod;
+  /* A custom work period's three numbers. Each is dropped, never coerced, when out of range, and
+     workPeriodRule() treats an incomplete custom period as the 40-hour week -- so a corrupt blob
+     can neither invent overtime nor switch it off. */
+  if(d.otPeriodHours!=null){ const h=Number(d.otPeriodHours); if(isFinite(h) && h>0 && h<=OT_PERIOD_MAX_DAYS*24) out.otPeriodHours = h; }
+  if(d.otPeriodDays!=null){ const n=Number(d.otPeriodDays); if(Number.isInteger(n) && n>=OT_PERIOD_MIN_DAYS && n<=OT_PERIOD_MAX_DAYS) out.otPeriodDays = n; }
+  if(isISODate(d.otPeriodStart)) out.otPeriodStart = d.otPeriodStart;
   if(OT_METHODS.indexOf(d.otMethod)>=0) out.otMethod = d.otMethod;
   if(d.mealBreakMins!=null){ const mm=Number(d.mealBreakMins); if(isFinite(mm)&&mm>=0&&mm<=120) out.mealBreakMins = mm; }
   if(MEAL_MODES.indexOf(d.mealBreakMode)>=0) out.mealBreakMode = d.mealBreakMode;
@@ -441,6 +449,7 @@ function sanitizeData(d){
     out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate,
       differentials: out.differentials || null,
       workPeriod: out.workPeriod, otMethod: out.otMethod,
+      otPeriodHours: out.otPeriodHours, otPeriodDays: out.otPeriodDays, otPeriodStart: out.otPeriodStart,
       mealBreakMins: out.mealBreakMins, mealBreakMode: out.mealBreakMode })];
   }
   if(out.shifts){
@@ -487,10 +496,20 @@ const roundCents = x => (x < 0 ? -Math.round(-x) : Math.round(x));
    Don't "tidy" it onto the job. */
 const DEFAULT_JOB_ID = 'job-1';
 const MAX_JOBS = 8;
-/* '40' = the FLSA 40-hour workweek. '8-80' = the section 7(j) hospital election: overtime past
-   8 in a day AND 80 in a 14-day period, whichever is crossed. Read by the overtime derivation,
-   which lands in the next commit; stored here so one migration covers both. */
-const WORK_PERIODS = ['40','8-80'];
+/* When derived overtime starts. Read only by workPeriodRule() below.
+   '40'      = the FLSA 40-hour workweek.
+   '8-80'    = the section 7(j) hospital election: overtime past 8 in a day AND 80 in a 14-day
+               period, whichever is crossed.
+   'flagged' = no derived overtime at all: only shifts she marks isOvertime are paid 1.5x, inside
+               shiftGross. This is how 13 of 21 police contracts pay ("outside the scheduled
+               tour", docs/pay-rule-patterns.md), and the only setting under which a 12-hour
+               rotation gets no phantom overtime on a week that merely crosses 40 (2026-10-10).
+   'custom'  = N hours in a D-day work period, D from 7 to 28 -- the FLSA 7(k) shape (171/28,
+               86/14, 212/28, 182/24…), with otPeriodHours / otPeriodDays / otPeriodStart.
+   Adding 'flagged' and 'custom' (session 2 of the multi-persona plan) left '40' and '8-80' on
+   their original code path, line for line, so no existing figure can move. */
+const WORK_PERIODS = ['40','8-80','flagged','custom'];
+const OT_PERIOD_MIN_DAYS = 7, OT_PERIOD_MAX_DAYS = 28;   // 29 CFR 553.224: a 7(k) period is 7 to 28 days
 /* 'regular-rate' = FLSA 778.115: total straight-time remuneration / total hours, premium at 0.5x
    on the overtime hours. 'base-plus-diff' = the common (and often incorrect) shortcut of
    1.5 x base with the differential added flat. Which one an employer uses is observable from a
@@ -520,6 +539,11 @@ function makeJob(o){
     differentials: (j.differentials && typeof j.differentials==='object' && !Array.isArray(j.differentials))
       ? j.differentials : null,
     workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
+    /* Only read when workPeriod is 'custom'; null when absent or invalid, and workPeriodRule
+       then falls back to the 40-hour week rather than inventing a threshold. */
+    otPeriodHours: (()=>{ const h=Number(j.otPeriodHours); return (j.otPeriodHours!=null && isFinite(h) && h>0 && h<=OT_PERIOD_MAX_DAYS*24) ? h : null; })(),
+    otPeriodDays: (()=>{ const d=Number(j.otPeriodDays); return (Number.isInteger(d) && d>=OT_PERIOD_MIN_DAYS && d<=OT_PERIOD_MAX_DAYS) ? d : null; })(),
+    otPeriodStart: isISODate(j.otPeriodStart) ? j.otPeriodStart : null,
     otMethod: OT_METHODS.indexOf(j.otMethod)>=0 ? j.otMethod : 'regular-rate',
     payFrequency: PAY_FREQUENCIES.indexOf(j.payFrequency)>=0 ? j.payFrequency : 'biweekly',
     mealBreakMins: (()=>{ const m=Number(j.mealBreakMins); return (isFinite(m)&&m>=0&&m<=120)?m:DEFAULT_MEAL_MINS; })(),
@@ -550,12 +574,51 @@ const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.i
 const straightTimeCents = (baseCents, diff, s, meal) =>
   shiftGrossCents(baseCents, diff, {...s, isOvertime:false}, meal);
 
+/* The job's overtime rule as data: {id, days, hours, daily, anchor}, or null for 'flagged' (no
+   derived overtime). A 'custom' rule whose fields are missing or out of range falls back to the
+   40-hour week -- the same safe default the sanitizer lands a corrupt workPeriod on -- never to
+   "no overtime", which would silently under-report a week she really worked long. */
+function workPeriodRule(job){
+  const wp = job && job.workPeriod;
+  if(wp==='flagged') return null;
+  if(wp==='8-80') return { id:'8-80', days:14, hours:80, daily:8, anchor:null };
+  if(wp==='custom'){
+    const d = Number(job.otPeriodDays), h = Number(job.otPeriodHours);
+    if(Number.isInteger(d) && d>=OT_PERIOD_MIN_DAYS && d<=OT_PERIOD_MAX_DAYS && isFinite(h) && h>0 && h<=d*24)
+      return { id:'custom', days:d, hours:h, daily:null, anchor: isISODate(job.otPeriodStart) ? job.otPeriodStart : null };
+  }
+  return { id:'40', days:7, hours:40, daily:null, anchor:null };
+}
+
 /* Split date keys into the job's work periods. A 40-hour workweek is seven consecutive days
    from the first key — biweekly pay periods here start on a Sunday, the same day MLH's do, so
    the chunks line up with the employer's workweek. An 8/80 election is ONE fourteen-day
-   period, not two weeks, because its second threshold is 80 hours across the whole thing. */
+   period, not two weeks, because its second threshold is 80 hours across the whole thing.
+   Those two are UNCHANGED, line for line, since 2026-10-10.
+
+   A 'custom' period is D consecutive days counted from its own start date (otPeriodStart,
+   default the first key), and it may straddle two paychecks: a 28-day period is two of them.
+   It is counted in the paycheck whose dates contain the period's LAST day -- the hours are only
+   known once it closes -- and it reaches back into the previous paycheck's dates for them, which
+   is why `shifts` is the whole map and not a slice. A period still open at the end of these
+   dates contributes nothing yet. */
 function workPeriodChunks(job, dateKeys){
   const keys = (dateKeys||[]).slice().sort();
+  const rule = workPeriodRule(job);
+  if(!rule) return [];
+  if(rule.id==='custom'){
+    if(!keys.length) return [];
+    const anchor = rule.anchor || keys[0];
+    const a = parseISODate(anchor);
+    const dayOf = k => Math.round((parseISODate(k) - a)/86400000);
+    const keyAt = n => keyOfDate(new Date(a.getFullYear(), a.getMonth(), a.getDate()+n));
+    const inKeys = new Set(keys), D = rule.days, out = [];
+    for(let w=Math.floor(dayOf(keys[0])/D); w*D<=dayOf(keys[keys.length-1]); w++){
+      if(!inKeys.has(keyAt(w*D + D - 1))) continue;
+      out.push(Array.from({length:D}, (_,i)=>keyAt(w*D + i)));
+    }
+    return out;
+  }
   if(job && job.workPeriod==='8-80') return keys.length ? [keys] : [];
   const out = [];
   for(let i=0;i<keys.length;i+=7) out.push(keys.slice(i,i+7));
@@ -567,6 +630,10 @@ function overtimePremiumCents(job, shifts, dateKeys){
   const diffs = (job && job.differentials) || {};
   const method = (job && job.otMethod) || 'regular-rate';
   const is880 = !!(job && job.workPeriod==='8-80');
+  /* The threshold comes from the rule: 40 and 80 exactly as before, N for a custom period.
+     'flagged' never gets here -- it has no chunks. */
+  const rule = workPeriodRule(job);
+  const threshold = rule ? rule.hours : 40;
   const out = { otHours:0, premiumCents:0, flaggedHours:0, periods:[] };
 
   workPeriodChunks(job, dateKeys).forEach(keys=>{
@@ -595,7 +662,7 @@ function overtimePremiumCents(job, shifts, dateKeys){
        the daily and period results. Employers differ here; the 40-hour default does not. */
     const otHours = is880
       ? Math.max(dailyExcess, Math.max(0, hours - 80))
-      : Math.max(0, hours - 40);
+      : Math.max(0, hours - threshold);
     const unflagged = Math.max(0, otHours - flaggedHours);
     const premiumBase = method==='base-plus-diff' ? baseCents : regularRateCents;
     const premiumCents = roundCents(0.5 * premiumBase * unflagged);
@@ -857,7 +924,7 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod};
+  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job)};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -1047,6 +1114,7 @@ export {
   todayISO,
   parseISODate,
   keyOfDate,
+  isISODate,
   periodStartOf,
   periodRangeLabel,
   DIFF_DEFAULTS,
@@ -1083,6 +1151,8 @@ export {
   DEFAULT_JOB_ID,
   MAX_JOBS,
   WORK_PERIODS,
+  OT_PERIOD_MIN_DAYS,
+  OT_PERIOD_MAX_DAYS,
   OT_METHODS,
   PAY_FREQUENCIES,
   MEAL_MODES,
@@ -1090,6 +1160,7 @@ export {
   makeJob,
   jobMap,
   straightTimeCents,
+  workPeriodRule,
   workPeriodChunks,
   overtimePremiumCents,
   groupHoursByJob,

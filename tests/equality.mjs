@@ -44,6 +44,7 @@ const SHIFTS = (extra = {}) => ({
   [plus(8)]: [{ id: 4, shiftType: 'holiday', hours: 12, bonusType: 'none' }],
 });
 const base = (extra) => ({ setupComplete: true, baseRate: 50, payPeriodStart: PPS, shifts: SHIFTS(), ...extra });
+const WEEK48 = Object.fromEntries([0, 1, 2, 3].map((n) => [plus(n), [{ id: 10 + n, shiftType: 'night', hours: 12, bonusType: 'none' }]]));
 
 /* The cases the #65 harness covered, plus the two my changes actually touch. */
 const CASES = [
@@ -60,6 +61,18 @@ const CASES = [
     customWithholdings: [{ name: '403b', type: 'percent', amount: 5 }, { name: 'Union', type: 'dollar', amount: 40 }],
     dayEvents: { [plus(2)]: [{ kind: 'pto', hours: 12 }] } })],
   ['deductions exceed gross', { setupComplete: true, baseRate: 50, payPeriodStart: PPS, shifts: {}, pretaxDeductions: 260 }],
+  /* Session 2 (configurable work period, 2026-10-10). A 48-hour week crosses 40, so every rule
+     below prices it differently -- which is what makes these cases able to see a change. */
+  ['48-hour week, 40-hour rule', { ...base(), shifts: WEEK48 }],
+  ['48-hour week, 8/80', { ...base(), shifts: WEEK48, workPeriod: '8-80' }],
+  ['48-hour week, base-plus-diff', { ...base(), shifts: WEEK48, otMethod: 'base-plus-diff' }],
+  ['stray custom fields on the 40-hour rule', { ...base(), shifts: WEEK48, otPeriodHours: 10, otPeriodDays: 7, otPeriodStart: PPS }],
+  /* INTENDED differences, named before the first run: the deployed build does not know these two
+     values, its sanitizer drops them, and it prices both as the 40-hour week. */
+  ['48-hour week, only overtime I mark', { ...base(), shifts: WEEK48, workPeriod: 'flagged' },
+    'intended: deployed adds the 40-hour premium; local adds none and says why'],
+  ['48-hour week, 86 in 14 days', { ...base(), shifts: WEEK48, workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14, otPeriodStart: PPS },
+    'intended: deployed adds the 40-hour premium; local adds none (48 h is under 86)'],
 ];
 
 
@@ -128,13 +141,19 @@ const run = async () => {
     return { ...money, rows };
   };
 
-  let diffs = 0;
-  for (const [name, seed] of CASES) {
+  let diffs = 0, intendedSame = 0;
+  for (const [name, seed, intended] of CASES) {
     const L = await grab(a.url, seed);
     const D = await grab(b.url, seed);
     const same = JSON.stringify(L) === JSON.stringify(D);
-    console.log(`\n--- ${name} --- ${same ? 'IDENTICAL' : 'DIFFERS'}`);
-    if (!same) {
+    console.log(`\n--- ${name} --- ${same ? 'IDENTICAL' : 'DIFFERS'}${intended ? `  (${intended})` : ''}`);
+    /* A case named as an intended difference that comes back IDENTICAL is a failure too: the
+       change it was meant to show did not reach the screen. */
+    if (intended && same) intendedSame++;
+    if (!same && intended) {
+      console.log('  deployed:', JSON.stringify(D));
+      console.log('  local   :', JSON.stringify(L));
+    } else if (!same) {
       diffs++;
       console.log('  deployed:', JSON.stringify(D));
       console.log('  local   :', JSON.stringify(L));
@@ -143,9 +162,11 @@ const run = async () => {
     }
   }
   await browser.close(); a.server.close(); b.server.close();
-  console.log(`\n==== equality: ${CASES.length - diffs} identical / ${diffs} differ ====`);
-  console.log(diffs
-    ? 'Each DIFFERS case must be one you named as intended BEFORE running. Otherwise it is the bug.'
-    : 'No figure moved against the live build.');
+  const named = CASES.filter((c) => c[2]).length;
+  console.log(`\n==== equality: ${CASES.length - named - diffs} identical / ${diffs} differ unintended / ${named - intendedSame} of ${named} named differences seen ====`);
+  console.log(diffs || intendedSame
+    ? 'FAIL: an unnamed case moved, or a named difference did not reach the screen.'
+    : 'No unnamed figure moved against the live build, and every named difference showed.');
+  process.exitCode = diffs || intendedSame ? 1 : 0;
 };
 run().catch((e) => { console.error('equality harness error:', e); process.exit(1); });
