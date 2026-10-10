@@ -14,8 +14,8 @@ nurse defaults, and only if Upper Darby patrol works 8-hour tours (unverified).*
 police pay, i.e. 1.75% — consistent with Medicare-only (1.45%), not 7.65%. That is an inference from a
 budget ratio, not a contract read, but if it holds, the default FICA alone understates take-home by ~8%.
 It is a setting (FICA → Custom 1.45%), not code. (2) **Overtime on long tours:** the app *derives* FLSA
-overtime from hours logged, and its only two work periods are a 40-hour week and hospital 8/80. Police
-are on a §7(k) work period (up to 86 h per 14 days with no FLSA overtime), and Upper Darby's contract pays
+overtime from hours logged, and its only two work periods are a 40-hour week and hospital 8/80. A police
+employer may elect a §7(k) work period (up to 86 h per 14 days with no FLSA overtime), and Upper Darby's contract pays
 overtime for work *outside the scheduled tour*, which the officer flags by hand. On 8-hour tours the 8/80
 setting happens to produce zero phantom overtime (probed below), so config works. **On 12-hour tours no
 setting works**: the 40-hour week adds +4.8% to every fortnight's gross, 8/80 adds +16.7%. **The cheapest
@@ -33,7 +33,7 @@ Finance, Township Budget archive and the police department site were all checked
 Upper Darby turned up, and a PLRB search found no Upper Darby orders. What *is* public is the township's own
 financial documents, which summarize the contract's pay terms. Those are the **UD** keys below: township
 documents, **not contract text**, so every UD value is one step removed from the CBA. Getting the CBA
-needs a Right-to-Know request to the township's Open Records Officer (see Next steps in the PR).
+needs a Right-to-Know request to the township's Open Records Officer.
 
 | Key | Document | What it is | URL |
 |---|---|---|---|
@@ -42,7 +42,12 @@ needs a Right-to-Know request to the township's Open Records Officer (see Next s
 | **UD-B26** | *FY2026 Approved Budget*, General Fund, dept. 410 Police; *Mayor's 2026 Budget Message* | Budget lines for salaries, holiday pay, overtime, shift differential, FICA, clothing | https://www.upperdarby.org/DocumentCenter/View/310/2026-General-Fund-Budget-PDF · …/View/315/Mayors-2026-Budget-Message-PDF |
 | **UD-HR** | UDPD *Application Booklet* (2026-07-31), "Work Schedules" | Recruiting packet. Describes the schedule shape, not the hours | https://udpd.org/wp-content/uploads/2026/07/Application-Booklet-2026-7-31.pdf |
 | UD-BH2 (thin) | "Budget Hearing 2: Follow-Up", upperdarby.org news post, 2024-11-26 | The step plan. **The page now returns 404**; read only through a search engine's excerpt, so **unverified** | https://www.upperdarby.org/news/post/8717/ |
-<!-- fallback-sources: pending -->
+| **CH** (fallback) | Cheltenham Township – Cheltenham Township Police Association CBA, 2013–2016. Arts. 1.1–1.4, 2.1–2.4, 3.6 | Contract text, but **titled "Draft", unsigned, posted by the union, ten years old**. Montgomery Co., ~10 mi from Upper Darby. The only nearby full police CBA with a text layer that could be reached | https://ct-pa.org/wp-content/uploads/2015/05/CBA-Draft-2013-2016.pdf |
+| **PHL** (fallback) | Philadelphia – FOP Lodge 5: the 2025–27 Act 111 award (¶8); the 2009 award §14 as quoted by the PA Supreme Court (*Lutz/Lodge 5 v. City*, 42 EAP 2014); the CBA as quoted in PLRB PF-C-24-80-E (2025); the FY2027 pay schedule; the 2017 award | No consolidated contract is posted, so the rules are rebuilt from awards and quotations. The pay schedule and the 2017 award **are scans, read from page images** | https://fop5.org/wp-content/uploads/2025/08/FOP-5-Act-111-Award-2025-2027.pdf · https://cases.justia.com/pennsylvania/supreme-court/2015-42-eap-2014.pdf · https://fop5.org/wp-content/uploads/2026/07/Payscale-Effective-01JULY26-for-FY-2027.pdf · https://www.phila.gov/media/20170815123224/AAA-City-FOP5-Act-111-Award-2017.pdf |
+
+No Delaware County police CBA text could be reached: Lower Merion and Radnor return 403 to this
+session; Haverford, Springfield, Marple and Ridley post agendas or minutes but not the contract; Yeadon's
+2026 agenda lists a 2026–30 FOP Lodge 27 contract for approval without its text.
 
 **Bargaining unit and lodge.** UD-ACFR: "137 employees are members of the Fraternal Order of Police." It
 names no lodge. **Lodge 27 is unverified for Upper Darby**: it is the *Delaware County* lodge (PLRB final
@@ -79,7 +84,29 @@ without saying which. So any value below may be superseded by an award not yet i
 | Scale of each premium (FY2026 budget; 137 FOP members per UD-ACFR) | FT salaries $16.32M; overtime $2.50M; holiday $0.75M; shift differential $0.66M. Overtime is ~15% of FT salary — the "how much OT" half of the goal question is not a rounding error | UD-B26, dept. 410 |
 | Pay frequency | **Not found**; biweekly assumed | — |
 
-<!-- fallback-table: pending -->
+**Fallback contracts, for the rules the UD sources leave blank.** Labelled by source; none of this is
+Upper Darby's.
+
+| Rule | Cheltenham (CH, 2013–16 draft) | Philadelphia (PHL) |
+|---|---|---|
+| Salary steps | Patrol 3 steps by years: 80% / 90% / 100%; 2016 top **$86,908.90** (1.1) | Police Officer I, 5 steps, **$74,831 → $97,186** from 2026-07-01; recruit $69,973 (pay schedule, scan). +1.5% on 2026-01-01 and 2027-01-01 (2025 award ¶8a). Step advancement **unverified** |
+| Pay basis, frequency | Biweekly, "paid based on an hourly rate and not a salary" (1.2) | Biweekly, 261 pay days (schedule header, scan) |
+| Tour / rotation | **12 h, 2-2-3 on a 14-day rotation**, 07–19 / 19–07; "group days off" hold the year to 2,080 h (2.1) | 8 h day — **inferred** from the schedule (hourly = daily ÷ 8) |
+| Overtime basis | "All hours worked in excess of scheduled shift shall be paid for at time and one-half of base hourly rates", 30-min minimum (2.2(1)); **plus 1.5× on hours over 2,080 in a year** (2.2(3)). 7(k) period not stated | 1.5× (arithmetic on the schedule). Captain and above: comp time instead (CBA Art. VI(D)(1), via PLRB) |
+| Shift differential | 4.25% (shifts starting noon–10:30 pm), 6.25% (10:30 pm–6 am; 12 h shifts starting 6:30 pm–6:30 am). **Not paid on overtime** (1.4) | No shift differential found (**unverified**); a flat "stress" differential, $22.34/day at PO I |
+| Court | Off duty: **3 h minimum at 1.5×**, +90 min travel for courts outside listed district courts; cancelled on <12 h notice: 3 h at 1.5× (2.4) | Day off, <48 h notice: **4 h minimum at 2.5×** (2009 award §14). Ordinary minimum **unverified** |
+| Call-back | **4 h minimum at 1.5×**, not for early report into a shift (2.2(2)) | **Unverified** |
+| Holidays | 112 h off in lieu; working Jan 1, Jul 4, Thanksgiving, Dec 25 or Easter pays one extra shift (3.6) | 13 holidays as 104 h comp time; cash out at fiscal year end or bank it (CBA Art. XI, via PLRB) |
+| Longevity | 1% of base per 5 years, max 5%, **annual lump sum** (1.3) | From 2027-01-01: 4.3% (3–4 yrs) rising to 7.8% (30+), on base + stress pay (2025 award ¶8b); per check (inferred from a daily column) |
+| Pension contribution | Waived; capped at 5% if ever required (6.3) | +2.5% over the plan rate for hires from 2017-07-01 (2017 award, scan); base rate **unverified** |
+| Social Security | Not stated | **Not covered** — "they do not participate in Social Security" (2017 award, scan) |
+| Paid details | Not found | Not found |
+
+What the fallbacks add to the Upper Darby picture: **12-hour tours are in use next door** (CH), so the
+12-hour case in (b) is not hypothetical; **a court premium above 1.5×** exists (PHL 2.5×), which the
+app's hard-coded `otMult` cannot price; **an annual overtime threshold** exists (CH 2,080 h/yr), another
+basis the app has no shape for; and **a big neighbour opts out of Social Security** (PHL), which makes the
+Upper Darby budget-ratio inference more plausible, not proven.
 
 ## (b) Each rule against the model in `index.html`
 
@@ -93,11 +120,11 @@ and Overtime (`:6256`).
 |---|---|---|---|
 | **Base salary, by step** (annual) | One hourly `baseRate` per job; gross = paid hours × rate (`shiftGrossCents`) | fits with config | Enter annual ÷ annual scheduled hours. The app has no "annual salary" input |
 | **Salary paid flat per period** | Every period is priced from the tours logged in it (`periodPaycheck`) | **needs new math** (per check) | Average over a goal window is right if the divisor is right; a single check is off by whatever the rotation puts above or below average. Gap 3 in (d) |
-| **Step placement / anniversary step-up** | One rate, no effective date | fits with config (manual) | She edits the rate on the step date. Raises inside the goal window are invisible until then |
+| **Step placement / anniversary step-up** | One rate, no effective date | fits with config (manual) | The officer edits the rate on the step date. Raises inside the goal window are invisible until then |
 | **Overtime: 1.5 × base hourly, for work outside the scheduled tour** | Per-shift `isOvertime` pays 1.5 × the differential-inclusive rate (`shiftGrossCents`, `otMult`) | fits with config | Log the extra hours as their own shift, OT box ticked, type *Day (regular)* so the 1.5 × is on base only |
 | **FLSA basis: §7(k) work period** (Upper Darby's period **unverified**) | Derived overtime on top, threshold from `WORK_PERIODS`: `'40'` (7-day chunks) or `'8-80'` only (`overtimePremiumCents`) | 8 h tours: fits with config (8/80). 12 h tours: **needs new math** | No 7(k) or "flagged only" option; the probe above shows +4.8% / +16.7% phantom on 12 h tours. Gap 2 in (d) |
 | **Shift differential: +10% of hourly wage, 3 pm–7 am** | Differential per shift type; math supports `dollar`, `percent`, `multiplier` (`hourlyRateCents`), but Settings only *creates* `dollar` ones (`addDiff`) and can't switch type | fits with config | Set *Night* to +$ = 10% × base (re-enter after a raise). Whole-tour only: a tour straddling 3 pm or 7 am must be split into two shifts |
-| **Holidays: 14 a year; off, or worked at 2.0×** | *Holiday* is a `multiplier` shift type (default 1.5) | fits with config | Set it to 2.0. A worked holiday on a night tour loses the 10% (one type per shift). Whether "2.0×" is total or salary + 1× extra is **unverified**; 2.0 matches either if the tour is logged as the holiday shift |
+| **Holidays: 14 a year; off, or worked at 2.0×** | *Holiday* is a `multiplier` shift type (default 1.5) | fits with config | If "2.0×" means 2× in total for the tour, set 2.0; if it means 2× *on top of* salary, set 3.0 — which one is **unverified**. A worked holiday on a night tour loses the 10% (one type per shift) |
 | **Longevity: +3% of salary per 5 years, max 15%** | Nothing by name | fits with config if paid each check; **needs new math** if a lump sum | Fold into base. Payment cadence **unverified** |
 | **Court standby: $40 per day** (Court of Common Pleas) | `custom` bonus = flat $ per shift (`BONUS`, `shiftGrossCents`) | fits with config | $40 custom bonus on that day's tour; on a day off it needs a 0.1 h placeholder shift (hours must be > 0, `sanitizeData` `:1416`) |
 | **Court appearance / call-back minimum hours** | — | fits with config (manual) | **Not in any UD source read.** If a minimum exists, log max(actual, minimum) as a flagged OT shift |
@@ -106,6 +133,8 @@ and Overtime (`:6256`).
 | **Pension 5.00% / 6.50% of compensation** (UD-ACFR) | `pretaxDeductions`: one flat $, off both federal and state bases (`computeNet`) | fits with config | Flat $ per check. Doesn't scale with OT; PA taxes 414(h) pick-ups, so state is ~0.15% of gross low |
 | **FICA: Medicare only** (budget-ratio inference, **unverified**) | `ficaType` `standard` 7.65% or `percent` (`computeNet`); the stub import sets `percent` from a stub's rate | fits with config | Custom 1.45%. Left at default: net ~8% low |
 | **PA income tax 3.07%; LST $52/yr; Upper Darby EIT 0% (2023)** | Flat state %; custom withholdings % or flat $ | fits as-is / config | 3.07; LST as $2 flat per check; resident EIT depends where the officer lives |
+| **Court premium above 1.5×** (PHL 2.5×, fallback only) | `otMult` is a hard-coded 1.5 (`shiftGrossCents`); the legacy multiplier *Overtime* type is hidden from both the shift chips and Settings (`:5566`, `:7488`) | fits with config (hack) | Log hours × 2.5 ÷ 1.5 as flagged OT: right dollars, wrong hour count |
+| **Annual overtime threshold** (CH 2,080 h/yr, fallback only) | — | needs new math | Lands at year end; rarely inside a goal window |
 | **Pay frequency** (**unverified**; biweekly assumed) | Periods are always 14 days (`periodStartOf`); `payFrequency` is stored on the job but read by nothing | fits as-is if biweekly; **needs new math** otherwise | — |
 
 **Probe (2026-10-10), the app's own core, not a reimplementation.** One fortnight priced through
@@ -128,13 +157,13 @@ subtracted from the derived figure (`unflagged`, `:1735`). On 12-hour tours noth
 ## (c) "Set up for an officer" card, 8 lines
 
 What an officer must change from the nurse defaults, in the order the error is largest. Each line has a
-blank she or he can correct; the values in bold are the Upper Darby reading above.
+blank the officer can correct; the values in bold are the Upper Darby reading above.
 
 1. FICA: **Custom 1.45%** (Medicare only — **confirm on a stub**; if the stub shows Social Security, keep 7.65%). ____
 2. Overtime starts after: **8 in a day or 80 in two weeks** (8-hour tours). On 12-hour tours: no setting is right yet. ____
 3. Base rate: **annual salary incl. longevity ÷ hours actually scheduled in a year** (not ÷ 2080 unless the rotation really is 2080). ____
 4. Night differential: **+$ equal to 10% of base**, applied to tours touching 3 pm–7 am. ____
-5. Holiday: multiplier **2.0** on a worked holiday. ____
+5. Holiday: multiplier **2.0** on a worked holiday (3.0 if the stub shows 2× *on top of* salary). ____
 6. Pre-tax deductions: **pension 5.00%** (hired 2021+) or **6.50%** (before), as a flat $ per check. ____
 7. State **3.07%**; custom withholding **$2 flat** (LST $52/yr ÷ 26); add a resident EIT % if the town you live in levies one. ____
 8. Overtime shift type: **Day (regular)** with the OT box ticked, so it pays 1.5 × base, as the contract summary reads. ____
@@ -162,7 +191,7 @@ blank she or he can correct; the values in bold are the Upper Darby reading abov
    gross. Small.
 6. **Step increases mid-goal.** Steps run five years from a start ~$30,000 below base (UD-BH2,
    **unverified**). One base rate, no effective date: a step or contract raise inside the goal window is
-   invisible until she edits the rate. Conservative direction (understates what she can save).
+   invisible until the officer edits the rate. Conservative direction (understates what the officer can save).
 7. **Paid details / secondary employment.** Not in any UD source read. If Upper Darby runs details through
    township payroll at a set rate, a detail logged as a shift counts toward the derived-overtime hours,
    which federal law excludes for special detail work (29 CFR 553.227). Needs a per-shift "not hours worked"
