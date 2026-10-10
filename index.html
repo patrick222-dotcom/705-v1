@@ -1165,6 +1165,39 @@ function icsPendingSummary(p){
   return segs.join(' · ');
 }
 
+/* An exact digest of everything a pending plan would CHANGE, so "Not now" can mean "not this,
+   and don't ask me again" without ever meaning "stop telling me about my schedule".
+   Why it exists: on 2026-10-10 device f184ffa5 was shown the identical 127-event plan three
+   times in 47 minutes of ONE page load -- `ics_resync_found` at 07:24:25, 07:41:12 and 07:55:40,
+   each dismissed (07:28:12, 07:43:57, 08:08:55), zero `ics_import_done` all day -- because
+   "Not now" only cleared the banner's state and the next foreground re-sync rebuilt the same
+   plan from the same feed. She was hand-editing shifts in the gaps (135 -> 112 shifts across
+   four `session_end` rows), i.e. the app kept asking her to overwrite the work she had just
+   done by hand. A nag with no exit short of deleting the feed is how the substitution half of
+   the positioning loses the one user it exists for.
+   The digest must be EXACT, never a count: "3 changed" is the same string whether the three are
+   the ones she declined or three new ones, and suppressing a genuinely new change is the
+   dangerous direction for a wage app. So every field the stepper would write is in it --
+   dateKey, hours, start -- keyed by uid and sorted, because neither the feed's order nor
+   Object.keys order is guaranteed stable between fetches. Nothing identifying goes in: uids and
+   dates only, never a title (Invariant 13), and it never leaves the device. */
+function icsPlanFingerprint(p){
+  if(!p) return '';
+  const norm = (uid, dk, hours, start) =>
+    `${uid||''}@${dk||''}/${hours==null?'':Number(hours)}/${start||''}`;
+  const parts = [];
+  (p.groups||[]).forEach(g=>{
+    (g.items||[]).forEach(ev=>{
+      parts.push('a:'+norm(ev.uid, ev.dateKey, ev.hours, ev.start)+(ev.offHint?'/off':''));
+    });
+  });
+  (p.toUpdate||[]).forEach(u=>{ parts.push('u:'+norm(u.uid, u.dateKey, u.hours, u.start)); });
+  (p.toRemove||[]).forEach(r=>{ parts.push('r:'+norm(r.uid, r.dateKey, null, null)); });
+  (p.toUpdateEvents||[]).forEach(e=>{ parts.push('ue:'+norm(e.uid, e.dateKey, null, null)); });
+  (p.toRemoveEvents||[]).forEach(e=>{ parts.push('re:'+norm(e.uid, e.dateKey, null, null)); });
+  return parts.sort().join('|');
+}
+
 /* Group parsed events for the questionnaire: one card per (weekday-class, start-time-or-allday,
    hours) combination — matching shifts get confirmed together instead of one card each. Time-off
    entries never share a card with shifts at the same time and length: one answer per card. */
@@ -3218,6 +3251,13 @@ function App(){
     try{ return localStorage.getItem(ICS_LONG_REVIEW_KEY)==='1'; }catch(_){ return false; }
   });
   const lastIcalSyncAt = useRef(0);                  // ms of the last sync ATTEMPT — throttles the foreground re-sync
+  /* icsPlanFingerprint of the plan she last waved off with "Not now". A quiet re-sync whose plan
+     is byte-identical to it stays silent; anything that differs by one field raises the banner
+     again. Deliberately a ref and not localStorage: every observed occurrence of the nag was
+     inside ONE page load (2026-10-10, three in 47 minutes, no app_open between them), and a cold
+     load opens the stepper anyway, so persisting it would only suppress a surface this does not
+     touch. Cleared on "Review" — handing the plan to the stepper is not declining it. */
+  const icsDismissedPlan = useRef(null);
   const [calView,setCalView] = useState('month');   // 'month' | 'year' (pay-period & week views removed 2026-07-24; calView was never persisted, so no stored-value migration is needed)
   const [calFocus,setCalFocus] = useState(payPeriodStart); // reference date for week/month/year browsing
   const [qfMode,setQfMode] = useState(false);        // quick-fill: picking/applying a template across days
@@ -4460,8 +4500,20 @@ function App(){
         toUpdateEvents:plan.toUpdateEvents, toRemoveEvents:plan.toRemoveEvents,
         answers, stepIdx:0, dropNotice:icsDropSummary(parsed), fromSync:true, provider };
       // A quiet sync never steals the screen. Coming back to the app and being asked to delete a
-      // shift is how you teach someone to stop coming back to the app.
-      if(quiet){ setIcsPending(payload); track('ics_resync_found', {}, user.id); }
+      // shift is how you teach someone to stop coming back to the app. And re-raising a plan she
+      // has already declined teaches the same lesson one notch slower: suppress it while the plan
+      // is unchanged, raise it the moment any field differs (icsPlanFingerprint). `result` stays
+      // 'changes' either way — the sync DID find changes, and misreporting that to save a row
+      // would break the five-state contract §27 pins. The suppression gets its own event instead,
+      // so a nag that was correctly withheld is still legible from `events`.
+      if(quiet){
+        const fp = icsPlanFingerprint(payload);
+        if(icsDismissedPlan.current && fp === icsDismissedPlan.current){
+          track('ics_resync_suppressed', {}, user.id);
+        } else {
+          setIcsPending(payload); track('ics_resync_found', {}, user.id);
+        }
+      }
       else setIcsImport(payload);
       result = 'changes';
       track('ics_sync_done', {events:parsed.events.length, provider}, user.id);
@@ -4683,8 +4735,8 @@ function App(){
             <div className="t">Your schedule changed</div>
             <div className="s">{icsPendingSummary(icsPending) || 'There are updates from your calendar.'}</div>
             <div className="row">
-              <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
-              <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); setIcsPending(null); }}>Not now</button>
+              <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); icsDismissedPlan.current=null; setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
+              <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); icsDismissedPlan.current=icsPlanFingerprint(icsPending); setIcsPending(null); }}>Not now</button>
             </div>
           </div>
         )}

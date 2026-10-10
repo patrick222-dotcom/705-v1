@@ -135,7 +135,21 @@ and the push P0 it pointed at was fixed the same day.
   therefore the only open half of this, and it is the one that stops this recurring. Until it
   lands, keep treating a green merge as unshipped until `deploy_watch.mjs` says `LIVE` — four
   nights of this item is what that rule bought.
-- [ ] **Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group** (P0 ·
+- [x] ~~**Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group**~~ —
+  **DONE 2026-10-09 13:28 UTC by the owner**, commit `f1aa7a6` ("Enable cancellation of
+  in-progress deployments", #162), one line: `cancel-in-progress: false` → `true`. Verified in the
+  checked-out `deploy.yml` tonight. So both halves of the four-night Pages stall are now closed —
+  the orphaned run was cancelled on 10-09 and the thing that let one orphan block every deploy
+  behind it is gone. **The item's own "neat property" was never tested and now cannot be:** it
+  predicted the commit carrying this change would run under the new setting and self-clear the
+  queue, but the owner cancelled run 168 **eighty-one minutes earlier**, so the queue was already
+  empty when #162 merged. Leave it as an untested expectation rather than claiming it held.
+  **What does NOT change: keep running `node scripts/deploy_watch.mjs` and treating a merge as
+  unshipped until it says `LIVE`.** `cancel-in-progress` shortens a stall from "every deploy
+  after this one" to "one cycle"; it does not make a merge a deploy, and the four nights of
+  detection gap were bought by the live check, not by the concurrency setting.
+  Original note below:
+- [ ] ~~**Set `cancel-in-progress: true` on `deploy.yml`'s `pages` concurrency group**~~ (P0 ·
   `harness:unscoped` · **needs the owner or an approved session — editing a workflow file is
   blocked for agent sessions in this sandbox**). This is the structural half of the item above, and
   the reason 48 hours of silence was possible at all. `cancel-in-progress: false` is GitHub's
@@ -501,6 +515,64 @@ and the push P0 it pointed at was fixed the same day.
   never comes out) is the one the removal code was written for, and over-tightening the bound
   brings that back. Read one real feed first.
 
+### P1 (new, groom 2026-10-10)
+- [x] ~~**"Not now" on the re-sync banner meant "ask me again in ten minutes" — she declined the
+  same plan three times in 47 minutes**~~ — SHIPPED 2026-10-10 (see Done log). Pinned by
+  `tests/smoke.mjs` §37, 40 assertions, 13 deliberate breaks. **Two of its own assertions were
+  unfalsifiable in their first draft and both are worth carrying.** (a) The "a Review
+  un-remembers the dismissal" check reviewed plan B and then re-checked plan B — which raises the
+  banner either way, because the remembered fingerprint was still A's. It rolls the feed back to
+  A after the review now, where deleting `icsDismissedPlan.current=null` FAILs it. (b) The
+  numeric-hours check compared `'12'` against `12`, which passes with the `Number()` coercion
+  deleted — template interpolation already makes those the same string. `'12.00'` is the case
+  that needs the coercion. That is the §33/§35/§36 lesson arriving by two more doors; the first
+  is a new shape — **a drive whose setup has already moved past the state the assertion is about.**
+  Original note below:
+- [ ] ~~**"Not now" on the re-sync banner meant "ask me again in ten minutes"**~~ —
+  `harness:drivable`. Found in tonight's groom, device `f184ffa5` (the one real NurseGrid
+  account), inside ONE page load:
+  ```
+  07:09:15 app_open -> ics_sync_result{changes} + ics_sync_done{events:127}   (cold load -> stepper)
+  07:24:25 ics_sync_result{changes} + ics_resync_found  -> 07:28:12 ics_resync_dismissed
+  07:41:12 ics_sync_result{changes} + ics_resync_found  -> 07:43:57 ics_resync_dismissed
+  07:55:40 ics_sync_result{changes} + ics_resync_found  -> 08:08:55 ics_resync_dismissed
+  ```
+  **Zero `ics_import_done` all day.** The same 127-event feed, the same unapplied plan, offered
+  four times and declined four times, because `"Not now"` ran `setIcsPending(null)` and remembered
+  nothing — so the next `visibilitychange` past `ICAL_RESYNC_MIN_MS` rebuilt the identical plan
+  from the identical feed. There was no exit short of deleting the subscription.
+  **What makes it worse than an annoyance:** in the gaps she was editing shifts by hand — her
+  `session_end` shift count went **135 -> 114 -> 114 -> 112** across those four loads' exits, and
+  eleven `shift_saved` rows sit between the banners. So the app spent 47 minutes asking her to
+  overwrite the work she had just finished doing by hand. That is the substitution half of the
+  positioning (CLAUDE.md -> Positioning) actively training the one user it exists for to stop
+  coming back, which is the exact failure the "quiet, never a modal" rule was written to avoid —
+  the rule stopped the sheet stealing the screen and did nothing about the nag.
+  **The fix is a fingerprint, not a mute**, because the dangerous direction here is suppressing a
+  *real* change: a missed removal leaves a cancelled shift inflating her paycheck estimate, which
+  is the wrong direction of error for a wage app. `icsPlanFingerprint` digests every field the
+  stepper would write (uid, dateKey, hours, start, the time-off flag, and which bucket each is in),
+  sorted so neither feed order nor `Object.keys` order can shift it; a quiet re-sync whose plan
+  matches the declined one tracks `ics_resync_suppressed` and stays silent, and anything differing
+  by one field raises the banner again. `ics_sync_result` still reports `changes` — the five-state
+  contract §27 pins is about the feed, not the UI.
+- [ ] **Why device `f184ffa5`'s NurseGrid feed reports `changes` on EVERY sync is still
+  unverified, and it is now four nights running** (P1 · source:groom · `harness:unscoped`). This
+  is the 2026-10-09 item below, re-confirmed and sharpened, not a new one. New facts tonight: the
+  feed is **127 events** (was 128 on 10-08, 131 on 10-03), and **every one of the four syncs on
+  10-10 reported `result:'changes'`** — so the plan the app builds has differed from her saved
+  shifts on 10-03, 10-08 and four times on 10-10. Device `8e0e32fe` has never once got `changes`.
+  **What tonight's build changes about this item: nothing, and that is deliberate.** The
+  fingerprint suppresses the *repeat offer*, not the underlying difference, and
+  `ics_resync_suppressed` now makes the two countable separately — `found + suppressed` is how
+  often the feed differed, `found` alone is how often she was asked. Before tonight those were
+  the same number, which is why "the feed keeps differing" and "she keeps being nagged" could not
+  be told apart in `events`.
+  **The cheapest thing that would settle it is still the owner's side-by-side** (one November
+  shift in BadgeBudget against NurseGrid's own screen) — the same read the DST P1 above asks for,
+  and it answers both. **Do not change `parseICSDateTime`**: it is a pay figure and needs a
+  dedicated session under the `wage-core` protocol.
+
 ### P1 (new, groom 2026-10-09)
 - [x] ~~**A sync rewrote 128 of her shifts and the confirm card said only "Update 128 that
   changed?"**~~ — SHIPPED 2026-10-09 (see Done log). Pinned by `tests/smoke.mjs` §36, 20
@@ -560,6 +632,38 @@ and the push P0 it pointed at was fixed the same day.
   line number but not inside any of its hunks; `IcsImportSheet` at ~5100 and smoke §36 at the end
   of the file are clear of it) — **check the hunk list, not the line range**, which is what the
   10-08 note's "treat essentially all of `index.html` as occupied" over-stated.
+
+### P2 (new, groom 2026-10-10)
+- [ ] **Four brand-new devices arrived via QR in one hour, and two of them bounced before a
+  single shift** — `harness:unscoped`, and the first real top-of-funnel signal this repo has had.
+  Between 07:29 and 08:14 UTC, four iOS 18.7 devices with `via:'qr'` appeared: `74c55984`
+  (completed setup, saved **13** shifts, shared the app three times), `4cbd5341` (completed setup,
+  saved 3 shifts), `4ae82531` (`app_open` -> `ob_step{step:0}` -> `session_end{secs:82, shifts:0}`
+  — never finished step 1), and the same hour `f184ffa5` shared from the top bar twice. So the
+  invite went out and landed: **two activations, one bounce at the very first onboarding step, one
+  sharer.** Also worth noting against the positioning: `74c55984` typed 13 shifts by hand and the
+  NurseGrid connect card is offered only to a signed-in nurse with no subscription, so whether she
+  ever saw it is unknown from `events`.
+  **Deliberately not a build yet.** n=1 bounce is an anecdote and `ob_step{step:0}` fires on every
+  load, so it does not distinguish "read the first screen and left" from "never rendered". What
+  would make it a build: a second QR cohort with the same step-0 drop, or an `ob_step` that
+  carries how far she got. Recorded now so the next run with traffic adds to the denominator —
+  the same discipline the `estimate_dismissed` and `ical_cta_dismissed` notes are kept under.
+  **And the standing caveat applies:** CLAUDE.md records every activation figure since 2026-09-07
+  as inflated by harness and bot rows until the device classifier is fixed. These four are
+  hand-read as real (iOS 18.7, `via:qr`, minutes apart, real `shift_saved` counts), which is not
+  the same as a sound activation rate — do not quote one off this note.
+- [ ] **`client_error` has been empty for six days, and that is a result rather than a silence**
+  — housekeeping, so the next run does not read zero rows as a broken channel. The table's newest
+  `client_error` is **2026-10-04 01:08** (`Load error: TypeError: Load failed`, device
+  `592667f1`), and the three `AbortError: ... browsing context is going away` rows are all
+  2026-10-03 on `8e0e32fe`. Both classes have a shipped fix behind them — the keepalive unload
+  flush (#154-era, §33) and `hydrateWithRetry` (§34) — and both shipped inside the Pages stall, so
+  they only reached badgebudget.com on **2026-10-09 12:03**. So six days of quiet is mostly *the
+  stall*, not the fix: there has been **one day** of real exposure. Do not call either fix
+  field-verified yet; re-read this in a week. The 422 running count is also unchanged at **2 in
+  27** — the four syncs tonight were all `200`, and `icalFailureDetail` has still never put a
+  status code in a production row.
 
 ### P3 (new, groom 2026-10-08)
 - [ ] **A third of devices report a DIFFERENT user agent at `session_end` than at `app_open`, in
@@ -1633,6 +1737,30 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-10 — **"Not now" on the re-sync banner now means "not this", instead of "ask me again
+  in ten minutes".** Found in the groom, not the queue. Device `f184ffa5`, one page load: the
+  identical 127-event NurseGrid plan was offered at 07:24:25, 07:41:12 and 07:55:40 and declined
+  at 07:28:12, 07:43:57 and 08:08:55, with **zero `ics_import_done` all day** — and eleven
+  `shift_saved` rows in the gaps, her shift count falling 135 -> 112, i.e. the app kept asking her
+  to overwrite work she had just done by hand. `"Not now"` cleared the banner's state and
+  remembered nothing, so each foreground re-sync past `ICAL_RESYNC_MIN_MS` rebuilt the same plan
+  from the same feed; there was no exit short of deleting the subscription.
+  New top-level `icsPlanFingerprint(plan)` digests every field the stepper would write — uid,
+  dateKey, hours (coerced), start, the time-off flag, and which of the five buckets each item is
+  in — sorted, so neither feed order nor `Object.keys` order can move it. `"Not now"` stores it in
+  the `icsDismissedPlan` ref; a quiet re-sync whose plan matches tracks the new
+  `ics_resync_suppressed` and stays silent; **anything differing by one field raises the banner
+  again**, which is the half that matters, because suppressing a real removal would leave a
+  cancelled shift inflating her paycheck estimate. `"Review"` clears the memory — looking is not
+  declining. `ics_sync_result` still reports `changes` on a suppressed sync: §27's five-state
+  contract is about the feed, not about the UI, and `found + suppressed` is now how often the feed
+  differed while `found` alone is how often she was asked.
+  A ref and not localStorage on purpose: every observed occurrence was inside one page load, and a
+  cold load opens the stepper anyway, so persisting it would only mute a surface this does not
+  touch. Display/UX only — no wage core, no arithmetic, no invariant. `tests/smoke.mjs` §37, **40
+  assertions, 13 deliberate breaks** (and one reshaped assertion in §25, whose old one-line regex
+  the new guard retired), **two of them unfalsifiable in the first draft and fixed** — see the P1.
+  Smoke is **632 assertions** now.
 - 2026-10-09 — **The import confirm card now says what an update is about to DO, instead of how
   many.** Found in the groom, not the queue. Device `f184ffa5`, 2026-10-08 18:21:21:
   `ics_sync_result {changes, nursegrid}` → `ics_sync_done {events:128}` → `ics_import_done
