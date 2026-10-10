@@ -98,6 +98,10 @@ skill's full protocol, including the equality check against the deployed build.
 2. Can session 2 ship "flagged only" alone, without the N-in-D threshold? Yes, if "outside the
    scheduled tour" is always at least as generous as 7(k). Check one case: a 12-hour officer working a
    full extra tour inside a short week.
+   **Answered 2026-10-10 (session 2), for that case: yes.** A Pitman fortnight plus one extra 12 h tour
+   at $45: marked as overtime it pays $4,590; under 86 hours in 14 days it pays $4,545 (10 h past
+   86 at half rate). Pinned in `tests/core.test.mjs`. Session 2 shipped both rules anyway, because
+   fire's 212/28 and 182/24 have no "outside the schedule" equivalent.
 3. Salaried base pay (primitive 4 in `pay-rule-patterns.md`) and non-biweekly pay frequency
    (primitive 10) are the two expensive ones. Code ~100 current Ohio and New Jersey contracts before
    committing to either.

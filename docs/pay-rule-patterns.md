@@ -170,6 +170,10 @@ overtime actually worked. Any derived overtime is phantom:
 
 So the right setting depends on the schedule, and an officer on a 12-hour schedule has no correct choice.
 
+**Since session 2 (2026-10-10)** these ten cells are pinned exactly in `tests/core.test.mjs`, and the
+two settings added beside them — "only the shifts I mark as overtime" and N hours in a D-day period
+(86 in 14 shown) — give **zero** on all five schedules.
+
 ## (d) What the model would need, ranked
 
 Ranked by how many workers it unblocks × dollars at stake ÷ size. **Every row is wage-core (Invariant
@@ -241,7 +245,9 @@ individual user, the input is their stub, not their contract.
    whether the FICA question belongs in onboarding for everyone or behind a "police/fire" choice.
 3. **Is "outside the scheduled tour" always more generous than 7(k)?** If yes, row 1 can ship as
    "flagged only" alone and skip the N-in-D threshold. A 12 h officer who works a full extra tour inside
-   a short 7(k) week is the case to check.
+   a short 7(k) week is the case to check. **Checked 2026-10-10 for that case: yes** ($4,590 marked
+   vs $4,545 under 86/14); row 1 shipped both anyway, since fire's 7(k) periods have no schedule
+   equivalent.
 4. **Scale-check the counts.** The SERB index is a CSV and PERC's is a crawl (`corpus/ohio/serb_cba.csv`,
    `corpus/nj/rve/all.json` in the session scratchpad, not in git). A coded sample of ~100 current police
    contracts from those two would turn "13 of 21" into a defensible share. Only worth doing before

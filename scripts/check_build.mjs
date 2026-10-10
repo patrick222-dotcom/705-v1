@@ -214,7 +214,7 @@ check(3, 'Pay math never reads the persona', () => {
   const start = html.indexOf('>', open) + 1;
   const src = html.slice(start, html.indexOf('</script>', start));
   const WAGE = ['shiftGross', 'hourlyRate', 'shiftGrossCents', 'hourlyRateCents', 'paidHoursOf',
-    'straightTimeCents', 'workPeriodChunks', 'overtimePremiumCents', 'groupHoursByJob', 'makeJob',
+    'straightTimeCents', 'workPeriodRule', 'workPeriodChunks', 'overtimePremiumCents', 'groupHoursByJob', 'makeJob',
     'computeNet', 'periodPaycheck', 'keepRatioOf', 'keepRatio', 'calc', 'statOf', 'ptoStatOf',
     'sampleNet', 'patternMetrics', 'patternCellToShift', 'patternCellShiftType', 'firstActiveShiftType',
     'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL'];

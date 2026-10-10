@@ -61,6 +61,11 @@ drifted; a surface that prints a dollar figure from its own arithmetic is wage c
 it is called. Both were folded back into `computeNet` on 2026-09-19 — `sampleNet` now calls it,
 `keepRatio` now includes percent custom withholdings.
 
+**And `workPeriodRule` / `workPeriodChunks`** (2026-10-10) — which hours count toward overtime and
+in which paycheck. A custom 7(k) period can straddle two paychecks and is counted in the one holding
+its last day; `'40'` and `'8-80'` must keep their original code path. Pinned by the phantom-overtime
+table in `tests/core.test.mjs`.
+
 **And `firstActiveShiftType`** — which shift type the Add-Shift draft opens on. It decides which
 differential a preview prices, so it moves a dollar figure even though it returns a string.
 `active:false` means "don't offer me this in a picker" and NEVER "stop paying a shift already
@@ -115,6 +120,10 @@ network; not in `smoke.mjs`, not in CI, on purpose). Name every intended differe
 run it; a case that DIFFERS is either one you named or the bug, and "probably rounding" is not
 a third option. Probes prove the functions are self-consistent; they do
 not prove the *rendered* figures are unchanged for cases you did not think about.
+
+A case can carry a third element naming its intended difference; the script reports those
+separately and **fails if a named difference comes back identical** (the change never reached the
+screen) as well as when an unnamed case moves.
 
 Render the same seeded state against both the local build and `https://badgebudget.com/index.html`,
 and assert the hero figure, the Gross / Taxes / Keep-% chips, every Breakdown row and the

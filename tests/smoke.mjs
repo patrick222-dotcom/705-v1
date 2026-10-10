@@ -4853,6 +4853,134 @@ const run = async () => {
     }
   }
 
+  /* == 39. The configurable work period reaches the screen (session 2, 2026-10-10) =============
+     tests/core.test.mjs pins the engine (the research doc's phantom-overtime table, zero under the
+     new rules, the 28-day attribution). This pins what she sees: the page's own functions agree
+     with the extracted core, the hero and the Breakdown follow the rule, and Settings can set it.
+     Wage-core: every assertion here was negative-tested; tests/equality.mjs checked the old
+     settings against the deployed build. */
+  if (want(39)) {
+    const core = await import(pathToFileURL(join(ROOT, 'supabase/functions/_shared/badgebudget-core.mjs')).href);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const sh = (n, hours = 12, extra = {}) => [{ id: n, shiftType: 'night', hours, bonusType: 'none', customBonus: 0, isOvertime: false, ...extra }];
+    const flat = { federalTaxRate: 0, stateTaxRate: 0, ficaWithholdingType: 'percent', ficaWithholdingPercent: 0, pretaxDeductions: 0, posttaxDeductions: 0,
+      differentials: { night: { name: 'Night', amount: 5, type: 'dollar', active: true } } };
+    const read = async (seed, then) => {
+      const { ctx, page, errors } = await newPage(browser, url, { seed });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const txt = () => page.evaluate(() => {
+        const t = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+        return { gross: t([...document.querySelectorAll('.hero .chip')].find((c) => /Gross/.test(c.textContent))),
+          notes: [...document.querySelectorAll('.bd-note')].map(t).join(' | ') };
+      });
+      const before = await txt();
+      const extra = then ? await then(page) : null;
+      const real = errors.filter((e) => !isExpectedNetwork(e));
+      await ctx.close();
+      return { ...before, extra, errors: real };
+    };
+    /* TP-001's 48-hour week (§8): $30 + $5 night, four 12s. Straight time $1,680; under the 40-hour
+       week the FLSA premium makes it $1,820. */
+    const week48 = Object.fromEntries([0, 1, 2, 3].map((n) => [day(n), sh(n)]));
+
+    /* (a) the page's functions are the core's, for the two new rules */
+    {
+      const { ctx, page } = await newPage(browser, url);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.hero', { timeout: 20000 });
+      const fx = { shifts: Object.fromEntries([-13, -12, -9, -8, -7, -4, -3, -1, 1, 2, 5, 6, 7, 10, 11].map((n) => [day(n), sh(n)])),
+        keys: Array.from({ length: 14 }, (_, i) => day(i)), start: day(-14) };
+      const viaPage = await page.evaluate((f) => JSON.stringify(['flagged', 'custom'].map((wp) => {
+        const job = makeJob({ id: 'job-1', baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } }, workPeriod: wp,
+          otPeriodHours: 171, otPeriodDays: 28, otPeriodStart: f.start });
+        return periodPaycheck({ shifts: f.shifts, dayEvents: {}, dateKeys: f.keys, baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } },
+          taxInputs: { ficaType: 'standard', ficaPct: 7.65, federalTaxRate: 10, stateTaxRate: 3, pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] }, job });
+      })), fx);
+      const viaCore = JSON.stringify(['flagged', 'custom'].map((wp) => {
+        const job = core.makeJob({ id: 'job-1', baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } }, workPeriod: wp,
+          otPeriodHours: 171, otPeriodDays: 28, otPeriodStart: fx.start });
+        return core.periodPaycheck({ shifts: fx.shifts, dayEvents: {}, dateKeys: fx.keys, baseRate: 30, differentials: { night: { type: 'dollar', amount: 5 } },
+          taxInputs: { ficaType: 'standard', ficaPct: 7.65, federalTaxRate: 10, stateTaxRate: 3, pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] }, job });
+      }));
+      const parsed = JSON.parse(viaCore);
+      ok('work period: page periodPaycheck === extracted core under "flagged" and a 28-day period that straddles two paychecks',
+        viaPage === viaCore && parsed[0].ot.premiumCents === 0 && parsed[1].ot.premiumCents > 0 && parsed[1].ot.periods[0].hours === 180,
+        `page=${viaPage.slice(0, 90)} core=${viaCore.slice(0, 90)}`);
+      await ctx.close();
+    }
+
+    /* (b) "only overtime I mark": the same 48-hour week projects no derived overtime, and says why */
+    const fl = await read({ setupComplete: true, baseRate: 30, payPeriodStart: day(0), ...flat, workPeriod: 'flagged', shifts: week48 });
+    ok('work period: under "only overtime I mark", a 48-hour week is straight time -- Gross $1,680, not $1,820',
+      fl.gross === 'Gross $1,680', fl.gross);
+    ok('work period: the Breakdown says which rule left overtime out',
+      /only on shifts you mark as overtime/.test(fl.notes) && !/Includes/.test(fl.notes), fl.notes);
+    const fl2 = await read({ setupComplete: true, baseRate: 30, payPeriodStart: day(0), ...flat, workPeriod: 'flagged',
+      shifts: { ...week48, [day(3)]: sh(3, 12, { isOvertime: true }) } });
+    ok('work period: ...while a shift she marks is still paid 1.5x ($1,680 + 0.5 x $35 x 12 = $1,890)',
+      fl2.gross === 'Gross $1,890', fl2.gross);
+
+    /* (c) 86 in 14 days: a Pitman fortnight plus one extra tour is 96 h, 10 h over, at half the $35
+       regular rate on top of $3,360 straight time = $3,535 -- and the note names the rule. */
+    const pit = [1, 2, 5, 6, 7, 10, 11, 0];
+    const k14 = await read({ setupComplete: true, baseRate: 30, payPeriodStart: day(0), ...flat,
+      workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14, otPeriodStart: day(0), shifts: Object.fromEntries(pit.map((n) => [day(n), sh(n)])) });
+    ok('work period: 86 in 14 days on a 96-hour fortnight adds 10 h at half the regular rate -- Gross $3,535',
+      k14.gross === 'Gross $3,535', k14.gross);
+    ok('work period: the Breakdown names the custom rule', /10 hrs past 86 in 14 days/.test(k14.notes) && /\$35\.00\/hr/.test(k14.notes), k14.notes);
+
+    /* (d) 171 in 28 days, read in the paycheck that CLOSES the period: last fortnight's 84 h count */
+    const prev = [-13, -12, -9, -8, -7, -4, -3];
+    const k28 = await read({ setupComplete: true, baseRate: 30, payPeriodStart: day(0), ...flat,
+      workPeriod: 'custom', otPeriodHours: 171, otPeriodDays: 28, otPeriodStart: day(-14),
+      shifts: Object.fromEntries([...prev, ...pit].map((n) => [day(n), sh(n)])) });
+    /* 96 h x $35 = $3,360 straight time this paycheck + 9 h x $17.50 = $157.50 -> $3,517.50, which
+       the hero rounds to $3,518. */
+    ok('work period: a 28-day period closing this paycheck reaches back for last paycheck\'s hours (180 h, 9 over: Gross $3,518)',
+      k28.gross === 'Gross $3,518' && /9 hrs past 171 in 28 days/.test(k28.notes), `${k28.gross} | ${k28.notes}`);
+
+    /* (e) Settings sets it: four choices; "custom" fills its numbers in front of her; the hero moves */
+    const ui = await read({ setupComplete: true, baseRate: 30, payPeriodStart: day(0), ...flat, shifts: Object.fromEntries(pit.map((n) => [day(n), sh(n)])) },
+      async (page) => {
+        const hero0 = await page.locator('.hero .chip').filter({ hasText: 'Gross' }).innerText();
+        await page.locator('.avatar').click();
+        await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+        const sel = page.locator('select[aria-label="Overtime work period"]');
+        await sel.waitFor({ timeout: 8000 });
+        const options = await sel.locator('option').allInnerTexts();
+        await sel.selectOption('custom');
+        await page.waitForTimeout(200);
+        const filled = {
+          hours: await page.locator('input[aria-label="Overtime threshold hours"]').inputValue(),
+          days: await page.locator('input[aria-label="Work period length in days"]').inputValue(),
+          start: await page.locator('input[aria-label="Work period start date"]').inputValue(),
+        };
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(700);
+        const hero1 = await page.locator('.hero .chip').filter({ hasText: 'Gross' }).innerText();
+        const blob = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), STORAGE_KEY);
+        return { hero0, hero1, options, filled, blob };
+      });
+    const e = ui.extra || {};
+    ok('work period: Settings offers exactly the four rules',
+      JSON.stringify(e.options) === JSON.stringify(['40 hours in a week', '8 in a day or 80 in two weeks (hospital 8/80)',
+        'Only the shifts I mark as overtime', 'A set number of hours in a work period (7k)']), JSON.stringify(e.options));
+    ok('work period: choosing a custom period fills 86 hours / 14 days / this pay period\'s start, visibly',
+      e.filled && e.filled.hours === '86' && e.filled.days === '14' && e.filled.start === day(0), JSON.stringify(e.filled));
+    /* Same 96 h. On the 40-hour week its first week is 60 h (days 0,1,2,5,6), 20 h over at $17.50
+       = $350 -> $3,710; on 86 in 14 it is 10 h over the fortnight -> $3,535. */
+    ok('work period: and the hero follows it ($3,710 on the 40-hour week -> $3,535 on 86 in 14)',
+      e.hero0 === 'Gross $3,710' && e.hero1 === 'Gross $3,535', `${e.hero0} -> ${e.hero1}`);
+    ok('work period: the choice and its numbers are saved',
+      e.blob && e.blob.workPeriod === 'custom' && e.blob.otPeriodHours === 86 && e.blob.otPeriodDays === 14 && e.blob.otPeriodStart === day(0),
+      e.blob ? JSON.stringify({ w: e.blob.workPeriod, h: e.blob.otPeriodHours, d: e.blob.otPeriodDays, s: e.blob.otPeriodStart }) : 'no blob');
+    ok('work period: no page errors across section 39',
+      [fl, fl2, k14, k28, ui].every((r) => r.errors.length === 0), [fl, fl2, k14, k28, ui].flatMap((r) => r.errors).join(' | '));
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
