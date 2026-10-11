@@ -708,6 +708,16 @@ and the push P0 it pointed at was fixed the same day.
   rate, so do not quote one off this note.
 
 ### P2 (new, groom 2026-10-11)
+- [ ] **CLAUDE.md's assertion count is stale at 694 and was deliberately NOT updated tonight** —
+  housekeeping, so the next run does not read it as drift nobody noticed. The real figure after
+  tonight's build is **710**. It was left alone because open PR #171 rewrites the **same two lines**
+  (the `tests/harness.mjs` + `tests/smoke.mjs` row, 694→705, and the Testing section's
+  `core.test.mjs` count 71→83), and #171 is a wage-core change that is the owner's to merge — a
+  nightly edit to those exact lines would hand him a conflict on his own PR for a number CLAUDE.md
+  itself says to “regenerate from a run, don't trust the line”. **When #171 lands the count is
+  710 + whatever #171's §40 adds** (it asserts 11 of its own, so 721 if nothing else changes —
+  re-run rather than trusting that sum). Same for the “plus first-gen iPhone SE in §30 and §38”
+  clause, which is still accurate.
 - [ ] **`ics_resync_suppressed` shipped last night and has never fired — a note against misreading
   its absence**, the same discipline the 2026-10-03 `ics_sync_result` note is kept under. It is live
   in the deployed bytes (`deploy_watch.mjs` places `index.html` at `7aa590a`, 2026-10-10), and the
