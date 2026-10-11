@@ -4981,6 +4981,106 @@ const run = async () => {
       [fl, fl2, k14, k28, ui].every((r) => r.errors.length === 0), [fl, fl2, k14, k28, ui].flatMap((r) => r.errors).join(' | '));
   }
 
+  /* ---- 40. pre-tax health premiums skip FICA; retirement money does not (2026-10-11) ----------
+     docs/fica-health-premium-spec.md. Two 12h day shifts at $50 = $1,200 gross, 10% federal, no
+     state, standard FICA. Retirement $150, health $100:
+       FICA    7.65% x ($1,200 - $100)        = $84.15  -> "$84"
+       federal 10%   x ($1,200 - $150 - $100) = $95.00
+       net     1,200 - 150 - 100 - 84.15 - 95 = $770.85 -> "$771"
+     Without the health premium (a blob saved before the field existed), FICA is on the full
+     $1,200 ($91.80) and federal on $1,050 ($105): net $853.20 -> "$853". */
+  if (want(40)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const t = new Date();
+    const day = (n) => iso(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    const sh = (n) => [{ id: n, shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false }];
+    const legacy = { setupComplete: true, baseRate: 50, payPeriodStart: day(0), federalTaxRate: 10, stateTaxRate: 0,
+      ficaWithholdingType: 'standard', pretaxDeductions: 150, posttaxDeductions: 0, shifts: { [day(1)]: sh(1), [day(2)]: sh(2) } };
+    const open = async (seed) => {
+      const r = await newPage(browser, url, { seed });
+      await r.page.goto(url, { waitUntil: 'domcontentloaded' });
+      await r.page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      return r;
+    };
+    const money = (page) => page.evaluate(() => {
+      const t = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+      const rows = [...new Set([...document.querySelectorAll('.bd-row')].map(t))];
+      return { hero: t(document.querySelector('.hero .num')), rows, takehome: t(document.querySelector('.takehome .v')) };
+    });
+    const toSettings = async (page) => {
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.locator('input[aria-label="Health pre-tax premiums"]').waitFor({ timeout: 8000 });
+    };
+    const errs = [];
+
+    /* (a) the Breakdown: both rows, their figures, and it still sums */
+    {
+      const { ctx, page, errors } = await open({ ...legacy, pretaxHealth: 100 });
+      const m = await money(page);
+      const has = (re) => m.rows.some((r) => re.test(r));
+      ok('health: the Breakdown shows a retirement row and a separate health row',
+        has(/^Pre-tax · retirement\s*–\$150$/) && has(/^Pre-tax · health, dental, vision\s*–\$100$/), JSON.stringify(m.rows));
+      ok('health: the old combined label is gone', !m.rows.some((r) => /401k, health/.test(r)), JSON.stringify(m.rows));
+      ok('health: FICA is on gross minus the premium ($84), federal on gross minus both ($95)',
+        has(/^FICA\s*–\$84$/) && has(/^Federal income tax\s*–\$95$/), JSON.stringify(m.rows));
+      const ded = m.rows.filter((r) => /–\$/.test(r)).reduce((a, r) => a + Number(r.split('–$')[1].replace(/,/g, '')), 0);
+      const gross = m.rows.find((r) => /^Gross pay/.test(r)) || '';
+      ok('health: gross − every row = take-home ($1,200 − $429 = $771)',
+        /\$1,200$/.test(gross) && ded === 429 && m.takehome === '$771' && m.hero === '$771', `${gross} ded=${ded} takehome=${m.takehome} hero=${m.hero}`);
+      errs.push(...errors);
+      await ctx.close();
+    }
+
+    /* (b) Settings: both fields, a legacy blob lands in the retirement one, and typing a premium
+       saves the new key, leaves the old one alone, and moves the hero $853 -> $771 */
+    {
+      const { ctx, page, errors } = await open(legacy);
+      const hero0 = (await money(page)).hero;
+      await toSettings(page);
+      const labels = await page.evaluate(() => [...document.querySelectorAll('label.field .lab')].map((x) => x.textContent.trim()));
+      const ret = await page.locator('input[aria-label="Retirement pre-tax deductions"]').inputValue();
+      const hp = page.locator('input[aria-label="Health pre-tax premiums"]');
+      const health0 = await hp.inputValue();
+      ok('health: Settings shows Retirement (pre-tax) and Health (pre-tax) side by side',
+        labels.includes('Retirement (pre-tax)') && labels.includes('Health (pre-tax)') && labels.includes('Post-tax') && !labels.includes('Pre-tax'),
+        JSON.stringify(labels.filter((l) => /tax/i.test(l))));
+      ok('health: a blob saved before the field existed keeps its $150 in retirement and reads $0 health',
+        ret === '150' && health0 === '0', `retirement=${ret} health=${health0}`);
+      await hp.click();
+      await hp.fill('100');
+      await hp.press('Enter');
+      await page.waitForTimeout(250);
+      const noteStd = await page.locator('.fica-health-note').count();
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(800);
+      const hero1 = (await money(page)).hero;
+      const blob = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), STORAGE_KEY);
+      ok('health: typing a premium saves pretaxHealth and leaves pretaxDeductions alone',
+        blob && blob.pretaxHealth === 100 && blob.pretaxDeductions === 150, blob ? JSON.stringify({ h: blob.pretaxHealth, r: blob.pretaxDeductions }) : 'no blob');
+      ok('health: and the hero follows it ($853 -> $771)', hero0 === '$853' && hero1 === '$771', `${hero0} -> ${hero1}`);
+      ok('health: no double-count note on standard FICA', noteStd === 0, String(noteStd));
+      errs.push(...errors);
+      await ctx.close();
+    }
+
+    /* (c) a custom FICA % plus a premium raises the double-count note; no premium, no note */
+    {
+      const seen = [];
+      for (const h of [100, 0]) {
+        const { ctx, page, errors } = await open({ ...legacy, ficaWithholdingType: 'percent', ficaWithholdingPercent: 6.9, pretaxHealth: h });
+        await toSettings(page);
+        seen.push(await page.locator('.fica-health-note').count());
+        errs.push(...errors);
+        await ctx.close();
+      }
+      ok('health: a custom FICA % with a premium says the stub-derived % would count it twice; without one it says nothing',
+        seen[0] === 1 && seen[1] === 0, JSON.stringify(seen));
+    }
+    ok('health: no page errors across section 40', errs.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errs.filter((e) => !isExpectedNetwork(e))[0] || '');
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

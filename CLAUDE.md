@@ -146,7 +146,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync and (since 2026-10-10) that no wage-core definition names a persona |
-| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (71 — 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
+| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (83 — 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
 | `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **694 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
@@ -194,7 +194,8 @@ the 47-day outage it exists to catch.
    indistinguishable from a CDN outage. **Blast** without it a CDN compromise runs arbitrary JS with
    the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
-   hero and the pattern lab since #65 — `calc` and the **`periodPaycheck`** it calls, **`keepRatioOf`**
+   hero and the pattern lab since #65, with two pre-tax buckets since 2026-10-11: retirement is FICA
+   wages, Section 125 health premiums are not — `calc` and the **`periodPaycheck`** it calls, **`keepRatioOf`**
    (both hoisted out of `App` 2026-10-07 so the gateway prices with the same function), `statOf`/`ptoStatOf`, `patternMetrics`,
    `patternCellToShift`, **`sampleNet`**, **`keepRatio`**, `firstActiveShiftType`,
    **`workPeriodRule`** / `workPeriodChunks` (which hours count toward overtime, and in which
@@ -691,7 +692,7 @@ through. It sees only agent pushes; CI stays the binding gate.
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
 `node scripts/check_build.mjs` (gate), `node scripts/test_groom_seed.mjs` (33),
-`node tests/core.test.mjs` (71, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
+`node tests/core.test.mjs` (83, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
 iPhone 13). `tests/equality.mjs` is the wage-core check against
 the **deployed** build — by hand only, needs network. Every new assertion is negative-tested. Scratch
 copies point `SUPABASE_URL` at `.invalid` so the harness can never write to production analytics.

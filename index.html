@@ -1429,6 +1429,9 @@ function sanitizeData(d){
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
   if(d.posttaxDeductions!=null) setNum('posttaxDeductions', d.posttaxDeductions);
+  /* Section 125 health/dental/vision premiums (2026-10-11). Kept only when finite and >= 0 -- a
+     negative premium would RAISE the FICA base, so this is stricter than pretaxDeductions. */
+  if(d.pretaxHealth!=null){ const n=Number(d.pretaxHealth); if(isFinite(n) && n>=0) out.pretaxHealth=n; }
   /* Whitelisted like estimateMode and workPeriod two lines down. computeNet only knows
      'standard' and 'percent'; any other string fell through to fica = 0, overstating take-home
      by ~7.65% of gross with nothing shown to say so (~$184 on a $2,400 period). The <select>
@@ -2051,10 +2054,15 @@ function computeNet(grossIn, t){
   const taxable    = toCents(isSplit ? grossIn.taxable    : grossIn);
   const nonTaxable = toCents(isSplit ? grossIn.nonTaxable : 0);
   const pretax = toCents(t.pretaxDeductions), posttax = toCents(t.posttaxDeductions);
-  // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
-  // deferrals only reduce income-tax wages. Keep the two bases separate.
-  const ficaBase = taxable;
-  const incomeTaxBase = Math.max(0, taxable - pretax);
+  const health = Math.max(0, toCents(t.pretaxHealth));   // a negative premium never raises a base
+  /* Two pre-tax buckets, two bases -- never collapse them (2026-10-11, IRS Pub 15 / 15-B).
+     pretaxDeductions is RETIREMENT: 401(k)/403(b)/457(b) deferrals skip income tax but are still
+     FICA wages. pretaxHealth is Section 125 health/dental/vision (and health FSA, payroll HSA):
+     it skips income tax AND Social Security/Medicare. A real stub prints Medicare =
+     1.45% x ($9,820.04 - $266.03) = $138.53 to the cent. Written as a subtraction of a clamped
+     amount so that with no premium ficaBase is `taxable` exactly, as it was. */
+  const ficaBase = taxable - Math.min(health, Math.max(0, taxable));
+  const incomeTaxBase = Math.max(0, taxable - pretax - health);
   let fica = 0;
   if(t.ficaType==='standard') fica = roundCents(ficaBase*0.0765);
   else if(t.ficaType==='percent') fica = roundCents(ficaBase*((parseFloat(t.ficaPct)||0)/100));
@@ -2064,16 +2072,18 @@ function computeNet(grossIn, t){
   (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent'
     ? roundCents(incomeTaxBase*((parseFloat(w.amount)||0)/100))
     : toCents(parseFloat(w.amount)||0); });
-  const ded = pretax+fica+fed+st+posttax+cw;
+  const ded = pretax+health+fica+fed+st+posttax+cw;
   const net = Math.max(0, taxable-ded) + nonTaxable;
-  // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum.
+  // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum. Capped in
+  // display order (retirement, health, post-tax); with no premium every row is what it was.
   const flatCapTotal = Math.max(0, taxable - (fica+fed+st+cw));
-  const dispPre  = Math.min(pretax, flatCapTotal);
-  const dispPost = Math.min(posttax, Math.max(0, flatCapTotal - dispPre));
+  const dispPre    = Math.min(pretax, flatCapTotal);
+  const dispHealth = Math.min(health, Math.max(0, flatCapTotal - dispPre));
+  const dispPost   = Math.min(posttax, Math.max(0, flatCapTotal - dispPre - dispHealth));
   const total = taxable + nonTaxable;
   return {gross:fromCents(taxable), nonTaxable:fromCents(nonTaxable), total:fromCents(total),
     fica:fromCents(fica), fed:fromCents(fed), st:fromCents(st), cw:fromCents(cw),
-    ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), post:fromCents(dispPost),
+    ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), health:fromCents(dispHealth), post:fromCents(dispPost),
     pct: total>0 ? Math.round(net/total*100) : 0};
 }
 
@@ -2112,7 +2122,10 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
    Hoisted out of App 2026-10-07 for the same reason as periodPaycheck. Percent custom
    withholdings are a marginal rate exactly like fed/state and count here; flat-dollar ones are a
-   per-paycheck amount, not a rate, so they stay out on purpose (council #8 / cross-surface-00). */
+   per-paycheck amount, not a rate, so they stay out on purpose (council #8 / cross-surface-00).
+   Pre-tax amounts stay out for the same reason: a retirement deferral or a health premium
+   (pretaxHealth, which also lowers the FICA base in computeNet) is a flat dollar figure per
+   paycheck, not a rate, so this preview stays rates-only. The hero prices them exactly. */
 function keepRatioOf(t){
   const ficaForPreview = t.ficaType==='standard'?7.65:(t.ficaType==='percent'?(parseFloat(t.ficaPct)||0):0);
   const pctWithholdings = (t.customWithholdings||[]).reduce((a,w)=>
@@ -2207,7 +2220,7 @@ const OB_SHIFT_LENGTHS = [8,10,12];
    makeJob) and identical across presets; applyPersona never writes them. */
 const PERSONA_PRESETS = {
   healthcare: {
-    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, pretaxHealth:0, posttaxDeductions:0,
     ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
     mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included', differentials:DIFF_DEFAULTS,
     sampleMix:'rotating', extras:['diffs','holiday'], cards:{nursegrid:true},
@@ -2216,7 +2229,7 @@ const PERSONA_PRESETS = {
      for non-nurse differentials. They cannot move this persona's first estimate (its sample is
      all day shifts) and the estimate banner says to sharpen them. */
   other: {
-    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, pretaxHealth:0, posttaxDeductions:0,
     ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
     mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included',
     differentials:{...DIFF_DEFAULTS,
@@ -3479,7 +3492,8 @@ function App(){
   const [baseRate,setBaseRate] = useState(DEFAULT_PRESET.baseRate);
   const [federalTaxRate,setFederal] = useState(DEFAULT_PRESET.federalTaxRate);
   const [stateTaxRate,setState] = useState(DEFAULT_PRESET.stateTaxRate);
-  const [pretaxDeductions,setPretax] = useState(DEFAULT_PRESET.pretaxDeductions);
+  const [pretaxDeductions,setPretax] = useState(DEFAULT_PRESET.pretaxDeductions);   // retirement: FICA-taxable
+  const [pretaxHealth,setPretaxHealth] = useState(DEFAULT_PRESET.pretaxHealth);      // Section 125: FICA-exempt
   const [posttaxDeductions,setPosttax] = useState(DEFAULT_PRESET.posttaxDeductions);
   const [ficaType,setFicaType] = useState(DEFAULT_PRESET.ficaType);
   const [ficaPct,setFicaPct] = useState(DEFAULT_PRESET.ficaPct);
@@ -3599,7 +3613,7 @@ function App(){
 
   /* ---- single serializer (used by save effect, export, and flush) ---- */
   const serializeState = ()=>({
-    name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,
+    name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
     payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,
     workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,
@@ -3619,6 +3633,9 @@ function App(){
     if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
     if(d.stateTaxRate!=null) setState(d.stateTaxRate);
     if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
+    /* Authoritative: a blob that has never heard of the field is a $0 premium, so it prices exactly
+       as it did before the field existed, and one account's premium never lingers into another's. */
+    setPretaxHealth(d.pretaxHealth!=null ? d.pretaxHealth : 0);
     if(d.posttaxDeductions!=null) setPosttax(d.posttaxDeductions);
     if(d.ficaWithholdingType) setFicaType(d.ficaWithholdingType);
     if(d.ficaWithholdingPercent!=null) setFicaPct(d.ficaWithholdingPercent);
@@ -3658,7 +3675,7 @@ function App(){
   const resetToDefaults = ()=>{
     const P = DEFAULT_PRESET;
     setName('there'); setBaseRate(P.baseRate); setFederal(P.federalTaxRate); setState(P.stateTaxRate);
-    setPretax(P.pretaxDeductions); setPosttax(P.posttaxDeductions); setFicaType(P.ficaType); setFicaPct(P.ficaPct);
+    setPretax(P.pretaxDeductions); setPretaxHealth(P.pretaxHealth); setPosttax(P.posttaxDeductions); setFicaType(P.ficaType); setFicaPct(P.ficaPct);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(P.differentials); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
     setWorkPeriod(P.workPeriod); setOtMethod(P.otMethod);
@@ -3910,7 +3927,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -4237,8 +4254,8 @@ function App(){
   },[calView,calFocus,shifts,dayEvents,baseRate,differentials,activeJob]);
 
   /* the per-paycheck tax inputs, as one stable object — read by calc() and the pattern lab */
-  const taxInputs = useMemo(()=>({pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings}),
-    [pretaxDeductions,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
+  const taxInputs = useMemo(()=>({pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings}),
+    [pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,federalTaxRate,stateTaxRate,customWithholdings]);
 
   /* ---- calculations ---- */
   const calc = useMemo(()=>
@@ -5328,7 +5345,7 @@ function App(){
           otPeriodStart={otPeriodStart} setOtPeriodStart={setOtPeriodStart} periodStartToday={currentPeriodStart(payPeriodStart)}
           mealBreakMins={mealBreakMins} setMealMins={setMealMins} mealBreakMode={mealBreakMode} setMealMode={setMealMode}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-            pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+            pretaxDeductions,setPretax,pretaxHealth,setPretaxHealth,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
             goals,setGoals,keepRatio,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
@@ -5438,7 +5455,7 @@ function PaystubReview({paystub,differentials,onApply,onCancel}){
             <div className="inp pre" style={{width:124}}><span className="pfx">$</span><input type="number" inputMode="decimal" step="0.01" min="0" value={base} onChange={e=>setBase(e.target.value)} style={{textAlign:'right',fontWeight:700}}/></div></div>
           <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>Pay period start</div>
             <input type="date" value={pps} onChange={e=>setPps(e.target.value)} style={{fontWeight:600,border:'1px solid var(--line)',borderRadius:11,padding:'9px 11px',fontFamily:'inherit',fontSize:13.5,background:'#fff'}}/></div>
-          <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>Pre-tax deductions<div style={{fontSize:11.5,color:'var(--muted-2)'}}>per pay period</div></div>
+          <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>Retirement (pre-tax)<div style={{fontSize:11.5,color:'var(--muted-2)'}}>403(b) · per pay period</div></div>
             <div className="inp pre" style={{width:124}}><span className="pfx">$</span><input type="number" inputMode="decimal" step="1" min="0" value={pre} onChange={e=>setPre(e.target.value)} style={{textAlign:'right',fontWeight:700}}/></div></div>
           <div className="row-item"><div style={{fontWeight:600,fontSize:14}}>FICA rate</div>
             <div className="inp suf" style={{width:104}}><input type="number" inputMode="decimal" step="0.01" min="0" value={fica} onChange={e=>setFica(e.target.value)} style={{textAlign:'right',fontWeight:700}}/><span className="sfx">%</span></div></div>
@@ -5748,7 +5765,8 @@ function Breakdown({calc,embedded}){
   const otLabel = calc.otWorkPeriod==='8-80' ? '8 in a day or 80 in the period'
     : (rule && rule.id==='custom' ? `${rule.hours} in ${rule.days} days` : '40 in a week');
   const rows=[
-    ['Pre-tax · 401k, health', calc.pre],
+    ['Pre-tax · retirement', calc.pre],
+    ['Pre-tax · health, dental, vision', calc.health||0],
     ['Federal income tax', calc.fed],
     ['FICA', calc.fica],
     ['State tax', calc.st],
@@ -6526,7 +6544,7 @@ function AuthModal({mode:initialMode,onClose}){
 /* ---------- Settings ---------- */
 function Settings(props){
   const {onClose,name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
-    pretaxDeductions,setPretax,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
+    pretaxDeductions,setPretax,pretaxHealth,setPretaxHealth,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
     user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,onIcalHowTo,
@@ -6676,10 +6694,24 @@ function Settings(props){
         </div>
 
         <div className="sec-lab" style={{marginTop:14}}>DEDUCTIONS · per pay period</div>
+        {/* Two pre-tax buckets because the IRS taxes them differently: retirement deferrals still
+            pay Social Security and Medicare, Section 125 health premiums don't (computeNet). The
+            retirement field keeps the pretaxDeductions key, so every saved value stays put. */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <label className="field" style={{margin:0}}><span className="lab">Pre-tax</span><div className="inp pre"><span className="pfx">$</span><NumInput value={pretaxDeductions} onCommit={setPretax} min={0} ariaLabel="Pre-tax deductions"/></div></label>
+          <label className="field" style={{margin:0}}><span className="lab">Retirement (pre-tax)</span><div className="inp pre"><span className="pfx">$</span><NumInput value={pretaxDeductions} onCommit={setPretax} min={0} ariaLabel="Retirement pre-tax deductions"/></div><span className="hint" style={{display:'block',fontSize:11,color:'var(--muted-2)',marginTop:4}}>401(k), 403(b), 457(b)</span></label>
+          <label className="field" style={{margin:0}}><span className="lab">Health (pre-tax)</span><div className="inp pre"><span className="pfx">$</span><NumInput value={pretaxHealth} onCommit={setPretaxHealth} min={0} ariaLabel="Health pre-tax premiums"/></div><span className="hint" style={{display:'block',fontSize:11,color:'var(--muted-2)',marginTop:4}}>Medical, dental, vision, FSA, HSA</span></label>
           <label className="field" style={{margin:0}}><span className="lab">Post-tax</span><div className="inp pre"><span className="pfx">$</span><NumInput value={posttaxDeductions} onCommit={setPosttax} min={0} ariaLabel="Post-tax deductions"/></div></label>
         </div>
+        <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:8}}>
+          Health premiums also skip Social Security and Medicare; retirement savings don't.
+        </div>
+        {/* A custom FICA % read off a stub (FICA ÷ gross) already has the premium's exemption folded
+            in, so entering the premium as well would count it twice — about 7% of the premium. */}
+        {ficaType==='percent' && pretaxHealth>0 &&
+          <div className="hint fica-health-note" style={{fontSize:11.5,color:'var(--clay-ink)',marginTop:6}}>
+            Your custom FICA % is applied after the health premium comes out. If you got that % by dividing
+            a stub's FICA by its gross, switch FICA back to Standard so the premium isn't counted twice.
+          </div>}
 
         <div className="sec-lab" style={{marginTop:18}}>SAVINGS GOALS</div>
         <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:-4,marginBottom:10}}>Name what you're saving for. When you add a shift, you'll see what its take-home is worth toward each goal.</div>
