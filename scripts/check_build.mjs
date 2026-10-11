@@ -217,10 +217,14 @@ check(3, 'Pay math never reads the persona', () => {
     'straightTimeCents', 'workPeriodRule', 'workPeriodChunks', 'overtimePremiumCents', 'groupHoursByJob', 'makeJob',
     'computeNet', 'periodPaycheck', 'keepRatioOf', 'keepRatio', 'calc', 'statOf', 'ptoStatOf',
     'sampleNet', 'patternMetrics', 'patternCellToShift', 'patternCellShiftType', 'firstActiveShiftType',
-    'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL'];
+    'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL',
+    'otMultOf', 'minHoursOf', 'minimumTopUpCents'];
   /* Two patterns, because the case matters for one of them: `ob` + capital is the funnel's own
      namespace (obSeedOpts, obExtrasOn, OB_SCREENS…) and must not match `Object`. */
-  const FORBIDDEN_I = /persona|preset/i, FORBIDDEN_CS = /^(workStatus|union|obShift|obPay)$|^ob[A-Z]|^OB_/;
+  /* payEvent (court / call-back / report, session 3, 2026-10-11) is the same kind of thing: a label
+     she picks, never a pay rule. The minimum's HOURS are the pay; "court pays differently" would be
+     a branch no Settings screen shows. */
+  const FORBIDDEN_I = /persona|preset|payEvent|PAY_EVENT/i, FORBIDDEN_CS = /^(workStatus|union|obShift|obPay)$|^ob[A-Z]|^OB_/;
   const FORBIDDEN = { test: (x) => FORBIDDEN_I.test(x) || FORBIDDEN_CS.test(x) };
   const found = new Set(), hits = [];
   const isFn = (n) => n && /Function|Arrow/.test(n.type);
@@ -228,7 +232,7 @@ check(3, 'Pay math never reads the persona', () => {
     found.add(name);
     path.traverse({
       Identifier(p) { if (FORBIDDEN.test(p.node.name)) hits.push(`${name} -> ${p.node.name}`); },
-      StringLiteral(p) { if (/^(healthcare|other)$/.test(p.node.value) || FORBIDDEN.test(p.node.value)) hits.push(`${name} -> '${p.node.value}'`); },
+      StringLiteral(p) { if (/^(healthcare|other|court|callback|report)$/.test(p.node.value) || FORBIDDEN.test(p.node.value)) hits.push(`${name} -> '${p.node.value}'`); },
     });
   };
   Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
@@ -243,7 +247,7 @@ check(3, 'Pay math never reads the persona', () => {
   const missing = WAGE.filter((n) => !found.has(n));
   must(!missing.length, `wage-core definitions not found (renamed? update this list): ${missing.join(', ')}`);
   must(!hits.length, `the pay math reads the persona — a persona may only set starting values: ${hits.join('; ')}`);
-  return `${WAGE.length} wage definitions, none names a persona`;
+  return `${WAGE.length} wage definitions, none names a persona or a pay-event label`;
 });
 
 /* ---- report ---------------------------------------------------------------------------- */
