@@ -556,8 +556,35 @@ and the push P0 it pointed at was fixed the same day.
   matches the declined one tracks `ics_resync_suppressed` and stays silent, and anything differing
   by one field raises the banner again. `ics_sync_result` still reports `changes` — the five-state
   contract §27 pins is about the feed, not the UI.
-- [ ] **Why device `f184ffa5`'s NurseGrid feed reports `changes` on EVERY sync is still
-  unverified, and it is now four nights running** (P1 · source:groom · `harness:unscoped`). This
+- [x] ~~**Why device `f184ffa5`'s NurseGrid feed reports `changes` on EVERY sync**~~ —
+  **RESOLVED 2026-10-11 from `events` alone, after five nights open, and the answer is mundane:
+  the plan was never applied, so the difference never went away.** The row that settles it is the
+  one the 10-10 note could not have seen, because it landed hours after that groom read the table:
+  ```
+  10-10 10:11:57  ics_resync_opened                                            (she tapped "Review")
+  10-10 10:12:35  ics_import_done {added:0, updated:0, removed:0, skipped:46, shown:6}
+  10-10 11:51:15  ics_sync_result {up_to_date, nursegrid}   <- the FIRST up_to_date this device
+  10-11 03:09:11  ics_sync_result {up_to_date, nursegrid}      has ever recorded, in 10 rows
+  ```
+  So the 127-event feed differed from her saved shifts by **46 entries she did not want as
+  shifts** — `skipped`, not `updated`, which is the stepper's "Not a shift" write (drop it,
+  remember the uid in `icsIgnored`). Once those 46 uids were ignored, the feed matched and has
+  matched on every sync since. Nothing was wrong with `parseICSDateTime`, the timezone, or the
+  provider: **there was simply no durable "no" until the stepper ran**, so every sync rebuilt the
+  same 46-entry difference from the same feed.
+  **What that says about last night's build, honestly: the fingerprint was the right fix for the
+  wrong half.** §37's `icsPlanFingerprint` suppresses the repeat *offer*; it would never have
+  cleared the underlying difference, because only an `icsIgnored` write can. Both were needed and
+  neither substitutes for the other — the fingerprint stops the nagging, the skip stops the
+  differing. Read together they also retire the metric worry in the 10-10 note: `found +
+  suppressed` vs `found` was built to separate "the feed differed" from "she was asked", and the
+  answer turns out to be that the feed differed *because* she had not yet been able to say no.
+  **Still open and NOT closed by this:** the 2026-10-08 mass update (`updated:128`) is a different
+  event with a different shape — those 128 were genuine rewrites of date/hours/start, not skips —
+  and the item below stands unchanged. **And `parseICSDateTime` stays untouched** (pay figure,
+  `wage-core` protocol). Original note below:
+- [ ] ~~**Why device `f184ffa5`'s NurseGrid feed reports `changes` on EVERY sync is still
+  unverified, and it is now four nights running**~~ (P1 · source:groom · `harness:unscoped`). This
   is the 2026-10-09 item below, re-confirmed and sharpened, not a new one. New facts tonight: the
   feed is **127 events** (was 128 on 10-08, 131 on 10-03), and **every one of the four syncs on
   10-10 reported `result:'changes'`** — so the plan the app builds has differed from her saved
@@ -634,13 +661,80 @@ and the push P0 it pointed at was fixed the same day.
   10-08 note's "treat essentially all of `index.html` as occupied" over-stated.
 
 ### P2 (new, groom 2026-10-10)
-- [ ] **The planner scrolls sideways by 31 px on a 320 pt phone (first-gen iPhone SE)**
+- [x] ~~**The planner scrolls sideways by 31 px on a 320 pt phone (first-gen iPhone SE)**~~ —
+  SHIPPED 2026-10-11 (see Done log). Pinned by `tests/smoke.mjs` §30, 16 assertions across both
+  profiles, five deliberate breaks. **Two things the note did not anticipate, both worth keeping.**
+  (a) **The `.fab`'s 15 px overhang was a SYMPTOM, not a second overflowing element.** `.fab` is
+  `position:fixed; right:16px`, and `right` resolves against a layout viewport the overflowing bar
+  had widened to 351 — so it measured `right:335` at a 320 pt viewport and snapped back to 304 the
+  moment the bar fitted, with nothing in `.fab` itself touched. An assertion on it is therefore
+  worth having (it fails if someone "fixes" the FAB instead of the bar) but it was never its own
+  defect. (b) **Shrinking the controls is only half a fix**: 40→36 px with the existing
+  `::after{inset:-2px}` leaves a 40 pt tap target, and raising the outset to a symmetric `-4px` at
+  `gap:6px` makes adjacent hit areas **overlap by 2 px**, so a tap in the seam lands on whichever
+  button paints last. `inset:-4px -3px` is what keeps 44 pt of height and leaves the targets
+  exactly touching; both wrong versions are pinned against. Original note below:
+- [ ] ~~**The planner scrolls sideways by 31 px on a 320 pt phone (first-gen iPhone SE)**~~
   `harness:drivable`. Found 2026-10-10 by onboarding v2's §38, and **pre-existing**: the production
   build seeded straight onto the planner measures `scrollWidth − clientWidth = 31` at 320 pt, the
   overflowing elements being `.top-actions` / `.acct` / `.avatar` (signed out, so the *Sign in*
   button is in the row) and the `.fab`. §3 only checks the avatar at 360 px, which is why nothing
   caught it. Fix within the top bar's own row; **never by hiding the avatar** (Architecture → Top
   bar). Add a 320 pt no-sideways-scroll assertion on the planner, measured against `clientWidth`.
+
+### P1 (new, groom 2026-10-11)
+- [ ] **Three of the five devices that RENDERED the landing screen left without advancing one
+  screen** — `harness:unscoped`, and the condition the 2026-10-10 note set for promoting this is
+  now met twice over. That note said the step-0 drop was unbuildable because "`ob_step{step:0}`
+  fires on every load, so it does not distinguish 'read the first screen and left' from 'never
+  rendered'". Onboarding v2 shipped `ob_view {screen}` the same night, and `ob_view
+  {screen:'landing'}` **is** the render signal that was missing: it fires from the landing screen
+  itself.
+  48 h to this groom, `ob_view` rows only: **6 landing views across 5 devices; 3 devices reached
+  `persona`, 3 never left `landing`.** The three that stopped are `5098289e` (19:35:47, exited 14 s
+  later), `86a08e7f` (20:18:12, exited 7 s later) and `5212f2aa` (2026-10-11 03:11:32, exited 2 min
+  later, `last:app_open`), all iOS 18.7, two of them `via:'qr'`. The three that continued answered
+  the whole funnel in 40–95 s and two of them saved shifts. So the drop is **not** gradual attrition
+  across seven screens — everyone who taps past the first screen finishes. It is one screen.
+  **Why it is not a build tonight:** what to do about it is a copy and layout call on the first
+  thing a nurse ever sees, and the data says nothing about *why* they left (nothing distinguishes
+  "didn't understand the offer" from "arrived by accident from a group chat"). n=3 is also still
+  small. What would make it buildable: a fourth and fifth landing-only device (the denominator is
+  growing fast now — see the QR note below), or the owner deciding what the landing screen should
+  say, which is his call and cheap to make.
+  **Standing caveat still applies** (CLAUDE.md): every activation figure since 2026-09-07 is
+  inflated by harness and bot rows until the device classifier is fixed. These five were hand-read
+  (iOS 18.7, real `ob_view` sequences, minutes apart) — that is not the same as a sound funnel
+  rate, so do not quote one off this note.
+
+### P2 (new, groom 2026-10-11)
+- [ ] **`ics_resync_suppressed` shipped last night and has never fired — a note against misreading
+  its absence**, the same discipline the 2026-10-03 `ics_sync_result` note is kept under. It is live
+  in the deployed bytes (`deploy_watch.mjs` places `index.html` at `7aa590a`, 2026-10-10), and the
+  reason it has nothing to report is the P1 above it being resolved: **every sync since
+  2026-10-10 11:51 has been `up_to_date`**, so no banner has been raised and there has been no
+  repeat offer to suppress. The next run must not read zero rows as a broken tracker. What would
+  exercise it: one real feed change she declines twice.
+- [ ] **`client_error` is alive again after six quiet days, and BOTH new rows are third-party noise
+  rather than app errors** — housekeeping plus a small real finding. The two rows (2026-10-10
+  18:46:16, device `b67ce1b6`; 19:35:47, device `5098289e`, both iOS 18.7) read:
+  `Script error.` and `Unhandled promise rejection: Invalid call to runtime.sendMessage(). Tab not
+  found.` The second is unambiguous — `runtime.sendMessage` is the **WebExtension** API, so that
+  rejection was raised by a browser extension in the page and swept up by the app's global
+  `unhandledrejection` handler. The first is the opaque cross-origin `Script error.`, which carries
+  no `src` and no `line` and is almost always a third-party script too.
+  **Why it is worth a line at all:** `client_error` is **one row per load, read-and-clear**
+  (CLAUDE.md → Analytics), and it is the channel that found the `AbortError` unload bug and the
+  `Load failed` hydration bug. A load that spends its single row on an extension's rejection
+  reports nothing about the app. Two rows is not a problem yet; a filter built on two rows would be.
+  **Do not build a blind filter**: dropping bare `Script error.` would also drop real same-origin
+  errors that a CORS-less script tag has stripped, which is the opposite of what this channel is
+  for. What would make it buildable: the same shape recurring often enough to crowd out a real row,
+  and a rule narrower than the message text (e.g. skip a rejection whose stack names
+  `chrome-extension:` / `safari-extension:`, keep everything else).
+- [ ] **A goal has no deadline, which is the one thing three separate requests have all asked for**
+  — moved to `## Needs a dedicated session` tonight (it prints a new dollar figure, so it is
+  Invariant 3), and recorded here only as the pointer. See that section.
 - [ ] **Four brand-new devices arrived via QR in one hour, and two of them bounced before a
   single shift** — `harness:unscoped`, and the first real top-of-funnel signal this repo has had.
   Between 07:29 and 08:14 UTC, four iOS 18.7 devices with `via:'qr'` appeared: `74c55984`
@@ -989,6 +1083,44 @@ and the push P0 it pointed at was fixed the same day.
   question is whether the estimate card is a result or an obstacle, which is a design call.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+- [ ] **A goal has no deadline, and the “how much per paycheck” figure is the whole ask — THIRD
+  request of the same shape, now from two different professions** (P1 · source:feedback ·
+  wage-core, so not a nightly). New `feedback` row 2026-10-10 08:48:44, `kind:'wish'`, device
+  `f184ffa5` (the one real NurseGrid account, signed "-beaut"):
+  > *“set up a “goals tab”. I heard from upper Darby police and nurses on unit that a “goals” tab
+  > could be a nice feature. Like “ I want to go on vacation in February. It will cost about $5000.
+  > How much of my paycheck do (or how much OT do) I need to put aside between now and February to
+  > save $5000 to pay for the trip/meet that goal”*
+
+  The **same** request arrived on 2026-09-12 16:04 (“how many shifts do I need to pick up to cover
+  that between now and the time of my vacation”) and the owner's own Reddit intake carries the
+  savings-goal theme. Three asks, one of them citing a second profession unprompted — which is
+  exactly the “beyond nurses” positioning arriving from a user rather than a plan.
+  **Read what already exists before scoping it, because most of it is built.** Goals are real
+  today: `{id, name, target}`, up to `MAX_GOALS`, edited in Settings (~index.html:6707), sanitized
+  on load (~1598), in `serializeState`, and already **printed as the inverse calculation in two
+  places** — the Add-Shift sheet shows `goal 12.4% (≈8 shifts)` off `previewNet` (~6106) and the
+  Pattern Lab shows `goal: 7 paychecks (≈3 months)` off `m.periodNet` (~6221).
+  **So the gap is narrow and specific, and it is three things, not a tab:**
+  (1) a goal has **no target date** — “by February” cannot be expressed, so the app can divide a
+  target by a paycheck but can never divide it by the *time remaining*;
+  (2) there is **no “put aside $X per paycheck”** figure anywhere — only “N whole paychecks”,
+  which answers a question nobody asked (she is not saving an entire check);
+  (3) a goal is **invisible from the first screen** — it surfaces only inside Add-Shift and the
+  Pattern Lab, i.e. only once she is already doing something else.
+  **Why this is not a nightly item**, even though (1) looks like a sanitizer branch: “$X per
+  paycheck” and “N extra OT shifts” are **new displayed dollar figures**, and Invariant 3's test is
+  explicitly “whether a change can move a displayed dollar figure, including arithmetic in a UI
+  component that prints one”. It needs the `wage-core` protocol — baseline probes, a new assertion
+  per figure, and the hero/breakdown equality check against the **deployed** build.
+  **One design trap to settle first, cheaply:** “how much OT do I need” is not the same question as
+  “how much of my paycheck”, and they give different answers because OT hours are priced at the
+  overtime premium on the differential-inclusive rate while “set aside” is a flat slice of net. Pick
+  one as the headline figure rather than printing both — the owner's call, and it is one sentence.
+  **Fits the positioning squarely** (CLAUDE.md): “tell her what the paycheck will be **and whether
+  the goal is reachable**” is half of the stated product, and the “whether” half is the one with no
+  deadline in it. Sequence it against the FICA health-premium fix, which is the owner's current
+  pick; this is the obvious follow-on and it serves both professions at once.
 - [ ] **Multi-persona onboarding and the engine primitives behind it — the owner-approved plan
   (2026-10-10).** Decision record: `docs/session-2026-10-10-pay-patterns-and-onboarding.md`.
   Evidence: `docs/pay-rule-patterns.md`. Mockup: https://claude.ai/artifact/Xt6xNpBXCrbTaFLBaAHMrV.
@@ -1816,6 +1948,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-11 — **The whole planner scrolled sideways by 31 px on a 320 pt phone, and the fix is in
+  the top bar's row — never the avatar.** Nightly loop; `index.html` CSS + `tests/smoke.mjs` §30
+  only, no JS, no wage core, no new string.
+  **Reproduced before anything was changed**, on the harness's first-gen iPhone SE profile seeded
+  straight onto the planner: `documentElement.scrollWidth − clientWidth = 31`. The row measured 351
+  against a 320 pt viewport — padding 12+12, `.brand` 100, `.topbar` gap 14, and a `.top-actions`
+  of **223** (two 40 px `.iconbtn`s, the 73 px signed-out *Sign in* pill, the 40 px `.avatar`, three
+  10 px gaps). iPhone 13 at 390 pt was and is 0.
+  **Fix**, inside the existing `@media (max-width:360px)` block: `.topbar` gap 14→10, `.top-actions`
+  gap 10→6, the three controls 40→36 px, and the *Sign in* pill's side padding 16→12. That is
+  351→~313, which fits with right padding to spare. **The avatar is not hidden and is not hideable**
+  — it is the only route to Settings and Sign out below 920 px (Architecture → Top bar), and an
+  assertion fails if a future change hides it or pushes its tap target off screen.
+  **Three things this run learned that the queue item did not know.**
+  (a) **The `.fab`'s 15 px overhang was a symptom of the same overflow, not a second bug.** `.fab` is
+  `position:fixed; right:16px`; `right` resolved against a layout viewport the overflowing bar had
+  widened to 351, so it sat at `right:335` on a 320 pt screen and returned to **304** the moment the
+  bar fitted, with nothing in `.fab` touched. It gets an assertion anyway, because it fails if
+  someone moves the FAB instead of fixing the bar (break 5 below).
+  (b) **Shrinking the controls is only half a fix, and the obvious completion is wrong.** 40→36 px
+  with the existing `::after{inset:-2px}` leaves a **40 pt** tap target; raising it to a symmetric
+  `-4px` restores 44 pt but, at `gap:6px`, makes adjacent hit areas **overlap by 2 px**, so a tap in
+  the seam lands on whichever button paints last. `inset:-4px -3px` keeps the 44 pt height and
+  leaves the targets exactly touching. The assertion reads the **pseudo-element** rather than
+  assuming the slop, so a change to either half is visible.
+  (c) **The comment that block already carried was false and is corrected in place.** It ended
+  “removing the gear and sign-out icon buttons freed ~96px … so the overflow this block was written
+  for is gone either way.” It was not gone; it was 31 px. The measured arithmetic is written down
+  there now instead of the claim.
+  **Verification.** Extends §30 rather than opening a §40 — §30 already drives both the iPhone SE and
+  the iPhone 13 profiles on the planner, and the end of `tests/smoke.mjs` is occupied by open PR
+  #171 (which inserts 100 lines at 4984), so appending there would have conflicted with live human
+  work. 8 new assertions × 2 profiles = **16**; suite 694 → **710 passed / 0 failed**.
+  `check_build.mjs` 13/13, `test_groom_seed.mjs` 33/33, `core.test.mjs` 71/71.
+  **Negative-tested with five deliberate breaks in a scratch copy** (never the working tree), each
+  failing the right assertions and only those: (1) revert the whole row fix → 4 FAIL on SE, iPhone
+  13 untouched; (2) shrink the controls but leave `inset:-2px` → only the 44 pt assertion FAILs;
+  (3) symmetric `inset:-4px` at `gap:6px` → only the overlap assertion FAILs (`seam=+2`);
+  (4) “fix” it by `.avatar{display:none}` → the visibility, on-screen, size and tap-target
+  assertions all FAIL; (5) `.fab{right:20px}` instead of fixing the bar → only the FAB assertion
+  FAILs (`fabRight=300`).
 - 2026-10-10 — **Docs only: field evidence against the pay model.** Two documents the owner supplied (a
   Philadelphia PD FY2026 pay schedule and a redacted California police stub) and three research
   passes (police, fire/EMS, nurse) are written up as `docs/pay-rule-patterns.md` (g), with links.

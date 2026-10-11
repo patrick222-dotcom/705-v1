@@ -531,14 +531,35 @@
     .hero .num{font-size:60px}
   }
   @media (max-width:919px){ .desk-only{display:none!important} }
-  /* Very small phones (≤360px, e.g. iPhone SE): the fixed-width top bar overflowed the viewport
-     and scrolled the page sideways, so the padding is tightened here. This block used to ALSO hide
-     the avatar as decorative — it can't any more: since 2026-09-13 the avatar is the account menu
-     and the only route to Settings and Sign out below 920px, so hiding it would strand an SE with
-     neither. Removing the gear and sign-out icon buttons freed ~96px, far more than the avatar
-     costs, so the overflow this block was written for is gone either way. */
+  /* Very small phones (≤360px, e.g. first-gen iPhone SE): the fixed-width top bar overflows the
+     viewport and scrolls the whole page sideways, so its row is tightened here. This block used to
+     ALSO hide the avatar as decorative — it can't any more: since 2026-09-13 the avatar is the
+     account menu and the only route to Settings and Sign out below 920px, so hiding it would
+     strand an SE with neither.
+     CORRECTING THIS COMMENT'S OWN CLAIM (2026-10-11): it used to end "removing the gear and
+     sign-out icon buttons freed ~96px … so the overflow this block was written for is gone either
+     way." That was false. Measured on the harness's first-gen iPhone SE profile, the planner at
+     320pt scrolled sideways by exactly 31px: padding 12+12, brand 100, gap 14, and a .top-actions
+     row of 223 (two 40px .iconbtns + the 73px signed-out "Sign in" + the 40px .avatar, three 10px
+     gaps) = 351. Nothing caught it because §3 only ever measured the avatar at 360pt.
+     The 31px comes off the row itself — never off the avatar — as: the bar's gap 14→10, the
+     actions' gap 10→6, the three 40px controls → 36px, and the "Sign in" pill's side padding
+     16→12. That is 351→~313, which fits inside the 320pt viewport with the right padding to
+     spare, and it drops the .fab back to right:304 as well — the FAB's own 15px overhang was a
+     SYMPTOM, not a second bug: position:fixed resolves right:16px against a layout viewport that
+     the overflowing bar had widened to 351.
+     The hit slop grows to keep the targets tappable at the smaller box: inset:-4px -3px makes each
+     control 42×44 rather than 36×36, and -3px horizontally rather than -4px is deliberate — at
+     gap:6px a 4px outset would make adjacent hit areas OVERLAP by 2px, so a tap in the seam would
+     land on whichever button paints last. At -3px they touch exactly and never overlap. Pinned by
+     tests/smoke.mjs §30, which asserts all of it on the SE profile and asserts iPhone 13 is
+     untouched (the query never fires at 390pt). */
   @media (max-width:360px){
-    .topbar{padding-left:12px;padding-right:12px}
+    .topbar{padding-left:12px;padding-right:12px;gap:10px}
+    .top-actions{gap:6px}
+    .iconbtn,.avatar{width:36px;height:36px}
+    .iconbtn::after,.avatar::after{inset:-4px -3px}
+    .top-actions .btn-sm{padding-left:12px;padding-right:12px}
   }
 
   /* Solid-fill fallback for browsers without backdrop-filter support — every glass
