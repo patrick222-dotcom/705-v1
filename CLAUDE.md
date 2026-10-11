@@ -88,8 +88,7 @@ see Positioning.
   presets in `@core:begin personas` (Healthcare **is** today's defaults — App's first-run state
   reads it, `tests/core.test.mjs` pins it), and `ob_view`/`ob_answer`/`ob_back`.
   `check_build.mjs` now fails if a wage-core definition so much as names a persona.
-  **Session 2 (configurable work period) built 2026-10-10**, and its PR waits for the owner's merge
-  (wage-core). It adds "only the shifts I mark as overtime" and N hours in a D-day period (7–28,
+  **Session 2 (configurable work period) shipped 2026-10-10** (#168, owner-merged). It adds "only the shifts I mark as overtime" and N hours in a D-day period (7–28,
   straddling paychecks). That makes zero phantom overtime possible on every 12-hour schedule
   probed — the gate on the Law enforcement and Fire & EMS tiles, which are session 5. Tracking stays
   first-party (`track()` → `events`); PostHog was considered and deferred. Plan and reasons:
@@ -164,6 +163,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `docs/scaling-and-burn.md` | capacity + cost ladder to 100k users, the pre-scoped infra levers with trigger thresholds, the density/retention metric definitions (runnable SQL), and the transferability checklist. Strategy only |
 | `docs/pay-rule-patterns.md` | 30 public contracts (21 police, 4 nurse, 5 other hourly): the pay-rule patterns, the pay model broken into primitives, probes of phantom overtime by schedule, 12 missing primitives ranked, and why no records request is needed. Research only. Its Upper Darby predecessor: `docs/police-pay-rules-draft.md` |
 | `docs/session-2026-10-10-pay-patterns-and-onboarding.md` | decision record for the multi-persona onboarding plan: personas as presets, PRN/part-time, first-party funnel tracking, and the six-session build order |
+| `docs/session-2026-10-10-onboarding-v2-and-work-period.md` | handoff for the session that shipped sessions 1–2 (#167, #168) and the field evidence (#169): decisions, findings, and the order from here (FICA health-premium fix next) |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 | `.claude/skills/{ship,wage-core,harness}/` | the project's own skills — the deploy ritual, the Invariant 3 protocol, and the test rig. See Skills |
