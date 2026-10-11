@@ -1003,8 +1003,11 @@ and the push P0 it pointed at was fixed the same day.
      `ob_answer {q,a}` (whitelisted enumerated answers, never dollar figures), `ob_back {from}`,
      plus a funnel query. Law enforcement and Fire & EMS tiles stay hidden; there is **no waitlist**
      (owner, 2026-10-10).
-  2. ~~**Configurable work period**~~ — **BUILT 2026-10-10, PR awaiting the owner's merge**
-     (wage-core: it does not auto-merge). See the Done log. Original brief: (wage-core): "only
+  2. ~~**Configurable work period**~~ — **SHIPPED 2026-10-10 (#168, owner-merged, LIVE as
+     `7aa590a`).** See the Done log.
+     **NEXT (owner's pick, 2026-10-11): the FICA health-premium fix below, before session 3** — it
+     affects nurses on the app today; session 3 serves police who are not on it yet. Session log:
+     `docs/session-2026-10-10-onboarding-v2-and-work-period.md`. Original brief: (wage-core): "only
      overtime I flag" plus N hours in D days. The
      probes in `pay-rule-patterns.md` (c) become assertions: zero phantom OT on 12 h Pitman, 12 h +
      Kelly day, 3/3 10.5 h and 4/10.
@@ -1821,8 +1824,8 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   "Needs a dedicated session": FICA charged on pre-tax health premiums (a wage-core bug,
   verified three ways), a 0 / +1 paycheck lag for custom work periods, and session 5's inputs
   (Social Security question, hourly divisor, leveled fire pay).
-- 2026-10-10 — **Configurable work period (session 2 of the multi-persona plan; wage-core, so the
-  PR waits for the owner's merge).** Two new rules beside the 40-hour week and 8/80:
+- 2026-10-10 — **Configurable work period (session 2 of the multi-persona plan; wage-core —
+  owner-merged as #168, LIVE as `7aa590a`).** Two new rules beside the 40-hour week and 8/80:
   - **"Only the shifts I mark as overtime"** (`workPeriod:'flagged'`): no derived overtime at all.
     How 13 of 21 police contracts pay ("outside the scheduled tour").
   - **N hours in a D-day period, D 7–28** (`'custom'` + `otPeriodHours` / `otPeriodDays` /
