@@ -3310,7 +3310,22 @@ const run = async () => {
      iPhone SE, 320pt) as well as the rig's default iPhone 13 — the stats column must never overlap the big
      number, push the "Projected take-home" label down, or overflow the card. The sandbox has no
      fonts CDN, so this runs on the fallback face, which is wider than Bricolage: a pass here is
-     conservative for the real font. */
+     conservative for the real font.
+     EXTENDED 2026-10-11 — the top bar's own 320pt overflow. §3 measures the avatar at 360pt and
+     nothing had ever measured the PAGE at 320, so a 31px sideways scroll of the whole planner sat
+     in production unseen: .top-actions was 223px wide (two 40px .iconbtns, the 73px signed-out
+     "Sign in" pill, the 40px .avatar, three 10px gaps) and the row totalled 351 against a 320pt
+     viewport. Measured against clientWidth, never innerWidth, which GROWS with a horizontal
+     overflow in this profile and cancels the check out (the §35 lesson).
+     Three properties, because the obvious fixes are each wrong in a different direction: the page
+     must not scroll sideways (the defect); every control must keep a ≥44pt-tall hit area and no
+     two may overlap (a fix by shrinking alone would break tappability, and a 4px outset at gap:6px
+     would make adjacent targets overlap by 2px); and the avatar must still be VISIBLE and fully on
+     screen (Architecture → Top bar: it is the only route to Settings and Sign out below 920px, so
+     hiding it is never the fix). The .fab is read too — it hung 15px off the right edge, and that
+     was a symptom of the same overflow rather than a second bug, so a correct fix returns it to
+     right:304 (=320−16) with no change to .fab itself. iPhone 13 is the control: the ≤360px query
+     never fires at 390pt, so its avatar must still be 40px with 44px hit areas 6px apart. */
   if (want(30)) {
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const t = new Date();
@@ -3332,6 +3347,28 @@ const run = async () => {
         const txt = (el) => el.textContent.replace(/\s+/g, ' ').trim();
         const hero = document.querySelector('.hero');
         const links = [...document.querySelectorAll('.hero .hero-links .more')].map((b) => b.getBoundingClientRect());
+        /* The tap target is the box PLUS its ::after outset (a negative inset grows it). Read the
+           pseudo-element rather than assuming the slop, so a change to either half is visible. */
+        const hitOf = (el) => {
+          const b = el.getBoundingClientRect();
+          const cs = getComputedStyle(el, '::after');
+          const px = (v) => (v && v !== 'auto' ? parseFloat(v) : 0);
+          return { l: b.left + px(cs.left), r: b.right - px(cs.right),
+            t: b.top + px(cs.top), b2: b.bottom - px(cs.bottom) };
+        };
+        const de = document.documentElement;
+        const ctrls = [...document.querySelectorAll('.top-actions .iconbtn, .top-actions .avatar')];
+        const hits = ctrls.map((el) => { const h = hitOf(el);
+          return { label: el.getAttribute('aria-label') || String(el.className),
+            w: Math.round((h.r - h.l) * 10) / 10, h: Math.round((h.b2 - h.t) * 10) / 10,
+            l: Math.round(h.l * 10) / 10, r: Math.round(h.r * 10) / 10 }; });
+        let seam = -999;   /* worst adjacent gap: >0 means two hit areas overlap */
+        for (let i = 1; i < hits.length; i++) seam = Math.max(seam, hits[i - 1].r - hits[i].l);
+        const avatar = document.querySelector('.top-actions .avatar');
+        const av = avatar.getBoundingClientRect();
+        const brandEl = document.querySelector('.brand');
+        const bb = brandEl.getBoundingClientRect();
+        const actsBox = document.querySelector('.top-actions').getBoundingClientRect();
         return {
           tiles: document.querySelectorAll('.stats, .stat').length,
           chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
@@ -3340,6 +3377,15 @@ const run = async () => {
           num: rr('.hero .num'), main: rr('.hero .hero-main'), side: rr('.hero .hero-stats'),
           overflow: hero.scrollWidth - hero.clientWidth,
           links: links.map((b) => ({ top: Math.round(b.top), left: b.left, right: b.right, h: Math.round(b.height) })),
+          vw: de.clientWidth,
+          pageOverflow: de.scrollWidth - de.clientWidth,
+          barOverflow: (() => { const t = document.querySelector('.topbar'); return t.scrollWidth - t.clientWidth; })(),
+          hits, seam,
+          avatarBox: { w: Math.round(av.width), h: Math.round(av.height) },
+          avatarShown: getComputedStyle(avatar).display !== 'none' && getComputedStyle(avatar).visibility !== 'hidden' && av.width > 0,
+          fabRight: (() => { const f = document.querySelector('.fab'); return f ? Math.round(f.getBoundingClientRect().right) : null; })(),
+          brandClipped: brandEl.scrollWidth > brandEl.clientWidth,
+          brandSpare: Math.round((actsBox.left - bb.right) * 10) / 10,
         };
       });
       const tag = `[${dev}]`;
@@ -3365,6 +3411,65 @@ const run = async () => {
       /* the chevron used to wrap under the label at 320pt — one line of 12.5px text is ~17px tall */
       ok(`hero stats ${tag}: neither link wraps onto a second line`,
         m.links.every((l) => l.h < 26), JSON.stringify(m.links.map((l) => l.h)));
+      /* ---- the top bar's own row at this width (added 2026-10-11) ---- */
+      ok(`top bar ${tag}: the planner does not scroll sideways`, m.pageOverflow <= 0,
+        `vw=${m.vw} docOverflow=${m.pageOverflow} barOverflow=${m.barOverflow}`);
+      ok(`top bar ${tag}: the bar's own row fits inside it`, m.barOverflow <= 0, String(m.barOverflow));
+      ok(`top bar ${tag}: every top-bar control keeps a 44pt-tall tap target`,
+        m.hits.length === 3 && m.hits.every((x) => x.h >= 44 && x.w >= 42), JSON.stringify(m.hits));
+      ok(`top bar ${tag}: no two tap targets overlap`, m.seam <= 0, `worst seam=${m.seam} ${JSON.stringify(m.hits)}`);
+      /* Architecture -> Top bar: the avatar is the only route to Settings and Sign out below
+         920px, so a fix that hides it or pushes it off screen is not a fix. */
+      ok(`top bar ${tag}: the avatar is still visible`, m.avatarShown, JSON.stringify(m.avatarBox));
+      ok(`top bar ${tag}: and its whole tap target is on screen`,
+        m.hits[2] && m.hits[2].l >= 0 && m.hits[2].r <= m.vw, `${JSON.stringify(m.hits[2])} vw=${m.vw}`);
+      ok(`top bar ${tag}: the controls are ${dev === 'iPhone SE' ? '36' : '40'}px at this width`,
+        m.avatarBox.w === (dev === 'iPhone SE' ? 36 : 40) && m.avatarBox.h === m.avatarBox.w, JSON.stringify(m.avatarBox));
+      /* The FAB's overhang was a symptom: position:fixed resolved right:16px against a layout
+         viewport the overflowing bar had widened. Nothing in .fab changed, so this only passes
+         once the bar fits. */
+      ok(`top bar ${tag}: the add-shift button sits 16px inside the right edge`,
+        m.fabRight === m.vw - 16, `fabRight=${m.fabRight} vw=${m.vw}`);
+      /* The clip below is the guarantee against a sideways scroll; this is the cosmetic half it
+         would otherwise hide. The brand must still READ as "badgebudget", not "badgebudge...".
+         `brandSpare` is the room between the wordmark and .top-actions, 10px of which is the flex
+         gap -- it is printed so the next change to this row can see how much it is spending. */
+      ok(`top bar ${tag}: the wordmark is not ellipsised at this width`,
+        !m.brandClipped, `clipped=${m.brandClipped} spare=${m.brandSpare}`);
+      /* THE FONT-PROOF CHECK, and the one this section was missing.
+         The first version of the ≤360px fix summed to exactly 0 overflow here and was still 5px
+         over on the GitHub runner, because this sandbox has no route to fonts.googleapis.com and
+         lays the bar out in the fallback face while the runner gets real Bricolage Grotesque. So
+         an assertion that only ever measures ONE font proves nothing about the other, and §30's
+         own standing claim that "the fallback is wider, so a pass here is conservative" was
+         false in this direction.
+         Instead of measuring a second font, force the one flex item that can give to need more
+         room than the row has — a 2.2x brand stands in for any wider face — and assert the page
+         STILL does not scroll sideways. That passes only because `.brand{min-width:0}` plus the
+         clip lets it absorb the remainder, so it is a test of the backstop rather than of the
+         arithmetic. Deleting either half of that rule FAILs it.
+         SE only, and that is the correct scope rather than a gap: the ≤360px block is where the
+         row is tight, and at 390pt the bar already has ~167px of slack, so there is nothing for a
+         backstop to do and nothing to assert about one. */
+      if (dev === 'iPhone SE') {
+      const wide = await page.evaluate(() => {
+        const st = document.createElement('style');
+        st.textContent = '.brand{font-size:31px!important}';
+        document.head.appendChild(st);
+        const de = document.documentElement;
+        const brand = document.querySelector('.brand');
+        void de.scrollWidth;
+        const out = { over: de.scrollWidth - de.clientWidth,
+          clipped: brand.scrollWidth > brand.clientWidth,
+          avatarRight: Math.round(document.querySelector('.top-actions .avatar').getBoundingClientRect().right) };
+        st.remove();
+        return out;
+      });
+      ok(`top bar ${tag}: a font 2.2x wider than the brand still cannot scroll the page sideways`,
+        wide.over <= 0, `overflow=${wide.over} brandClipped=${wide.clipped}`);
+      ok(`top bar ${tag}: ...because the brand clips instead, and the avatar stays on screen`,
+        wide.clipped && wide.avatarRight <= m.vw, JSON.stringify(wide));
+      }
       const real = errors.filter((e) => !isExpectedNetwork(e));
       ok(`hero stats ${tag}: no page errors`, real.length === 0, real.join(' | '));
       await ctx.close();

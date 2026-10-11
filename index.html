@@ -531,14 +531,59 @@
     .hero .num{font-size:60px}
   }
   @media (max-width:919px){ .desk-only{display:none!important} }
-  /* Very small phones (≤360px, e.g. iPhone SE): the fixed-width top bar overflowed the viewport
-     and scrolled the page sideways, so the padding is tightened here. This block used to ALSO hide
-     the avatar as decorative — it can't any more: since 2026-09-13 the avatar is the account menu
-     and the only route to Settings and Sign out below 920px, so hiding it would strand an SE with
-     neither. Removing the gear and sign-out icon buttons freed ~96px, far more than the avatar
-     costs, so the overflow this block was written for is gone either way. */
+  /* Very small phones (≤360px, e.g. first-gen iPhone SE): the fixed-width top bar overflows the
+     viewport and scrolls the whole page sideways, so its row is tightened here. This block used to
+     ALSO hide the avatar as decorative — it can't any more: since 2026-09-13 the avatar is the
+     account menu and the only route to Settings and Sign out below 920px, so hiding it would
+     strand an SE with neither.
+     CORRECTING THIS COMMENT'S OWN CLAIM (2026-10-11): it used to end "removing the gear and
+     sign-out icon buttons freed ~96px … so the overflow this block was written for is gone either
+     way." That was false. Measured on the harness's first-gen iPhone SE profile, the planner at
+     320pt scrolled sideways by exactly 31px: padding 12+12, brand 100, gap 14, and a .top-actions
+     row of 223 (two 40px .iconbtns + the 73px signed-out "Sign in" + the 40px .avatar, three 10px
+     gaps) = 351. Nothing caught it because §3 only ever measured the avatar at 360pt.
+     The 31px comes off the row itself — never off the avatar — as: the bar's gap 14→10, the
+     actions' gap 10→6, the three 40px controls → 36px, and the "Sign in" pill's side padding
+     16→12. That is 351→~313, which fits inside the 320pt viewport with the right padding to
+     spare, and it drops the .fab back to right:304 as well — the FAB's own 15px overhang was a
+     SYMPTOM, not a second bug: position:fixed resolves right:16px against a layout viewport that
+     the overflowing bar had widened to 351.
+     The hit slop grows to keep the targets tappable at the smaller box: inset:-4px -3px makes each
+     control 42×44 rather than 36×36, and -3px horizontally rather than -4px is deliberate — at
+     gap:6px a 4px outset would make adjacent hit areas OVERLAP by 2px, so a tap in the seam would
+     land on whichever button paints last. At -3px they touch exactly and never overlap. Pinned by
+     tests/smoke.mjs §30, which asserts all of it on the SE profile and asserts iPhone 13 is
+     untouched (the query never fires at 390pt). */
   @media (max-width:360px){
-    .topbar{padding-left:12px;padding-right:12px}
+    .topbar{padding-left:10px;padding-right:10px;gap:10px}
+    .top-actions{gap:6px}
+    .iconbtn,.avatar{width:36px;height:36px}
+    .iconbtn::after,.avatar::after{inset:-4px -3px}
+    .top-actions .btn-sm{padding-left:12px;padding-right:12px}
+    /* The backstop, and the reason this block no longer depends on the arithmetic above adding
+       up. Everything in .top-actions is nowrap and fixed-width by design (they are tap targets),
+       so the only flex item that CAN give is the brand -- and by default it could not: a flex
+       item's min-width:auto pins it at min-content. `overflow:hidden` is what unpins it, because
+       the automatic minimum size of a flex item whose overflow is not `visible` is ZERO; it then
+       absorbs whatever the row is short by and ellipsises rather than letting the page scroll.
+       CI proved that is not hypothetical: the first version of this fix summed to exactly 0 on
+       the sandbox's fallback face and was still 5px over on the runner, which reaches
+       fonts.googleapis.com and so lays the bar out in real Bricolage Grotesque.
+       14px -> 12px and the clip do DIFFERENT jobs, which is why both are here. The clip
+       guarantees the page never scrolls sideways, whatever a face measures. The 12px is what
+       keeps the brand from ellipsising to "badgebudge..." on every 320pt phone while it does so:
+       measured on the fallback face, 14px leaves 0px of spare between the brand and
+       .top-actions, 13px leaves ~5px and 12px leaves ~12px, and real Bricolage ran ~5px wider
+       than the fallback on the runner — so 12px is the first size with real margin under either
+       face. Reverting to 14px alone does NOT fail a test (the clip absorbs it); it just clips the
+       wordmark. That is recorded rather than asserted because this sandbox cannot load the face
+       the choice is about.
+       `min-width:0` was in the first draft of this rule and is DELETED on purpose, not forgotten:
+       it is redundant with the overflow above, and keeping both made the test unfalsifiable --
+       deleting either one alone still passed, because each is independently sufficient. One rule,
+       one break. tests/smoke.mjs §30 forces a 2.2x brand and asserts the page still does not
+       scroll; removing `overflow:hidden` FAILs it. */
+    .brand{font-size:12px;overflow:hidden;text-overflow:ellipsis}
   }
 
   /* Solid-fill fallback for browsers without backdrop-filter support — every glass
