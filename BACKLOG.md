@@ -1987,18 +1987,50 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   “removing the gear and sign-out icon buttons freed ~96px … so the overflow this block was written
   for is gone either way.” It was not gone; it was 31 px. The measured arithmetic is written down
   there now instead of the claim.
+  **(d) CI caught the first version of this fix, and the reason is the most useful thing in this
+  entry.** That version summed to **exactly 0** overflow on the harness and was still **5 px over
+  on the GitHub runner**. The sandbox has no route to `fonts.googleapis.com`, so it lays the bar
+  out in the fallback face; the runner's network is open, so it lays it out in real **Bricolage
+  Grotesque**, which measured ~5 px wider. **§30's own standing comment — “the fallback face is
+  wider than Bricolage, so a pass here is conservative for the real font” — is false in this
+  direction**, and an arithmetic fix that fits one face by 0 px proves nothing about the other.
+  So the fix stopped being arithmetic. `.brand{overflow:hidden;text-overflow:ellipsis}` makes the
+  row **structurally** unable to overflow: everything in `.top-actions` is a fixed-width tap
+  target, so the wordmark is the only flex item that can give, and it could not — a flex item's
+  `min-width:auto` pins it at min-content, and **the automatic minimum size of a flex item whose
+  overflow is not `visible` is zero**. With the clip it absorbs whatever the row is short by and
+  ellipsises instead of scrolling the page. The brand also goes 14→12 px, which is a **different
+  job**: the clip guarantees no sideways scroll under any face, the 12 px is what stops the
+  wordmark ellipsising to “badgebudge…” while it does so (fallback spare between the brand and
+  `.top-actions`: 0 px at 14, ~5 at 13, ~10 at 12, against the runner's ~5 px of extra width).
+  **(e) And the first draft of the backstop's own test was unfalsifiable — caught by negative
+  testing, which is the process working rather than failing.** The rule shipped as
+  `min-width:0;overflow:hidden;…`, and deleting **either** property alone still passed, because
+  each is independently sufficient to unpin the item. Two redundant halves cannot be negative
+  tested. `min-width:0` is deleted on purpose; one rule, one break. That is the §33/§35/§36/§37
+  lesson in a new shape: not a check that reads the wrong thing, but **a fix with two causes for
+  one effect**.
   **Verification.** Extends §30 rather than opening a §40 — §30 already drives both the iPhone SE and
   the iPhone 13 profiles on the planner, and the end of `tests/smoke.mjs` is occupied by open PR
   #171 (which inserts 100 lines at 4984), so appending there would have conflicted with live human
-  work. 8 new assertions × 2 profiles = **16**; suite 694 → **710 passed / 0 failed**.
-  `check_build.mjs` 13/13, `test_groom_seed.mjs` 33/33, `core.test.mjs` 71/71.
-  **Negative-tested with five deliberate breaks in a scratch copy** (never the working tree), each
-  failing the right assertions and only those: (1) revert the whole row fix → 4 FAIL on SE, iPhone
-  13 untouched; (2) shrink the controls but leave `inset:-2px` → only the 44 pt assertion FAILs;
-  (3) symmetric `inset:-4px` at `gap:6px` → only the overlap assertion FAILs (`seam=+2`);
-  (4) “fix” it by `.avatar{display:none}` → the visibility, on-screen, size and tap-target
-  assertions all FAIL; (5) `.fab{right:20px}` instead of fixing the bar → only the FAB assertion
-  FAILs (`fabRight=300`).
+  work. **20 new assertions** (9 on each profile, plus the two backstop ones on the SE, where the
+  ≤360 px block is — at 390 pt the bar has ~167 px of slack and there is nothing for a backstop to
+  do); suite 694 → **714 passed / 0 failed**. `check_build.mjs` 13/13, `test_groom_seed.mjs` 33/33,
+  `core.test.mjs` 71/71.
+  The backstop is tested **without** the second font, which is the point: the drive forces a 2.2×
+  brand to stand in for any wider face and asserts the page still does not scroll sideways.
+  **Negative-tested with seven deliberate breaks in a scratch copy** (never the working tree), each
+  failing the right assertions and only those: (1) revert the whole row fix → 6 FAIL on SE, iPhone
+  13 untouched; (2) shrink the controls but leave `inset:-2px` → only the 44 pt assertion;
+  (3) symmetric `inset:-4px` at `gap:6px` → only the overlap assertion (`seam=+2`);
+  (4) “fix” it by `.avatar{display:none}` → visibility, on-screen, size and tap-target all FAIL;
+  (5) `.fab{right:20px}` instead of fixing the bar → only the FAB assertion (`fabRight=300`);
+  (6) remove `overflow:hidden` from `.brand` → only the two backstop assertions (`overflow=108`);
+  (7) `.brand{font-size:20px}` → only the wordmark-not-ellipsised assertion.
+  **One thing deliberately NOT asserted, and it is the honest gap:** whether real Bricolage at
+  12 px clips on a 320 pt phone. This sandbox cannot load that face, so the test measures the
+  fallback and the clip covers the difference — the failure mode if 12 px is still too wide is a
+  shortened wordmark, never a scrolling page. One glance at a real iPhone SE would settle it.
 - 2026-10-10 — **Docs only: field evidence against the pay model.** Two documents the owner supplied (a
   Philadelphia PD FY2026 pay schedule and a redacted California police stub) and three research
   passes (police, fire/EMS, nurse) are written up as `docs/pay-rule-patterns.md` (g), with links.

@@ -3366,6 +3366,9 @@ const run = async () => {
         for (let i = 1; i < hits.length; i++) seam = Math.max(seam, hits[i - 1].r - hits[i].l);
         const avatar = document.querySelector('.top-actions .avatar');
         const av = avatar.getBoundingClientRect();
+        const brandEl = document.querySelector('.brand');
+        const bb = brandEl.getBoundingClientRect();
+        const actsBox = document.querySelector('.top-actions').getBoundingClientRect();
         return {
           tiles: document.querySelectorAll('.stats, .stat').length,
           chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
@@ -3381,6 +3384,8 @@ const run = async () => {
           avatarBox: { w: Math.round(av.width), h: Math.round(av.height) },
           avatarShown: getComputedStyle(avatar).display !== 'none' && getComputedStyle(avatar).visibility !== 'hidden' && av.width > 0,
           fabRight: (() => { const f = document.querySelector('.fab'); return f ? Math.round(f.getBoundingClientRect().right) : null; })(),
+          brandClipped: brandEl.scrollWidth > brandEl.clientWidth,
+          brandSpare: Math.round((actsBox.left - bb.right) * 10) / 10,
         };
       });
       const tag = `[${dev}]`;
@@ -3425,6 +3430,46 @@ const run = async () => {
          once the bar fits. */
       ok(`top bar ${tag}: the add-shift button sits 16px inside the right edge`,
         m.fabRight === m.vw - 16, `fabRight=${m.fabRight} vw=${m.vw}`);
+      /* The clip below is the guarantee against a sideways scroll; this is the cosmetic half it
+         would otherwise hide. The brand must still READ as "badgebudget", not "badgebudge...".
+         `brandSpare` is the room between the wordmark and .top-actions, 10px of which is the flex
+         gap -- it is printed so the next change to this row can see how much it is spending. */
+      ok(`top bar ${tag}: the wordmark is not ellipsised at this width`,
+        !m.brandClipped, `clipped=${m.brandClipped} spare=${m.brandSpare}`);
+      /* THE FONT-PROOF CHECK, and the one this section was missing.
+         The first version of the ≤360px fix summed to exactly 0 overflow here and was still 5px
+         over on the GitHub runner, because this sandbox has no route to fonts.googleapis.com and
+         lays the bar out in the fallback face while the runner gets real Bricolage Grotesque. So
+         an assertion that only ever measures ONE font proves nothing about the other, and §30's
+         own standing claim that "the fallback is wider, so a pass here is conservative" was
+         false in this direction.
+         Instead of measuring a second font, force the one flex item that can give to need more
+         room than the row has — a 2.2x brand stands in for any wider face — and assert the page
+         STILL does not scroll sideways. That passes only because `.brand{min-width:0}` plus the
+         clip lets it absorb the remainder, so it is a test of the backstop rather than of the
+         arithmetic. Deleting either half of that rule FAILs it.
+         SE only, and that is the correct scope rather than a gap: the ≤360px block is where the
+         row is tight, and at 390pt the bar already has ~167px of slack, so there is nothing for a
+         backstop to do and nothing to assert about one. */
+      if (dev === 'iPhone SE') {
+      const wide = await page.evaluate(() => {
+        const st = document.createElement('style');
+        st.textContent = '.brand{font-size:31px!important}';
+        document.head.appendChild(st);
+        const de = document.documentElement;
+        const brand = document.querySelector('.brand');
+        void de.scrollWidth;
+        const out = { over: de.scrollWidth - de.clientWidth,
+          clipped: brand.scrollWidth > brand.clientWidth,
+          avatarRight: Math.round(document.querySelector('.top-actions .avatar').getBoundingClientRect().right) };
+        st.remove();
+        return out;
+      });
+      ok(`top bar ${tag}: a font 2.2x wider than the brand still cannot scroll the page sideways`,
+        wide.over <= 0, `overflow=${wide.over} brandClipped=${wide.clipped}`);
+      ok(`top bar ${tag}: ...because the brand clips instead, and the avatar stays on screen`,
+        wide.clipped && wide.avatarRight <= m.vw, JSON.stringify(wide));
+      }
       const real = errors.filter((e) => !isExpectedNetwork(e));
       ok(`hero stats ${tag}: no page errors`, real.length === 0, real.join(' | '));
       await ctx.close();
