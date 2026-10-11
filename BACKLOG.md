@@ -1170,7 +1170,10 @@ and the push P0 it pointed at was fixed the same day.
   Calendar sync). Dedicated, not nightly: it is the import commit path and moves the hero, so it
   wants the equality check.
 - [ ] **FICA is charged on pre-tax health premiums — take-home understated (found 2026-10-10,
-  verified three ways).** `harness:drivable`, **wage-core** (`computeNet`). Section 125 health, dental and
+  verified three ways).** **BUILT 2026-10-11 (`docs/fica-health-premium-spec.md`), PR awaiting the
+  owner's merge** — wage-core, so no auto-merge. Close this once `deploy_watch.mjs` reads `LIVE`.
+  Still open after it ships: the paystub import does not read medical lines (no fixture carries
+  one), and the Social Security half was confirmed from the IRS rule, not a stub. `harness:drivable`, **wage-core** (`computeNet`). Section 125 health, dental and
   vision premiums are exempt from Social Security and Medicare; 401(k)/403(b)/457(b) deferrals are not.
   `computeNet` keeps `ficaBase = gross` and has ONE `pretaxDeductions` field ("Pre-tax · 401k, health"),
   so a nurse who enters her health premium there pays 7.65% of it in phantom FICA — ~$20 a check on a
@@ -1958,6 +1961,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-11 — **FICA on pre-tax health premiums (dedicated wage-core session; PR waits for the
+  owner's merge).** A new `pretaxHealth` field (Section 125 health/dental/vision, FSA, HSA) beside
+  `pretaxDeductions`, which keeps its key and becomes the retirement bucket. `computeNet` now takes
+  FICA on gross − health and income tax on gross − both, never collapsed. A blob without the field
+  reads $0 premium, so every existing figure is unchanged (five hand-written pre-change outputs,
+  key for key). The California stub's Medicare reproduces to the cent: 1.45% × ($9,820.04 −
+  $266.03) = $138.53. Settings shows Retirement (pre-tax) and Health (pre-tax). The Breakdown shows
+  `Pre-tax · retirement` and `Pre-tax · health, dental, vision`. A note warns when a custom FICA %
+  would count the premium twice. The paystub import is unchanged: no fixture has a medical line.
+  `keepRatioOf` stays rates-only. Core 71 → 83, smoke §40 (+11), and every new assertion was
+  negative-tested. `tests/equality.mjs` against badgebudget.com: see the PR.
 - 2026-10-11 — **The whole planner scrolled sideways by 31 px on a 320 pt phone, and the fix is in
   the top bar's row — never the avatar.** Nightly loop; `index.html` CSS + `tests/smoke.mjs` §30
   only, no JS, no wage core, no new string.

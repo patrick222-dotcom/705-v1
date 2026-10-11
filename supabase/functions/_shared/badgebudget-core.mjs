@@ -247,6 +247,9 @@ function sanitizeData(d){
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
   if(d.posttaxDeductions!=null) setNum('posttaxDeductions', d.posttaxDeductions);
+  /* Section 125 health/dental/vision premiums (2026-10-11). Kept only when finite and >= 0 -- a
+     negative premium would RAISE the FICA base, so this is stricter than pretaxDeductions. */
+  if(d.pretaxHealth!=null){ const n=Number(d.pretaxHealth); if(isFinite(n) && n>=0) out.pretaxHealth=n; }
   /* Whitelisted like estimateMode and workPeriod two lines down. computeNet only knows
      'standard' and 'percent'; any other string fell through to fica = 0, overstating take-home
      by ~7.65% of gross with nothing shown to say so (~$184 on a $2,400 period). The <select>
@@ -869,10 +872,15 @@ function computeNet(grossIn, t){
   const taxable    = toCents(isSplit ? grossIn.taxable    : grossIn);
   const nonTaxable = toCents(isSplit ? grossIn.nonTaxable : 0);
   const pretax = toCents(t.pretaxDeductions), posttax = toCents(t.posttaxDeductions);
-  // FICA (Social Security/Medicare) is levied on gross wages; pre-tax 401k/403b
-  // deferrals only reduce income-tax wages. Keep the two bases separate.
-  const ficaBase = taxable;
-  const incomeTaxBase = Math.max(0, taxable - pretax);
+  const health = Math.max(0, toCents(t.pretaxHealth));   // a negative premium never raises a base
+  /* Two pre-tax buckets, two bases -- never collapse them (2026-10-11, IRS Pub 15 / 15-B).
+     pretaxDeductions is RETIREMENT: 401(k)/403(b)/457(b) deferrals skip income tax but are still
+     FICA wages. pretaxHealth is Section 125 health/dental/vision (and health FSA, payroll HSA):
+     it skips income tax AND Social Security/Medicare. A real stub prints Medicare =
+     1.45% x ($9,820.04 - $266.03) = $138.53 to the cent. Written as a subtraction of a clamped
+     amount so that with no premium ficaBase is `taxable` exactly, as it was. */
+  const ficaBase = taxable - Math.min(health, Math.max(0, taxable));
+  const incomeTaxBase = Math.max(0, taxable - pretax - health);
   let fica = 0;
   if(t.ficaType==='standard') fica = roundCents(ficaBase*0.0765);
   else if(t.ficaType==='percent') fica = roundCents(ficaBase*((parseFloat(t.ficaPct)||0)/100));
@@ -882,16 +890,18 @@ function computeNet(grossIn, t){
   (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent'
     ? roundCents(incomeTaxBase*((parseFloat(w.amount)||0)/100))
     : toCents(parseFloat(w.amount)||0); });
-  const ded = pretax+fica+fed+st+posttax+cw;
+  const ded = pretax+health+fica+fed+st+posttax+cw;
   const net = Math.max(0, taxable-ded) + nonTaxable;
-  // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum.
+  // Cap displayed flat pre/post at what gross can absorb so Breakdown rows still sum. Capped in
+  // display order (retirement, health, post-tax); with no premium every row is what it was.
   const flatCapTotal = Math.max(0, taxable - (fica+fed+st+cw));
-  const dispPre  = Math.min(pretax, flatCapTotal);
-  const dispPost = Math.min(posttax, Math.max(0, flatCapTotal - dispPre));
+  const dispPre    = Math.min(pretax, flatCapTotal);
+  const dispHealth = Math.min(health, Math.max(0, flatCapTotal - dispPre));
+  const dispPost   = Math.min(posttax, Math.max(0, flatCapTotal - dispPre - dispHealth));
   const total = taxable + nonTaxable;
   return {gross:fromCents(taxable), nonTaxable:fromCents(nonTaxable), total:fromCents(total),
     fica:fromCents(fica), fed:fromCents(fed), st:fromCents(st), cw:fromCents(cw),
-    ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), post:fromCents(dispPost),
+    ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), health:fromCents(dispHealth), post:fromCents(dispPost),
     pct: total>0 ? Math.round(net/total*100) : 0};
 }
 
@@ -930,7 +940,10 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
    Hoisted out of App 2026-10-07 for the same reason as periodPaycheck. Percent custom
    withholdings are a marginal rate exactly like fed/state and count here; flat-dollar ones are a
-   per-paycheck amount, not a rate, so they stay out on purpose (council #8 / cross-surface-00). */
+   per-paycheck amount, not a rate, so they stay out on purpose (council #8 / cross-surface-00).
+   Pre-tax amounts stay out for the same reason: a retirement deferral or a health premium
+   (pretaxHealth, which also lowers the FICA base in computeNet) is a flat dollar figure per
+   paycheck, not a rate, so this preview stays rates-only. The hero prices them exactly. */
 function keepRatioOf(t){
   const ficaForPreview = t.ficaType==='standard'?7.65:(t.ficaType==='percent'?(parseFloat(t.ficaPct)||0):0);
   const pctWithholdings = (t.customWithholdings||[]).reduce((a,w)=>
@@ -1017,7 +1030,7 @@ const OB_SHIFT_LENGTHS = [8,10,12];
    makeJob) and identical across presets; applyPersona never writes them. */
 const PERSONA_PRESETS = {
   healthcare: {
-    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    baseRate:65.15, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, pretaxHealth:0, posttaxDeductions:0,
     ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
     mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included', differentials:DIFF_DEFAULTS,
     sampleMix:'rotating', extras:['diffs','holiday'], cards:{nursegrid:true},
@@ -1026,7 +1039,7 @@ const PERSONA_PRESETS = {
      for non-nurse differentials. They cannot move this persona's first estimate (its sample is
      all day shifts) and the estimate banner says to sharpen them. */
   other: {
-    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, posttaxDeductions:0,
+    baseRate:25, federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:0, pretaxHealth:0, posttaxDeductions:0,
     ficaType:'standard', ficaPct:7.65, workPeriod:'40', otMethod:'regular-rate',
     mealBreakMins:DEFAULT_MEAL_MINS, mealBreakMode:'included',
     differentials:{...DIFF_DEFAULTS,

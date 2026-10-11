@@ -105,7 +105,7 @@ ok('keep: never negative', C.keepRatioOf({ ...taxes, federalTaxRate: 120 }) === 
    resetToDefaults, before they were pointed at the preset). Written out by hand on purpose: a
    test comparing the preset to DIFF_DEFAULTS or to itself could never fail. */
 const TODAY_DEFAULTS = {
-  baseRate: 65.15, federalTaxRate: 12, stateTaxRate: 2.5, pretaxDeductions: 0, posttaxDeductions: 0,
+  baseRate: 65.15, federalTaxRate: 12, stateTaxRate: 2.5, pretaxDeductions: 0, pretaxHealth: 0, posttaxDeductions: 0,
   ficaType: 'standard', ficaPct: 7.65, workPeriod: '40', otMethod: 'regular-rate',
   mealBreakMins: 30, mealBreakMode: 'included',
   differentials: {
@@ -135,7 +135,7 @@ const TODAY_DEFAULTS = {
     C.personaPreset('police') === H && C.personaPreset(undefined) === H && C.personaPreset('other') === C.PERSONA_PRESETS.other);
   const O = C.PERSONA_PRESETS.other;
   ok('persona: Other hourly shares the user-level taxes (a persona never moves tax)',
-    ['federalTaxRate', 'stateTaxRate', 'pretaxDeductions', 'posttaxDeductions', 'ficaType', 'ficaPct']
+    ['federalTaxRate', 'stateTaxRate', 'pretaxDeductions', 'pretaxHealth', 'posttaxDeductions', 'ficaType', 'ficaPct']
       .every((k) => O[k] === H[k]));
 }
 
@@ -382,6 +382,84 @@ ok('pay: a blank, negative or junk salary is no rate at all',
   ok('sanitize: "flagged" survives the whitelist', C.sanitizeData({ workPeriod: 'flagged' }).workPeriod === 'flagged');
   ok('sanitize: a pre-jobs blob\'s migrated job carries the custom period',
     C.sanitizeData({ workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14 }).jobs[0].otPeriodHours === 86);
+}
+
+/* ---- FICA on pre-tax health premiums (2026-10-11, docs/fica-health-premium-spec.md) ---------
+   Section 125 health/dental/vision premiums skip Social Security and Medicare; 401(k)/403(b)/
+   457(b) deferrals do not. pretaxDeductions stays the retirement bucket; pretaxHealth is new. */
+{
+  const t0 = { ficaType: 'standard', federalTaxRate: 0, stateTaxRate: 0, pretaxDeductions: 0,
+    posttaxDeductions: 0, customWithholdings: [] };
+  /* The California police stub, period 2024-11-11..24 (docs/pay-rule-patterns.md (g)): a
+     Medicare-only department, so FICA is a custom 1.45%. The printed line is $138.53. */
+  const ca = { ...t0, ficaType: 'percent', ficaPct: 1.45 };
+  const stub = C.computeNet(9820.04, { ...ca, pretaxHealth: 266.03 });
+  ok('fica: the California stub\'s Medicare to the cent — 1.45% × ($9,820.04 − $266.03) = $138.53',
+    stub.fica === 138.53, `got ${stub.fica}`);
+  const wrongBucket = C.computeNet(9820.04, { ...ca, pretaxDeductions: 266.03 });
+  ok('fica: the same $266.03 in the retirement bucket stays FICA wages ($142.39, the old figure)',
+    wrongBucket.fica === 142.39, `got ${wrongBucket.fica}`);
+
+  const ret = C.computeNet(1000, { ...t0, federalTaxRate: 10, stateTaxRate: 5, pretaxDeductions: 100 });
+  ok('fica: retirement money is still FICA-taxed (7.65% of $1,000), income tax on $900',
+    ret.fica === 76.5 && ret.fed === 90 && ret.st === 45 && ret.net === 688.5,
+    `fica=${ret.fica} fed=${ret.fed} st=${ret.st} net=${ret.net}`);
+  const hl = C.computeNet(1000, { ...t0, federalTaxRate: 10, stateTaxRate: 5, pretaxHealth: 100 });
+  ok('fica: a health premium skips both — FICA on $900 ($68.85), income tax on $900',
+    hl.fica === 68.85 && hl.fed === 90 && hl.st === 45 && hl.net === 696.15 && hl.health === 100 && hl.pre === 0,
+    `fica=${hl.fica} fed=${hl.fed} st=${hl.st} net=${hl.net} health=${hl.health}`);
+  const both = C.computeNet(2000, { ...t0, federalTaxRate: 10, pretaxDeductions: 150, pretaxHealth: 200,
+    customWithholdings: [{ type: 'percent', amount: 2 }] });
+  /* FICA base 1,800; income-tax base 1,650: the two bases stay apart. */
+  ok('fica: both buckets at once keep two bases — FICA on gross−health, income tax on gross−both',
+    both.fica === 137.7 && both.fed === 165 && both.cw === 33 && both.pre === 150 && both.health === 200,
+    `fica=${both.fica} fed=${both.fed} cw=${both.cw} pre=${both.pre} health=${both.health}`);
+  ok('fica: a negative premium can never raise a base',
+    JSON.stringify(C.computeNet(1000, { ...t0, pretaxHealth: -500 })) === JSON.stringify(C.computeNet(1000, t0)));
+
+  /* An existing blob prices identically. Each literal is the pre-change computeNet output for the
+     fixture, captured from the extracted module at 3532234 before any edit, written out by hand
+     so the comparison cannot be against itself. The only new key is `health`, and it is 0. */
+  const BEFORE = [
+    [1000, { ficaType: 'standard', federalTaxRate: 12, stateTaxRate: 5, pretaxDeductions: 100, posttaxDeductions: 50, customWithholdings: [] },
+      {"gross":1000,"nonTaxable":0,"total":1000,"fica":76.5,"fed":108,"st":45,"cw":0,"ded":379.5,"net":620.5,"pre":100,"post":50,"pct":62}],
+    [1590.94, { ficaType:'standard', federalTaxRate:11, stateTaxRate:4.25, pretaxDeductions:95.5, posttaxDeductions:12.75, customWithholdings:[{type:'percent',amount:2.5},{type:'dollar',amount:33.33}] },
+      {"gross":1590.94,"nonTaxable":0,"total":1590.94,"fica":121.71,"fed":164.5,"st":63.56,"cw":70.72,"ded":528.74,"net":1062.2,"pre":95.5,"post":12.75,"pct":67}],
+    [2600, { ficaType:'percent', ficaPct:6.2, federalTaxRate:12, stateTaxRate:3, pretaxDeductions:200, posttaxDeductions:75, customWithholdings:[{type:'percent',amount:5}] },
+      {"gross":2600,"nonTaxable":0,"total":2600,"fica":161.2,"fed":288,"st":72,"cw":120,"ded":916.2,"net":1683.8,"pre":200,"post":75,"pct":65}],
+    [0, { ficaType:'standard', federalTaxRate:12, stateTaxRate:2.5, pretaxDeductions:260, posttaxDeductions:40, customWithholdings:[] },
+      {"gross":0,"nonTaxable":0,"total":0,"fica":0,"fed":0,"st":0,"cw":0,"ded":300,"net":0,"pre":0,"post":0,"pct":0}],
+    [{taxable:3096, nonTaxable:1442}, { ficaType:'standard', federalTaxRate:10, stateTaxRate:3, pretaxDeductions:150, posttaxDeductions:0, customWithholdings:[] },
+      {"gross":3096,"nonTaxable":1442,"total":4538,"fica":236.84,"fed":294.6,"st":88.38,"cw":0,"ded":769.82,"net":3768.18,"pre":150,"post":0,"pct":83}],
+  ];
+  const moved = [];
+  BEFORE.forEach(([g, t, want], i) => {
+    // through the sanitizer too, as a saved blob would arrive: no pretaxHealth key at all
+    const s = C.sanitizeData({ ...t, ficaWithholdingType: t.ficaType, ficaWithholdingPercent: t.ficaPct });
+    const got = C.computeNet(g, { ...t, pretaxHealth: s.pretaxHealth });
+    const extra = Object.keys(got).filter((k) => !(k in want));
+    if (Object.keys(want).some((k) => got[k] !== want[k]) || extra.join() !== 'health' || got.health !== 0)
+      moved.push(`#${i}: ${JSON.stringify(got)}`);
+  });
+  ok('fica: a blob saved before the field existed prices identically, key for key (5 fixtures)',
+    moved.length === 0, moved.join(' | '));
+
+  /* The Breakdown still sums when the deductions run past what gross can absorb. */
+  /* $300 gross: FICA on $100 = $7.65, no income tax; $292.35 is left for the flat rows, so
+     retirement shows $150, health is capped at $142.35 and post-tax at $0. */
+  const cap = C.computeNet(300, { ...t0, federalTaxRate: 10, pretaxDeductions: 150, pretaxHealth: 200, posttaxDeductions: 100 });
+  const rows = Math.round((cap.pre + cap.health + cap.post + cap.fica + cap.fed + cap.st + cap.cw + cap.net) * 100);
+  ok('fica: capped rows (retirement, health, post-tax) + taxes + net = gross',
+    rows === 30000 && cap.pre === 150 && cap.health === 142.35 && cap.post === 0 && cap.fica === 7.65, JSON.stringify(cap));
+
+  /* The sanitizer: finite and >= 0 only. */
+  const sv = (v) => C.sanitizeData({ pretaxHealth: v }).pretaxHealth;
+  ok('sanitize: keeps a premium (number or numeric string)', sv(266.03) === 266.03 && sv('50') === 50 && sv(0) === 0);
+  ok('sanitize: drops a negative, NaN, junk or infinite premium',
+    [-5, NaN, 'abc', Infinity].every((v) => sv(v) === undefined), [-5, NaN, 'abc', Infinity].map(sv).join(','));
+  ok('sanitize: a blob without the field carries no premium', !('pretaxHealth' in C.sanitizeData({ pretaxDeductions: 100 })));
+  ok('fica: keepRatioOf stays rates-only — a premium does not move the preview ratio',
+    C.keepRatioOf({ ...t0, federalTaxRate: 12, stateTaxRate: 3, pretaxHealth: 266 }) === C.keepRatioOf({ ...t0, federalTaxRate: 12, stateTaxRate: 3 }));
 }
 
 console.log(`\n==== core: ${pass} passed / ${fail} failed ====`);

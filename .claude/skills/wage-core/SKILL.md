@@ -89,15 +89,21 @@ pinned by an assertion in `tests/smoke.mjs`:
   multiplier, matching the legacy `overtime` shift type.
 - **`bonusType:'custom'` is a flat amount, not per-hour.** `custom` zeroes `perHr` and adds
   `customBonus` once.
-- **FICA is levied on gross; income tax on gross minus pre-tax.** `computeNet` keeps
-  `ficaBase = gross` and `incomeTaxBase = max(0, gross - pretax)` separate. Collapsing them
-  is the single easiest way to silently overstate take-home. **Known to be half wrong
-  (2026-10-10):** right for 401(k)/403(b)/457(b) deferrals, wrong for Section 125 health
-  premiums, which are FICA-exempt — a real stub shows Medicare = 1.45% × (gross − health
-  premium) to the cent. The fix splits the pre-tax field, never collapses the two bases;
-  see `BACKLOG.md` → "FICA is charged on pre-tax health premiums".
-- **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispPost`
-  are display-only; `net` uses the uncapped figures.
+- **FICA is levied on gross minus pre-tax health premiums; income tax on gross minus BOTH pre-tax
+  buckets** (corrected 2026-10-11). There are two pre-tax fields because the IRS taxes them
+  differently (Pub 15 / 15-B): `pretaxDeductions` is **retirement** (401(k)/403(b)/457(b)), which
+  skips income tax but is still FICA wages; `pretaxHealth` is **Section 125 health/dental/vision**
+  (plus health FSA, payroll HSA), which skips income tax *and* Social Security/Medicare.
+  `computeNet` keeps `ficaBase = gross − health` and `incomeTaxBase = max(0, gross − retirement −
+  health)` separate. Collapsing them in either direction is the single easiest way to silently
+  misstate take-home: moving retirement into the FICA base overstates it, putting health back into
+  the FICA base understates it. A real California stub pins it: Medicare = 1.45% × ($9,820.04 −
+  $266.03) = **$138.53** to the cent (`tests/core.test.mjs`). With no premium, `ficaBase` is
+  `gross` exactly, which is why a blob saved before the field existed prices identically.
+  `keepRatioOf` stays rates-only: a premium is a flat dollar figure, not a rate. Spec:
+  `docs/fica-health-premium-spec.md`.
+- **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispHealth`/
+  `dispPost` are display-only, capped in that order; `net` uses the uncapped figures.
 
 ## The protocol
 

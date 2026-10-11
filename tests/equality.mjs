@@ -67,13 +67,22 @@ const CASES = [
   ['48-hour week, 8/80', { ...base(), shifts: WEEK48, workPeriod: '8-80' }],
   ['48-hour week, base-plus-diff', { ...base(), shifts: WEEK48, otMethod: 'base-plus-diff' }],
   ['stray custom fields on the 40-hour rule', { ...base(), shifts: WEEK48, otPeriodHours: 10, otPeriodDays: 7, otPeriodStart: PPS }],
-  /* INTENDED differences, named before the first run: the deployed build does not know these two
-     values, its sanitizer drops them, and it prices both as the 40-hour week. */
-  ['48-hour week, only overtime I mark', { ...base(), shifts: WEEK48, workPeriod: 'flagged' },
-    'intended: deployed adds the 40-hour premium; local adds none and says why'],
-  ['48-hour week, 86 in 14 days', { ...base(), shifts: WEEK48, workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14, otPeriodStart: PPS },
-    'intended: deployed adds the 40-hour premium; local adds none (48 h is under 86)'],
+  /* Named as intended differences in session 2's run; session 2 (7aa590a) is live since, so from
+     2026-10-11 both must come back IDENTICAL like every other case. */
+  ['48-hour week, only overtime I mark', { ...base(), shifts: WEEK48, workPeriod: 'flagged' }],
+  ['48-hour week, 86 in 14 days', { ...base(), shifts: WEEK48, workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14, otPeriodStart: PPS }],
+  /* FICA on pre-tax health premiums (2026-10-11, docs/fica-health-premium-spec.md). Named before
+     the first run: the deployed sanitizer drops pretaxHealth, so it prices this blob with no
+     premium at all; local takes $266.03 out of both the FICA and the income-tax base. */
+  ['health premium', base({ pretaxDeductions: 200, pretaxHealth: 266.03 }),
+    'intended: deployed ignores the premium; local deducts it and charges no FICA or income tax on it'],
 ];
+
+/* Text changes that are NOT figure changes, named before the run and applied to the DEPLOYED
+   side only, so every figure is still compared byte for byte. One so far: the Breakdown's pre-tax
+   row became the retirement bucket when health premiums got their own (2026-10-11). */
+const RENAMES = [['Pre-tax · 401k, health', 'Pre-tax · retirement']];
+const renamed = (rows) => rows && rows.map((r) => RENAMES.reduce((t, [from, to]) => t.split(from).join(to), r));
 
 
 const readMoney = async (page) => page.evaluate(() => {
@@ -144,9 +153,11 @@ const run = async () => {
   let diffs = 0, intendedSame = 0;
   for (const [name, seed, intended] of CASES) {
     const L = await grab(a.url, seed);
-    const D = await grab(b.url, seed);
+    const D0 = await grab(b.url, seed);
+    const D = { ...D0, rows: renamed(D0.rows) };
     const same = JSON.stringify(L) === JSON.stringify(D);
     console.log(`\n--- ${name} --- ${same ? 'IDENTICAL' : 'DIFFERS'}${intended ? `  (${intended})` : ''}`);
+    if (JSON.stringify(D0.rows) !== JSON.stringify(D.rows)) console.log(`  (named label rename applied to the deployed rows: ${RENAMES.map((r) => r.join(' -> ')).join('; ')})`);
     /* A case named as an intended difference that comes back IDENTICAL is a failure too: the
        change it was meant to show did not reach the screen. */
     if (intended && same) intendedSame++;
