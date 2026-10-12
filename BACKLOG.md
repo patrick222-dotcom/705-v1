@@ -781,6 +781,54 @@ and the push P0 it pointed at was fixed the same day.
   27** — the four syncs tonight were all `200`, and `icalFailureDetail` has still never put a
   status code in a production row.
 
+### P2 (new, groom 2026-10-12)
+- [ ] **`deploy_watch.mjs` printed `LIVE` while badgebudget.com was still serving the PREVIOUS
+  commit, and it did it to this run tonight** — `harness:drivable` (script-level), and it goes
+  near the top of P2 because this is the one tool the deploy ritual trusts to prove a merge
+  shipped. Found by accident at 08:51:38 UTC, 24 seconds after #175 merged: the watch reported
+  `deploy-watch: LIVE` with `index.html: serving 81c1954 (2026-10-11)` — the **pre-merge** commit.
+  It was telling the truth about the bytes and the wrong thing about the question: the served
+  `index.html` really did match a git blob it knew, just an old one, because the local clone had
+  not fetched the new head yet. Re-running after a `git fetch` gave `LIVE … serving b90aa07`,
+  which is the real confirmation.
+  **Why this is more than a cosmetic gap.** `LIVE` is read as "what is merged is shipped", and
+  CLAUDE.md's whole four-night Pages-stall lesson is *treat every merge as unshipped until the
+  watch says `LIVE`*. A watch that says `LIVE` for a stale head hands back exactly the false
+  all-clear that lesson exists to prevent — and it is **worse** than the old `curl | grep
+  <marker>` ritual in one specific way: a marker grep against the old bytes returns 0 and looks
+  like a failure, whereas this returns the word the operator is waiting for. The only reason it
+  did not mislead tonight is that the verdict line prints the commit beside it and the commit was
+  read.
+  **Shape of the fix:** `deploy_watch.mjs` should fetch the deploy branch itself before judging
+  (it already needs network), and when it cannot, say so — a verdict computed against a clone that
+  may be behind is `UNKNOWN_BUILD`, which the script already has and which CLAUDE.md already
+  records as deliberately **not** green. Cheapest correct version: fetch, then compare the served
+  bytes against `origin/claude/migrate-to-github-deploy-3F5RD`'s tip blob specifically, and report
+  `BEHIND` naming both commits when they differ. **Do not just print a warning** — the whole point
+  is that the verdict word is what gets read.
+  Drivable at script level: its 55-assertion classifier suite already stubs the git side, so a
+  case for "local clone behind origin" is an addition to that suite, not a live probe.
+- [ ] **`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
+  and cost this run one CI cycle** — `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
+  ellipsised at this width` failed once and passed once **on the same commit** (`e738670`, runs
+  38224339630 and 38224378362), reporting `clipped=true spare=10`.
+  **The cause is written down three lines below the assertion itself**, which is why this is a
+  flake and not a mystery: *"this sandbox has no route to fonts.googleapis.com and lays the bar out
+  in the fallback face while the runner gets real Bricolage Grotesque."* So
+  `brand.scrollWidth > brand.clientWidth` depends on whether — and **when** — the webfont resolves.
+  `spare=10` is exactly the flex gap, i.e. zero real slack: after #172 the row sums to ~313 against
+  320 pt, so the measurement sits one glyph-width from flipping and the real face tips it.
+  **Two candidate fixes, and the second is the honest one.** (a) Await `document.fonts.ready`
+  before measuring — removes the *race* but not the marginality, so it would still fail whenever
+  the real face genuinely does not fit. (b) Decide what the assertion is actually for: the
+  no-sideways-scroll guarantee is the load-bearing half and is pinned separately (and by the
+  deliberately-2.2x-wide-font check right below), while "the wordmark reads as badgebudget" is
+  cosmetic and is the half that is font-dependent by nature. Splitting them, and letting the
+  cosmetic half assert against the fallback face it can actually control, is probably right.
+  **Needs one run that can exercise both font states**, so it is not a blind edit — and note the
+  negative test is unusual here: the break to prove is *the flake*, i.e. forcing the real face.
+  Do not "fix" it by loosening the overflow assertion, which is the one that matters.
+
 ### P1 (new, groom 2026-10-12)
 - [ ] **CORRECTION to the 2026-10-11 landing-screen note: device `5212f2aa` did NOT stop on the
   landing screen — it finished the whole funnel.** `harness:unscoped`, and filed as a correction
@@ -2064,7 +2112,13 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   the §33/§35/§36 lesson arriving by a fourth door — an assertion that cannot see its subject
   cannot fail on it either.
   Gate: 13/13 mechanical, 33/33 groom-seed, 83/83 core, **736/0 smoke** (was 725).
-  `deploy_watch.mjs` → `LIVE`.
+  **LIVE at `b90aa07`**, confirmed 2026-10-12 08:52 UTC by `deploy_watch.mjs` naming that commit as
+  the one serving `index.html` — not by the green check, and not by the first `LIVE` it printed
+  (see the `deploy_watch` item below, which is tonight's other finding).
+  **CI needed one re-run and the failure was not this change's.** Two workflow runs fired on
+  `e738670`: the PR run's `smoke` passed 736/0, the branch-push run's failed 735/1 on
+  `top bar [iPhone SE]: the wordmark is not ellipsised at this width — clipped=true spare=10`.
+  Identical code, one green one red, so the re-run was the sanctioned one and it passed.
 - 2026-10-11 — **FICA on pre-tax health premiums (dedicated wage-core session; #171, owner-merged,
   LIVE at `81c1954`).** A new `pretaxHealth` field (Section 125 health/dental/vision, FSA, HSA) beside
   `pretaxDeductions`, which keeps its key and becomes the retirement bucket. `computeNet` now takes
