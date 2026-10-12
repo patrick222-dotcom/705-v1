@@ -1269,8 +1269,10 @@ and the push P0 it pointed at was fixed the same day.
      overtime I flag" plus N hours in D days. The
      probes in `pay-rule-patterns.md` (c) become assertions: zero phantom OT on 12 h Pitman, 12 h +
      Kelly day, 3/3 10.5 h and 4/10.
-  3. **Per-shift multiplier + minimum-hours events** (wage-core): court, call-back, report pay.
-     Replaces the hard-coded `otMult`.
+  3. ~~**Per-shift multiplier + minimum-hours events**~~ — **BUILT 2026-10-11, PR awaiting the
+     owner's merge** (wage-core, no auto-merge). Spec `docs/pay-events-spec.md`; session log
+     `docs/session-2026-10-11-pay-events.md`. Close once `deploy_watch.mjs` reads `LIVE`.
+     Original brief: (wage-core): court, call-back, report pay. Replaces the hard-coded `otMult`.
   4. **Dated pay items** (wage-core): lump sums and periodic pays, summed in `periodPaycheck` by date.
   5. **Law enforcement + Fire & EMS personas**, on top of 2–4: presets, the Social Security
      question (FICA → custom 1.45%), and their cards.
@@ -1287,7 +1289,8 @@ and the push P0 it pointed at was fixed the same day.
   wants the equality check.
 - [x] ~~**FICA is charged on pre-tax health premiums — take-home understated (found 2026-10-10,
   verified three ways).**~~ **SHIPPED 2026-10-11** (#171, owner-merged; `deploy_watch.mjs` read
-  `LIVE` at `81c1954`). Spec: `docs/fica-health-premium-spec.md`.
+  `LIVE` at `81c1954`). Spec: `docs/fica-health-premium-spec.md`. `tests/equality.mjs` reads its case IDENTICAL against
+  badgebudget.com from session 3 on.
   Still open after it ships: the paystub import does not read medical lines (no fixture carries
   one), and the Social Security half was confirmed from the IRS rule, not a stub. `harness:drivable`, **wage-core** (`computeNet`). Section 125 health, dental and
   vision premiums are exempt from Social Security and Medicare; 401(k)/403(b)/457(b) deferrals are not.
@@ -1302,6 +1305,14 @@ and the push P0 it pointed at was fixed the same day.
   the paystub import maps medical/dental/vision lines to the new bucket. Full Invariant 3 protocol,
   including the equality check against the deployed build. Confirm against one of Courtney's stubs
   first: Social Security ÷ 0.062 vs. gross − medical.
+- [ ] **An iCal *update* drops every field she set by hand on a synced shift (found 2026-10-11,
+  session 3, pre-existing).** `harness:drivable`, **wage-core-adjacent** (it moves the hero). The
+  stepper's update path rebuilds the shift from the feed (`newShift = {id, shiftType, hours,
+  bonusType, customBonus, icsUid}`, ~index.html:4705), so `isOvertime`, `noMeal` and — since
+  session 3 — `otMult`, `minHours` and `payEvent` are lost when the feed moves that shift's date,
+  hours or start. Exposure is small (court and call-back are hand-logged, not synced), but a synced
+  tour she marked overtime by hand silently drops to 1×. Fix shape: carry the hand-set fields
+  across an update, and say so on the confirm card. Wants the equality check, so dedicated.
 - [ ] **"Paid on this check / the next check" for a custom work period (found 2026-10-10).**
   `harness:drivable`, **wage-core** (`workPeriodChunks`). Session 2 counts a 7(k) period's overtime in
   the paycheck whose dates hold its last day — the federal default (29 CFR 778.106) and what aligned
@@ -2119,6 +2130,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   `e738670`: the PR run's `smoke` passed 736/0, the branch-push run's failed 735/1 on
   `top bar [iPhone SE]: the wordmark is not ellipsised at this width — clipped=true spare=10`.
   Identical code, one green one red, so the re-run was the sanctioned one and it passed.
+- 2026-10-11 — **Session 3: per-shift multiplier + minimum-hours events (dedicated wage-core
+  session; PR waits for the owner's merge).** `isOvertime` no longer means a hard-coded 1.5×: a
+  marked shift can carry `otMult` (1.5 < m ≤ 4, absent = 1.5) and any shift a `minHours` floor
+  (court, call-back, report pay = max(worked, minimum) on the rate line) plus a `payEvent` label
+  the math never reads (gate-enforced). Hours a minimum pays but she did not work never count
+  toward the overtime threshold and stay out of the regular rate — 29 CFR 778.221(b)'s own
+  worked week is a core test ($552, 43 hours, not 44). Add-Shift gets rate chips (1.5/2/2.5/3 +
+  other) and a closed-by-default *Minimum pay* row; templates and pattern cells carry the fields;
+  the Breakdown names minimum-hours pay. Core 83 → 111, smoke §42 (+15) → 751 after merging the 10-12 nightly's §41, every new
+  assertion seen failing against a broken copy (23 mutations). `tests/equality.mjs` against
+  badgebudget.com: 19 identical, 0 unintended, 4 of 4 named differences seen.
 - 2026-10-11 — **FICA on pre-tax health premiums (dedicated wage-core session; #171, owner-merged,
   LIVE at `81c1954`).** A new `pretaxHealth` field (Section 125 health/dental/vision, FSA, HSA) beside
   `pretaxDeductions`, which keeps its key and becomes the retirement bucket. `computeNet` now takes

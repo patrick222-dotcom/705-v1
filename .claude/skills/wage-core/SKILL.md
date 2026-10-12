@@ -1,6 +1,6 @@
 ---
 name: wage-core
-description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
+description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, otMultOf, minHoursOf, minimumTopUpCents, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
 ---
 
 # Wage core
@@ -66,6 +66,11 @@ in which paycheck. A custom 7(k) period can straddle two paychecks and is counte
 its last day; `'40'` and `'8-80'` must keep their original code path. Pinned by the phantom-overtime
 table in `tests/core.test.mjs`.
 
+**And `otMultOf` / `minHoursOf` / `minimumTopUpCents`** (2026-10-11, session 3) — the per-shift
+overtime multiplier and the court / call-back / report minimum. Every shift is priced through them,
+and the sanitizer's `payEventFields` uses the same two helpers so there is one definition of the
+bounds. Spec: `docs/pay-events-spec.md`.
+
 **And `firstActiveShiftType`** — which shift type the Add-Shift draft opens on. It decides which
 differential a preview prices, so it moves a dollar figure even though it returns a string.
 `active:false` means "don't offer me this in a picker" and NEVER "stop paying a shift already
@@ -102,6 +107,19 @@ pinned by an assertion in `tests/smoke.mjs`:
   `gross` exactly, which is why a blob saved before the field existed prices identically.
   `keepRatioOf` stays rates-only: a premium is a flat dollar figure, not a rate. Spec:
   `docs/fica-health-premium-spec.md`.
+- **A marked shift pays its own multiplier, 1.5× unless she picked another** (2026-10-11).
+  `otMult` rides `isOvertime` and never replaces it: absent = 1.5, so every shift saved before
+  it prices identically, and the flag is still what removes a premium hour from derived overtime
+  — so a 2.5× hour is never also given a derived 0.5×. Bounds 1.5 < m ≤ 4, **dropped, not
+  clamped**, outside them; below 1.5 is refused because a "premium" under 1.5× would still be
+  credited as if it were 1.5×.
+- **A minimum pays the rate line on max(worked, minimum) hours; it adds no hours worked**
+  (2026-10-11). Per-hour add-ons stay on hours worked. The derived overtime threshold counts
+  hours WORKED and the regular rate excludes the top-up — **29 CFR 778.221(b)**: "the 43 actual
+  hours (not 44)", "the regular rate … remains $12". That exact week is pinned in
+  `tests/core.test.mjs`; moving `minHours` into the threshold or the regular rate fails it.
+- **`payEvent` (court / call-back / report) is a label the math never reads**, like the persona.
+  `check_build.mjs` fails if any wage definition names it.
 - **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispHealth`/
   `dispPost` are display-only, capped in that order; `net` uses the uncapped figures.
 

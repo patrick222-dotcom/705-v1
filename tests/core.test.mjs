@@ -462,5 +462,127 @@ ok('pay: a blank, negative or junk salary is no rate at all',
     C.keepRatioOf({ ...t0, federalTaxRate: 12, stateTaxRate: 3, pretaxHealth: 266 }) === C.keepRatioOf({ ...t0, federalTaxRate: 12, stateTaxRate: 3 }));
 }
 
+/* ---- pay events: per-shift multiplier + minimum hours (session 3, 2026-10-11) -------------
+   docs/pay-events-spec.md. Every figure below is hand-computed in the comment beside it. */
+{
+  const ev = (hours, extra = {}) => ({ shiftType: 'base', hours, bonusType: 'none', customBonus: 0, isOvertime: false, ...extra });
+  const g = (rate, s) => C.shiftGross(rate, null, s);
+  // 1 h in court on a 3 h minimum at 1.5x, $45: 3 x 45 x 1.5 = 202.50 (logged at actual: 67.50)
+  ok('events: court 1 h worked, 3 h minimum, 1.5x pays 3 h', g(45, ev(1, { isOvertime: true, minHours: 3, payEvent: 'court' })) === 202.5,
+    String(g(45, ev(1, { isOvertime: true, minHours: 3, payEvent: 'court' }))));
+  // Portland court, 5 h minimum (43.6.4): 5 x 45 x 1.5 = 337.50
+  ok('events: Portland court, 5 h minimum', g(45, ev(1, { isOvertime: true, minHours: 5, payEvent: 'court' })) === 337.5);
+  // Cleveland call-in, 4 h minimum (10 ¶14f), 2 h worked at $40: 4 x 40 x 1.5 = 240.00
+  ok('events: Cleveland call-in, 4 h minimum, 2 h worked', g(40, ev(2, { isOvertime: true, minHours: 4, payEvent: 'callback' })) === 240);
+  // Philadelphia court at 2.5x, 2 h minimum, 1 h worked, $44.52: 2 x 44.52 x 2.5 = 222.60
+  ok('events: Philadelphia court at 2.5x', g(44.52, ev(1, { isOvertime: true, otMult: 2.5, minHours: 2, payEvent: 'court' })) === 222.6,
+    String(g(44.52, ev(1, { isOvertime: true, otMult: 2.5, minHours: 2, payEvent: 'court' }))));
+  // worked past the minimum: 5 h on a 3 h minimum pays the 5 h, 5 x 45 x 1.5 = 337.50
+  ok('events: hours worked past the minimum are paid as worked', g(45, ev(5, { isOvertime: true, minHours: 3 })) === 337.5);
+  // a minimum at straight time (not marked overtime): 4 x 40 = 160
+  ok('events: a minimum at straight time', g(40, ev(1, { minHours: 4, payEvent: 'callback' })) === 160);
+  // the multiplier alone: 12 h at 2x, $50 + $5 night = 12 x 55 x 2 = 1320
+  ok('events: 2x on the differential-inclusive rate', C.shiftGross(50, flat5, { hours: 12, bonusType: 'none', isOvertime: true, otMult: 2 }) === 1320);
+  // per-hour add-ons stay on hours worked: court 1 h on 3 h min + charge $3/h = 202.50 + 3 = 205.50
+  ok('events: a per-hour add-on is paid on hours worked, not the minimum',
+    g(45, ev(1, { isOvertime: true, minHours: 3, bonusType: 'charge' })) === 205.5);
+  // otMult without isOvertime does nothing: 12 x 50 = 600
+  ok('events: a multiplier on an unmarked shift is ignored', g(50, ev(12, { otMult: 2.5 })) === 600);
+  // out-of-range multipliers read as 1.5 at price time, too (the draft is unsanitized)
+  ok('events: an out-of-range multiplier prices as 1.5x', [1.2, 4.5, 'x', NaN, -2].every((m) => g(50, ev(12, { isOvertime: true, otMult: m })) === 900));
+  ok('events: the top-up figure is the minimum beyond hours worked (202.50 - 67.50)',
+    C.minimumTopUpCents(4500, null, ev(1, { isOvertime: true, minHours: 3 })) === 13500
+    && C.minimumTopUpCents(4500, null, ev(5, { isOvertime: true, minHours: 3 })) === 0
+    && C.minimumTopUpCents(4500, null, ev(1, { isOvertime: true })) === 0);
+
+  /* (b) 29 CFR 778.221(b)'s own week: $12/h, overtime past 40, 8 h Mon-Fri, 1 h overtime Monday,
+     then a call-back on Friday: 2 h worked on a 3 h minimum at time and one-half. "the 43 actual
+     hours (not 44) are counted as working time". Pay: 480 + 18 + 54 = $552, no further premium. */
+  const mon = ['2026-10-05','2026-10-06','2026-10-07','2026-10-08','2026-10-09','2026-10-10','2026-10-11'];
+  const cfrWeek = (markMonday) => {
+    const sh = {};
+    mon.slice(0, 5).forEach((k) => { sh[k] = [ev(8)]; });
+    sh[mon[0]].push(ev(1, { isOvertime: markMonday }));
+    sh[mon[4]].push(ev(2, { isOvertime: true, minHours: 3, payEvent: 'callback' }));
+    return sh;
+  };
+  const cfrJob = C.makeJob({ id: 'job-1', baseRate: 12, differentials: {}, workPeriod: '40' });
+  const t0 = { ficaType: 'none', federalTaxRate: 0, stateTaxRate: 0, pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+  const run = (sh) => C.periodPaycheck({ shifts: sh, dayEvents: {}, dateKeys: mon, baseRate: 12, differentials: {}, taxInputs: t0, job: cfrJob });
+  const a = run(cfrWeek(true));
+  ok('events (b): 778.221(b) week — $552, 43 hours, no derived premium',
+    a.gross === 552 && a.hours === 43 && a.ot.premiumCents === 0 && a.ot.otHours === 0, JSON.stringify([a.gross, a.hours, a.ot.premiumCents]));
+  // 778.221(b): "plus an extra sum of $18 paid by reason of the provision for minimum call-back pay"
+  ok('events (b): the call-back minimum shows as the regulation\'s $18 extra sum, on one shift',
+    a.minTopUp.cents === 1800 && a.minTopUp.shifts === 1, JSON.stringify(a.minTopUp));
+  /* Same week with Monday's extra hour left unmarked: 43 h worked, 2 marked, so 1 derived hour,
+     at half the regular rate. The regular rate is 516 / 43 = $12.00 -> premium $6.00. Counting the
+     unworked hour would make it 2 derived hours ($12); putting the $12 top-up in the regular rate
+     would make it 528 / 43 / 2 = $6.14. */
+  const b = run(cfrWeek(false));
+  ok('events (b): with a derived hour, premium is exactly $6.00 at a $12.00 regular rate',
+    b.ot.premiumCents === 600 && b.ot.otHours === 1 && b.ot.periods[0].regularRateCents === 1200,
+    JSON.stringify([b.ot.premiumCents, b.ot.otHours, b.ot.periods[0] && b.ot.periods[0].regularRateCents]));
+
+  /* (c) a 2.5x hour is never also given a derived premium: four 10 h days + one 12 h shift marked
+     2.5x = 52 h under the 40-hour week. 40 x 45 + 12 x 45 x 2.5 = 1800 + 1350 = 3150, premium 0. */
+  const cj = C.makeJob({ id: 'job-1', baseRate: 45, differentials: {}, workPeriod: '40' });
+  const csh = {}; mon.slice(0, 4).forEach((k) => { csh[k] = [ev(10)]; }); csh[mon[4]] = [ev(12, { isOvertime: true, otMult: 2.5 })];
+  const c = C.periodPaycheck({ shifts: csh, dayEvents: {}, dateKeys: mon, baseRate: 45, differentials: {}, taxInputs: t0, job: cj });
+  ok('events (c): a 2.5x shift in a 52 h week adds no derived premium for its hours',
+    c.gross === 3150 && c.ot.premiumCents === 0, JSON.stringify([c.gross, c.ot.premiumCents]));
+
+  /* The sanitizer: shifts, templates and pattern cells. Out of range is DROPPED, never clamped. */
+  const sh1 = (x) => C.sanitizeData({ shifts: { '2026-10-05': [{ ...ev(1), ...x }] } }).shifts['2026-10-05'][0];
+  const k1 = sh1({ isOvertime: true, otMult: 2.5, minHours: '3', payEvent: 'court' });
+  ok('sanitize events: keeps an in-range multiplier, minimum (string coerced) and kind',
+    k1.otMult === 2.5 && k1.minHours === 3 && k1.payEvent === 'court', JSON.stringify(k1));
+  ok('sanitize events: rounds to 2 dp', sh1({ isOvertime: true, otMult: 1.8749, minHours: 2.333 }).otMult === 1.87
+    && sh1({ minHours: 2.333 }).minHours === 2.33);
+  ok('sanitize events: drops a multiplier on an unmarked shift', !('otMult' in sh1({ isOvertime: false, otMult: 2 })));
+  ok('sanitize events: drops a multiplier at or below 1.5, above 4, or junk',
+    [1.5, 1.2, 0, 4.01, 'abc', NaN, Infinity, null].every((m) => !('otMult' in sh1({ isOvertime: true, otMult: m }))));
+  ok('sanitize events: keeps 4x, the top of the range', sh1({ isOvertime: true, otMult: 4 }).otMult === 4);
+  ok('sanitize events: drops a minimum at or below 0, above 24, or junk',
+    [0, -3, 24.5, 'abc', NaN, Infinity].every((h) => !('minHours' in sh1({ minHours: h }))));
+  ok('sanitize events: drops an unknown kind', ['police', 'Court', 1, null].every((k) => !('payEvent' in sh1({ payEvent: k }))));
+  ok('sanitize events: a shift without the fields gains none',
+    ['otMult', 'minHours', 'payEvent'].every((f) => !(f in sh1({ isOvertime: true }))));
+  const tp = C.sanitizeData({ templates: [{ id: 't1', name: 'Court', shiftType: 'base', hours: 1, bonusType: 'none', isOvertime: true, otMult: 2.5, minHours: 3, payEvent: 'court' },
+    { id: 't2', name: 'Bad', shiftType: 'base', hours: 1, bonusType: 'none', isOvertime: false, otMult: 2.5, minHours: 99, payEvent: 'x' }] }).templates;
+  ok('sanitize events: templates carry the three fields, and drop bad ones',
+    tp[0].otMult === 2.5 && tp[0].minHours === 3 && tp[0].payEvent === 'court'
+    && !('otMult' in tp[1]) && !('minHours' in tp[1]) && !('payEvent' in tp[1]), JSON.stringify(tp));
+  const pc = C.sanitizeData({ patterns: [{ id: 'p', name: 'x', anchor: '2026-10-05',
+    cells: [{ kind: 'fixed', shiftType: 'base', hours: 1, isOvertime: true, otMult: 2.5, minHours: 2 }, null] }] }).patterns[0].cells[0];
+  ok('sanitize events: pattern cells carry the multiplier and minimum', pc.otMult === 2.5 && pc.minHours === 2, JSON.stringify(pc));
+  const cs = C.patternCellToShift(pc, new Date(2026, 9, 5), {});
+  ok('events: a painted cell prices like its template (2 h x 44.52 x 2.5 = 222.60)', C.shiftGross(44.52, null, cs) === 222.6, JSON.stringify(cs));
+
+  /* Identity: shifts without the fields price exactly as the pre-change module did. Literals
+     captured from 81c1954's extracted core (the deployed build) by running the same fixtures. */
+  const idDiffs = { base: { type: 'dollar', amount: 0 }, night: { type: 'dollar', amount: 5 }, pct: { type: 'percent', amount: 10 }, mult: { type: 'multiplier', amount: 1.25 } };
+  const S = [
+    { shiftType: 'night', hours: 12, bonusType: 'none', isOvertime: true },
+    { shiftType: 'pct', hours: 8.5, bonusType: 'charge', isOvertime: true },
+    { shiftType: 'mult', hours: 12, bonusType: 'custom', customBonus: '75', isOvertime: false, noMeal: true },
+    { shiftType: 'base', hours: 1, bonusType: 'preceptor', isOvertime: true },
+    { shiftType: 'night', hours: 16, bonusType: 'oncall', isOvertime: false },
+  ];
+  const meal = C.makeJob({ mealBreakMins: 30, mealBreakMode: 'deducted' });
+  const gotS = JSON.stringify(S.map((x) => [C.shiftGross(47.13, idDiffs[x.shiftType], x), C.shiftGross(47.13, idDiffs[x.shiftType], x, meal)]));
+  ok('events identity: five shifts without the fields, with and without a meal rule', gotS === '[[938.34,899.24],[686.5,646.12],[781.95,781.95],[72.7,36.35],[914.08,885.52]]', gotS);
+  const idTax = { ficaType: 'standard', ficaPct: '', federalTaxRate: 12, stateTaxRate: 3.07, pretaxDeductions: 120, posttaxDeductions: 15, customWithholdings: [] };
+  const idKeys = Array.from({ length: 14 }, (_, i) => `2026-10-${String(4 + i).padStart(2, '0')}`);
+  const idSh = {}; idKeys.forEach((k, i) => { if (i % 7 !== 3) idSh[k] = [{ ...S[i % 5], id: i }]; });
+  const WANT = { '40': [8374.08, 6354.57, 121, 3011, 1], '8-80': [8343.97, 6331.3, 121, 0, 0], flagged: [8343.97, 6331.3, 121, 0, 0], custom: [8343.97, 6331.3, 121, 0, 0] };
+  const movedP = Object.keys(WANT).filter((wp) => {
+    const j = C.makeJob({ baseRate: 47.13, differentials: idDiffs, workPeriod: wp, otPeriodDays: 14, otPeriodHours: 86, mealBreakMins: 30 });
+    const r = C.periodPaycheck({ shifts: idSh, dayEvents: {}, dateKeys: idKeys, baseRate: 47.13, differentials: idDiffs, taxInputs: idTax, job: j });
+    return JSON.stringify([r.gross, r.net, r.hours, r.ot.premiumCents, r.ot.otHours]) !== JSON.stringify(WANT[wp]) || r.minTopUp.cents !== 0;
+  });
+  ok('events identity: a fortnight without the fields, under all four work periods', movedP.length === 0, movedP.join(','));
+}
+
 console.log(`\n==== core: ${pass} passed / ${fail} failed ====`);
 process.exit(fail ? 1 : 0);

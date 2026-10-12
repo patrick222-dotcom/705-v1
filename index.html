@@ -1523,6 +1523,7 @@ function sanitizeData(d){
           if(x.noMeal===true) o.noMeal = true; else delete o.noMeal;
           if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
           if(typeof o.icsUid!=='string' || !ICS_UID_RE.test(o.icsUid)) delete o.icsUid;
+          payEventFields(o, x);
           return o;
         });
       if(clean.length) s[k] = clean;
@@ -1608,7 +1609,7 @@ function sanitizeData(d){
         && isFinite(Number(t.hours)) && Number(t.hours)>=0.1 && Number(t.hours)<=24
         && typeof t.bonusType==='string')
       .slice(0,MAX_TEMPLATES)
-      .map(t=>({
+      .map(t=>payEventFields({
         id: (typeof t.id==='string'||typeof t.id==='number') ? t.id : (Date.now()+Math.random()),
         name: t.name,
         shiftType: t.shiftType,
@@ -1617,7 +1618,7 @@ function sanitizeData(d){
         customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0,
         isOvertime: t.isOvertime===true,   // council 2026-09-13 (#9): templates used to drop the OT flag silently
         ...(typeof t.start==='string' && TIME_RE.test(t.start) ? {start:t.start} : {})
-      }));
+      }, t));   // a "Court -- 3h min" template that forgot its minimum would be the #9 bug again
   }
   // goals: savings targets — array of {id, name:string(1..40), target:number>0}. Capped at MAX_GOALS.
   // target is coerced to a finite positive number so a malformed value can't yield NaN percentages
@@ -1659,6 +1660,7 @@ function sanitizeData(d){
           if(typeof c.bonusType==='string' && bonusKeys.indexOf(c.bonusType)>=0 && c.bonusType!=='none') o.bonusType = c.bonusType;
           if(o.bonusType==='custom'){ const cb=Number(c.customBonus); o.customBonus = isFinite(cb)?cb:0; }
           if(c.isOvertime===true) o.isOvertime = true;
+          payEventFields(o, c);
           return o;
         }),
       }));
@@ -1800,9 +1802,12 @@ const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.i
    subtracted from the derived overtime rather than charged again, so turning this on cannot
    silently double anybody's existing figure. */
 
-/* Straight-time cents for a shift: what it earns before any overtime premium. */
+/* Straight-time cents for a shift: what it earns before any overtime premium, for the hours it
+   was WORKED. A minimum's top-up is left out: 29 CFR 778.221(a)-(b) excludes it from the regular
+   rate ("the regular rate of the employee, therefore, remains $12"), and 778.222 applies the same
+   to report and short-notice pay. With no minimum this is the call it always was. */
 const straightTimeCents = (baseCents, diff, s, meal) =>
-  shiftGrossCents(baseCents, diff, {...s, isOvertime:false}, meal);
+  shiftGrossCents(baseCents, diff, {...s, isOvertime:false, minHours:null}, meal);
 
 /* The job's overtime rule as data: {id, days, hours, daily, anchor}, or null for 'flagged' (no
    derived overtime). A 'custom' rule whose fields are missing or out of range falls back to the
@@ -1873,7 +1878,9 @@ function overtimePremiumCents(job, shifts, dateKeys){
       ((shifts||{})[k]||[]).forEach(s=>{
         if(job && job.id && typeof s.jobId==='string' && s.jobId!==job.id) return;
         /* Paid hours, not logged hours: a missed lunch is half an hour of real work and
-           counts toward the overtime threshold like any other. */
+           counts toward the overtime threshold like any other. NOT minHours: an hour a minimum
+           pays but she did not work is not an hour worked -- 29 CFR 778.221(b) counts "the 43
+           actual hours (not 44)" (tests/core.test.mjs pins that exact week). */
         const h = paidHoursOf(s, job);
         hours += h; dayHours += h;
         stCents += straightTimeCents(baseCents, diffs[s.shiftType], s, job);
@@ -1958,6 +1965,41 @@ function hourlyRateCents(baseCents, diff){
   if(diff.type==='percent') return baseCents * (1 + amt/100);
   return baseCents + toCents(amt);
 }
+/* ---------- pay events: per-shift multiplier + minimum hours (session 3, 2026-10-11) --------
+   docs/pay-events-spec.md. Three optional fields on a shift; all three absent prices exactly as
+   before. `otMult` is the premium for a shift marked isOvertime (absent = 1.5, so isOvertime
+   still means 1.5x). `minHours` is a floor on paid hours: court, call-back and report pay are
+   max(actual, minimum). `payEvent` is a LABEL only -- the math never reads it (check_build.mjs
+   forbids it in every wage definition, the same rule as the persona).
+   The math reads the fields through these two helpers, never directly, because the Add-Shift
+   draft and the pattern lab hand it unsanitized objects; the sanitizer uses the same helpers,
+   so there is one definition of the bounds. */
+const PAY_EVENTS = ['court','callback','report'];
+const OT_MULT_MAX = 4;   // highest in the sample is 3x; the one total-pay cap found is 4x (SCL 16.2)
+/* Below 1.5 is refused, not clamped: a marked shift's hours are subtracted from derived overtime
+   as if paid at least 1.5x, so a 1.2x "premium" would under-pay her week. */
+function otMultOf(s){
+  if(!s || !s.isOvertime) return 1;   // truthy, exactly as the hard-coded `s.isOvertime ? 1.5 : 1` read it
+  const m = Number(s.otMult);
+  return (s.otMult!=null && isFinite(m) && m>1.5 && m<=OT_MULT_MAX) ? Math.round(m*100)/100 : 1.5;
+}
+function minHoursOf(s){
+  const h = Number(s && s.minHours);
+  return (s && s.minHours!=null && isFinite(h) && h>0 && h<=24) ? Math.round(h*100)/100 : 0;
+}
+
+/* The sanitizer's half of the bounds, shared by shifts, templates and pattern cells: writes the
+   three fields onto `o` (already carrying a boolean isOvertime) from the raw `src`, or deletes
+   them. Values out of range are DROPPED, never clamped -- the same rule as every other field. */
+function payEventFields(o, src){
+  const om = otMultOf({isOvertime:o.isOvertime===true, otMult:src.otMult});
+  if(om>1.5) o.otMult = om; else delete o.otMult;
+  const mh = minHoursOf(src);
+  if(mh) o.minHours = mh; else delete o.minHours;
+  if(PAY_EVENTS.indexOf(src.payEvent)>=0) o.payEvent = src.payEvent; else delete o.payEvent;
+  return o;
+}
+
 /* One shift's gross, in whole cents. Each component rounds on its own line the way a payroll
    system prints it (rate x hours is one line, a per-hour bonus is another), then the lines are
    summed as integers so a period total cannot accumulate float dust. */
@@ -1966,13 +2008,25 @@ function shiftGrossCents(baseCents, diff, s, meal){
   const perHrCents = s.bonusType==='custom' ? 0 : toCents(BONUS[s.bonusType]||0);
   const flatCents  = s.bonusType==='custom' ? toCents(parseFloat(s.customBonus)||0) : 0;
   // Overtime stacks ON TOP of the shift differential: the differential-inclusive hourly rate
-  // is paid at 1.5× (per-hour/flat bonuses stay at face value, matching the legacy 'overtime'
-  // shift-type which only multiplied the hourly rate). isOvertime is an independent flag, so a
-  // night OT shift earns 1.5×(base+night diff) instead of losing the differential to a flat 1.5×base.
-  const otMult = s.isOvertime ? 1.5 : 1;
-  return roundCents(hourlyRateCents(baseCents, diff) * otMult * hours)
+  // is paid at the shift's multiplier (per-hour/flat bonuses stay at face value, matching the
+  // legacy 'overtime' shift-type which only multiplied the hourly rate). isOvertime is an
+  // independent flag, so a night OT shift earns 1.5×(base+night diff) instead of losing the
+  // differential to a flat 1.5×base. otMultOf is 1.5 unless she picked another rate (2x, 2.5x…).
+  const otMult = otMultOf(s);
+  // A minimum pays the RATE LINE for max(worked, minimum) hours. Per-hour add-ons (charge,
+  // preceptor, on-call) are for duties actually performed, so they stay on the hours worked.
+  // With no minimum, rateHours === hours and this line is the expression it always was.
+  const rateHours = Math.max(hours, minHoursOf(s));
+  return roundCents(hourlyRateCents(baseCents, diff) * otMult * rateHours)
        + roundCents(perHrCents * hours)
        + flatCents;
+}
+/* What a minimum paid beyond the hours worked, in cents -- 0 without one. Priced by the same
+   function as the shift, so the Breakdown note can never disagree with the gross. 29 CFR
+   778.221(a): this amount "is considered as a payment that is not made for hours worked". */
+function minimumTopUpCents(baseCents, diff, s, meal){
+  if(!minHoursOf(s)) return 0;
+  return shiftGrossCents(baseCents, diff, s, meal) - shiftGrossCents(baseCents, diff, {...s, minHours:null}, meal);
 }
 /* Dollar-in/dollar-out wrappers. Every existing call site reads these and is unchanged. */
 function hourlyRate(base, diff){ return fromCents(hourlyRateCents(toCents(base), diff)); }
@@ -2036,7 +2090,8 @@ function patternCellEq(a,b){
   if(!a || !b) return !a && !b;
   return a.kind===b.kind && Number(a.hours)===Number(b.hours) && (a.start||'')===(b.start||'')
     && (a.shiftType||'')===(b.shiftType||'') && (a.bonusType||'none')===(b.bonusType||'none')
-    && Number(a.customBonus||0)===Number(b.customBonus||0) && !!a.isOvertime===!!b.isOvertime;
+    && Number(a.customBonus||0)===Number(b.customBonus||0) && !!a.isOvertime===!!b.isOvertime
+    && otMultOf(a)===otMultOf(b) && minHoursOf(a)===minHoursOf(b);
 }
 /* 'day' | 'night' for any cell — fixed cells are classified by their differential key. */
 function patternCellClass(cell){
@@ -2077,6 +2132,9 @@ function patternCellToShift(cell, dateObj, differentials){
      the flag everywhere else since 2026-09-16 (council group-7 leftover). */
   const s = { shiftType:st, hours:Number(cell.hours), bonusType:cell.bonusType||'none', customBonus:Number(cell.customBonus||0), isOvertime:!!cell.isOvertime };
   if(cell.start) s.start = cell.start;
+  // A cell painted from a 2.5x or minimum-hours template prices like that template on the calendar.
+  if(cell.otMult!=null) s.otMult = cell.otMult;
+  if(cell.minHours!=null) s.minHours = cell.minHours;
   return s;
 }
 /* Cell index a date falls on; the cycle extends both ways from the anchor. */
@@ -2139,12 +2197,17 @@ function computeNet(grossIn, t){
    YYYY-MM-DD keys; `job` is the active job from makeJob(). */
 function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, taxInputs, job}){
   let gross=0, hours=0;
+  /* What minimums paid beyond the hours worked -- already inside `gross`, carried separately only
+     so the Breakdown can say so. Hours stay hours WORKED: a minimum pays hours, it adds none. */
+  const minTopUp = { cents:0, shifts:0 };
   const periodKeys = new Set(dateKeys);
   Object.keys(shifts).forEach(k=>{
     if(!periodKeys.has(k)) return;
     (shifts[k]||[]).forEach(s=>{
       gross += shiftGross(baseRate, differentials[s.shiftType], s, job);
       hours += paidHoursOf(s, job);
+      const top = minimumTopUpCents(toCents(baseRate), differentials[s.shiftType], s, job);
+      if(top>0){ minTopUp.cents += top; minTopUp.shifts++; }
     });
   });
   // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
@@ -2161,7 +2224,7 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job)};
+  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -4448,7 +4511,7 @@ function App(){
       const idx = arr.findIndex(s=>s.templateId===qfTemplate.id);
       const next = idx>=0
         ? arr.filter((_,i)=>i!==idx)
-        : [...arr, {id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, isOvertime:qfTemplate.isOvertime===true, templateId:qfTemplate.id, ...(qfTemplate.start?{start:qfTemplate.start}:{})}];
+        : [...arr, withPayEvent({id:Date.now()+Math.random(), shiftType:qfTemplate.shiftType, hours:qfTemplate.hours, bonusType:qfTemplate.bonusType, customBonus:qfTemplate.customBonus, isOvertime:qfTemplate.isOvertime===true, templateId:qfTemplate.id, ...(qfTemplate.start?{start:qfTemplate.start}:{})}, qfTemplate)];
       const n2={...prev}; if(next.length) n2[k]=next; else delete n2[k]; return n2;
     });
     qfTouched.current.add(k);
@@ -5864,6 +5927,13 @@ function Breakdown({calc,embedded}){
             Employers calculate this differently — check it against your stub, and change the rule in Settings if it doesn't match.
           </span>
         </div>}
+      {/* A minimum (court, call-back, report pay) paid hours she did not work. The figure is
+          periodPaycheck's, computed by the function that priced the shift, so it sums with gross. */}
+      {calc.minTopUp && calc.minTopUp.cents>0 &&
+        <div className="bd-note min-note">
+          Includes <b>{fmt2(calc.minTopUp.cents/100)}</b> of minimum-hours pay — {calc.minTopUp.shifts} shift{calc.minTopUp.shifts===1?'':'s'} paid
+          for more hours than you worked (court, call-back or report pay). Those hours don't count toward overtime.
+        </div>}
       {/* Says which rule is in force when it is the one that adds nothing on its own, so a long
           week with no overtime line is explained rather than looking like a miss. */}
       {calc.otWorkPeriod==='flagged' &&
@@ -5959,6 +6029,19 @@ function giveMetaLine(meta, differentials){
 }
 
 /* ---------- Add Shift Sheet ---------- */
+/* Pay events (docs/pay-events-spec.md). Display only: the math never reads payEvent. */
+const PAY_EVENT_LABEL = { court:'Court', callback:'Call-back', report:'Report pay' };
+const OT_MULT_CHOICES = [1.5, 2, 2.5, 3];
+/* The tags a shift row, template chip or preview shows for its multiplier and minimum. */
+const otTagOf = s => 'OT ×' + otMultOf(s);
+const minTagOf = s => minHoursOf(s) ? ((PAY_EVENT_LABEL[s.payEvent] || 'Minimum') + ' · min ' + minHoursOf(s) + 'h') : '';
+/* Copies the three fields from a template/shift onto a new shift; absent stays absent. */
+const withPayEvent = (o, src) => {
+  if(src && src.isOvertime===true && src.otMult!=null) o.otMult = src.otMult;
+  if(src && src.minHours!=null) o.minHours = src.minHours;
+  if(src && src.payEvent) o.payEvent = src.payEvent;
+  return o;
+};
 function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents,existingNote,baseRate,keepRatio,templates,goals,onSaveTemplate,onDeleteTemplate,userId,onClose,onSave,job}){
   const [list,setList] = useState(existing.map(s=>({...s})));
   const [shiftType,setType] = useState(()=>firstActiveShiftType(differentials));
@@ -5967,6 +6050,9 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const [customBonus,setCustomBonus] = useState(0);
   const [start,setStart] = useState('');   // optional "HH:MM" start time for the shift being configured
   const [isOvertime,setOvertime] = useState(false);   // independent OT flag — stacks 1.5× on top of the shift differential
+  const [otMult,setOtMult] = useState(1.5);           // the premium when isOvertime: 1.5 unless she picks 2x, 2.5x…
+  const [payEvent,setPayEvent] = useState('');        // '' | 'court' | 'callback' | 'report' -- the label for a minimum
+  const [minHours,setMinHours] = useState('');        // '' until she types one: a guessed default would move the figure
   const [noMeal,setNoMeal] = useState(false);         // "I never got my lunch" — pays the unpaid meal break back
   const [events,setEvents] = useState((existingEvents||[]).map(e=>({...e})));   // "also on this day" life events
   const [note,setNote] = useState(existingNote||'');
@@ -6003,15 +6089,23 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
   const dateLabel = dt ? dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
                        : fmtDateShort(dateKey);
 
-  const draft = {shiftType,hours,bonusType,customBonus,isOvertime,noMeal};
+  /* The pay-event fields ride the draft only when set, so an untouched draft is the object it
+     always was. minHours without a kind is never offered here (the chip opens the field). */
+  const payFields = ()=>{
+    const o = {};
+    if(isOvertime && otMultOf({isOvertime:true, otMult})>1.5) o.otMult = otMultOf({isOvertime:true, otMult});
+    if(payEvent){ o.payEvent = payEvent; if(minHoursOf({minHours})) o.minHours = minHoursOf({minHours}); }
+    return o;
+  };
+  const draft = {shiftType,hours,bonusType,customBonus,isOvertime,noMeal,...payFields()};
   const previewGross = shiftGross(baseRate, differentials[shiftType], draft, job);
   const mealMins = (job && job.mealBreakMins) || 0;
   const previewNet = Math.round(previewGross*keepRatio);
   const ptoEvent = events.find(e=>e.kind==='pto');
 
   // A configured-but-not-yet-added shift, clamped to a legal hours range (no blocking alert).
-  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus, isOvertime}; if(start) o.start=start; if(noMeal) o.noMeal=true; return o; };
-  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setOvertime(false); setNoMeal(false); setDirty(true); configDirtySinceAdd.current=false; };
+  const draftShift = ()=>{ const o={id:Date.now()+Math.random(), shiftType, hours:Math.min(24,Math.max(0.1, hours||0.1)), bonusType, customBonus, isOvertime, ...payFields()}; if(start) o.start=start; if(noMeal) o.noMeal=true; return o; };
+  const add = ()=>{ setList([...list, draftShift()]); setBonus('none'); setStart(''); setOvertime(false); setOtMult(1.5); setPayEvent(''); setMinHours(''); setNoMeal(false); setDirty(true); configDirtySinceAdd.current=false; };
   const remove = id=>{ setList(list.filter(s=>s.id!==id)); setDirty(true); };
   // Day events (PTO/education/appt/off) toggle: one entry per kind, tap again to remove.
   const toggleEvent = (kind)=>{
@@ -6038,7 +6132,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
   // One-tap template apply: adds that template's shift to this day instantly.
   const applyTemplateTap = (t)=>{
-    setList(l=>[...l, {id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, isOvertime:t.isOvertime===true, templateId:t.id, ...(t.start?{start:t.start}:{})}]);
+    setList(l=>[...l, withPayEvent({id:Date.now()+Math.random(), shiftType:t.shiftType, hours:t.hours, bonusType:t.bonusType, customBonus:t.customBonus, isOvertime:t.isOvertime===true, templateId:t.id, ...(t.start?{start:t.start}:{})}, t)]);
     setDirty(true);
     configDirtySinceAdd.current = false;   // a tap is an add: "Save as template" next should capture the tapped shift, not the untouched controls
     track('template_tap', null, userId);
@@ -6056,9 +6150,9 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
     // since, the live control values are what they mean to save.
     const last = list[list.length-1];
     const src = (last && !configDirtySinceAdd.current)
-      ? last : {shiftType, hours:clampedHours, bonusType, customBonus, start, isOvertime};
-    const tpl = {name:nm.slice(0,40), shiftType:src.shiftType, hours:Math.min(24,Math.max(0.1, Number(src.hours)||0.1)),
-      bonusType:src.bonusType||'none', customBonus:src.customBonus||0, isOvertime:src.isOvertime===true};
+      ? last : {shiftType, hours:clampedHours, bonusType, customBonus, start, isOvertime, ...payFields()};
+    const tpl = withPayEvent({name:nm.slice(0,40), shiftType:src.shiftType, hours:Math.min(24,Math.max(0.1, Number(src.hours)||0.1)),
+      bonusType:src.bonusType||'none', customBonus:src.customBonus||0, isOvertime:src.isOvertime===true}, src);
     if(src.start) tpl.start = src.start;
     const ok = onSaveTemplate(tpl);
     // On a failed (capped) save, leave the input open with the typed name so freeing a slot
@@ -6085,7 +6179,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
               {templates.map(t=>(
                 <div key={t.id} style={{display:'flex',alignItems:'center',gap:8}}>
                   <button className="chip-sel" style={{flex:1,minHeight:44}} onClick={()=>applyTemplateTap(t)}>
-                    <i style={{background:differentials[t.shiftType]?.color||'#9A9082'}}></i>⚡ {t.name} ×{t.hours}h{t.isOvertime ? ' · OT' : ''}
+                    <i style={{background:differentials[t.shiftType]?.color||'#9A9082'}}></i>⚡ {t.name} ×{t.hours}h{t.isOvertime ? ' · '+otTagOf(t) : ''}{minTagOf(t) ? ' · '+minTagOf(t) : ''}
                   </button>
                   <button className="back" aria-label={'Delete template '+t.name} onClick={()=>onDeleteTemplate(t)}>{Ic.x}</button>
                 </div>
@@ -6101,7 +6195,8 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
                 <span style={{display:'flex',alignItems:'center',gap:9}}>
                   <i style={{width:9,height:9,borderRadius:'50%',background:differentials[s.shiftType]?.color||'#9A9082',display:'inline-block'}}></i>
                   <b style={{fontWeight:600,fontSize:13.5}}>{fmtTime12(s.start) ? fmtTime12(s.start)+' · ' : ''}{differentials[s.shiftType]?.name||s.shiftType} ×{s.hours}h</b>
-                  {s.isOvertime && <span className="ot-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>OT ×1.5</span>}
+                  {s.isOvertime && <span className="ot-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>{otTagOf(s)}</span>}
+                  {minTagOf(s) && <span className="min-tag" style={{fontSize:12,fontWeight:700,color:'var(--money-ink)'}}>{minTagOf(s)}</span>}
                   {s.bonusType!=='none' && <span style={{fontSize:12,color:'var(--muted)'}}>{BONUS_LABEL[s.bonusType]}</span>}
                 </span>
                 <button className="danger-link" onClick={()=>remove(s.id)} aria-label={'Remove '+(differentials[s.shiftType]?.name||s.shiftType)+' ×'+s.hours+'h shift'}>Remove</button>
@@ -6122,10 +6217,39 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
         <button className={'chip-sel'+(isOvertime?' on':'')} aria-pressed={isOvertime}
           style={{width:'100%',marginBottom:isOvertime?8:16,minHeight:44}}
           onClick={()=>{ setOvertime(v=>!v); configDirtySinceAdd.current=true; }}>
-          <i style={{background:'#11A86B'}}></i>Overtime — pays 1.5× the hourly rate
+          <i style={{background:'#11A86B'}}></i>Overtime — pays {isOvertime ? otMultOf({isOvertime:true, otMult}) : 1.5}× the hourly rate
         </button>
-        {isOvertime &&
-          <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>1.5× is applied to your <b>differential rate</b> — a night/weekend shift earns 1.5×(base + differential), not just 1.5×base. Per-hour add-ons (charge, preceptor, on-call) stay at face value.</div>}
+        {isOvertime && <React.Fragment>
+          {/* The rate. 1.5x is lit by default and is what every shift marked before this had. */}
+          <div className="ot-mult" role="group" aria-label="Overtime rate" style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
+            {OT_MULT_CHOICES.map(m=>(
+              <button key={m} className={'chip-sel'+(otMultOf({isOvertime:true, otMult})===m?' on':'')} aria-pressed={otMultOf({isOvertime:true, otMult})===m}
+                style={{flex:'1 1 0',minWidth:0,justifyContent:'center',minHeight:44,padding:'8px 4px'}}
+                onClick={()=>{ setOtMult(m); configDirtySinceAdd.current=true; }}>{m}×</button>
+            ))}
+            <div className="inp suf" style={{flex:'1 1 64px',minWidth:64}}><NumInput value={OT_MULT_CHOICES.indexOf(otMultOf({isOvertime:true, otMult}))<0 ? otMultOf({isOvertime:true, otMult}) : ''} onCommit={v=>{ setOtMult(v); configDirtySinceAdd.current=true; }} step="0.01" min={1.5} max={OT_MULT_MAX} ariaLabel="Other overtime rate" placeholder="Other" style={{padding:'11px 8px',textAlign:'center'}}/></div>
+          </div>
+          <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>{otMultOf({isOvertime:true, otMult})}× is applied to your <b>differential rate</b> — a night/weekend shift earns {otMultOf({isOvertime:true, otMult})}×(base + differential), not just ×base. Per-hour add-ons (charge, preceptor, on-call) stay at face value. Paid 2× only past 12 hours? Log those hours as a second shift at 2×.</div>
+        </React.Fragment>}
+
+        {/* Court, call-back and report pay: paid at least N hours whatever she actually worked
+            (docs/pay-events-spec.md). Closed by default; the kind is a label, the hours are the pay. */}
+        <div className="sec-lab">MINIMUM PAY (OPTIONAL)</div>
+        <div className="chips-grid" role="group" aria-label="Minimum pay" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:payEvent?8:16}}>
+          {PAY_EVENTS.map(k=>(
+            <button key={k} className={'chip-sel'+(payEvent===k?' on':'')} aria-pressed={payEvent===k}
+              style={{justifyContent:'center',padding:'10px 4px',fontSize:12.5,minHeight:44}}
+              onClick={()=>{ setPayEvent(v=> v===k ? '' : k); if(payEvent===k) setMinHours(''); configDirtySinceAdd.current=true; }}>{PAY_EVENT_LABEL[k]}</button>
+          ))}
+        </div>
+        {payEvent && <React.Fragment>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <span style={{fontSize:13}}>Paid at least</span>
+            <div className="inp suf" style={{flex:1}}><NumInput value={minHours} onCommit={v=>{ setMinHours(v); configDirtySinceAdd.current=true; }} step="0.5" min={0} max={24} ariaLabel="Minimum paid hours" placeholder="e.g. 4" style={{padding:'11px 12px',textAlign:'center',fontWeight:700}}/></div>
+            <span style={{fontSize:13}}>hours</span>
+          </div>
+          <div style={{fontSize:11.5,color:'var(--muted-2)',lineHeight:1.5,marginBottom:16}}>Log the hours you actually worked below. If they come to less than this, you're paid this many at your {isOvertime ? otMultOf({isOvertime:true, otMult})+'× ' : ''}rate. Hours you didn't work don't count toward overtime.</div>
+        </React.Fragment>}
 
         {/* The meal break. Nested and off by default — a nurse who gets her lunch never touches
             this and her figures are untouched. The wording is deliberately about what happened,
@@ -6169,7 +6293,7 @@ function AddShiftSheet({dateKey,days,keyOf,differentials,existing,existingEvents
 
         <div className="preview" aria-live="polite" aria-atomic="true">
           <div className="k">This shift adds</div>
-          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span className="ot-tag" style={{fontWeight:700,color:'var(--money-ink)'}}> · incl. OT ×1.5</span>}{noMeal && <span className="meal-tag" style={{fontWeight:700,color:'#8A5A05'}}> · incl. missed lunch</span>}</div>
+          <div className="v">+{fmt(previewGross)} gross · about <b>+{fmt(previewNet)}</b> take-home{isOvertime && <span className="ot-tag" style={{fontWeight:700,color:'var(--money-ink)'}}> · incl. {otTagOf(draft)}</span>}{minHoursOf(draft)>0 && <span className="min-tag" style={{fontWeight:700,color:'var(--money-ink)'}}> · incl. {(PAY_EVENT_LABEL[draft.payEvent]||'').toLowerCase()} minimum ({minHoursOf(draft)}h)</span>}{noMeal && <span className="meal-tag" style={{fontWeight:700,color:'#8A5A05'}}> · incl. missed lunch</span>}</div>
           {hours>0 && <div className="k" style={{marginTop:6}}>≈ {fmt2(previewNet/hours)}/hr take-home — compare pickups at a glance</div>}
           {goals && goals.some(g=>g.target>0) && previewNet>0 &&
             <div className="k" style={{marginTop:6}}>toward your {goals.filter(g=>g.target>0).length===1?'goal':'goals'}: {goals.filter(g=>g.target>0).slice(0,3).map(g=>{const pct=Math.round(previewNet/g.target*1000)/10; const n=Math.ceil(g.target/previewNet); return `${g.name} ${pct}% (≈${n} shift${n===1?'':'s'})`;}).join(' · ')}</div>}
@@ -6300,6 +6424,8 @@ function PatternLab({patterns, templates, differentials, baseRate, taxes, goals,
       if(t.start) c.start = t.start;
       if(t.bonusType && t.bonusType!=='none'){ c.bonusType=t.bonusType; if(t.bonusType==='custom') c.customBonus=t.customBonus||0; }
       if(t.isOvertime) c.isOvertime = true;
+      if(t.otMult!=null) c.otMult = t.otMult;
+      if(t.minHours!=null) c.minHours = t.minHours;
       return c;
     }
     const b = PATTERN_BRUSHES.find(x=>x.key===brush);

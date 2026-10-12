@@ -296,6 +296,7 @@ function sanitizeData(d){
           if(x.noMeal===true) o.noMeal = true; else delete o.noMeal;
           if(typeof o.start!=='string' || !TIME_RE.test(o.start)) delete o.start;
           if(typeof o.icsUid!=='string' || !ICS_UID_RE.test(o.icsUid)) delete o.icsUid;
+          payEventFields(o, x);
           return o;
         });
       if(clean.length) s[k] = clean;
@@ -381,7 +382,7 @@ function sanitizeData(d){
         && isFinite(Number(t.hours)) && Number(t.hours)>=0.1 && Number(t.hours)<=24
         && typeof t.bonusType==='string')
       .slice(0,MAX_TEMPLATES)
-      .map(t=>({
+      .map(t=>payEventFields({
         id: (typeof t.id==='string'||typeof t.id==='number') ? t.id : (Date.now()+Math.random()),
         name: t.name,
         shiftType: t.shiftType,
@@ -390,7 +391,7 @@ function sanitizeData(d){
         customBonus: isFinite(Number(t.customBonus)) ? Number(t.customBonus) : 0,
         isOvertime: t.isOvertime===true,   // council 2026-09-13 (#9): templates used to drop the OT flag silently
         ...(typeof t.start==='string' && TIME_RE.test(t.start) ? {start:t.start} : {})
-      }));
+      }, t));   // a "Court -- 3h min" template that forgot its minimum would be the #9 bug again
   }
   // goals: savings targets — array of {id, name:string(1..40), target:number>0}. Capped at MAX_GOALS.
   // target is coerced to a finite positive number so a malformed value can't yield NaN percentages
@@ -432,6 +433,7 @@ function sanitizeData(d){
           if(typeof c.bonusType==='string' && bonusKeys.indexOf(c.bonusType)>=0 && c.bonusType!=='none') o.bonusType = c.bonusType;
           if(o.bonusType==='custom'){ const cb=Number(c.customBonus); o.customBonus = isFinite(cb)?cb:0; }
           if(c.isOvertime===true) o.isOvertime = true;
+          payEventFields(o, c);
           return o;
         }),
       }));
@@ -573,9 +575,12 @@ const jobMap = list => { const m={}; (list||[]).forEach(j=>{ if(j && j.id) m[j.i
    subtracted from the derived overtime rather than charged again, so turning this on cannot
    silently double anybody's existing figure. */
 
-/* Straight-time cents for a shift: what it earns before any overtime premium. */
+/* Straight-time cents for a shift: what it earns before any overtime premium, for the hours it
+   was WORKED. A minimum's top-up is left out: 29 CFR 778.221(a)-(b) excludes it from the regular
+   rate ("the regular rate of the employee, therefore, remains $12"), and 778.222 applies the same
+   to report and short-notice pay. With no minimum this is the call it always was. */
 const straightTimeCents = (baseCents, diff, s, meal) =>
-  shiftGrossCents(baseCents, diff, {...s, isOvertime:false}, meal);
+  shiftGrossCents(baseCents, diff, {...s, isOvertime:false, minHours:null}, meal);
 
 /* The job's overtime rule as data: {id, days, hours, daily, anchor}, or null for 'flagged' (no
    derived overtime). A 'custom' rule whose fields are missing or out of range falls back to the
@@ -646,7 +651,9 @@ function overtimePremiumCents(job, shifts, dateKeys){
       ((shifts||{})[k]||[]).forEach(s=>{
         if(job && job.id && typeof s.jobId==='string' && s.jobId!==job.id) return;
         /* Paid hours, not logged hours: a missed lunch is half an hour of real work and
-           counts toward the overtime threshold like any other. */
+           counts toward the overtime threshold like any other. NOT minHours: an hour a minimum
+           pays but she did not work is not an hour worked -- 29 CFR 778.221(b) counts "the 43
+           actual hours (not 44)" (tests/core.test.mjs pins that exact week). */
         const h = paidHoursOf(s, job);
         hours += h; dayHours += h;
         stCents += straightTimeCents(baseCents, diffs[s.shiftType], s, job);
@@ -731,6 +738,41 @@ function hourlyRateCents(baseCents, diff){
   if(diff.type==='percent') return baseCents * (1 + amt/100);
   return baseCents + toCents(amt);
 }
+/* ---------- pay events: per-shift multiplier + minimum hours (session 3, 2026-10-11) --------
+   docs/pay-events-spec.md. Three optional fields on a shift; all three absent prices exactly as
+   before. `otMult` is the premium for a shift marked isOvertime (absent = 1.5, so isOvertime
+   still means 1.5x). `minHours` is a floor on paid hours: court, call-back and report pay are
+   max(actual, minimum). `payEvent` is a LABEL only -- the math never reads it (check_build.mjs
+   forbids it in every wage definition, the same rule as the persona).
+   The math reads the fields through these two helpers, never directly, because the Add-Shift
+   draft and the pattern lab hand it unsanitized objects; the sanitizer uses the same helpers,
+   so there is one definition of the bounds. */
+const PAY_EVENTS = ['court','callback','report'];
+const OT_MULT_MAX = 4;   // highest in the sample is 3x; the one total-pay cap found is 4x (SCL 16.2)
+/* Below 1.5 is refused, not clamped: a marked shift's hours are subtracted from derived overtime
+   as if paid at least 1.5x, so a 1.2x "premium" would under-pay her week. */
+function otMultOf(s){
+  if(!s || !s.isOvertime) return 1;   // truthy, exactly as the hard-coded `s.isOvertime ? 1.5 : 1` read it
+  const m = Number(s.otMult);
+  return (s.otMult!=null && isFinite(m) && m>1.5 && m<=OT_MULT_MAX) ? Math.round(m*100)/100 : 1.5;
+}
+function minHoursOf(s){
+  const h = Number(s && s.minHours);
+  return (s && s.minHours!=null && isFinite(h) && h>0 && h<=24) ? Math.round(h*100)/100 : 0;
+}
+
+/* The sanitizer's half of the bounds, shared by shifts, templates and pattern cells: writes the
+   three fields onto `o` (already carrying a boolean isOvertime) from the raw `src`, or deletes
+   them. Values out of range are DROPPED, never clamped -- the same rule as every other field. */
+function payEventFields(o, src){
+  const om = otMultOf({isOvertime:o.isOvertime===true, otMult:src.otMult});
+  if(om>1.5) o.otMult = om; else delete o.otMult;
+  const mh = minHoursOf(src);
+  if(mh) o.minHours = mh; else delete o.minHours;
+  if(PAY_EVENTS.indexOf(src.payEvent)>=0) o.payEvent = src.payEvent; else delete o.payEvent;
+  return o;
+}
+
 /* One shift's gross, in whole cents. Each component rounds on its own line the way a payroll
    system prints it (rate x hours is one line, a per-hour bonus is another), then the lines are
    summed as integers so a period total cannot accumulate float dust. */
@@ -739,13 +781,25 @@ function shiftGrossCents(baseCents, diff, s, meal){
   const perHrCents = s.bonusType==='custom' ? 0 : toCents(BONUS[s.bonusType]||0);
   const flatCents  = s.bonusType==='custom' ? toCents(parseFloat(s.customBonus)||0) : 0;
   // Overtime stacks ON TOP of the shift differential: the differential-inclusive hourly rate
-  // is paid at 1.5× (per-hour/flat bonuses stay at face value, matching the legacy 'overtime'
-  // shift-type which only multiplied the hourly rate). isOvertime is an independent flag, so a
-  // night OT shift earns 1.5×(base+night diff) instead of losing the differential to a flat 1.5×base.
-  const otMult = s.isOvertime ? 1.5 : 1;
-  return roundCents(hourlyRateCents(baseCents, diff) * otMult * hours)
+  // is paid at the shift's multiplier (per-hour/flat bonuses stay at face value, matching the
+  // legacy 'overtime' shift-type which only multiplied the hourly rate). isOvertime is an
+  // independent flag, so a night OT shift earns 1.5×(base+night diff) instead of losing the
+  // differential to a flat 1.5×base. otMultOf is 1.5 unless she picked another rate (2x, 2.5x…).
+  const otMult = otMultOf(s);
+  // A minimum pays the RATE LINE for max(worked, minimum) hours. Per-hour add-ons (charge,
+  // preceptor, on-call) are for duties actually performed, so they stay on the hours worked.
+  // With no minimum, rateHours === hours and this line is the expression it always was.
+  const rateHours = Math.max(hours, minHoursOf(s));
+  return roundCents(hourlyRateCents(baseCents, diff) * otMult * rateHours)
        + roundCents(perHrCents * hours)
        + flatCents;
+}
+/* What a minimum paid beyond the hours worked, in cents -- 0 without one. Priced by the same
+   function as the shift, so the Breakdown note can never disagree with the gross. 29 CFR
+   778.221(a): this amount "is considered as a payment that is not made for hours worked". */
+function minimumTopUpCents(baseCents, diff, s, meal){
+  if(!minHoursOf(s)) return 0;
+  return shiftGrossCents(baseCents, diff, s, meal) - shiftGrossCents(baseCents, diff, {...s, minHours:null}, meal);
 }
 /* Dollar-in/dollar-out wrappers. Every existing call site reads these and is unchanged. */
 function hourlyRate(base, diff){ return fromCents(hourlyRateCents(toCents(base), diff)); }
@@ -809,7 +863,8 @@ function patternCellEq(a,b){
   if(!a || !b) return !a && !b;
   return a.kind===b.kind && Number(a.hours)===Number(b.hours) && (a.start||'')===(b.start||'')
     && (a.shiftType||'')===(b.shiftType||'') && (a.bonusType||'none')===(b.bonusType||'none')
-    && Number(a.customBonus||0)===Number(b.customBonus||0) && !!a.isOvertime===!!b.isOvertime;
+    && Number(a.customBonus||0)===Number(b.customBonus||0) && !!a.isOvertime===!!b.isOvertime
+    && otMultOf(a)===otMultOf(b) && minHoursOf(a)===minHoursOf(b);
 }
 /* 'day' | 'night' for any cell — fixed cells are classified by their differential key. */
 function patternCellClass(cell){
@@ -850,6 +905,9 @@ function patternCellToShift(cell, dateObj, differentials){
      the flag everywhere else since 2026-09-16 (council group-7 leftover). */
   const s = { shiftType:st, hours:Number(cell.hours), bonusType:cell.bonusType||'none', customBonus:Number(cell.customBonus||0), isOvertime:!!cell.isOvertime };
   if(cell.start) s.start = cell.start;
+  // A cell painted from a 2.5x or minimum-hours template prices like that template on the calendar.
+  if(cell.otMult!=null) s.otMult = cell.otMult;
+  if(cell.minHours!=null) s.minHours = cell.minHours;
   return s;
 }
 /* Cell index a date falls on; the cycle extends both ways from the anchor. */
@@ -912,12 +970,17 @@ function computeNet(grossIn, t){
    YYYY-MM-DD keys; `job` is the active job from makeJob(). */
 function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, taxInputs, job}){
   let gross=0, hours=0;
+  /* What minimums paid beyond the hours worked -- already inside `gross`, carried separately only
+     so the Breakdown can say so. Hours stay hours WORKED: a minimum pays hours, it adds none. */
+  const minTopUp = { cents:0, shifts:0 };
   const periodKeys = new Set(dateKeys);
   Object.keys(shifts).forEach(k=>{
     if(!periodKeys.has(k)) return;
     (shifts[k]||[]).forEach(s=>{
       gross += shiftGross(baseRate, differentials[s.shiftType], s, job);
       hours += paidHoursOf(s, job);
+      const top = minimumTopUpCents(toCents(baseRate), differentials[s.shiftType], s, job);
+      if(top>0){ minTopUp.cents += top; minTopUp.shifts++; }
     });
   });
   // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
@@ -934,7 +997,7 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job)};
+  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -1179,7 +1242,13 @@ export {
   groupHoursByJob,
   paidHoursOf,
   hourlyRateCents,
+  PAY_EVENTS,
+  OT_MULT_MAX,
+  otMultOf,
+  minHoursOf,
+  payEventFields,
   shiftGrossCents,
+  minimumTopUpCents,
   hourlyRate,
   shiftGross,
   MAX_PATTERNS,

@@ -71,11 +71,27 @@ const CASES = [
      2026-10-11 both must come back IDENTICAL like every other case. */
   ['48-hour week, only overtime I mark', { ...base(), shifts: WEEK48, workPeriod: 'flagged' }],
   ['48-hour week, 86 in 14 days', { ...base(), shifts: WEEK48, workPeriod: 'custom', otPeriodHours: 86, otPeriodDays: 14, otPeriodStart: PPS }],
-  /* FICA on pre-tax health premiums (2026-10-11, docs/fica-health-premium-spec.md). Named before
-     the first run: the deployed sanitizer drops pretaxHealth, so it prices this blob with no
-     premium at all; local takes $266.03 out of both the FICA and the income-tax base. */
-  ['health premium', base({ pretaxDeductions: 200, pretaxHealth: 266.03 }),
-    'intended: deployed ignores the premium; local deducts it and charges no FICA or income tax on it'],
+  /* FICA on pre-tax health premiums (2026-10-11, docs/fica-health-premium-spec.md). Named as an
+     intended difference in that session's run; #171 (81c1954) is live since, so from session 3 on
+     it must come back IDENTICAL like every other case. */
+  ['health premium', base({ pretaxDeductions: 200, pretaxHealth: 266.03 })],
+  /* Pay events (session 3, 2026-10-11, docs/pay-events-spec.md). Two IDENTICAL probes first: a
+     stored 1.5 is the absent value and a kind with no minimum is a label, so neither may move a
+     figure. Then the named differences: the deployed sanitizer keeps the unknown fields (it
+     spreads the shift) but its shiftGross never reads them, so it prices every one of these at
+     the hours logged and 1.5x. */
+  ['marked overtime with an explicit 1.5x', { ...base(), shifts: SHIFTS({ isOvertime: true, otMult: 1.5 }) }],
+  ['a court label with no minimum', { ...base(), shifts: SHIFTS({ payEvent: 'court' }) }],
+  ['court 1 h on a 2 h minimum at 2.5x', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [{ id: 20, shiftType: 'base', hours: 1, bonusType: 'none', isOvertime: true, otMult: 2.5, minHours: 2, payEvent: 'court' }] } },
+    'intended: deployed pays 1 h at 1.5x ($75); local pays 2 h at 2.5x ($250)'],
+  ['call-back 1 h on a 4 h minimum at straight time', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [{ id: 21, shiftType: 'base', hours: 1, bonusType: 'none', minHours: 4, payEvent: 'callback' }] } },
+    'intended: deployed pays 1 h ($50); local pays 4 h ($200)'],
+  ['nurse 2x past 12 h, logged as a second entry', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [
+      { id: 22, shiftType: 'night', hours: 12, bonusType: 'none' },
+      { id: 23, shiftType: 'night', hours: 4, bonusType: 'none', isOvertime: true, otMult: 2 }] } },
+    'intended: deployed pays the 4 h at 1.5x; local at 2x'],
+  ['48-hour week + a call-back minimum, 40-hour rule', { ...base(), shifts: { ...WEEK48, [plus(4)]: [{ id: 24, shiftType: 'base', hours: 2, bonusType: 'none', isOvertime: true, minHours: 3, payEvent: 'callback' }] } },
+    'intended: local adds the 1 h top-up; the derived premium counts 50 actual hours on both sides'],
 ];
 
 /* Text changes that are NOT figure changes, named before the run and applied to the DEPLOYED

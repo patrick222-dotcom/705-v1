@@ -5317,6 +5317,110 @@ const run = async () => {
     }
   }
 
+  /* 42. Pay events: per-shift multiplier + minimum hours (session 3, 2026-10-11). Wage-core.
+     docs/pay-events-spec.md. Drives the Add-Shift sheet on an iPhone 13: a 1 h court appearance on
+     a 3 h minimum at 2.5x, $44/h base, 10% federal, standard FICA.
+       court shift  3 h x $44 x 2.5            = $330.00   (logged at actual 1 h x 2.5: $110)
+       top-up       330 - 110                  = $220.00
+       plain shift  1 h x $44                  = $44.00
+       day gross    330 + 44                   = $374.00
+       FICA 7.65% x 374 = 28.611 -> $28.61; federal 10% = $37.40; net 307.99 -> "$308" */
+  if (want(42)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = iso(new Date());
+    const seed = { setupComplete: true, baseRate: 44, payPeriodStart: today, federalTaxRate: 10, stateTaxRate: 0,
+      ficaWithholdingType: 'standard', pretaxDeductions: 0, posttaxDeductions: 0 };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.fab', { timeout: 25000 });
+    await page.locator('.fab').click();
+    await page.waitForSelector('.sheet[aria-label="Add a shift"]', { timeout: 5000 });
+    const preview = () => page.locator('.sheet .preview .v').first().innerText();
+    const hours = page.locator('.sheet input[aria-label="Hours"]');
+    await page.locator('.sheet .chip-sel:has-text("Day (regular)")').click();
+    await hours.click(); await hours.fill('1'); await hours.press('Enter');
+    await page.waitForTimeout(150);
+    const p0 = await preview();
+    ok('events: a 1 h day shift previews at $44 before any pay event', /^\+\$44 gross/.test(p0), p0);
+    ok('events: the minimum-pay row is closed by default (no hours field)',
+      (await page.locator('.sheet input[aria-label="Minimum paid hours"]').count()) === 0);
+
+    await page.locator('.sheet button.chip-sel:has-text("Overtime —")').click();
+    await page.locator('.sheet .ot-mult button:has-text("2.5×")').click();
+    await page.locator('.sheet [aria-label="Minimum pay"] button:has-text("Court")').click();
+    const mh = page.locator('.sheet input[aria-label="Minimum paid hours"]');
+    await mh.click(); await mh.fill('3'); await mh.press('Enter');
+    await page.waitForTimeout(150);
+    const p1 = await preview();
+    ok('events: court 1 h on a 3 h minimum at 2.5x previews at $330', /^\+\$330 gross/.test(p1), p1);
+    ok('events: the preview names the rate and the minimum it priced', /incl\. OT ×2\.5/.test(p1) && /incl\. court minimum \(3h\)/.test(p1), p1);
+    /* The sheet is position:fixed, so an overflowing child never reaches documentElement's
+       scrollWidth (§36's lesson). Measure the new rows against the sheet itself. */
+    const fits = await page.evaluate(() => {
+      const sh = document.querySelector('.sheet[aria-label="Add a shift"]');
+      const box = sh.getBoundingClientRect();
+      return ['.ot-mult', '[aria-label="Minimum pay"]', 'input[aria-label="Minimum paid hours"]'].every((q) => {
+        const el = sh.querySelector(q); if (!el) return false;
+        const r = el.getBoundingClientRect(); return r.left >= box.left - 0.5 && r.right <= box.right + 0.5 && el.scrollWidth <= el.clientWidth + 1;
+      }) && sh.scrollWidth <= sh.clientWidth;
+    });
+    ok('events: the rate chips and minimum row fit inside the sheet on an iPhone 13', fits);
+    const otLabel = await page.locator('.sheet button.chip-sel:has-text("Overtime —")').innerText();
+    ok('events: the overtime chip says the rate she picked', /pays 2\.5× the hourly rate/.test(otLabel), otLabel);
+
+    await page.locator('.sheet button:has-text("+ Add to this day")').click();
+    await page.waitForTimeout(150);
+    const row = await page.locator('.sheet .row-item:has(.ot-tag)').first().innerText().catch(() => '(no row)');
+    ok('events: the day list tags the shift OT ×2.5 and Court · min 3h', /OT ×2\.5/.test(row) && /Court · min 3h/.test(row), JSON.stringify(row));
+
+    await page.locator('.sheet button:has-text("Save as template")').click();
+    await page.locator('.sheet input[aria-label="Template name"]').fill('Court');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.sheet .chip-sel:has-text("⚡ Court")', { timeout: 4000 }).catch(() => {});
+    const tpl = await page.locator('.sheet .chip-sel:has-text("⚡ Court")').innerText().catch(() => '(not saved)');
+    ok('events: "Save as template" keeps the rate and the minimum', /OT ×2\.5/.test(tpl) && /Court · min 3h/.test(tpl), JSON.stringify(tpl));
+
+    /* Turning the controls back off leaves nothing behind: court on, 3 h, court off; OT on, 2x, OT off. */
+    await page.locator('.sheet [aria-label="Minimum pay"] button:has-text("Court")').click();
+    await mh.click(); await mh.fill('3'); await mh.press('Enter');
+    await page.locator('.sheet [aria-label="Minimum pay"] button:has-text("Court")').click();
+    await page.locator('.sheet button.chip-sel:has-text("Overtime —")').click();
+    await page.locator('.sheet .ot-mult button:has-text("2×")').first().click();
+    await page.locator('.sheet button.chip-sel:has-text("Overtime —")').click();
+    await page.waitForTimeout(150);
+    const p2 = await preview();
+    ok('events: clearing the chips puts the preview back to $44', /^\+\$44 gross/.test(p2) && !/minimum|OT ×/.test(p2), p2);
+    await page.locator('.sheet button:has-text("+ Add to this day")').click();
+    await page.locator('.sheet button:has-text("Save day")').click();
+    await page.waitForSelector('.sheet[aria-label="Add a shift"]', { state: 'detached', timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(800);
+
+    const blob = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || 'null'), STORAGE_KEY);
+    const day = (blob && blob.shifts && blob.shifts[today]) || [];
+    const court = day[0] || {}, plain = day[1] || {};
+    ok('events: the saved court shift carries otMult 2.5, minHours 3, payEvent court, 1 h worked',
+      day.length === 2 && court.isOvertime === true && court.otMult === 2.5 && court.minHours === 3 && court.payEvent === 'court' && court.hours === 1,
+      JSON.stringify(day));
+    ok('events: the cleared shift saves none of the three fields',
+      plain.hours === 1 && plain.isOvertime === false && !('otMult' in plain) && !('minHours' in plain) && !('payEvent' in plain), JSON.stringify(plain));
+
+    const m = await page.evaluate(() => {
+      const t = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+      return { hero: t(document.querySelector('.hero .num')), takehome: t(document.querySelector('.takehome .v')),
+        gross: t([...document.querySelectorAll('.bd-row')].find((r) => /Gross pay/.test(r.textContent))),
+        note: t(document.querySelector('.bd-note.min-note')) };
+    });
+    ok('events: the hero and Breakdown price the day at $374 gross, $308 take-home',
+      /\$374$/.test(m.gross) && m.hero === '$308' && m.takehome === '$308', JSON.stringify(m));
+    ok('events: the Breakdown says $220.00 of it is minimum-hours pay on 1 shift',
+      /Includes \$220\.00 of minimum-hours pay — 1 shift paid/.test(m.note), m.note);
+    const layout = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    ok('events: no sideways scroll with the note showing', layout);
+    ok('events: no page errors across section 42', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
