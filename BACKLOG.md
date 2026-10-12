@@ -708,6 +708,11 @@ and the push P0 it pointed at was fixed the same day.
   rate, so do not quote one off this note.
 
 ### P2 (new, groom 2026-10-11)
+- [x] ~~**CLAUDE.md's assertion count is stale at 694**~~ — **CLOSED 2026-10-12.** #171 landed
+  (`81c1954`), so the reason to leave those lines alone is gone, and both were regenerated **from a
+  run rather than summed**: smoke is **736** (not the 721 this note predicted — the arithmetic was
+  15 short, which is exactly why the line says regenerate it) and `core.test.mjs` is **83**. The
+  "plus first-gen iPhone SE in §30 and §38" clause is still accurate. Original note:
 - [ ] **CLAUDE.md's assertion count is stale at 694 and was deliberately NOT updated tonight** —
   housekeeping, so the next run does not read it as drift nobody noticed. The real figure after
   tonight's build is **710**. It was left alone because open PR #171 rewrites the **same two lines**
@@ -775,6 +780,117 @@ and the push P0 it pointed at was fixed the same day.
   field-verified yet; re-read this in a week. The 422 running count is also unchanged at **2 in
   27** — the four syncs tonight were all `200`, and `icalFailureDetail` has still never put a
   status code in a production row.
+
+### P2 (new, groom 2026-10-12)
+- [ ] **`deploy_watch.mjs` printed `LIVE` while badgebudget.com was still serving the PREVIOUS
+  commit, and it did it to this run tonight** — `harness:drivable` (script-level), and it goes
+  near the top of P2 because this is the one tool the deploy ritual trusts to prove a merge
+  shipped. Found by accident at 08:51:38 UTC, 24 seconds after #175 merged: the watch reported
+  `deploy-watch: LIVE` with `index.html: serving 81c1954 (2026-10-11)` — the **pre-merge** commit.
+  It was telling the truth about the bytes and the wrong thing about the question: the served
+  `index.html` really did match a git blob it knew, just an old one, because the local clone had
+  not fetched the new head yet. Re-running after a `git fetch` gave `LIVE … serving b90aa07`,
+  which is the real confirmation.
+  **Why this is more than a cosmetic gap.** `LIVE` is read as "what is merged is shipped", and
+  CLAUDE.md's whole four-night Pages-stall lesson is *treat every merge as unshipped until the
+  watch says `LIVE`*. A watch that says `LIVE` for a stale head hands back exactly the false
+  all-clear that lesson exists to prevent — and it is **worse** than the old `curl | grep
+  <marker>` ritual in one specific way: a marker grep against the old bytes returns 0 and looks
+  like a failure, whereas this returns the word the operator is waiting for. The only reason it
+  did not mislead tonight is that the verdict line prints the commit beside it and the commit was
+  read.
+  **Shape of the fix:** `deploy_watch.mjs` should fetch the deploy branch itself before judging
+  (it already needs network), and when it cannot, say so — a verdict computed against a clone that
+  may be behind is `UNKNOWN_BUILD`, which the script already has and which CLAUDE.md already
+  records as deliberately **not** green. Cheapest correct version: fetch, then compare the served
+  bytes against `origin/claude/migrate-to-github-deploy-3F5RD`'s tip blob specifically, and report
+  `BEHIND` naming both commits when they differ. **Do not just print a warning** — the whole point
+  is that the verdict word is what gets read.
+  Drivable at script level: its 55-assertion classifier suite already stubs the git side, so a
+  case for "local clone behind origin" is an addition to that suite, not a live probe.
+- [ ] **`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
+  and cost this run one CI cycle** — `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
+  ellipsised at this width` failed once and passed once **on the same commit** (`e738670`, runs
+  38224339630 and 38224378362), reporting `clipped=true spare=10`.
+  **The cause is written down three lines below the assertion itself**, which is why this is a
+  flake and not a mystery: *"this sandbox has no route to fonts.googleapis.com and lays the bar out
+  in the fallback face while the runner gets real Bricolage Grotesque."* So
+  `brand.scrollWidth > brand.clientWidth` depends on whether — and **when** — the webfont resolves.
+  `spare=10` is exactly the flex gap, i.e. zero real slack: after #172 the row sums to ~313 against
+  320 pt, so the measurement sits one glyph-width from flipping and the real face tips it.
+  **Two candidate fixes, and the second is the honest one.** (a) Await `document.fonts.ready`
+  before measuring — removes the *race* but not the marginality, so it would still fail whenever
+  the real face genuinely does not fit. (b) Decide what the assertion is actually for: the
+  no-sideways-scroll guarantee is the load-bearing half and is pinned separately (and by the
+  deliberately-2.2x-wide-font check right below), while "the wordmark reads as badgebudget" is
+  cosmetic and is the half that is font-dependent by nature. Splitting them, and letting the
+  cosmetic half assert against the fallback face it can actually control, is probably right.
+  **Needs one run that can exercise both font states**, so it is not a blind edit — and note the
+  negative test is unusual here: the break to prove is *the flake*, i.e. forcing the real face.
+  Do not "fix" it by loosening the overflow assertion, which is the one that matters.
+
+### P1 (new, groom 2026-10-12)
+- [ ] **CORRECTION to the 2026-10-11 landing-screen note: device `5212f2aa` did NOT stop on the
+  landing screen — it finished the whole funnel.** `harness:unscoped`, and filed as a correction
+  first because this file's standing rule is that a confident-but-false claim costs more than a
+  gap. The 10-11 note reads *"`5212f2aa` (2026-10-11 03:11:32, exited 2 min later,
+  `last:app_open`)"* and counts it among three landing-only devices. Its actual trail:
+  `ob_view{landing}` 03:11:32 → persona (`healthcare`) → shift (`12`) → status (`pt`) → union
+  (`no`) → pay (`hourly`) → extras → **`setup_completed {mode:'rough'}` at 03:12:11**, then
+  `sample_cleared` and `pattern_lab_opened`, then `session_end {secs:129, ob:6}`. It then
+  **reloaded** and that second load produced `session_end {n:1, last:'app_open', secs:7}` — and it
+  is that second row the note quoted as the visit. So the split in that window was **2 of 5, not
+  3 of 5**, and the note's own conclusion ("everyone who taps past the first screen finishes") is
+  not just intact but has one more device behind it.
+  **The lesson is reusable and belongs beside the §33/§34 ones:** `session_end` is per *load*, not
+  per visit, and CLAUDE.md already says "the row to read is the LAST per load". Reading the last
+  row *per device* instead collapses a completed visit plus a reload into an abandonment. Any
+  future funnel read must group by load, not by device.
+- [ ] **The landing-screen drop is now 4 landing-only devices, but two of them cannot be counted and
+  the fix is still the owner's call** — `harness:unscoped`, carried forward rather than promoted.
+  `ob_view` rows, 7 days to 2026-10-12: **8 devices, 3 completed the funnel, 1 reached persona and
+  left, 4 never left landing.** The four: `5098289e` (10-10 19:35), `86a08e7f` (10-10 20:18),
+  `f44ff6f9` (10-11 23:04), `257dda69` (10-12 04:51). The 10-11 note's promotion condition
+  ("a fourth and fifth landing-only device") is therefore **met on the count and not on the
+  evidence**: the last two filed **no `session_end` at all** and share a user-agent with the
+  re-minting loads in the P2 below, so they may be one device, a webview, or a preview service
+  rather than four nurses. **Tonight's build is what will separate them** — from here a landing-only
+  load says whether it minted its own id, so a repeat visitor stuck on the first screen is
+  distinguishable from a fresh arrival. Re-read in a week with `fresh` in hand.
+  **What has not changed:** what the landing screen should *say* is a copy call on the first thing a
+  nurse ever sees, which is the owner's and is cheap for him to make. Do not guess it.
+
+### P2 (new, groom 2026-10-12)
+- [ ] **Read `app_open {fresh}` before quoting any device count again — it is the first half of the
+  broken device classifier, and the second half is still missing.** Housekeeping with a real next
+  step. Shipped tonight: a load that minted its own `anon_id` says so. What that retires is the
+  ambiguity between "new device" and "same device, storage discarded". What it does **not** retire
+  is CLAUDE.md's standing caveat, because the other inflation source is unchanged — harness rows
+  (Playwright's `iPhone OS 15_0` + `Version/18.0` pair) and crawlers (`AhrefsBot`, `360Spider`,
+  `HeadlessChrome`, the `X11; Linux x86_64` loads that fire one `ob_step` and leave). **Do not read
+  tonight's change as the re-baseline.** The query that pays it off, once a few days of rows exist:
+  count devices with ≥2 `app_open` rows carrying `fresh:true`; every one of those is a single phone
+  that has been counted as many.
+  **The shape to expect, unverified:** the `iPhone OS 27_2_0 … CriOS/155` user-agent filed 4 plain
+  uuids in 6 days while one established device on that same user-agent kept its id across 5 visits,
+  so the leading reading is an in-app webview or an incognito tab, not a bug in `anonId()`. One
+  device showing `fresh:true` twice confirms it. **Do not build a UA-based filter** — that is
+  guessing from the same string that produced the 8-of-24 user-agent-disagreement note below.
+- [ ] **A Reddit seed candidate is already answered in the app and the dedupe missed it** —
+  housekeeping on `scripts/groom_seed.mjs`, so a future run does not build it. The P2 candidate
+  *"Confusion about when OT kicks in and how it interacts with differentials"* (`pay-differentials`,
+  marked `drivable`) is covered for its first half: the Add-Shift sheet's OVERTIME chip expands to
+  *"1.5× is applied to your **differential rate** — a night/weekend shift earns 1.5×(base +
+  differential), not just 1.5×base. Per-hour add-ons (charge, preceptor, on-call) stay at face
+  value."* That is the exact confusion the theme describes, in the exact place she decides it.
+  **The half that is NOT covered is "when OT kicks in"** — the work-period rule (shipped 2026-10-10:
+  flagged-only, or N hours in a D-day period) lives in Settings and the OT chip says nothing about
+  it, so a nurse marking a shift OT has no on-screen account of which hours the app will actually
+  pay a premium on. That is a real gap, but writing it is a copy call next to a dollar figure, so it
+  belongs in the configurable-work-period follow-ups under `## Needs a dedicated session`, not here.
+  **Do not "fix" the dedupe by deleting the candidate** — the known defect is that coverage is
+  keyword presence, and a narrower keyword set resurrects shipped themes (see the `self-schedule-
+  fairness` note).
 
 ### P3 (new, groom 2026-10-08)
 - [ ] **A third of devices report a DIFFERENT user agent at `session_end` than at `app_open`, in
@@ -1972,6 +2088,48 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-12 — **A plain uuid in `events` could not tell a real first-time phone from a load whose
+  storage is thrown away, so `app_open` now says which.** Nightly loop; `index.html` analytics
+  helpers + `tests/smoke.mjs` §41, no wage core, no new event name, no user-facing string.
+  **Found in the groom, not the queue.** In the six days to 2026-10-12 the user-agent
+  `iPhone OS 27_2_0 … CriOS/155.0.8059.37` filed **four different plain uuids**, three of them in
+  the 14 hours to 04:51 UTC (`f5734dcd`, `f44ff6f9`, `257dda69`), each seen exactly once and each
+  stopping on the landing screen — while `8e0e32fe`, an established device on the **same**
+  user-agent, kept one id across five visits. Two of the three never filed a `session_end` at all.
+  **Why nothing could say which it was.** `nostore-` labels only the loud failure, where
+  localStorage *throws*. The quiet one — an in-app webview opened from a group chat, Chrome iOS
+  incognito — lets `setItem` succeed and discards it when the page closes, so `anonId()` mints a
+  fresh **plain** uuid every load and the row is byte-indistinguishable from a genuine new device.
+  Every inflated device count in this file sits on that ambiguity.
+  **Fix:** `anonIdMinted` records whether this load read its id back or minted it, and `app_open`
+  carries `fresh:true` when it minted. `fresh:true` twice from one device is proof its storage is
+  ephemeral, and a cohort query can drop those loads instead of guessing from the user-agent.
+  **Three decisions worth keeping.** (a) **Absent, not `false`**, when the id came back from
+  storage — months of `app_open` rows predate the key and a null has to keep meaning "not known",
+  the same rule `obEventProps` keeps. (b) **A `nostore-` load is `fresh` too**, because `fresh`
+  means "minted on this load" and that is one rule rather than two; §20 still pins the prefix.
+  (c) **`anonIdWasMinted()` resolves the id before reading the flag.** Props are built by the
+  *caller*, so without that call the flag is still `false` on a load where nothing has touched
+  `anonId()` yet and **every row silently reports a return visit** — break 3 below is that exact
+  mistake, and it fails four assertions.
+  §41, 11 assertions, **five deliberate breaks, each failing exactly the assertions it should**:
+  (1) drop the flag in the storage-works path → 3 fail; (2) send `fresh:false` instead of omitting
+  the key → only the absent-not-false assertion fails; (3) read the flag without resolving first →
+  4 fail; (4) forget the flag in the `catch` branch → only the storage-blocked assertion fails;
+  (5) drop `via` from the props → only the QR assertion fails.
+  **The negative test also caught a green-for-the-wrong-reason assertion in my own first draft**:
+  reading the captured rows straight after `.takehome` attaches loses the `app_open` POST on a slow
+  pass, and the run printed `PASS … no app_open`. It polls for the row now (`awaitOpen`). That is
+  the §33/§35/§36 lesson arriving by a fourth door — an assertion that cannot see its subject
+  cannot fail on it either.
+  Gate: 13/13 mechanical, 33/33 groom-seed, 83/83 core, **736/0 smoke** (was 725).
+  **LIVE at `b90aa07`**, confirmed 2026-10-12 08:52 UTC by `deploy_watch.mjs` naming that commit as
+  the one serving `index.html` — not by the green check, and not by the first `LIVE` it printed
+  (see the `deploy_watch` item below, which is tonight's other finding).
+  **CI needed one re-run and the failure was not this change's.** Two workflow runs fired on
+  `e738670`: the PR run's `smoke` passed 736/0, the branch-push run's failed 735/1 on
+  `top bar [iPhone SE]: the wordmark is not ellipsised at this width — clipped=true spare=10`.
+  Identical code, one green one red, so the re-run was the sanctioned one and it passed.
 - 2026-10-11 — **Session 3: per-shift multiplier + minimum-hours events (dedicated wage-core
   session; PR waits for the owner's merge).** `isOvertime` no longer means a hard-coded 1.5×: a
   marked shift can carry `otMult` (1.5 < m ≤ 4, absent = 1.5) and any shift a `minHours` floor
@@ -1980,7 +2138,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   toward the overtime threshold and stay out of the regular rate — 29 CFR 778.221(b)'s own
   worked week is a core test ($552, 43 hours, not 44). Add-Shift gets rate chips (1.5/2/2.5/3 +
   other) and a closed-by-default *Minimum pay* row; templates and pattern cells carry the fields;
-  the Breakdown names minimum-hours pay. Core 83 → 111, smoke §41 (+15) → 740, every new
+  the Breakdown names minimum-hours pay. Core 83 → 111, smoke §42 (+15) → 751 after merging the 10-12 nightly's §41, every new
   assertion seen failing against a broken copy (23 mutations). `tests/equality.mjs` against
   badgebudget.com: 19 identical, 0 unintended, 4 of 4 named differences seen.
 - 2026-10-11 — **FICA on pre-tax health premiums (dedicated wage-core session; #171, owner-merged,

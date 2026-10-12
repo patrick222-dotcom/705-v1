@@ -25,7 +25,7 @@ Dedicated wage-core session (Invariant 3). Spec: `docs/pay-events-spec.md`. Plan
 | Check | Result |
 |---|---|
 | Baseline before any edit (clean worktree of `81c1954`) | gate 13/13, core 83/83, smoke 725/725 |
-| After | gate 13/13, core 111/111, smoke 740/740 (§41 +15) |
+| After | gate 13/13, core 111/111, smoke 740/740 (+15, as §41); 751/751 after merging the 10-12 nightly, which also added a §41 — mine is §42 now |
 | Negative tests | 23 mutations of a scratch copy; every new assertion seen failing |
 | `tests/equality.mjs` vs badgebudget.com | 19 identical, 0 unintended, 4 of 4 named differences seen; each delta matches the hand math ($175, $150, $120, $75) |
 
