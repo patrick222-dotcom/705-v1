@@ -2432,11 +2432,21 @@ function freshAnonId(){
    altogether — otherwise the one event whose entire job is saying how a visit ended is the one
    event that attaches to no device trail, and the Devices tab shows the visit stopping nowhere. */
 let anonIdMemo = null;
+/* Did this load MINT its id, or read one back? A plain uuid in `events` says nothing about
+   whether the device will ever return, and that is the gap under every inflated device count in
+   this repo. `nostore-` only covers the LOUD failure, where storage throws. The quiet one is a
+   write that succeeds and is discarded when the page closes — an in-app webview opened from a
+   group chat, Chrome iOS incognito — and it files a brand-new uuid every visit, so one phone
+   reads as N first-time devices. Four such ids arrived on ONE user-agent in the six days to
+   2026-10-12, each seen exactly once, while an established device on that same user-agent kept
+   its id across five visits. `fresh:true` on `app_open` twice from one device is the proof, and
+   a cohort query can then drop those loads instead of guessing from the user-agent. */
+let anonIdMinted = false;
 function anonId(){
   if(anonIdMemo) return anonIdMemo;
   try{
     let id = localStorage.getItem(ANON_ID_KEY);
-    if(!id){ id = freshAnonId(); localStorage.setItem(ANON_ID_KEY, id); }
+    if(!id){ id = freshAnonId(); anonIdMinted = true; localStorage.setItem(ANON_ID_KEY, id); }
     anonIdMemo = id;
     return anonIdMemo;
   }catch(_){
@@ -2445,9 +2455,25 @@ function anonId(){
        A per-load id at least joins this load's own rows to each other. Prefixed on purpose: it
        does NOT persist, so it must never be read as a returning device, and a cohort query can
        exclude it by name (`anon_id not like 'nostore-%'`) instead of guessing. */
+    anonIdMinted = true;
     anonIdMemo = 'nostore-' + freshAnonId();
     return anonIdMemo;
   }
+}
+/* Resolve before reading the flag: props are built by the CALLER, so on a load where nothing has
+   touched `anonId()` yet the flag would still be false and every row would look like a return
+   visit. Calling it here is free — it is memoized after the first call. */
+function anonIdWasMinted(){ anonId(); return anonIdMinted; }
+/* `app_open`'s props: how she arrived, and whether this load minted its own device id. Both are
+   a fixed token or a boolean, so nothing she typed can ride along (Analytics: coarse props only,
+   never wage or goal figures). Absent, not `false`, when the id came back from storage — the
+   table already holds months of `app_open` rows with no such key and a null must keep meaning
+   "not known", exactly as `obEventProps` refuses to send one. */
+function appOpenProps(){
+  const p = {};
+  if(ARRIVED_VIA) p.via = ARRIVED_VIA;
+  if(anonIdWasMinted()) p.fresh = true;
+  return Object.keys(p).length ? p : null;
 }
 /* One row shape, two senders. The unload sender below cannot go through supabase-js, so this
    exists to stop the two from drifting — a column added to one and not the other breaks the
@@ -4505,7 +4531,7 @@ function App(){
   };
 
   /* analytics: one event per app load, plus last load's captured errors */
-  useEffect(()=>{ track('app_open', ARRIVED_VIA?{via:ARRIVED_VIA}:null, null); flushClientErrors(null); flushDeferredEvents(null); },[]);
+  useEffect(()=>{ track('app_open', appOpenProps(), null); flushClientErrors(null); flushDeferredEvents(null); },[]);
 
   const exportData = ()=>{
     const blob = new Blob([JSON.stringify({...serializeState(),exportDate:new Date().toISOString()},null,2)],{type:'application/json'});

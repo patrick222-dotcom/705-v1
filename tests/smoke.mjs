@@ -5186,6 +5186,137 @@ const run = async () => {
       errs.filter((e) => !isExpectedNetwork(e))[0] || '');
   }
 
+  /* ---- 41. app_open says whether this load MINTED its device id -------------------------
+     The gap: a plain uuid in `events` is the same row whether it belongs to a real first-time
+     phone or to a load whose storage is thrown away the moment the page closes. `nostore-`
+     only labels the LOUD failure, where localStorage throws. The quiet one — an in-app webview
+     opened from a group chat, Chrome iOS incognito — lets the write succeed and discards it, so
+     one phone files a brand-new uuid every visit and every cohort count reads it as N new
+     devices. Four such ids landed on ONE user-agent in the six days to 2026-10-12, each seen
+     exactly once, while an established device on that same user-agent kept its id across five
+     visits. These drive all four shapes off the wire, not off the call site. */
+  if (want(41)) {
+    const capture = async (page, bag) => {
+      await page.route('**/rest/v1/events*', async (route) => {
+        try { bag.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { bag.push(null); }
+        await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+      });
+    };
+    const opens = (bag) => bag.flatMap((p) => (Array.isArray(p) ? p : [p]))
+      .filter((r) => r && r.name === 'app_open');
+    /* Poll rather than read straight after the selector. `.takehome` is attached by the first
+       render and app_open rides a useEffect plus a routed fetch, so a bare read loses the row
+       on a slow pass -- which showed up as a PASSING assertion reporting "no app_open" during
+       negative testing, i.e. an assertion that was green for the wrong reason. */
+    const awaitOpen = async (page, bag) => {
+      for (let i = 0; i < 40 && !opens(bag).length; i++) await page.waitForTimeout(100);
+      return opens(bag);
+    };
+
+    /* -- (a) a first visit, then a RETURN in the same browser: the whole point of the flag --- */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      const bag = [];
+      await capture(page, bag);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const first = await awaitOpen(page, bag);
+      const devId = await page.evaluate(() => localStorage.getItem('scrubpay_anon_id'));
+      ok('fresh: a first visit mints an id and says so', first.length === 1 && first[0].props && first[0].props.fresh === true,
+        first.length ? JSON.stringify(first[0].props) : 'no app_open');
+      ok('fresh: the minted id is the one that got persisted',
+        first.length === 1 && !!devId && first[0].anon_id === devId,
+        devId ? `${String(devId).slice(0, 8)}…` : 'no device id');
+
+      bag.length = 0;
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const again = await awaitOpen(page, bag);
+      /* Absent, not false. Months of app_open rows predate this key and a null has to keep
+         meaning "not known" rather than "came back". */
+      ok('fresh: a return visit does NOT claim to be fresh',
+        again.length === 1 && (again[0].props === null || again[0].props.fresh === undefined),
+        again.length ? JSON.stringify(again[0].props) : 'no app_open');
+      ok('fresh: and the return carries the same device id, so it is one device',
+        again.length === 1 && again[0].anon_id === devId, again.length ? String(again[0].anon_id).slice(0, 8) : '');
+      ok('fresh: no page errors across the mint-then-return drive',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- (b) the quiet case: the write "succeeds" and is discarded ---------------------------
+       This is the shape `nostore-` cannot see, and the one production produced. setItem is a
+       silent no-op for the id key only; nothing throws, so the catch branch never runs. Two
+       loads, two different plain uuids, both admitting they were minted. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url);
+      const bag = [];
+      await capture(page, bag);
+      await page.addInitScript(() => {
+        const set = localStorage.setItem.bind(localStorage);
+        localStorage.setItem = (k, v) => { if (k === 'scrubpay_anon_id') return undefined; return set(k, v); };
+      });
+      const ids = [];
+      for (let i = 0; i < 2; i++) {
+        bag.length = 0;
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+        const rows = await awaitOpen(page, bag);
+        ids.push(rows.length === 1 ? { id: rows[0].anon_id, fresh: rows[0].props && rows[0].props.fresh } : null);
+      }
+      ok('fresh: an ephemeral store mints a NEW id on every load', ids[0] && ids[1] && ids[0].id !== ids[1].id,
+        JSON.stringify(ids.map((x) => x && String(x.id).slice(0, 8))));
+      ok('fresh: and every one of those loads is marked fresh, which is what makes it readable',
+        !!(ids[0] && ids[0].fresh === true && ids[1] && ids[1].fresh === true), JSON.stringify(ids.map((x) => x && x.fresh)));
+      ok('fresh: none of them is nostore-prefixed, so the prefix alone could never have caught this',
+        !!(ids[0] && ids[1]) && !/^nostore-/.test(String(ids[0].id)) && !/^nostore-/.test(String(ids[1].id)),
+        JSON.stringify(ids.map((x) => x && String(x.id).slice(0, 10))));
+      ok('fresh: no page errors across the ephemeral-storage drive',
+        errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* -- (c) the loud case still works, and is ALSO fresh ------------------------------------
+       `fresh` means "minted on this load", which a nostore- id is. Setting it there too keeps
+       one rule instead of two, and §20 already pins the prefix itself. */
+    {
+      const { ctx, page } = await newPage(browser, url);
+      const bag = [];
+      await capture(page, bag);
+      await page.addInitScript(() => {
+        const get = localStorage.getItem.bind(localStorage);
+        const set = localStorage.setItem.bind(localStorage);
+        localStorage.getItem = (k) => { if (k === 'scrubpay_anon_id') throw new Error('storage blocked'); return get(k); };
+        localStorage.setItem = (k, v) => { if (k === 'scrubpay_anon_id') throw new Error('storage blocked'); return set(k, v); };
+      });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const rows = await awaitOpen(page, bag);
+      ok('fresh: a storage-blocked load is fresh too, and still nostore-prefixed',
+        rows.length === 1 && rows[0].props && rows[0].props.fresh === true && /^nostore-/.test(String(rows[0].anon_id)),
+        rows.length ? JSON.stringify({ p: rows[0].props, id: String(rows[0].anon_id).slice(0, 12) }) : 'no app_open');
+      await ctx.close();
+    }
+
+    /* -- (d) the new key must not displace how she arrived ----------------------------------
+       `via` is the only top-of-funnel signal this repo has. Adding a second key to the same
+       props object is exactly how one of them goes missing. */
+    {
+      const { ctx, page } = await newPage(browser, url);
+      const bag = [];
+      await capture(page, bag);
+      await page.goto(`${url}?via=qr`, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      const rows = await awaitOpen(page, bag);
+      ok('fresh: a QR arrival carries BOTH via and fresh',
+        rows.length === 1 && rows[0].props && rows[0].props.via === 'qr' && rows[0].props.fresh === true,
+        rows.length ? JSON.stringify(rows[0].props) : 'no app_open');
+      await ctx.close();
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
