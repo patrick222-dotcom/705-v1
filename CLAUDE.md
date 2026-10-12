@@ -91,7 +91,7 @@ see Positioning.
   **Session 2 (configurable work period) shipped 2026-10-10** (#168, owner-merged). It adds "only the shifts I mark as overtime" and N hours in a D-day period (7–28,
   straddling paychecks). That makes zero phantom overtime possible on every 12-hour schedule
   probed — the gate on the Law enforcement and Fire & EMS tiles, which are session 5.
-  **Session 3 (pay events) built 2026-10-11, PR awaiting the owner's merge** (`docs/pay-events-spec.md`):
+  **Session 3 (pay events) shipped 2026-10-12** (#174, owner-merged, LIVE at `97f8e86`; `docs/pay-events-spec.md`):
   a marked shift can pay 2×/2.5×/any 1.5–4×, and court / call-back / report pay is max(worked,
   minimum). Hours a minimum pays but she did not work never count toward overtime (29 CFR
   778.221(b)). Tracking stays
@@ -168,6 +168,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `docs/pay-rule-patterns.md` | 30 public contracts (21 police, 4 nurse, 5 other hourly): the pay-rule patterns, the pay model broken into primitives, probes of phantom overtime by schedule, 12 missing primitives ranked, and why no records request is needed. Research only. Its Upper Darby predecessor: `docs/police-pay-rules-draft.md` |
 | `docs/session-2026-10-10-pay-patterns-and-onboarding.md` | decision record for the multi-persona onboarding plan: personas as presets, PRN/part-time, first-party funnel tracking, and the six-session build order |
 | `docs/session-2026-10-10-onboarding-v2-and-work-period.md` | handoff for the session that shipped sessions 1–2 (#167, #168) and the field evidence (#169): decisions, findings, and the order from here (FICA health-premium fix next) |
+| `docs/pay-events-spec.md` + `docs/session-2026-10-11-pay-events.md` | session 3's wage-core spec (per-shift overtime multiplier, court/call-back/report minimums, the 29 CFR 778.221 threshold ruling) and its session log, which ends with the ready-to-paste kickoff prompt for session 4 (dated pay items) |
 | `design-system/` | 12 static HTML spec pages + `cards.json` from the 2026-07-29 Liquid Glass pass. Reference only: not deployed, not loaded by the app, may lag `index.html` |
 | `.mcp.json`, `.agents/skills/`, `skills-lock.json` | Supabase MCP server config + vendored Supabase skills (symlinked, hash-pinned) |
 | `.claude/skills/{ship,wage-core,harness}/` | the project's own skills — the deploy ritual, the Invariant 3 protocol, and the test rig. See Skills |
