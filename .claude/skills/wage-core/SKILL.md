@@ -165,7 +165,12 @@ FICA percentage, percent *and* dollar custom withholdings, an overtime shift, an
 If a figure differs and you did not intend it, that is the bug — not a rounding artifact to
 wave through.
 
-**5. Ship via the `ship` skill**, with a marker that is unique to this change.
+**5. Ship via the `ship` skill**, with a marker that is unique to this change. Who merges is
+decided by step 4, not by you (`docs/leadership.md` → *Approval tiers*, 2026-10-12): every case
+identical and no difference named → auto-merge. Any named difference → the PR waits for Pat, and
+its body opens with a **before → after card**: three example paychecks from the equality cases, in
+plain words ("3×12 nights, $38/h: take-home $1,842 → $1,815"). That card is what he approves, so
+it must be readable without the diff.
 
 ## Reviewing someone else's wage diff
 

@@ -512,11 +512,18 @@ owner's preference. That is a fine outcome to learn early.
 
 ## Decisions the owner has to make
 
-- Build step, yes or no. Everything downstream assumes yes.
-- Second Supabase project for rehearsal before touching `user_data` live (the backlog already asks).
-- Swap-board writes via agent: allowed, or reads only until further notice.
-- Whether to pay for the custom auth domain before the connector reaches anyone outside the family.
-- Create `main` now, as part of step 1, or keep deferring.
+**Answered 2026-10-12** (this list sat unrevised for five weeks and was being reported as open):
+
+- Build step — **no, decided 2026-10-07** by how step 1 shipped: the core is marked in place and
+  extracted by a script; the deploy path has no build step. (The "assumes yes" below is history.)
+- Rehearsal Supabase project — **required from step 4, the first write**, not before step 2. Step 2
+  adds the OAuth server and read-only tools; existing RLS applies unchanged.
+- Swap-board writes via agent — **reads only** until the `security-00/01/02` hardening lands.
+- Paid custom auth domain — **decide at step 7**, before anyone outside the family connects.
+- Create `main` — **keep deferring**; unrelated to the gateway (Invariant 9 has the procedure).
+
+Still open, and not yet blocking: whether `apply_pay_setup` writes on her confirmation alone (step 4).
+Tracked as thread T1 in `docs/cos/now.md`.
 
 ## First session, concretely
 

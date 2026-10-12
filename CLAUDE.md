@@ -109,6 +109,19 @@ see Positioning.
   Council history lives in `docs/history.md`; the latest full run (2026-09-13 → 16: 56 cells, 85
   confirmed, three doc claims disproved) is in `docs/council-runs/2026-09-13/`.
 
+## Operating committee (owner decision, 2026-10-12)
+
+Pat starts more than he can track, so a chief of staff keeps **one page true:
+`docs/cos/now.md`** — at most 3 threads and 3 open decisions, enforced by `scripts/cos_check.mjs` in
+the gate. Four seats sit under it, each owning its own files so they never collide in `index.html`:
+**CTO** (the only writer of `index.html`; the nightly loop is its hands), **COO** (ops, support,
+S1 hotfixes), **Risk & Compliance** (legal pages, migrations, access) and **CFO** (cost, exit
+readiness, monthly). Seats run when a trigger fires, not on a timer; the chief of staff re-runs
+every cited check before a claim reaches Pat. Charter and approval tiers: `docs/leadership.md`.
+The `cos` skill is the chief of staff (`/cos` for a brief, an idea, a decision, or the intro).
+**Every session:** the SessionStart hook lists the threads. Work on one ends each commit with a
+`Thread: <id>` trailer; work on none is fine and adds one line to `docs/cos/inbox.md`.
+
 ## How to talk to me (owner: Pat)
 
 Applies to every session in this repo — nightly loop, council run, ad-hoc, subagent summaries.
@@ -145,10 +158,11 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `docs/project-notes.md` | the mechanisms, history and figures moved out of this file on 2026-09-27 — Architecture detail, analytics event list, ops dashboard, nightly-loop history, Supabase, Testing, Open items |
 | `.claude/settings.json` + `scripts/hooks/pre_push_gate.mjs` | the harness hooks — see Harness hooks |
 | `BACKLOG.md` | the nightly loop's durable memory: queue, parked items, blocked, Done log |
+| `docs/leadership.md` + `docs/cos/` | the operating committee: charter and approval tiers; `now.md` (the one page Pat reads), `brief.md` (weekly), `inbox.md` (ideas and off-plan work), `seats/` (one queue per seat, max 5). Caps held by `scripts/cos_check.mjs` |
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
-| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync and (since 2026-10-10) that no wage-core definition names a persona |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, and (since 2026-10-12) the operating committee's caps |
 | `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (111 — 83 until the pay events 2026-10-11, 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
 | `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **751 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
@@ -525,6 +539,8 @@ picks them up without being told. Invoke by name (`/ship`) or let the descriptio
   gross-minus-pretax; custom bonus is flat; display-only pre/post caps), then the protocol: baseline
   probes, a new assertion for the changed behaviour, and the equality assertion against the
   *deployed* build. Refuses the nightly loop.
+- **`cos`** — the chief of staff: the brief, capturing an idea, recording a decision, the intro to
+  the committee, and the nightly and Sunday-cabinet passes. See Operating committee.
 - **`harness`** — driving the app for real. Rebuild, run, add an assertion, and the rule that every
   new assertion is negative-tested — plus the three ways that check lies (an aborted run is not a
   failed assertion; a short timeout caps `page.goto` and fakes a clean sweep; patch a copy, never
@@ -562,8 +578,13 @@ classifier is fixed — re-baseline before quoting one. Exclude Playwright's `iP
   at `https://badgebudget.com/index.html?cb=N` with a marker unique to the change.
 - **Agents merge their own PRs.** Open PRs to the deploy branch **ready (never draft)** and enable
   **auto-merge (squash)** in the same step — this overrides the platform's draft-PR default. Never
-  ask the owner to merge; the two required checks are the gate. Exception: wage-core, schema or
-  security changes wait for him, and the reply says so. (Owner decision, 2026-10-03.)
+  ask the owner to merge; the two required checks are the gate. **Pay-math, database and security
+  changes merge by tier** (owner decision 2026-10-12, replacing 10-03's "they all wait for him"):
+  on their own when the change moves no dollar figure (equality check green), is additive (RLS on,
+  probe passing) or tightens access; to him when it moves a figure — with a before → after card of
+  3 example paychecks in the PR body — or drops/rewrites data, or loosens access. Legal text always
+  goes to him. Classification is by rule: a diff inside an `@core` region is number-moving until
+  the equality check proves otherwise. Table: `docs/leadership.md` → *Approval tiers*.
 - Delete merged branches; never the open PR heads or the two protected branches (Invariant 11).
 - **A merge is not a deploy. From 2026-10-06 to 2026-10-09 that was literal, and it cost four
   nights.** **RESOLVED 2026-10-09 12:02:47 UTC**: the owner cancelled run 168, run **177**
@@ -655,7 +676,9 @@ Each run is **groom → build → gate → deploy → notify**:
    pinned by a test — don't "fix" it by trimming the Done log, that resurrects shipped themes. When
    the queue runs dry, a persona pass (`docs/reddit_personas.json`, 6 personas driven as subagents)
    replenishes it; a persona finding ships only if it reproduces in the harness or is corroborated by
-   a Reddit theme.
+   a Reddit theme. **Then the chief-of-staff pass** (`cos` skill → *nightly*, since 2026-10-12):
+   the git and session capture nets, the seat triggers, `now.md`, and the dead-man's switch — a
+   `docs/cos/brief.md` older than 8 days puts **CABINET MISSED** in this run's notify line.
 2. **Build.** `git fetch origin claude/migrate-to-github-deploy-3F5RD && git checkout -B
    claude/clause-md-review-9tqlj8 origin/claude/migrate-to-github-deploy-3F5RD`, then implement the
    **single** highest-priority unblocked, gate-safe item from `## Queue`.
@@ -690,6 +713,10 @@ issues. It blocks (exit 2) unless HEAD contains `origin/claude/migrate-to-github
 A fresh container has no Babel, so the first push is blocked with the install line
 (`npm install --no-save @babel/standalone@7.24.7`); run it and push again. Branch deletions pass
 through. It sees only agent pushes; CI stays the binding gate.
+
+A **SessionStart** hook (`scripts/hooks/session_start_cos.mjs`, since 2026-10-12) prints the
+operating committee's live threads into every new session, with the `Thread:` trailer and inbox
+rule. It never blocks; a missing `docs/cos/now.md` prints nothing.
 
 ## Supabase (detail: `docs/project-notes.md` → Supabase)
 

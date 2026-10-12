@@ -2089,6 +2089,14 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-12 — **Operating committee stood up** (owner-directed, ad-hoc session; no `index.html`
+  change). Chief of staff + CTO / COO / Risk & Compliance / CFO, charter in `docs/leadership.md`, one
+  page for Pat in `docs/cos/now.md` (3 threads: `gateway`, `legitimacy`, `personas`). Caps held by
+  `scripts/cos_check.mjs` in the gate, each negative-tested (4 threads, 4 decisions, 6 queue items,
+  a 46-line brief and a missing seat file all fail). SessionStart hook lists the threads in every
+  session. Approval tiers replace 10-03's "pay math / schema / security all wait for Pat". The
+  nightly gains the chief-of-staff pass after GROOM. Gateway decision list answered (it had been
+  reported open five weeks after step 1 settled the build-step question).
 - 2026-10-12 — **A plain uuid in `events` could not tell a real first-time phone from a load whose
   storage is thrown away, so `app_open` now says which.** Nightly loop; `index.html` analytics
   helpers + `tests/smoke.mjs` §41, no wage core, no new event name, no user-facing string.

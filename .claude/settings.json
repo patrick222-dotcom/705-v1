@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/session_start_cos.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

@@ -4,6 +4,17 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-10-12 — the operating committee
+
+Pat could no longer track what he had started; the MCP gateway sat a month at step 1 because it was
+parked where nothing pulls from. Decided: a chief of staff keeping one page (`docs/cos/now.md`, 3
+threads, 3 decisions, caps in the gate) over four seats with separate territories, triggered rather
+than scheduled. Approval tiers replace the 10-03 rule: pay-math, database and security changes merge
+on evidence, reaching Pat only when they move a figure, destroy data, loosen access, or are legal
+text. A pre-mortem shaped it: the likeliest failures were Pat routing around it, decisions queueing
+on him, silent death, seats inventing work, and rubber-stamp verification — each has a named
+countermeasure in `docs/leadership.md`. Gateway decisions answered the same day.
+
 ## 2026-10-03 — the NurseGrid substitution, checked by eye; one calendar button (#142)
 
 **The real NurseGrid sync is owner-confirmed correct.** The open item since 2026-09-29 was that
