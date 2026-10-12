@@ -1269,9 +1269,10 @@ and the push P0 it pointed at was fixed the same day.
      overtime I flag" plus N hours in D days. The
      probes in `pay-rule-patterns.md` (c) become assertions: zero phantom OT on 12 h Pitman, 12 h +
      Kelly day, 3/3 10.5 h and 4/10.
-  3. ~~**Per-shift multiplier + minimum-hours events**~~ — **BUILT 2026-10-11, PR awaiting the
-     owner's merge** (wage-core, no auto-merge). Spec `docs/pay-events-spec.md`; session log
-     `docs/session-2026-10-11-pay-events.md`. Close once `deploy_watch.mjs` reads `LIVE`.
+  3. ~~**Per-shift multiplier + minimum-hours events**~~ — **SHIPPED 2026-10-12** (#174,
+     owner-merged; `deploy_watch.mjs` read `LIVE` at `97f8e86`, 12:19 UTC, after a fresh fetch).
+     Spec `docs/pay-events-spec.md`; session log `docs/session-2026-10-11-pay-events.md`.
+     **NEXT: session 4, dated pay items** — kickoff prompt at the end of that session log.
      Original brief: (wage-core): court, call-back, report pay. Replaces the hard-coded `otMult`.
   4. **Dated pay items** (wage-core): lump sums and periodic pays, summed in `periodPaycheck` by date.
   5. **Law enforcement + Fire & EMS personas**, on top of 2–4: presets, the Social Security
@@ -2131,7 +2132,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   `top bar [iPhone SE]: the wordmark is not ellipsised at this width — clipped=true spare=10`.
   Identical code, one green one red, so the re-run was the sanctioned one and it passed.
 - 2026-10-11 — **Session 3: per-shift multiplier + minimum-hours events (dedicated wage-core
-  session; PR waits for the owner's merge).** `isOvertime` no longer means a hard-coded 1.5×: a
+  session; #174, owner-merged 2026-10-12, LIVE at `97f8e86`).** `isOvertime` no longer means a hard-coded 1.5×: a
   marked shift can carry `otMult` (1.5 < m ≤ 4, absent = 1.5) and any shift a `minHours` floor
   (court, call-back, report pay = max(worked, minimum) on the rate line) plus a `payEvent` label
   the math never reads (gate-enforced). Hours a minimum pays but she did not work never count

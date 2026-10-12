@@ -29,6 +29,22 @@ Dedicated wage-core session (Invariant 3). Spec: `docs/pay-events-spec.md`. Plan
 | Negative tests | 23 mutations of a scratch copy; every new assertion seen failing |
 | `tests/equality.mjs` vs badgebudget.com | 19 identical, 0 unintended, 4 of 4 named differences seen; each delta matches the hand math ($175, $150, $120, $75) |
 
+## Shipped
+
+- **#174, owner-merged 2026-10-12, squash `97f8e86`.** `node scripts/deploy_watch.mjs` read `LIVE`
+  with `index.html: serving 97f8e86` at 12:19:16 UTC, run after a fresh `git fetch`. (The
+  2026-10-12 nightly found the watch can print `LIVE` for a stale head when the clone hasn't
+  fetched, so the commit on the verdict line is what was checked, not the word.)
+- **The first merge attempt hit a conflict.** Two nightly merges (#175, #176) had landed since the
+  PR opened, and both sides had added a smoke section numbered §41. The nightly's anon-id section
+  keeps §41; pay events is now **§42**. The first resolution dropped one closing brace (the merge
+  attributed it to the shared context), caught by `node --check` before the push.
+- **Merged tree, re-run before pushing:** gate 13/13, core 111/111, groom 33/33, smoke **751/751**.
+  CI green on the merge head (`8f80b6b`), then squash-merged.
+- The equality run against badgebudget.com was taken before the merge (19 identical, 0 unintended,
+  4 of 4 named). The two commits merged in after it (#175, #176) touch analytics and docs only,
+  not the pay math, so it was not re-run.
+
 ## Decisions, and why
 
 1. **The multiplier rides `isOvertime` instead of replacing it.** The flag is what already keeps a
