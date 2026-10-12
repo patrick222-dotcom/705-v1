@@ -55,8 +55,10 @@ failures. Confirm both jobs actually executed and report their assertion counts.
 **Open it ready, not as a draft, and turn on auto-merge (squash) yourself** — the platform's default
 is a draft PR, and this repo overrides it: the owner should never be asked to click merge. Both
 required checks are the gate; auto-merge lands the PR the moment they go green. (Owner decision
-2026-10-03, after PR #145 sat as a draft waiting on him.) Only leave it unmerged when the change
-needs his eyes first — wage-core, a schema or security change — and then say so in one line.
+2026-10-03, after PR #145 sat as a draft waiting on him.) Pay-math, database and security changes
+merge **by tier** (`docs/leadership.md` → *Approval tiers*, 2026-10-12): leave one unmerged for him
+only when it moves a displayed figure (put a before → after card of 3 example paychecks in the PR
+body), drops or rewrites data, loosens access, or is legal text — and say so in one line.
 
 Deploy fires automatically on merge and takes 1–2 minutes.
 

@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { buildCore, OUT as CORE_OUT } from './extract_core.mjs';
+import { cosViolations } from './cos_check.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -248,6 +249,13 @@ check(3, 'Pay math never reads the persona', () => {
   must(!missing.length, `wage-core definitions not found (renamed? update this list): ${missing.join(', ')}`);
   must(!hits.length, `the pay math reads the persona — a persona may only set starting values: ${hits.join('; ')}`);
   return `${WAGE.length} wage definitions, none names a persona or a pay-event label`;
+});
+
+/* ---- operating-committee caps (docs/leadership.md) -------------------------------------- */
+check('cos', 'Operating-committee caps', () => {
+  const v = cosViolations(ROOT);
+  if (v.length) throw new Error(v.join('; '));
+  return '≤3 threads, ≤3 decisions, ≤5 per seat queue, brief ≤40 lines';
 });
 
 /* ---- report ---------------------------------------------------------------------------- */
