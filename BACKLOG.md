@@ -28,6 +28,26 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-13)
+- [x] ~~**A real nurse tried the paystub import three times, was told the file was the problem, and
+  hand-typed four shifts instead**~~ — SHIPPED 2026-10-13 (see Done log). `harness:drivable`.
+- [ ] **WHY `pdf.worker.min.js` failed to load on a real iPhone is UNKNOWN, and tonight's build
+  deliberately does not guess at it** — `harness:unscoped`, and the pointer the fix leaves behind.
+  The file is in the publish set (Invariant 8), `curl` returns **200, 1,087,212 bytes, byte-identical
+  to the committed blob**, `content-type: application/javascript`, and the CSP's `script-src 'self'`
+  covers both the `Worker()` and the fake-worker `<script>` injection — so none of the obvious
+  causes holds. The device (`b67ce1b6`, iOS 18.7, arrived `via:'qr'`, 10 shifts, setup complete) was
+  reaching Supabase fine in the same loads. Leading candidates, all **unverified**: a 1 MB fetch
+  dropped on a bad cellular link, or an in-app webview (a QR scanned inside another app) where
+  `Worker` is restricted — note the fake-worker path only runs *after* the real `Worker()` already
+  failed, so whatever it is took out both.
+  **What makes it buildable:** `paystub_failed {reason:'reader'}` shipped tonight, so the next
+  occurrence is one countable row instead of a hand-read `client_error` string. Read a second
+  device before building a mitigation; one device is one sample, and the mitigations on the table
+  (bundling the worker inline, `disableWorker`, a warm-up fetch at load) all cost something real.
+  **Do not narrow this to "slow network" on tonight's evidence** — the same wrong-cause reflex is
+  what the 2026-09-29 `webcal:` correction is in CLAUDE.md for.
+
 ### P0
 - [x] ~~**The 2026-10-06 deploy merged green and then never shipped — the Pages job has sat in
   `waiting` with its one job unstarted.**~~ — **RESOLVED 2026-10-09 12:02:47 UTC by the owner
@@ -2089,6 +2109,35 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-13 — **A PDF reader that would not load was reported as a paystub that would not parse,
+  and retrying in the tab could never work.** Nightly loop; `index.html` paystub error path +
+  `tests/smoke.mjs` §43 (6 assertions, 5 of them failing on a deliberate revert — the sixth is the
+  page-error control). No wage core, no `@core` region, no new invariant surface.
+  **Found in the groom, not the queue.** `client_error` carried two fresh rows from device
+  `b67ce1b6` (iOS 18.7, `via:'qr'`, setup complete, 10 shifts), both reading
+  `console.error: Setting up fake worker failed: "Cannot load script at:
+  https://badgebudget.com/pdf.worker.min.js"`. Her trail: **three** paystub attempts across two
+  loads between 03:40 and 03:56 UTC, zero `paystub_imported`, then four `shift_saved` rows in 47
+  seconds at 03:57 — she gave up on the importer and typed them in.
+  **Two defects in the handling, both verified in the harness rather than reasoned about.**
+  (a) The toast said `Could not parse that paystub.`, which blames the file for a failure of the
+  reader — the file was never opened. That is what three attempts with (presumably) three different
+  PDFs looks like. (b) **The retry cannot succeed.** pdfjs-dist 3.11.174 returns a `shadow()`ed
+  promise from `PDFWorker._setupFakeWorkerGlobal` and latches `PDFWorkerUtil.isWorkerDisabled`, so
+  the first rejection is replayed for the life of the page load. The §43 drive proves it the only
+  way that counts: it aborts the worker request, then **unblocks it completely** and retries in the
+  same tab — and still gets the failure, with pdf.js replaying the *old* URL in the console. A
+  reload is the only recovery there is, so the copy now names one:
+  `Couldn't load the PDF reader — reload the page and try again.`
+  **And it is countable now.** `paystub_failed {reason:'reader'|'parse'}` — coarse, enumerated,
+  no file name and no money (asserted). Before tonight this failure existed only as a hand-read
+  `client_error` string, which is how it went unnoticed; `paystub_imported` was never going to
+  show its absence.
+  **What is NOT fixed, and is not guessed at:** why the worker fetch failed. The file is served
+  200 and byte-correct and the CSP covers it. Carried as a P1 `harness:unscoped` note at the top
+  of the queue with the two unverified candidates and the rule that it needs a second device first.
+  Gate: `check_build.mjs` 14/14, `test_groom_seed.mjs` 33/33, `core.test.mjs` 111/111,
+  `tests/smoke.mjs` **757/0**.
 - 2026-10-12 — **Operating committee stood up** (owner-directed, ad-hoc session; no `index.html`
   change). Chief of staff + CTO / COO / Risk & Compliance / CFO, charter in `docs/leadership.md`, one
   page for Pat in `docs/cos/now.md` (3 threads: `gateway`, `legitimacy`, `personas`). Caps held by
