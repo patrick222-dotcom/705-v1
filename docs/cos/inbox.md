@@ -7,6 +7,10 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-13 · session BadgeBudget nightly · paystub import failed 3x on a real phone — the pdf.js
+  worker would not load; message + tracking fixed, the worker's own failure is still unexplained ·
+  → outcome pending
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after

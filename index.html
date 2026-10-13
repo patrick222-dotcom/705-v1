@@ -5039,13 +5039,30 @@ function App(){
     ex.shifts = sec ? parseEarningsRows(sec[1]) : [];
     return ex;
   };
+  /* A worker that would not load is NOT a parse failure, and is NOT retryable in this tab.
+     pdf.js rejects getDocument() with `Setting up fake worker failed: "Cannot load script at: …"`
+     when the same-origin 1MB worker fetch fails. The file was never read, so "Could not parse
+     that paystub" sends her looking for a different PDF — and worse, pdfjs-dist 3.11.174 caches
+     that rejection for the life of the page load (`_setupFakeWorkerGlobal` returns a `shadow()`ed
+     promise, and `_setupFakeWorker` latches `isWorkerDisabled`), so every retry in the tab
+     replays the same failure even after the network recovers. A reload is the only recovery.
+     Field evidence: device b67ce1b6 hit it three times across two loads on 2026-10-13, was told
+     "Could not parse", gave up, and typed four shifts by hand. Both halves — the wrong message
+     and the poisoned retry — are pinned by `tests/smoke.mjs` §43. */
+  const isReaderFailure = (err)=>/fake worker|Cannot load script at/i.test(String((err&&err.message)||err||''));
   const onPaystub = async (e)=>{
     const f=e.target.files[0]; if(!f) return;
     if(f.size>10*1024*1024){ toast('File too large (max 10MB).','error'); e.target.value=''; return; }
     if(f.type!=='application/pdf'){ toast('Please upload a PDF.','error'); e.target.value=''; return; }
     setParsing(true);
     try{ const p=await parsePDF(f); setPaystub(p); }
-    catch(err){ toast('Could not parse that paystub.','error'); console.error(err); }
+    catch(err){
+      const reader = isReaderFailure(err);
+      toast(reader ? "Couldn't load the PDF reader — reload the page and try again." : 'Could not parse that paystub.','error');
+      /* Coarse and money-free: which of the two failures it was, never the file or its contents. */
+      track('paystub_failed', {reason: reader?'reader':'parse'}, user?.id);
+      console.error(err);
+    }
     finally{ setParsing(false); e.target.value=''; }
   };
   const applyPaystub = (override)=>{

@@ -5421,6 +5421,98 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 43. a PDF reader that would not load is not a parse failure ----------------------
+     On 2026-10-13 a real signed-out device (b67ce1b6, iOS 18.7, arrived by QR) tried the paystub
+     import three times across two page loads. Every attempt logged
+     `Setting up fake worker failed: "Cannot load script at: https://badgebudget.com/pdf.worker.min.js"`
+     into `client_error`, the app told her "Could not parse that paystub", and she gave up and
+     typed four shifts by hand. The file is served 200 and byte-correct, so the cause of the
+     failed fetch is still unknown — but two things about the handling are not, and both are
+     asserted here against the real DOM rather than reasoned about:
+
+       (a) the message blamed the file for a failure of the reader, which is what sent her
+           looking for a different PDF;
+       (b) retrying in the same tab CANNOT work. pdfjs-dist 3.11.174 returns a `shadow()`ed
+           promise from `_setupFakeWorkerGlobal` and latches `PDFWorkerUtil.isWorkerDisabled`,
+           so the first rejection is replayed for the life of the page load. The second drive
+           below unblocks the worker completely before retrying and still gets the failure —
+           that is the assertion that proves a reload is the only recovery, and it is why the
+           copy names one.
+
+     Both drives abort the worker request the way the network did, which is also the negative
+     test's lever: with the fix reverted, (a) reads the old sentence and (b) reports no reason
+     on the tracked row. */
+  if (want(43)) {
+    const { ctx, page, errors } = await newPage(browser, url);
+    /* Catch the tracked row on the wire. The scratch copy points Supabase at `.invalid`, so the
+       request never leaves the box; routing it is how its body becomes readable. */
+    const tracked = [];
+    await page.route('**/rest/v1/events*', async (r) => {
+      try { tracked.push(JSON.parse(r.request().postData() || 'null')); } catch (_) {}
+      await r.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    });
+    await page.route('**/pdf.worker.min.js', (r) => r.abort('failed'));
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    const stub = makeMinimalPdf([
+      'Pay Begin Date: 08/11/2025', 'Pay End Date: 08/24/2025',
+      'TOTAL GROSS FED TAXABLE GROSS TOTAL TAXES TOTAL DEDUCTIONS NET PAY',
+      'Current 4,007.93 3,927.77 911.29 1,057.76 2,038.88',
+    ]);
+    const openStubInput = async () => {
+      await page.locator('.topbar .avatar, .topbar button').first().click().catch(() => {});
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button, a')].find((x) => /settings/i.test(x.textContent));
+        if (b) b.click();
+      });
+      await page.waitForTimeout(400);
+      return page.locator('input[type=file][accept=".pdf"]').first();
+    };
+    /* Toasts auto-dismiss, so read the node as soon as it mounts rather than after a sleep. */
+    const readToast = async () => {
+      await page.waitForSelector('.toaster .toast', { timeout: 20000 }).catch(() => {});
+      return page.evaluate(() => {
+        const n = document.querySelector('.toaster .toast');
+        return n ? n.innerText.replace(/\s+/g, ' ').trim() : '<no toast>';
+      });
+    };
+
+    const input = await openStubInput();
+    await input.setInputFiles({ name: 'stub.pdf', mimeType: 'application/pdf', buffer: stub });
+    const first = await readToast();
+    ok('reader: a worker that will not load says the READER failed and names the reload',
+      /Couldn.t load the PDF reader/i.test(first) && /reload the page/i.test(first), first);
+    ok('reader: and does NOT blame the paystub, which is what sent her looking for another file',
+      !/parse that paystub/i.test(first), first);
+
+    /* Same page load, worker fully reachable again: pdf.js replays the cached rejection. */
+    await page.unroute('**/pdf.worker.min.js');
+    await page.waitForTimeout(500);
+    const retry = await openStubInput();
+    await retry.setInputFiles({ name: 'stub-again.pdf', mimeType: 'application/pdf', buffer: stub });
+    const second = await readToast();
+    const reviewed = await page.evaluate(() => /Review your paystub/.test(document.body.innerText));
+    ok('reader: retrying in the same tab fails even with the worker reachable — a reload is the only fix',
+      /Couldn.t load the PDF reader/i.test(second) && reviewed === false, `${second} ;; review=${reviewed}`);
+
+    await page.waitForTimeout(600);
+    const rows = tracked.flatMap((b) => (Array.isArray(b) ? b : b ? [b] : []));
+    const failed = rows.filter((r) => r && r.name === 'paystub_failed');
+    ok('reader: both attempts are countable as paystub_failed {reason:reader}',
+      failed.length >= 2 && failed.every((r) => r.props && r.props.reason === 'reader'),
+      JSON.stringify(failed.map((r) => r.props)));
+    /* `every` on an empty array is true, so the row count is part of the assertion — without it
+       this passes on a build that tracks nothing at all (the §33/§35/§36 lesson). */
+    ok('reader: the tracked row carries no file name and no money',
+      failed.length > 0 && failed.every((r) => Object.keys(r.props || {}).join(',') === 'reason'),
+      JSON.stringify(failed.map((r) => Object.keys(r.props || {}))));
+    ok('reader: no page errors across section 43',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
