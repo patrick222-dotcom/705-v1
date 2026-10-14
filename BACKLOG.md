@@ -28,6 +28,59 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-14)
+- [x] ~~**A photo of a paystub was refused by a message that named the rule and not the remedy, and
+  the refusal was the one paystub failure path that tracked nothing**~~ — SHIPPED 2026-10-14 (see
+  Done log). `harness:drivable`.
+- [ ] **A real nurse asked for the import stepper's approval step to be "more alarming", and the
+  same morning she declined a 126-event plan three times without importing once** (P1 ·
+  source:feedback+groom · `harness:drivable` for the copy, **design call for the weighting**).
+  Her words, 2026-10-14 08:03 UTC, device `f184ffa5`: *"After I pulled my schedule over from nurse
+  grid, I was not careful with which dates got pulled over. Maybe the alert to be careful when
+  approving the shifts that get bridged to BB should be more alarming for people like me who move
+  too fast."* So the 10-09 disclosure work (`tests/smoke.mjs` §36 — the kind line and the first
+  four before → after) is being **read and still moved past**: this is a request for *weight*, not
+  for more detail.
+  **What the events show, and it is the same account as the 10-10 item.** Three syncs in 58
+  minutes, all `ics_sync_result {changes, nursegrid}` with `ics_sync_done {events:126}` (07:04:44,
+  07:29:57, 08:02:24), **zero `ics_import_done`**, shift count steady at 111 then 109 while she
+  hand-edited (6 `shift_saved` in 8 minutes). One `ics_resync_found` at 07:29 (the quiet banner,
+  working as designed); the 07:04 and 08:02 syncs were cold loads, which open the stepper by
+  design, so the fingerprint memory being a ref is **not** the fault here.
+  **Why this is not just "re-run the 10-10 fix":** `ics_resync_suppressed` has still never fired
+  (see the 10-11 note), and nothing here contradicts it — two of the three were cold loads. The
+  open question is narrower: she has already imported once, carelessly, and now ignores a
+  126-event plan rather than correcting it. **Unverified** which she wants: a heavier confirm
+  affordance, or a way to *undo* the import she regrets. Ask her before building either — the
+  repair path for over-imported time off (§32) already exists and she may simply not know it is
+  there, which would make this a discovery problem and not a weighting one.
+- [ ] **`PGRST303 "JWT issued at future"` is a new cloud-load failure shape, and the retry chain
+  absorbed it** (P2 · source:groom · `harness:drivable`) — device `f184ffa5`, 2026-10-14 07:12:23,
+  two rows: `Load error` then `Cloud load error (attempt 1 of 3)`. The device's clock is ahead of
+  the auth server, so the JWT's `iat` is in the future and PostgREST refuses the token. **The
+  10-06 retry work is what kept this from being silent** — attempt 1 failed, the chain continued,
+  and no `'failed'` banner followed, so a later attempt landed. Nothing to fix tonight: one
+  occurrence, self-correcting, and the app's own clock is not the one that is wrong. Worth a note
+  only because the *remedy* if it recurs is not a retry — a token minted in the future stays
+  invalid until the clock catches up, so the honest handling would be to say so rather than spin.
+  Read a second occurrence first.
+- [ ] **"Add shift" is the button label even when she is editing a shift that already exists**
+  (P3 · source:feedback · `harness:drivable`) — her words, 2026-10-14 08:05 UTC: *"Instead of
+  'add shift' button, maybe put 'save changes'"*, filed 37 seconds after a `shift_saved` and in
+  the middle of six edits in eight minutes. Small, local, no wage core — the label is cosmetic and
+  the handler already distinguishes the two cases. P3 only because it costs her nothing but a
+  moment's doubt; promote it if a second person mentions it or if it rides a push that already
+  touches the shift form.
+- [ ] **The two new `pdf.worker.min.js` failures PRE-DATE the fix, so the 10-13 item's "read a
+  second device" bar is still NOT met** (P1 · housekeeping on the item below, so a future run does
+  not miscount) — `client_error` carries two more rows from device `b67ce1b6` at 2026-10-13
+  03:41:08 and 03:55:59 UTC, both `Setting up fake worker failed`. Tonight's `deploy_watch` places
+  the reader fix (`0e38f4d`) live on **2026-10-13**, i.e. after those rows, so they are the *same*
+  occurrence this item was already built from and **not new evidence**. Confirmed by the counter
+  the fix exists to produce: `paystub_failed` has **never fired, not once, for any reason** — the
+  only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from 2026-07-30.
+  Still one device, still one sample. **Do not build a worker mitigation on this.**
+
 ### P1 (new, groom 2026-10-13)
 - [x] ~~**A real nurse tried the paystub import three times, was told the file was the problem, and
   hand-typed four shifts instead**~~ — SHIPPED 2026-10-13 (see Done log). `harness:drivable`.
@@ -2109,6 +2162,43 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-14 — **A photo of a paystub was refused by a message that named the rule and not the
+  remedy — and that refusal was the only paystub failure path that tracked nothing at all.**
+  Nightly loop; `index.html` `onPaystub` guards + `tests/smoke.mjs` §44 (8 assertions). No wage
+  core, no `@core` region, no new invariant surface — the guard runs before `parsePDF` and moves no
+  dollar figure.
+  **Found in the groom, not the queue, and from a `broken` report filed six hours earlier.** Device
+  `f184ffa5` (iOS 18.7, a real nurse, 111 shifts, setup complete) wrote at 2026-10-14 07:06:38 UTC:
+  *"What I did: tried to upload paystub with a photo / What happened instead:"* — the second half
+  left blank, which is itself the finding: **nothing happened that she could describe.** Her whole
+  attempt left **zero rows** in `events`. iOS puts *Photo Library* and *Take Photo* in the picker
+  for a `.pdf` file input, so a photo is an input the app invites and then refuses, and the refusal
+  was `toast('Please upload a PDF.')` with no `track()` call beside it — the one branch of
+  `onPaystub` with no telemetry. The groom found it only because she **also** wrote in.
+  **What shipped.** The file-type branch now splits: an `image/*` pick says *"A photo of a paystub
+  can't be read yet — download the PDF from your payroll site, then pick it from Files"*, anything
+  else says *"That file is not a PDF — download the PDF paystub from your payroll site"*, and both
+  track `paystub_failed` with a distinct `reason` (`photo` / `type`). The oversize branch gets
+  `reason:'size'`. `photo` is deliberately its own value: *"she tried to photograph a stub"* is a
+  feature signal and *"she picked some other file"* is not, and collapsing them would have made the
+  next groom guess. Props stay one key, coarse and money-free — no file name, no size, nothing she
+  typed — so §43's existing shape assertion still holds.
+  **Same mistake as last night's, one branch over.** #179 fixed a message that blamed the paystub
+  for a reader failure; this one named the rule without saying where a real PDF comes from. Both
+  are the repo's recurring shape: a failure the nurse can see and the analytics cannot.
+  **Negative-tested twice, because once would not have been enough.** Reverting the branch to its
+  old one-liner fails **6 of 8** (the two survivors are deliberate controls — the review sheet
+  never opening, and the page-error check). A second, sharper break that keeps the new copy but
+  collapses both reasons to `'type'` fails exactly the 2 reason assertions, so the copy and the
+  telemetry halves are independently falsifiable rather than passing on each other's back. The
+  first negative run **aborted** on a missing `pdf.worker.min.js` in the scratch copy and was
+  correctly not counted as a failure — the `harness` skill's own trap, hit live.
+  **Honest scope.** `paystub_failed` has never fired for any reason; this change makes the bounce
+  countable from here, it does not tell us how often it has already happened. One device, one
+  report.
+  **Gate:** `check_build.mjs` 14/14, `test_groom_seed.mjs` 33/33, `core.test.mjs` 111/111,
+  `smoke.mjs` **765/765** (757 + 8). `silence_watch` **FRESH** (newest event 0.0h).
+  `deploy_watch` **LIVE** before and after.
 - 2026-10-13 — **A PDF reader that would not load was reported as a paystub that would not parse,
   and retrying in the tab could never work.** Nightly loop; `index.html` paystub error path +
   `tests/smoke.mjs` §43 (6 assertions, 5 of them failing on a deliberate revert — the sixth is the

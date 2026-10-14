@@ -5513,6 +5513,76 @@ const run = async () => {
     await ctx.close();
   }
 
+  if (want(44)) {
+    /* A photo is an INVITED input on iOS -- the picker offers "Photo Library" for a `.pdf` file
+       input -- and until 2026-10-14 refusing it tracked nothing at all, so the bounce was
+       invisible. Real report, device f184ffa5, same morning. */
+    const { ctx, page, errors } = await newPage(browser, url);
+    const tracked = [];
+    await page.route('**/rest/v1/events*', async (r) => {
+      try { tracked.push(JSON.parse(r.request().postData() || 'null')); } catch (_) {}
+      await r.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    const openStubInput = async () => {
+      await page.locator('.topbar .avatar, .topbar button').first().click().catch(() => {});
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button, a')].find((x) => /settings/i.test(x.textContent));
+        if (b) b.click();
+      });
+      await page.waitForTimeout(400);
+      return page.locator('input[type=file][accept=".pdf"]').first();
+    };
+    const readToast = async () => {
+      await page.waitForSelector('.toaster .toast', { timeout: 20000 }).catch(() => {});
+      return page.evaluate(() => {
+        const n = document.querySelector('.toaster .toast');
+        return n ? n.innerText.replace(/\s+/g, ' ').trim() : '<no toast>';
+      });
+    };
+    const rowsNow = () => tracked.flatMap((b) => (Array.isArray(b) ? b : b ? [b] : []))
+      .filter((r) => r && r.name === 'paystub_failed');
+
+    /* A photograph of a stub: the exact thing she reported doing. */
+    const photo = await openStubInput();
+    await photo.setInputFiles({ name: 'IMG_4021.HEIC', mimeType: 'image/heic', buffer: Buffer.from([0, 1, 2, 3]) });
+    const photoToast = await readToast();
+    ok('photo: a photo of a paystub is refused by naming the PHOTO, not just the rule',
+      /photo of a paystub/i.test(photoToast), photoToast);
+    ok('photo: and the refusal says where a real PDF comes from, not merely "upload a PDF"',
+      /payroll site/i.test(photoToast), photoToast);
+
+    await page.waitForTimeout(600);
+    const afterPhoto = rowsNow();
+    ok('photo: the bounce is countable as paystub_failed {reason:photo} -- it used to track NOTHING',
+      afterPhoto.length === 1 && afterPhoto[0].props && afterPhoto[0].props.reason === 'photo',
+      JSON.stringify(afterPhoto.map((r) => r.props)));
+    ok('photo: the tracked row carries no file name and no money',
+      afterPhoto.length > 0 && afterPhoto.every((r) => Object.keys(r.props || {}).join(',') === 'reason'),
+      JSON.stringify(afterPhoto.map((r) => Object.keys(r.props || {}))));
+
+    /* A non-PDF that is not an image gets its own reason, so the two cannot be confused. */
+    const other = await openStubInput();
+    await other.setInputFiles({ name: 'schedule.csv', mimeType: 'text/csv', buffer: Buffer.from('a,b\n1,2\n') });
+    const otherToast = await readToast();
+    ok('type: a non-image non-PDF is refused with its own message and reason',
+      /not a PDF/i.test(otherToast) && /payroll site/i.test(otherToast), otherToast);
+
+    await page.waitForTimeout(600);
+    const reasons = rowsNow().map((r) => r.props && r.props.reason);
+    ok('type: photo and type are DISTINCT reasons, so "she tried a camera" stays readable',
+      reasons.length === 2 && reasons[0] === 'photo' && reasons[1] === 'type',
+      JSON.stringify(reasons));
+    ok('refusing a file never opens the review sheet',
+      (await page.evaluate(() => /Review your paystub/.test(document.body.innerText))) === false, '');
+    ok('no page errors across section 44',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

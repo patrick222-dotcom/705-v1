@@ -10,6 +10,10 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 - 2026-10-13 · session BadgeBudget nightly · paystub import failed 3x on a real phone — the pdf.js
   worker would not load; message + tracking fixed, the worker's own failure is still unexplained ·
   → outcome pending
+- 2026-10-14 · session BadgeBudget nightly · a real nurse tried a PHOTO of a paystub; refusal named
+  the rule not the remedy and tracked nothing — fixed + countable. Her two other notes (make the
+  import approval "more alarming", "save changes" not "add shift") are queued, not built ·
+  → outcome pending
 
 ## Parked
 

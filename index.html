@@ -5052,8 +5052,24 @@ function App(){
   const isReaderFailure = (err)=>/fake worker|Cannot load script at/i.test(String((err&&err.message)||err||''));
   const onPaystub = async (e)=>{
     const f=e.target.files[0]; if(!f) return;
-    if(f.size>10*1024*1024){ toast('File too large (max 10MB).','error'); e.target.value=''; return; }
-    if(f.type!=='application/pdf'){ toast('Please upload a PDF.','error'); e.target.value=''; return; }
+    if(f.size>10*1024*1024){ toast('File too large (max 10MB).','error'); track('paystub_failed', {reason:'size'}, user?.id); e.target.value=''; return; }
+    /* iOS puts "Photo Library" and "Take Photo" in the picker for a `.pdf` input, so a photo is an
+       input we invite and then refuse. Until 2026-10-14 this branch was the ONLY paystub failure
+       path that tracked nothing, so a nurse bouncing off it was invisible: device f184ffa5 filed a
+       `broken` report ("tried to upload paystub with a photo") and the whole attempt left zero rows
+       in `events` -- the groom found it only because she ALSO wrote in. And "Please upload a PDF."
+       named the rule without the remedy, which is the same mistake as "Could not parse that
+       paystub" above: it tells her she is wrong, not where the right file comes from. A photo gets
+       its own reason because "she tried to photograph a stub" is a feature signal and "she picked
+       some other file" is not. Coarse and money-free, like every other `paystub_failed`. Pinned by
+       `tests/smoke.mjs` section 44. */
+    if(f.type!=='application/pdf'){
+      const isImg=/^image\//.test(f.type||'');
+      toast(isImg ? "A photo of a paystub can't be read yet \u2014 download the PDF from your payroll site, then pick it from Files."
+                  : 'That file is not a PDF \u2014 download the PDF paystub from your payroll site.','error');
+      track('paystub_failed', {reason: isImg?'photo':'type'}, user?.id);
+      e.target.value=''; return;
+    }
     setParsing(true);
     try{ const p=await parsePDF(f); setPaystub(p); }
     catch(err){
