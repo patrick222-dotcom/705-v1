@@ -29,11 +29,71 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P1 (new, groom 2026-10-14)
+**Who this morning's six reports are from: Courtney — the owner's wife, the one real user this app
+exists for.** All six carry `contact: bagwellc0387@gmail.com` and `user_id e96ea234`, device
+`f184ffa5`. No outreach needed to follow any of them up; the owner can ask her directly. Read that
+density for what it is: **six reports in 110 minutes from the primary user**, and both halves of the
+positioning (sync, paycheck) are failing her in them.
+
+- [ ] **Courtney got a RAISE and every future shift she already entered is still priced at the old
+  rate — her only workaround is deleting all of them** (**P0 for wrongness, but wage-core, so it is
+  NOT a nightly item** — see the dedicated-session queue; logged here because it is the most
+  wrong-money thing in the file). Her words, 2026-10-14 08:51 UTC: *"update my pay rate for future
+  shifts because of a raise. the shifts I've already put into the app for future shifts do not
+  update to my new pay rate so the amount is inaccurate unless I delete all the shifts."*
+  **This is the app's one job failing on its one user.** A shift stores its own rate at entry (which
+  is correct for a worked shift — history must not be rewritten) and there is no notion of a rate
+  that takes effect on a date, so a raise silently splits her data into "priced right" and "priced
+  wrong" with no way to tell which is which. **The fix is effective-dated pay rates**, not a
+  bulk-rewrite button: a rate with a start date, shifts priced by the rate in force on their own
+  date. A "re-price everything" button is the tempting shortcut and it is **wrong** — it would
+  rewrite shifts she already worked and paid tax on.
+  Touches `shiftGross`/`hourlyRate`/`periodPaycheck` and the sanitizer, so: **dedicated session,
+  `wage-core` protocol, equality check against the deployed build, before → after card of 3 example
+  paychecks in the PR** (approval tier: goes to the owner, it moves figures).
+- [ ] **She does not want a louder warning — she wants the sync OFF unless she presses a button,
+  and the reason is that deleted shifts keep coming back** (P1 · source:feedback ·
+  `harness:drivable`). Her words, 2026-10-14 08:55 UTC: *"stop the sync to nurse grid and have the
+  option to only sync when I press the button. Once I deleted shifts that were not coded properly
+  on BB, it keeps asking me to approve of the shifts that it's trying to sync."*
+  **This supersedes the "more alarming" reading below, and the four-day zero-import pattern is now
+  explained and is NOT carelessness.** She deleted shifts that imported wrong; the feed still
+  carries them; every sync therefore re-proposes exactly the shifts she just rejected; she declines
+  again. `icsIgnored` already exists for precisely this (the stepper's `skip` writes the uid so it
+  is never re-offered) — so the live question is **why her deletions did not land in `icsIgnored`**:
+  deleting a shift from the planner is not the same action as "Not a shift" in the stepper, and
+  almost certainly does not record the uid. **Unverified, and it is the thing to check first** —
+  if plain deletion skips `icsIgnored`, that is the whole bug and a manual-sync toggle is a
+  workaround for it rather than the fix.
+  Build order, therefore: (1) confirm whether planner-deleting an `icsUid` shift records the uid;
+  (2) if not, record it — that alone stops the loop she is describing; (3) then the manual-sync
+  toggle she actually asked for, as a setting, default unchanged for everyone else.
+- [ ] **The paystub modal she actually hit tracks NOTHING, and it is not the branch that was fixed
+  on 2026-10-14** (P1 · source:feedback · `harness:drivable`) — **this is a correction to tonight's
+  build.** The `contact` field of her 07:06 `broken` report carries the app's own error pasted back:
+  *"couldn't read that paystub. We couldn't find any pay details in this PDF. It works best with the
+  detailed paystub from your Payroll portal workday UKG Kronos…"* That is the **empty-parse modal**
+  (`index.html`, the `if(empty)` branch of the paystub review sheet), which means her file **opened
+  and parsed as a valid PDF** and simply had no extractable text — a photo or scan saved as a PDF.
+  It is not the `f.type!=='application/pdf'` toast that shipped tonight.
+  **Both branches were untracked, which is why zero events looked like a file-picker block.** The
+  shipped fix is still correct on its own terms (that branch was a dead-end message with no
+  telemetry) but it is probably not what she hit. The remaining gap: the `if(empty)` path renders
+  the modal and calls no `track()`, so **"the parse succeeded and found nothing" is invisible** —
+  add `paystub_failed {reason:'empty'}` there, which also makes the 2026-09-02 copy rewrite
+  measurable for the first time.
+  **Groom defect that caused the misread, worth fixing before it repeats:** the nightly groom query
+  selected `created_at, kind, page, anon_id, message, user_agent` and **not `contact` or
+  `user_id`** — so the one field carrying the answer was never read, and two further reports (08:51,
+  08:55) arrived after the query window and were missed entirely. Select every column, and re-read
+  `feedback` once more at the END of the run.
 - [x] ~~**A photo of a paystub was refused by a message that named the rule and not the remedy, and
   the refusal was the one paystub failure path that tracked nothing**~~ — SHIPPED 2026-10-14 (see
   Done log). `harness:drivable`.
-- [ ] **A real nurse asked for the import stepper's approval step to be "more alarming", and the
-  same morning she declined a 126-event plan three times without importing once** (P1 ·
+- [ ] **SUPERSEDED 2026-10-14 by the manual-sync item above — her later report says she wants the
+  sync on a button, not a louder alert. Kept for the evidence, not the conclusion.** ~~A real nurse
+  asked for the import stepper's approval step to be "more alarming", and the
+  same morning she declined a 126-event plan three times without importing once~~ (P1 ·
   source:feedback+groom · `harness:drivable` for the copy, **design call for the weighting**).
   Her words, 2026-10-14 08:03 UTC, device `f184ffa5`: *"After I pulled my schedule over from nurse
   grid, I was not careful with which dates got pulled over. Maybe the alert to be careful when
@@ -1292,6 +1352,19 @@ and the push P0 it pointed at was fixed the same day.
   question is whether the estimate card is a result or an obstacle, which is a design call.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+
+- [ ] **Effective-dated pay rates — Courtney got a raise and every future shift she already entered
+  is still priced at the old rate** (**wage-core, owner-approval tier**; the queue copy with her
+  exact words is in the 2026-10-14 groom section). A shift stores its rate at entry, which is right
+  for a worked shift and wrong for one she has not worked yet, and there is no rate-with-a-start-date
+  concept, so a raise splits her data into priced-right and priced-wrong with nothing marking which.
+  Her only workaround today is deleting every future shift. **The fix is a rate that takes effect on
+  a date**, with each shift priced by the rate in force on its own date — **never** a bulk re-price
+  button, which would rewrite shifts she already worked and was taxed on. Touches `shiftGross`,
+  `hourlyRate`, `periodPaycheck` and the sanitizer: `wage-core` protocol, baseline probes, new
+  assertions, equality check against the deployed build, and a before → after card of 3 example
+  paychecks in the PR body. **This is the most wrong-money item in the file and it is live on the
+  one user the app exists for.**
 - [ ] **A goal has no deadline, and the “how much per paycheck” figure is the whole ask — THIRD
   request of the same shape, now from two different professions** (P1 · source:feedback ·
   wage-core, so not a nightly). New `feedback` row 2026-10-10 08:48:44, `kind:'wish'`, device
@@ -2206,6 +2279,16 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   **Honest scope.** `paystub_failed` has never fired for any reason; this change makes the bounce
   countable from here, it does not tell us how often it has already happened. One device, one
   report.
+  **CORRECTION, same day, after the owner asked whether she had left contact details.** The groom
+  query did not select `feedback.contact`, and that field holds the app's own error pasted back by
+  her: *"couldn't read that paystub. We couldn't find any pay details in this PDF…"* — the
+  **empty-parse modal**, not the wrong-file-type toast this entry fixed. So her PDF **opened and
+  parsed**; it just had no extractable text (a photo or scan saved as a PDF). **This fix is sound
+  but is probably not the branch she hit.** Both were untracked, which is exactly why zero events
+  read as a file-picker block — the reasoning was consistent with the evidence and the evidence was
+  half-read. The real remaining gap (`if(empty)` renders the modal and tracks nothing) is a P1 in
+  tonight's groom section. Recorded here rather than quietly amended, because this file exists to
+  stop confident readings from standing unchallenged.
   **Gate:** `check_build.mjs` 14/14, `test_groom_seed.mjs` 33/33, `core.test.mjs` 111/111,
   `smoke.mjs` **765/765** (757 + 8). `silence_watch` **FRESH** (newest event 0.0h).
   `deploy_watch` **LIVE** before and after.
