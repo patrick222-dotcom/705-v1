@@ -54,6 +54,16 @@ and the push P0 it pointed at was fixed the same day.
   affordance, or a way to *undo* the import she regrets. Ask her before building either — the
   repair path for over-imported time off (§32) already exists and she may simply not know it is
   there, which would make this a discovery problem and not a weighting one.
+  **The sharper figure, read table-wide rather than from today's window: `ics_import_done` last
+  fired 2026-10-10 and has 10 rows EVER.** `ics_sync_result` has 35 and `ics_resync_found` 6 (two
+  more at 08:18 and 08:26 today, after the first query window). So this is not one careless
+  morning — **four days of a feed reporting `changes` to a nurse who imports nothing**, while she
+  hand-edits instead. That is the strongest single argument in the queue for fixing the import
+  path over adding anything new, and it is also why the "more alarming" reading may be exactly
+  backwards: a confirm step she already refuses four days running does not need more weight, it
+  needs to be trustworthy enough to accept. **Also confirmed table-wide: `ics_resync_suppressed`
+  has still never fired** (zero rows), consistent with the 10-11 note and with two of today's
+  three syncs being cold loads.
 - [ ] **`PGRST303 "JWT issued at future"` is a new cloud-load failure shape, and the retry chain
   absorbed it** (P2 · source:groom · `harness:drivable`) — device `f184ffa5`, 2026-10-14 07:12:23,
   two rows: `Load error` then `Cloud load error (attempt 1 of 3)`. The device's clock is ahead of
