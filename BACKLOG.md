@@ -955,6 +955,15 @@ positioning (sync, paycheck) are failing her in them.
   and cost this run one CI cycle** — `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
   ellipsised at this width` failed once and passed once **on the same commit** (`e738670`, runs
   38224339630 and 38224378362), reporting `clipped=true spare=10`.
+  **Second instance, 2026-10-14, and it is cleaner evidence than the first.** PR #181 (a
+  **docs-only** diff — `BACKLOG.md` alone, so it cannot clip a wordmark) pushed commit `0aa4ef4`,
+  which CI happened to run **twice**; the two runs **disagreed on the identical commit** — one
+  `smoke` failure, one `smoke` success, job 116149953938 vs its twin, same reported
+  `clipped=true spare=10`. The first instance needed two separate runs on `e738670` to show the
+  non-determinism; this one showed it within a single push. The re-push (`d45d5a9`) then went
+  4/4 green and merged. **Cost so far: two CI cycles and two groom sessions' attention.** Nothing
+  about the diagnosis below changes — this only removes any remaining doubt that it is the
+  assertion and not the code under it.
   **The cause is written down three lines below the assertion itself**, which is why this is a
   flake and not a mystery: *"this sandbox has no route to fonts.googleapis.com and lays the bar out
   in the fallback face while the runner gets real Bricolage Grotesque."* So
