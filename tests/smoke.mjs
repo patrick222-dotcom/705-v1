@@ -5583,6 +5583,91 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 45. deleting a synced shift remembers its uid ---------------------------------- */
+  if (want(45)) {
+    /* The loop Courtney reported on 2026-10-14: she deleted synced shifts that were "not coded
+       properly", the feed still carried them, and every later sync re-proposed exactly the shifts
+       she had just rejected. `icsIgnored` already existed for this -- the stepper's "Not a shift"
+       writes it -- but the planner's own delete never did, so her deletions were invisible to the
+       next sync. Both halves are read off the PERSISTED blob, like S32, not off the DOM. */
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = iso(new Date());
+    const sh = (id, hours, extra) => ({ id, shiftType: 'day', hours, bonusType: 'none', customBonus: 0, ...extra });
+    const seed = {
+      ...SEEDED_STATE,
+      shifts: {
+        [today]: [
+          sh('synced', 12, { icsUid: 'ng-del@nursegrid' }),   // came from the feed
+          sh('typed', 8, {}),                                  // hers, no uid
+          /* A third row so neither deletion below ever EMPTIES the day: an empty list makes the
+             sheet's primary button re-add the configured draft instead of saving nothing (its
+             label changes to "Add shift" there), and a test that walked into that path would be
+             measuring that quirk rather than this fix. */
+          sh('keeper', 6, {}),
+        ],
+      },
+    };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    const tracked = [];
+    await page.route('**/rest/v1/events*', async (r) => {
+      try { tracked.push(JSON.parse(r.request().postData() || 'null')); } catch (_) {}
+      await r.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    /* `+ Log a shift` lands on today when today is in the viewed period, which is the seeded case,
+       so the sheet opens already holding both rows. */
+    const openToday = async () => {
+      await page.locator('.fab').click();   // the desk-only twin is display:none at 390px
+      await page.waitForSelector('.sheet[aria-label="Add a shift"] .row-item', { timeout: 15000 });
+    };
+    await openToday();
+    const rowCount = await page.locator('.sheet .row-item:has(button.danger-link)').count();
+    ok('forget: the day sheet opens holding all three seeded shifts', rowCount === 3, String(rowCount));
+
+    /* Settled with a fixed wait, never waitForFunction: a predicate that never comes true ABORTS
+       the run instead of failing an assertion, which is one of the three ways this check lies. */
+    const blob = (k) => page.evaluate((key) => new Promise((r) => setTimeout(() => {
+      const b = JSON.parse(localStorage.getItem(key) || '{}');
+      const ids = [];
+      Object.values(b.shifts || {}).forEach((arr) => (arr || []).forEach((x) => ids.push(x.id)));
+      r({ ids: ids.sort().join(','), ignored: Object.keys(b.icsIgnored || {}).sort().join(',') });
+    }, 900)), k);
+
+    /* --- delete the HAND-TYPED one first: nothing to remember, so nothing may be written. */
+    await page.locator('.sheet button.danger-link[aria-label*="×8h"]').first().click();
+    await page.locator('.sheet .btn-primary').first().click();
+    const afterTyped = await blob(STORAGE_KEY);
+    ok('forget: deleting a shift she typed herself drops it',
+      afterTyped.ids === 'keeper,synced', afterTyped.ids);
+    ok('forget: and remembers NOTHING -- no uid, not the feed-s business',
+      afterTyped.ignored === '', afterTyped.ignored);
+
+    /* --- now the synced one: the uid must be remembered, which is the whole fix. */
+    await openToday();
+    await page.locator('.sheet button.danger-link[aria-label*="×12h"]').first().click();
+    await page.locator('.sheet .btn-primary').first().click();
+    const afterSynced = await blob(STORAGE_KEY);
+    ok('forget: deleting a synced shift drops it too', afterSynced.ids === 'keeper', afterSynced.ids);
+    ok('forget: and REMEMBERS its uid, so the next sync cannot re-propose it',
+      afterSynced.ignored === 'ng-del@nursegrid', afterSynced.ignored);
+
+    /* --- countable. Four days of this loop were read from shift counts and hand-read feedback;
+           one coarse row makes "she rejected a synced shift" a number. No wage figure rides it. */
+    const rows = tracked.flatMap((b) => (Array.isArray(b) ? b : b ? [b] : []))
+      .filter((r) => r && r.name === 'ics_uid_forgotten');
+    ok('forget: the deletion is tracked exactly once, with a count and nothing else',
+      rows.length === 1 && rows[0].props && rows[0].props.n === 1
+      && Object.keys(rows[0].props).join(',') === 'n',
+      JSON.stringify(rows.map((r) => r.props)));
+
+    ok('forget: no page errors across section 45',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
