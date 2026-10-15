@@ -51,9 +51,22 @@ positioning (sync, paycheck) are failing her in them.
   Touches `shiftGross`/`hourlyRate`/`periodPaycheck` and the sanitizer, so: **dedicated session,
   `wage-core` protocol, equality check against the deployed build, before → after card of 3 example
   paychecks in the PR** (approval tier: goes to the owner, it moves figures).
-- [ ] **She does not want a louder warning — she wants the sync OFF unless she presses a button,
+- [~] **She does not want a louder warning — she wants the sync OFF unless she presses a button,
   and the reason is that deleted shifts keep coming back** (P1 · source:feedback ·
-  `harness:drivable`). Her words, 2026-10-14 08:55 UTC: *"stop the sync to nurse grid and have the
+  `harness:drivable`) — **steps (1) and (2) SHIPPED 2026-10-15; step (3), the manual-sync toggle,
+  is still open.** The hypothesis the build order put first was **CONFIRMED by reading the code**:
+  `saveDayShifts` was the planner's only shift write point and it never touched `icsIgnored`, so a
+  deletion was invisible to the next sync and the feed re-proposed it forever. That is now fixed
+  and pinned (`tests/smoke.mjs` §45). **Whether that is ENOUGH is unverified** — it stops the
+  re-ask loop for shifts she deletes *from now on*, but her existing 126-event plan still carries
+  every uid she rejected before tonight, so her next sync will still offer them. Two things follow,
+  and the second is the one to decide: (a) a repair path for the already-rejected uids, the same
+  shape as §32's (`longSyncedShifts`) — but there is **no signal left to find them by**: a deleted
+  shift leaves no trace in the blob at all, so unlike the 20-hour case there is nothing to detect,
+  and the only honest options are "offer the whole plan once more and remember every skip" or
+  nothing; (b) step (3), the manual-sync toggle she actually asked for. **Build (3) next** — it
+  makes (a) moot for her, because a sync she triggers deliberately is one she is ready to read.
+  Her words, 2026-10-14 08:55 UTC: *"stop the sync to nurse grid and have the
   option to only sync when I press the button. Once I deleted shifts that were not coded properly
   on BB, it keeps asking me to approve of the shifts that it's trying to sync."*
   **This supersedes the "more alarming" reading below, and the four-day zero-import pattern is now
@@ -150,6 +163,29 @@ positioning (sync, paycheck) are failing her in them.
   the fix exists to produce: `paystub_failed` has **never fired, not once, for any reason** — the
   only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from 2026-07-30.
   Still one device, still one sample. **Do not build a worker mitigation on this.**
+
+### P2 (new, groom 2026-10-15)
+- [ ] **Emptying a day in the shift sheet re-adds a default shift instead of saving an empty day**
+  (P2 · source:groom · `harness:drivable`) — found while writing §45, which had to seed a third
+  shift to route around it. `AddShiftSheet`'s primary button is
+  `onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), …)`, so when she removes
+  the **last** row on a day and taps the button, the sheet hands back a freshly configured draft
+  shift and the day she just cleared comes back with a 12-hour day shift on it. The label does
+  change to `Add shift` in that state, so it is not strictly lying — but "Remove" then the only
+  button on screen is not a sequence anyone reads as "add a different one", and it silently puts
+  priced hours back into her estimate. **Deliberately not fixed tonight**: the honest fix is a
+  distinct "Save day" / "Add shift" split, which is the same surface as the P3 label item below,
+  and the two should land together rather than touching that handler twice. No wage core — the
+  arithmetic is untouched; what moves is which shifts exist.
+- [ ] **Two more syncs after the 10-14 groom window, same shape: `changes`, 126 events, no import**
+  (P1 · housekeeping, so the figure stays honest) — `ics_sync_result {changes, nursegrid}` with
+  `ics_sync_done {events:126}` at **2026-10-14 15:59:03 and 18:08:29 UTC**, both device
+  `f184ffa5`. So the count in the 10-14 item is low: it is **five** loads across that day, not
+  three, all reporting changes, with **zero `ics_import_done`** — which still last fired
+  2026-10-10 and still has 10 rows ever. The 08:54:05 `ics_resync_dismissed` is the sharpest row in
+  the set: she declined the banner and filed *"it keeps asking me to approve"* **81 seconds later**,
+  which is as close to a causal link between an event and a complaint as this table has produced.
+  `ics_resync_suppressed` has still never fired, consistent with these being cold loads.
 
 ### P1 (new, groom 2026-10-13)
 - [x] ~~**A real nurse tried the paystub import three times, was told the file was the problem, and
@@ -2254,6 +2290,46 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-15 — **A synced shift she deleted from the planner was never remembered, so the feed
+  re-proposed it on every sync, forever.** Nightly loop; `index.html` `forgetRemovedIcsUids` +
+  `tests/smoke.mjs` §45 (7 assertions, two deliberate breaks). No wage core, no `@core` region, no
+  invariant surface — it moves no dollar figure, it changes which shifts exist.
+  **This is the bug underneath the thing the user asked for, found by checking the build order's
+  first step instead of building its third.** Courtney wrote at 2026-10-14 08:55 UTC: *"stop the
+  sync to nurse grid and have the option to only sync when I press the button. Once I deleted
+  shifts that were not coded properly on BB, it keeps asking me to approve of the shifts that it's
+  trying to sync."* Read as a feature request that is a manual-sync toggle. Read as a bug report it
+  is this: `icsIgnored` has existed since the stepper shipped and is exactly the "never offer this
+  uid again" memory, but **only the stepper's "Not a shift" answer ever wrote it.**
+  `saveDayShifts` — the planner's single shift write point, shared by the day sheet and the swap
+  sheet — dropped the shift and said nothing, so deleting a mis-coded synced shift left the uid
+  unremembered and the next sync handed it straight back. Her workaround was to decline the plan,
+  which is what the events show her doing: five loads on 2026-10-14 all `ics_sync_result {changes}`
+  at 126 events, **zero imports**, and an `ics_resync_dismissed` 81 seconds before she wrote in.
+  **What shipped.** `forgetRemovedIcsUids(dateKey, arr)` runs before the `setShifts` updater,
+  diffs the day's incoming array against the closure's `shifts[dateKey]`, and writes every
+  `icsUid` that left into `icsIgnored` — the same write the stepper's `skip` makes. Compared
+  against the closure, not the updater's `prev`, because `arr` is derived from what the sheet was
+  opened with, so the closure holds the list she actually edited. **"Gone from this day" needed no
+  cross-day check** to mean gone, and that was checked rather than assumed: a swap's incoming leg
+  is built as a fresh shift carrying no `icsUid` and its outgoing leg genuinely leaves her
+  calendar, and the import stepper's own update path rewrites shifts through `setShifts` directly
+  rather than through here, so a shift the stepper MOVES is never read as deleted. The sheet has no
+  in-place row edit either — correcting a mis-coded synced shift means Remove then add it back,
+  which is precisely what she described, and recording the uid there is the point.
+  Also now countable: `ics_uid_forgotten {n}`, one coarse row, no uid and no dollar figure on it
+  (Invariant 13 + the analytics rules) — "she rejected a synced shift" has been a thing read out of
+  shift counts and hand-read feedback for four days and is a number from here.
+  **Negative-tested twice, because one break would have proved less than it looks.** Stubbing the
+  function to `return` failed the "remembers its uid" and the tracking assertions; dropping only
+  the still-present check (so it forgets uids that never left) failed the **negative control** —
+  the "remembers NOTHING when no uid left" assertion — and doubled the tracked rows. Both restored
+  and the working tree verified byte-clean after.
+  **What this does NOT do, stated because the ask is still open:** it fixes deletions from tonight
+  on. Every uid she rejected before tonight is still absent from `icsIgnored`, so her next sync
+  still offers the same 126-event plan, and a deleted shift leaves no trace in the blob to find
+  them by. Step (3), the manual-sync toggle she actually asked for, is still queued and is the next
+  thing to build. Gate: 14 mechanical checks, 33 groom-seed, 111 core, **772 smoke** (was 765).
 - 2026-10-14 — **A photo of a paystub was refused by a message that named the rule and not the
   remedy — and that refusal was the only paystub failure path that tracked nothing at all.**
   Nightly loop; `index.html` `onPaystub` guards + `tests/smoke.mjs` §44 (8 assertions). No wage

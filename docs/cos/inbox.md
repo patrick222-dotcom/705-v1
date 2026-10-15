@@ -14,6 +14,10 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   the rule not the remedy and tracked nothing — fixed + countable. Her two other notes (make the
   import approval "more alarming", "save changes" not "add shift") are queued, not built ·
   → outcome pending
+- 2026-10-15 · session BadgeBudget nightly · deleting a synced shift never recorded its uid, so the
+  NurseGrid feed re-proposed it on every sync — the bug under her "put the sync on a button" ask;
+  fixed + countable. The toggle itself, and her pre-tonight rejected uids, are still open ·
+  → outcome pending
 
 ## Parked
 

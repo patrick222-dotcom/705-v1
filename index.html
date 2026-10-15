@@ -4444,9 +4444,38 @@ function App(){
     else setCalFocus(todayISO());
   };
 
+  /* A synced shift she DELETES from the planner has to be remembered as "don't offer this one
+     again" — the same icsIgnored write the import stepper's "Not a shift" answer makes. Deleting a
+     shift removes it from her calendar but not from the feed, so without this every later sync
+     re-proposes exactly the shift she just rejected, forever. That loop is what the one real
+     NurseGrid account reported on 2026-10-14: "Once I deleted shifts that were not coded properly
+     on BB, it keeps asking me to approve of the shifts that it's trying to sync" — filed 81
+     seconds after an ics_resync_dismissed, and after declining the same 126-event plan on five
+     separate loads without importing once. She asked for a manual-sync switch; this is the bug
+     underneath that ask, so it goes first.
+     Compared against the closure's `shifts[dateKey]`, not the updater's `prev`: `arr` is derived
+     from what the sheet was opened with, so the closure holds the list she actually edited.
+     "Gone from this day" needs no cross-day check to mean "gone": a swap never carries a uid to
+     another day — its incoming leg is built as a fresh shift with no icsUid, and the outgoing leg
+     genuinely leaves her calendar. The import stepper's own update path rewrites shifts through
+     `setShifts` directly, not through here, so a synced shift the stepper MOVES is never seen as
+     deleted. And the sheet has no in-place row edit — correcting a mis-coded synced shift means
+     Remove, then add it back by hand, which is precisely what she described doing; recording the
+     uid there is the point, not a side effect. */
+  const forgetRemovedIcsUids = (dateKey, arr)=>{
+    const before = shifts[dateKey] || [];
+    if(!before.length) return;
+    const kept = new Set((arr||[]).map(s=>s && s.icsUid).filter(Boolean));
+    const gone = [...new Set(before.map(s=>s && s.icsUid).filter(u=>u && !kept.has(u)))];
+    if(!gone.length) return;
+    setIcsIgnored(prev=>{ const n={...prev}; gone.forEach(u=>{ n[u]=true; }); return n; });
+    track('ics_uid_forgotten', {n:gone.length}, user?.id);
+  };
+
   // Shifts, day events, and a day note are all committed together from the AddShiftSheet's
   // single save/dismiss flow — one write point, all covered by the same debounced cloud save.
   const saveDayShifts = (dateKey, arr, events, note)=>{
+    forgetRemovedIcsUids(dateKey, arr);
     setShifts(prev=>{ const n={...prev}; if(arr.length) n[dateKey]=arr; else delete n[dateKey]; return n; });
     if(arr.length) track('shift_saved', {n:arr.length}, user?.id);
     setDayEvents(prev=>{
