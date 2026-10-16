@@ -275,6 +275,15 @@ function sanitizeData(d){
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
   if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
+  /* syncManualOnly (2026-10-16): "only sync when I press the button". NOT named `ical*` on
+     purpose -- `tests/smoke.mjs` S33 asserts Invariant 13 by scanning the whole outgoing blob for
+     /ical|webcal|basic\.ics/i, and a blunt tripwire that catches a field accidentally named
+     `icalUrl` is worth more than a tidier name here. Narrow that regex and the guard stops being
+     the thing that would notice a bearer credential entering the blob. A strict ===true, so every
+     blob that predates the field -- and any corrupt one -- reads as "leave auto-sync on", i.e. the
+     behaviour every existing account already has. It is a preference, never a pay input: no dollar
+     figure reads it, it only decides WHEN the feed is fetched. */
+  out.syncManualOnly = d.syncManualOnly === true;
   /* Onboarding v2's three answers (2026-10-10). Not pay inputs -- a persona picks starting values
      and cards, never a rule -- but whitelisted the same way: anything else is dropped, never
      coerced, so a corrupt blob reads as "never answered" rather than as somebody's profession. */

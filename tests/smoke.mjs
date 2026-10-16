@@ -5668,6 +5668,153 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 46. "only sync when I press the button" ----------------------------------------- */
+  if (want(46)) {
+    /* Courtney asked for this twice in 28 hours -- 2026-10-14 08:55 ("have the option to only
+       sync when I press the button") and 2026-10-15 12:30 ("Stop auto syncing with nurse grid.
+       Wait for the user to prompt to sync"), the second filed 39 seconds after a cold-load sync
+       re-proposed the same 126-event plan she had already declined. Five loads on 10-14 all
+       reported `changes`; `ics_import_done` has not fired since 10-10.
+       Driven against the real handlers with §37B's stub, so what is measured is whether the proxy
+       is reached at all -- `window.__invokes` -- and not whether some banner rendered. Both
+       states are driven in one section: with the preference OFF the cold-load sync must still
+       run, because the regression that costs everyone else their sync is indistinguishable from
+       this feature working. */
+    const FEED_URL = 'https://app.nursegrid.com/calendars/777/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+    const FEED = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', 'UID:ng-manual-a', `DTSTART:${dayOut(5)}T190000Z`, `DTEND:${dayOut(5)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT',
+      'END:VCALENDAR'].join('\r\n');
+
+    /* One drive, parameterised by what the cloud blob says. `manualOnly` is seeded through
+       `user_data` rather than localStorage: the signed-in path hydrates from the cloud row, and a
+       localStorage seed would be overwritten by it. */
+    const drive = async (manualOnly) => {
+      const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+      const page = await ctx.newPage();
+      if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.addInitScript(([feed, feedUrl, blob]) => {
+        window.__ev = []; window.__invokes = 0;
+        window.__skew = 0;
+        const realNow = Date.now;
+        Date.now = () => realNow() + window.__skew;
+        const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+          access_token: 'a', refresh_token: 'a' };
+        let real;
+        Object.defineProperty(window, 'supabase', {
+          configurable: true,
+          get() { return real; },
+          set(v) {
+            if (v && v.createClient) {
+              const orig = v.createClient.bind(v);
+              v.createClient = (...a) => {
+                const c = orig(...a);
+                try {
+                  c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                  c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                  c.from = (table) => {
+                    const q = { _op: 'select' };
+                    for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                    q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                    q.upsert = () => { q._op = 'upsert'; return q; };
+                    q.then = (res, rej) => {
+                      if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                      if (table === 'ical_subscriptions') {
+                        return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                      }
+                      if (table === 'user_data') {
+                        return Promise.resolve({ data: { data: blob, updated_at: '2026-10-16T00:00:00.000Z' }, error: null }).then(res, rej);
+                      }
+                      return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                    };
+                    return q;
+                  };
+                  const fx = { invoke: async () => { window.__invokes++; return { data: feed, error: null }; } };
+                  Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+                } catch (_) {}
+                return c;
+              };
+            }
+            real = v;
+          },
+        });
+      }, [FEED, FEED_URL, { ...SEEDED_STATE, syncManualOnly: manualOnly }]);
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.avatar', { timeout: 20000 });
+      /* Settled with a fixed wait, never waitForFunction: a predicate that never comes true
+         ABORTS the run, and "the proxy was never called" is exactly the predicate that never
+         comes true in the manual-only case. An abort is not a failed assertion. */
+      await page.waitForTimeout(2500);
+      return { ctx, page, errors };
+    };
+
+    /* --- (A) preference ON: nothing may reach the feed on its own, on a cold load or a return. */
+    {
+      const { ctx, page, errors } = await drive(true);
+      ok('manual sync: the cold-load sync does NOT reach the feed',
+        (await page.evaluate(() => window.__invokes)) === 0, String(await page.evaluate(() => window.__invokes)));
+      ok('manual sync: and no import stepper steals the screen',
+        (await page.locator('.sheet').count()) === 0);
+      const evA = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+      ok('manual sync: the skip is countable -- one ics_autosync_off per load',
+        (await evA()).filter((n) => n === 'ics_autosync_off').length === 1, (await evA()).join(','));
+      ok('manual sync: and no ics_sync_result, because a sync that never ran is not an outcome',
+        (await evA()).filter((n) => n === 'ics_sync_result').length === 0, (await evA()).join(','));
+
+      /* Coming back to the tab is the other automatic door, and the one she meets every day. */
+      await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+      await page.waitForTimeout(1500);
+      ok('manual sync: coming back to the app does not reach the feed either',
+        (await page.evaluate(() => window.__invokes)) === 0, String(await page.evaluate(() => window.__invokes)));
+      ok('manual sync: still exactly one skip row, not one per foreground return',
+        (await evA()).filter((n) => n === 'ics_autosync_off').length === 1, (await evA()).join(','));
+
+      /* The link is still saved and the button still works -- this is a preference, not a
+         disconnect. If "Sync now" were gated too the setting would just be a broken sync. */
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 10000 });
+      await page.waitForSelector('button[role="switch"][aria-label="Only sync when I tap Sync now"]', { timeout: 12000 });
+      ok('manual sync: Settings shows the switch ON, matching the saved blob',
+        (await page.locator('button[role="switch"][aria-label="Only sync when I tap Sync now"]').getAttribute('aria-checked')) === 'true');
+      /* The copy may not keep promising a check she just turned off. */
+      const hint = await page.locator('.modal .hint', { hasText: 'Secret address in iCal format' }).first().innerText();
+      ok('manual sync: and the copy says "only when you tap", not "each time you open the app"',
+        /only when you tap/.test(hint) && !/each time you open the app/.test(hint), hint.slice(0, 160));
+
+      await page.locator('.modal button:has-text("Sync now")').first().click();
+      /* Fixed wait, never waitForFunction: the direction that costs her the feature is the proxy
+         NEVER being reached, and a predicate that never comes true aborts the run instead of
+         failing this assertion. A gate written as `if(syncManualOnly) return` rather than
+         `if(!manual && syncManualOnly)` passed everything above and died here as a harness error. */
+      await page.waitForTimeout(2500);
+      ok('manual sync: "Sync now" still reaches the feed -- the link is saved, not disconnected',
+        (await page.evaluate(() => window.__invokes)) === 1, String(await page.evaluate(() => window.__invokes)));
+
+      const realA = errors.filter((e) => !isExpectedNetwork(e));
+      ok('manual sync: no page errors with the preference on', realA.length === 0, realA[0] || '');
+      await ctx.close();
+    }
+
+    /* --- (B) preference OFF (every existing account): the cold-load sync must be untouched. */
+    {
+      const { ctx, page, errors } = await drive(false);
+      ok('manual sync: with the preference off the cold-load sync still runs, as it always has',
+        (await page.evaluate(() => window.__invokes)) === 1, String(await page.evaluate(() => window.__invokes)));
+      const evB = await page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+      ok('manual sync: and it reports its result, so §27-s five-state contract is intact',
+        evB.filter((n) => n === 'ics_sync_result').length === 1, evB.join(','));
+      ok('manual sync: nothing is recorded as skipped',
+        evB.filter((n) => n === 'ics_autosync_off').length === 0, evB.join(','));
+      const realB = errors.filter((e) => !isExpectedNetwork(e));
+      ok('manual sync: no page errors with the preference off', realB.length === 0, realB[0] || '');
+      await ctx.close();
+    }
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

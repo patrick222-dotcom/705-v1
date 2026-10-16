@@ -19,6 +19,11 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   fixed + countable. The toggle itself, and her pre-tonight rejected uids, are still open ·
   → outcome pending
 
+- 2026-10-16 · session BadgeBudget nightly · the manual-sync switch she asked for twice in 28 hours
+  shipped (`syncManualOnly`, Settings, default off) — closing the 10-14 build order. Her shift count
+  fell 109 → 67 on 10-14, which is the raise/effective-dated-rate item costing her her own history ·
+  → outcome pending
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after

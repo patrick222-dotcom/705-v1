@@ -236,6 +236,27 @@ ok('pay: a blank, negative or junk salary is no rate at all',
     !('persona' in C.sanitizeData({ baseRate: 40 })));
 }
 
+/* ---- syncManualOnly: the manual-sync preference (2026-10-16) ------------------------------- */
+{
+  /* A strict === true, not a truthy coercion. Everything that is not a literal true has to read
+     as "leave auto-sync on", because that is what every blob written before 2026-10-16 means --
+     and the failure direction matters: reading a stale or hostile blob as manual-only would
+     silently stop a nurse's schedule syncing with nothing on screen to say so. */
+  ok('sanitize: a literal true is kept', C.sanitizeData({ syncManualOnly: true }).syncManualOnly === true);
+  ok('sanitize: a blob that never heard of the field reads as auto-sync on',
+    C.sanitizeData({ baseRate: 40 }).syncManualOnly === false);
+  const truthy = ['true', 1, 'yes', {}, [], 'manual'].map((v) => C.sanitizeData({ syncManualOnly: v }).syncManualOnly);
+  ok('sanitize: nothing truthy-but-not-true turns auto-sync off',
+    truthy.every((x) => x === false), JSON.stringify(truthy));
+  ok('sanitize: and false stays false', C.sanitizeData({ syncManualOnly: false }).syncManualOnly === false);
+  /* It is a preference, never a pay input: the same blob must price identically either way. */
+  const base = { baseRate: 44, federalTaxRate: 12, stateTaxRate: 3.07, ficaWithholdingType: 'standard' };
+  const a = C.sanitizeData({ ...base, syncManualOnly: true });
+  const b = C.sanitizeData({ ...base, syncManualOnly: false });
+  const strip = (o) => JSON.stringify({ ...o, syncManualOnly: null });
+  ok('sanitize: the preference moves nothing else in the blob', strip(a) === strip(b), strip(a));
+}
+
 /* ---- the funnel's analytics whitelist -------------------------------------------------------- */
 {
   const E = C.obEventProps;
