@@ -1043,6 +1043,20 @@ positioning (sync, paycheck) are failing her in them.
   4/4 green and merged. **Cost so far: two CI cycles and two groom sessions' attention.** Nothing
   about the diagnosis below changes — this only removes any remaining doubt that it is the
   assertion and not the code under it.
+  **Third instance, 2026-10-16, and it cost a CI cycle again.** PR #184 (the manual-sync switch)
+  pushed `63ed891`; CI ran twice on that identical commit and disagreed again — job 116897142975
+  `smoke` **failure** (`clipped=true spare=10`, the same figures as both earlier instances) at
+  09:11:15 and job 116897312480 `smoke` **success** at 09:13:01, 106 seconds later. The whole rest
+  of the failing run was green: 785/1. `rerun_failed_jobs` on the red run went green and auto-merge
+  landed it. **So the tally is three instances, three CI cycles, three groom sessions** — and the
+  pattern is now exact: `clipped=true spare=10`, every time, on the same assertion, always with a
+  green twin on the same commit. **Promoted on the strength of the third instance; still not a
+  blind edit.** Fix (b) below is the one to take, and the thing it needs is unchanged: a run that
+  can exercise both font states, because this sandbox can only ever reach the fallback face. Note
+  for whoever takes it: `document.fonts.ready` alone is fix (a) and is explicitly not enough — the
+  row has `spare=10`, which is exactly the flex gap, so with the real face it does not merely race,
+  it genuinely clips, and an assertion that the wordmark reads in full at 320pt is **false on a real
+  iPhone SE**. Either the row gets real slack in CSS or the cosmetic half stops being a pass/fail.
   **The cause is written down three lines below the assertion itself**, which is why this is a
   flake and not a mystery: *"this sandbox has no route to fonts.googleapis.com and lays the bar out
   in the fallback face while the runner gets real Bricolage Grotesque."* So
@@ -2379,6 +2393,11 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   being reached is precisely the direction that costs her the feature, so it may not be expressed
   as a condition to wait for.
   Suites: gate 14/14, groom-seed 33/33, core **116**, smoke **786/0** on iPhone 13.
+  **Shipped and confirmed live**: PR #184 squash-merged as `c691fd0`, `deploy_watch.mjs` reads
+  `LIVE` serving `c691fd0`, and badgebudget.com greps 2 for `Only sync when I tap`. CI cost one
+  extra cycle to §30's wordmark flake — third instance, same `clipped=true spare=10`, green twin on
+  the identical commit; re-ran the failed job rather than touching the assertion, and promoted the
+  flake item with the sharper evidence.
 - 2026-10-15 — **A synced shift she deleted from the planner was never remembered, so the feed
   re-proposed it on every sync, forever.** Nightly loop; `index.html` `forgetRemovedIcsUids` +
   `tests/smoke.mjs` §45 (7 assertions, two deliberate breaks). No wage core, no `@core` region, no
