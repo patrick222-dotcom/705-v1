@@ -51,10 +51,14 @@ positioning (sync, paycheck) are failing her in them.
   Touches `shiftGross`/`hourlyRate`/`periodPaycheck` and the sanitizer, so: **dedicated session,
   `wage-core` protocol, equality check against the deployed build, before → after card of 3 example
   paychecks in the PR** (approval tier: goes to the owner, it moves figures).
-- [~] **She does not want a louder warning — she wants the sync OFF unless she presses a button,
-  and the reason is that deleted shifts keep coming back** (P1 · source:feedback ·
-  `harness:drivable`) — **steps (1) and (2) SHIPPED 2026-10-15; step (3), the manual-sync toggle,
-  is still open.** The hypothesis the build order put first was **CONFIRMED by reading the code**:
+- [x] ~~**She does not want a louder warning — she wants the sync OFF unless she presses a button,
+  and the reason is that deleted shifts keep coming back**~~ — **ALL THREE STEPS SHIPPED**: (1) and
+  (2) on 2026-10-15, (3) the manual-sync toggle on **2026-10-16** (see Done log). She asked a
+  **second** time on 2026-10-15 at 12:30 UTC — *"Stop auto syncing with nurse grid. Wait for the
+  user to prompt to sync with nurse Grid"* — filed **39 seconds** after the cold-load sync of that
+  same page load re-proposed the same 126-event plan. The original text and the build order are
+  kept below, unedited, because the order is the thing that worked: checking step (1) first found
+  the real bug. (P1 · source:feedback · `harness:drivable`) The hypothesis the build order put first was **CONFIRMED by reading the code**:
   `saveDayShifts` was the planner's only shift write point and it never touched `icsIgnored`, so a
   deletion was invisible to the next sync and the feed re-proposed it forever. That is now fixed
   and pinned (`tests/smoke.mjs` §45). **Whether that is ENOUGH is unverified** — it stops the
@@ -163,6 +167,42 @@ positioning (sync, paycheck) are failing her in them.
   the fix exists to produce: `paystub_failed` has **never fired, not once, for any reason** — the
   only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from 2026-07-30.
   Still one device, still one sample. **Do not build a worker mitigation on this.**
+
+### P1 (new, groom 2026-10-16)
+- [ ] **The repair path for the uids she rejected BEFORE 2026-10-15 is now moot for her and still
+  open for anyone else** (P2 · source:groom · `harness:unscoped`) — tonight's toggle is the reason.
+  Her 126-event plan still carries every uid she declined before the 10-15 fix, and there is no
+  signal in the blob to find them by (a deleted shift leaves no trace at all, unlike §32's 20-hour
+  case). With auto-sync off she now meets that plan only when she taps "Sync now", which is a sync
+  she is ready to read — so the honest options stay the two the 10-14 item named ("offer the whole
+  plan once more and remember every skip", or nothing) and neither is urgent. **Do not build this
+  on her evidence any more**; it needs a second account that has rejected synced shifts.
+- [ ] **Her shift count fell 109 → 67 between 08:05 and 08:17 on 2026-10-14, and the raise item is
+  the likely why** (P1 · housekeeping on the raise item, which is already a dedicated session) —
+  `session_end {shifts:109}` at 08:05:12, `{shifts:67}` at 08:17:58, with six `shift_saved` rows in
+  between and the raise complaint filed at 08:51. She wrote that her workaround is *"delete all the
+  shifts"*; the counts say she did roughly that to **42 of them**, then re-entered some by hand
+  (67 → 69 by 10-15 12:30). **So the cost of the missing effective-dated rate is not a wrong number
+  she tolerates — it is her deleting her own history to get a right one.** That raises the raise
+  item's priority; it does not make it a nightly item (wage core, Invariant 3). No action tonight
+  beyond recording the number, because the fix is the dedicated session already queued.
+- [ ] **Seven landing-only devices arrived in the 36 hours to 2026-10-16 and not one advanced past
+  screen 0** (P2 · source:groom · `harness:unscoped`, and a figure to stop re-deriving) —
+  `85138c1d`, `9a50c0df`, `c49281e8`, `ecc214e7`, `b55ee4c8`, `daf590c4`, `c9c78854`: every one
+  `ob_view {screen:'landing'}` + `ob_step {step:0}` and nothing after, `session_end` at 0–10
+  seconds, `shifts:0`. Two arrived `via:'qr'`. **This is the same shape as the 10-11 and 10-12
+  notes and it is now the largest single pattern in `events`** — but it is still not buildable from
+  here, because nothing distinguishes "read the landing screen and left" from a crawler or a
+  mis-tap, and the device classifier that would is still half-done (`app_open {fresh}` landed
+  2026-10-12; harness and crawler rows are still not excluded). **Fix the classifier before
+  designing anything for this cohort** — six of the seven are `fresh:true` single-load ids, which
+  is exactly what a bot looks like and also exactly what a curious nurse looks like.
+- [ ] **`auth check timed out` fired on a real device and the app rendered anyway** (P3 ·
+  source:groom · no action) — device `daf590c4`, 2026-10-15 16:45:41, one `client_error` row:
+  `console.error: Auth session error: auth check timed out`. That is **Invariant 1 working**: the
+  4-second `getSession()` race fired, the app degraded to localStorage-only and still booted (the
+  same load then wrote `app_open` and `ob_view`). Recorded so a future groom does not read it as a
+  new failure. One occurrence.
 
 ### P2 (new, groom 2026-10-15)
 - [ ] **Emptying a day in the shift sheet re-adds a default shift instead of saving an empty day**
@@ -892,7 +932,10 @@ positioning (sync, paycheck) are failing her in them.
   run rather than summed**: smoke is **736** (not the 721 this note predicted — the arithmetic was
   15 short, which is exactly why the line says regenerate it) and `core.test.mjs` is **83**. The
   "plus first-gen iPhone SE in §30 and §38" clause is still accurate. Original note:
-- [ ] **CLAUDE.md's assertion count is stale at 694 and was deliberately NOT updated tonight** —
+- [x] ~~**CLAUDE.md's assertion count is stale at 694 and was deliberately NOT updated tonight**~~
+  — **FIXED 2026-10-16**: regenerated from a full run (786 smoke, 116 core) rather than incremented,
+  which is what the item asked for. Original note below.
+- [ ] ~~**CLAUDE.md's assertion count is stale at 694 and was deliberately NOT updated tonight**~~ —
   housekeeping, so the next run does not read it as drift nobody noticed. The real figure after
   tonight's build is **710**. It was left alone because open PR #171 rewrites the **same two lines**
   (the `tests/harness.mjs` + `tests/smoke.mjs` row, 694→705, and the Testing section's
@@ -2290,6 +2333,52 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-16 — **"Only sync when I tap Sync now" — she asked twice in 28 hours and now has a
+  switch.** Nightly loop; `index.html` (`syncManualOnly`), `tests/smoke.mjs` §46 (14 assertions,
+  five deliberate breaks), `tests/core.test.mjs` (+5). A new sanitizer branch for a new data shape,
+  which Invariant 3 allows in a nightly with a unit test; it moves no dollar figure — `periodPaycheck`
+  never reads it and the gate's persona rule still passes on 31 wage definitions.
+  **What she said.** 2026-10-14 08:55 UTC: *"stop the sync to nurse grid and have the option to
+  only sync when I press the button."* Then again 2026-10-15 12:30 UTC: *"Stop auto syncing with
+  nurse grid. Wait for the user to prompt to sync with nurse Grid"* — and the second one is the
+  sharper row in `events`: `app_open` 12:29:29 → `ics_sync_result {changes, nursegrid}` +
+  `ics_sync_done {events:126}` 12:29:31 → feedback **12:30:10**. **39 seconds from the cold-load
+  sync re-proposing her 126-event plan to her writing in to ask for it to stop.** That is after the
+  10-15 fix shipped, which is the point: remembering her future deletions does not help with the
+  plan she already rejected, and the ask was never for a better warning.
+  **What shipped.** A boolean in the blob, default `false`, surfaced as a switch in Settings →
+  Calendar sync under the existing "Sync now" / "Remove" row: *Only sync when I tap "Sync now"*.
+  When on, neither automatic door opens — the once-per-load cold sync and the `visibilitychange`
+  re-sync both stand down — and **"Sync now" still works**, because the link stays saved; this is a
+  preference, not a disconnect. Three decisions worth keeping:
+  (a) **the guard is inside `runIcalSync` as well as in both callers.** A caller-only guard would
+  let a future auto trigger quietly reintroduce the behaviour, which is the same reasoning that put
+  `ics_sync_result` in a `finally` rather than at each return.
+  (b) **the Settings copy is now conditional.** It promised unconditionally that BadgeBudget
+  "checks it each time you open the app", which becomes a lie the moment she turns the switch on,
+  and copy contradicting a setting is how a setting stops being believed. §46 reads the sentence off
+  the rendered DOM, not the source.
+  (c) **the field is `syncManualOnly`, not `icalManualOnly`.** §33 asserts Invariant 13 by scanning
+  the entire outgoing `user_data` POST for `/ical|webcal|basic\.ics/i` — the `ical*` name tripped it
+  and the full suite went red. **The guard was right to be blunt and the name was changed instead
+  of the regex**: a tripwire that would catch a field accidentally named `icalUrl` is worth more
+  than a tidier identifier. Written into the code comment so nobody "fixes" it back.
+  Also countable: `ics_autosync_off` (one row per load when the preference suppressed the sync —
+  per load, not per foreground return) and `ics_autosync_pref {manual}` on the switch itself.
+  No `ics_sync_result` when the sync never starts: a sync that did not run is not one of §27's five
+  outcomes.
+  **Negative-tested five ways**, each on a copy of the tree, never the working one: reverting the
+  gating entirely (6 assertions fail); writing the guard as `if(syncManualOnly)` so it swallows
+  "Sync now" too (1 fails); reverting the conditional copy (1 fails); skipping the cold-load sync
+  unconditionally plus ignoring the saved preference on hydrate (7 fail); and two sanitizer breaks
+  in `tests/core.test.mjs` (a truthy `!!` coercion, then dropping the field) for 1 and 4.
+  **One of those breaks changed the test.** The `if(syncManualOnly)` variant made
+  `waitForFunction(() => window.__invokes > 0)` a predicate that never comes true, so the run
+  **aborted as a harness error instead of failing the assertion** — the first of the three ways the
+  harness skill says this check lies. Rewritten as a fixed wait plus an assertion; the proxy never
+  being reached is precisely the direction that costs her the feature, so it may not be expressed
+  as a condition to wait for.
+  Suites: gate 14/14, groom-seed 33/33, core **116**, smoke **786/0** on iPhone 13.
 - 2026-10-15 — **A synced shift she deleted from the planner was never remembered, so the feed
   re-proposed it on every sync, forever.** Nightly loop; `index.html` `forgetRemovedIcsUids` +
   `tests/smoke.mjs` §45 (7 assertions, two deliberate breaks). No wage core, no `@core` region, no

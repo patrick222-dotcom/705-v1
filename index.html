@@ -1502,6 +1502,15 @@ function sanitizeData(d){
      default differentials + taxes) | 'sample' (nothing of theirs entered yet). Whitelisted, so a
      corrupt or hostile blob can only ever land on '' — i.e. no banner, never a false one. */
   if(d.estimateMode==='rough' || d.estimateMode==='sample') out.estimateMode = d.estimateMode;
+  /* syncManualOnly (2026-10-16): "only sync when I press the button". NOT named `ical*` on
+     purpose -- `tests/smoke.mjs` S33 asserts Invariant 13 by scanning the whole outgoing blob for
+     /ical|webcal|basic\.ics/i, and a blunt tripwire that catches a field accidentally named
+     `icalUrl` is worth more than a tidier name here. Narrow that regex and the guard stops being
+     the thing that would notice a bearer credential entering the blob. A strict ===true, so every
+     blob that predates the field -- and any corrupt one -- reads as "leave auto-sync on", i.e. the
+     behaviour every existing account already has. It is a preference, never a pay input: no dollar
+     figure reads it, it only decides WHEN the feed is fetched. */
+  out.syncManualOnly = d.syncManualOnly === true;
   /* Onboarding v2's three answers (2026-10-10). Not pay inputs -- a persona picks starting values
      and cards, never a rule -- but whitelisted the same way: anything else is dropped, never
      coerced, so a corrupt blob reads as "never answered" rather than as somebody's profession. */
@@ -3684,6 +3693,11 @@ function App(){
   const [icalUrl,setIcalUrl] = useState('');         // the feed URL bound to the Settings input
   const [icalSub,setIcalSub] = useState(null);       // {icalUrl, provider, lastSynced} saved subscription, or null
   const [icalBusy,setIcalBusy] = useState(false);    // a save / sync / remove is in flight
+  /* true = never fetch the feed on our own; wait for "Sync now". Courtney asked for this twice in
+     28 hours (2026-10-14 08:55, 2026-10-15 12:30 -- the second filed 39 seconds after a cold-load
+     sync re-proposed the same 126-event plan she had already declined). Default false, so nobody
+     else's behaviour changes. */
+  const [syncManualOnly,setSyncManualOnly] = useState(false);
   const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
   const icalInFlight = useRef(false);                // hard guard against overlapping syncs
   const icalSyncedForUser = useRef(null);            // user.id already auto-synced this app-open (sync runs once, silently)
@@ -3749,7 +3763,7 @@ function App(){
   const serializeState = ()=>({
     name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
-    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,
+    payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,syncManualOnly,
     workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,
     otPeriodHours,otPeriodDays,otPeriodStart
   });
@@ -3791,6 +3805,10 @@ function App(){
     if(d.goals) setGoals(d.goals);
     if(d.patterns) setPatterns(d.patterns);
     setEstimateMode(d.estimateMode || '');
+    /* Authoritative, like estimateMode: the sanitizer already collapsed everything that is not a
+       literal true, so a blob that never heard of the field restores auto-sync -- and signing into
+       a second account never carries the first one's preference across. */
+    setSyncManualOnly(d.syncManualOnly === true);
     if(WORK_PERIODS.indexOf(d.workPeriod)>=0) setWorkPeriod(d.workPeriod);
     if(OT_METHODS.indexOf(d.otMethod)>=0) setOtMethod(d.otMethod);
     /* Authoritative like the work period they qualify: a blob without them clears them. */
@@ -4000,7 +4018,11 @@ function App(){
       setIcalSub(sub); setIcalUrl(sub ? sub.icalUrl : '');
       if(sub && sub.icalUrl && icalSyncedForUser.current!==uid){
         icalSyncedForUser.current = uid;
-        runIcalSync({url:sub.icalUrl});   // silent (non-manual): quiet unless there's something to confirm
+        /* One row per load saying auto-sync was off, so adoption of the setting is readable in
+           `events` without a row on every foreground return. The runIcalSync guard is the one that
+           actually holds; this branch exists to make the skip countable. */
+        if(syncManualOnly) track('ics_autosync_off', {}, uid);
+        else runIcalSync({url:sub.icalUrl});   // silent (non-manual): quiet unless there's something to confirm
       }
     })();
     return ()=>{ cancelled=true; };
@@ -4017,6 +4039,7 @@ function App(){
      opening the stepper exactly as it always has; this is additive. */
   useEffect(()=>{
     if(!supabase || !user || !icalSub || !icalSub.icalUrl) return;
+    if(syncManualOnly) return;   // she asked for the button; don't even listen
     const onVis = ()=>{
       if(document.visibilityState!=='visible') return;
       if(icsImport || icsPending || icalInFlight.current) return;   // never stack on an open sheet or an unread banner
@@ -4025,7 +4048,7 @@ function App(){
     };
     document.addEventListener('visibilitychange', onVis);
     return ()=>document.removeEventListener('visibilitychange', onVis);
-  },[user, icalSub, icsImport, icsPending]);   // eslint-disable-line react-hooks/exhaustive-deps
+  },[user, icalSub, icsImport, icsPending, syncManualOnly]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* save (debounced) */
   useEffect(()=>{
@@ -4061,7 +4084,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
+  },[ready,user,name,baseRate,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,syncManualOnly,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -4912,6 +4935,11 @@ function App(){
     // normalizeFeedUrl here, not only on save: a row saved before this fix still holds webcal://.
     const url = normalizeFeedUrl((opts && opts.url) || (icalSub && icalSub.icalUrl) || icalUrl);
     if(!supabase || !user || hydratedForUser.current!==user.id || !url) return;
+    /* Manual-only mode. The guard lives HERE as well as in the two automatic callers, so a future
+       auto trigger cannot quietly reintroduce the behaviour she asked twice to be rid of -- the
+       same reason `ics_sync_result` is written from a `finally` rather than at each return. No
+       `ics_sync_result` row: a sync that never started is not one of the five outcomes. */
+    if(!manual && syncManualOnly) return;
     if(icalInFlight.current) return;
     icalInFlight.current = true; setIcalBusy(true);
     lastIcalSyncAt.current = Date.now();   // stamp the ATTEMPT, so a failing feed can't spin on every foreground
@@ -5545,7 +5573,8 @@ function App(){
             goals,setGoals,keepRatio,
             exportData,exportICS,onImport:()=>fileImport.current?.click(),onPaystub,parsing,clearAll,
             onImportICS,
-            user, icalUrl, setIcalUrl, icalSub, icalBusy,
+            user, icalUrl, setIcalUrl, icalSub, icalBusy, syncManualOnly,
+            setSyncManualOnly:(v)=>{ setSyncManualOnly(v); track('ics_autosync_pref',{manual:v===true},user&&user.id); },
             onIcalHowTo: ()=>{ track('ical_howto_opened',{surface:'settings'},user&&user.id);
                                setShowSettings(false); setShowIcalHowTo(true); },
             onSaveIcalUrl, onRemoveIcalUrl, onSyncIcal:()=>runIcalSync({manual:true}),
@@ -6806,7 +6835,7 @@ function Settings(props){
     pretaxDeductions,setPretax,pretaxHealth,setPretaxHealth,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
     goals,setGoals,keepRatio,
     exportData,exportICS,onImport,onPaystub,parsing,clearAll,onFeedback,onShare,onImportICS,
-    user,icalUrl,setIcalUrl,icalSub,icalBusy,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,onIcalHowTo,
+    user,icalUrl,setIcalUrl,icalSub,icalBusy,syncManualOnly,setSyncManualOnly,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,onIcalHowTo,
     workPeriod,setWorkPeriod,otMethod,setOtMethod,mealBreakMins,setMealMins,mealBreakMode,setMealMode,
     otPeriodHours,setOtPeriodHours,otPeriodDays,setOtPeriodDays,otPeriodStart,setOtPeriodStart,periodStartToday}=props;
   useEscape(onClose);
@@ -7014,8 +7043,14 @@ function Settings(props){
         {user &&
           <div style={{marginTop:18}}>
             <div className="sec-lab">CALENDAR SYNC</div>
+            {/* The middle sentence is CONDITIONAL on purpose. It used to promise unconditionally
+                that BadgeBudget "checks it each time you open the app", which becomes a lie the
+                moment she turns auto-sync off -- and copy that contradicts a setting she just
+                changed is how a setting stops being believed. */}
             <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6,marginBottom:8}}>
-              Paste your calendar's secret iCal address (in Google Calendar: Settings → your calendar → “Secret address in iCal format”). BadgeBudget checks it each time you open the app and pulls in new shifts — you confirm the pay type for anything it hasn't seen. Treat the link like a password: it's stored privately and never shared.
+              Paste your calendar's secret iCal address (in Google Calendar: Settings → your calendar → “Secret address in iCal format”). {syncManualOnly
+                ? 'BadgeBudget checks it only when you tap “Sync now” — you confirm the pay type for anything it hasn’t seen.'
+                : 'BadgeBudget checks it each time you open the app and pulls in new shifts — you confirm the pay type for anything it hasn’t seen.'} Treat the link like a password: it's stored privately and never shared.
             </div>
             {/* The walkthrough stays reachable from here for anyone who waved off the home-screen
                 card, which is the only other place it is offered. */}
@@ -7038,6 +7073,27 @@ function Settings(props){
             </div>
             {icalSub && icalSub.lastSynced &&
               <div className="hint" style={{fontSize:11,color:'var(--muted-2)',marginTop:6}}>Last synced {new Date(icalSub.lastSynced).toLocaleString()}</div>}
+            {/* Courtney, twice in 28 hours: "stop the sync to nurse grid and have the option to
+                only sync when I press the button" (2026-10-14) and "Stop auto syncing with nurse
+                grid. Wait for the user to prompt to sync" (2026-10-15, filed 39 seconds after a
+                cold-load sync re-proposed the 126-event plan she had already declined). Default
+                off, so no existing account's behaviour moves. Not a filter and not a disconnect:
+                the link stays saved and "Sync now" is right above it. */}
+            {icalSub &&
+              <div className={'drow'+(syncManualOnly?'':' off')} style={{marginTop:10}}>
+                <button type="button" role="switch" aria-checked={!!syncManualOnly}
+                  aria-label="Only sync when I tap Sync now"
+                  className={'tg'+(syncManualOnly?' on':'')}
+                  onClick={()=>setSyncManualOnly(!syncManualOnly)}><div className="knob"></div></button>
+                <div style={{minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:14}}>Only sync when I tap “Sync now”</div>
+                  <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:2}}>
+                    {syncManualOnly
+                      ? 'BadgeBudget will not check your calendar on its own. Your saved shifts stay put.'
+                      : 'Right now BadgeBudget checks your calendar whenever you open the app.'}
+                  </div>
+                </div>
+              </div>}
           </div>}
 
         <button className="btn btn-soft btn-sm" style={{margin:'16px auto 0'}} onClick={onFeedback}>💬 Send feedback</button>

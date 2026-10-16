@@ -163,8 +163,8 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
 | `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, and (since 2026-10-12) the operating committee's caps |
-| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (111 — 83 until the pay events 2026-10-11, 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **772 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "765" until the planner-delete uid memory 2026-10-15, "757" until the paystub photo refusal 2026-10-14, "751" until the paystub-reader failure 2026-10-13, "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (116 — 111 until the manual-sync preference 2026-10-16, 83 until the pay events 2026-10-11, 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **786 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "772" until the manual-sync switch 2026-10-16, "765" until the planner-delete uid memory 2026-10-15, "757" until the paystub photo refusal 2026-10-14, "751" until the paystub-reader failure 2026-10-13, "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
 | `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
 | `docs/onboarding-funnel-spec.md` + `scripts/onboarding_funnel.sql` | onboarding v2's spec (every screen, the field each answer sets, the event it fires) and its funnel query — devices per screen, answer mix, back-outs, completion, with the harness pair, `nostore-`, insiders and crawlers excluded |
@@ -471,6 +471,22 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   is how often the feed differed and `found` alone is how often she was asked. The memory is a
   ref, not localStorage, on purpose: a cold load opens the stepper anyway. Pinned by
   `tests/smoke.mjs` §37.
+  **And she can turn the automatic half off entirely** (2026-10-16): a Settings switch, *Only sync
+  when I tap "Sync now"*, backed by `syncManualOnly` in the blob, default `false`. When on, neither
+  automatic door opens — the once-per-load cold sync and the `visibilitychange` re-sync both stand
+  down — while "Sync now" and the saved link are untouched, because this is a **preference, not a
+  disconnect**. The guard sits inside `runIcalSync` (`if(!manual && syncManualOnly) return`) as
+  well as in both callers, so a future auto trigger cannot quietly reintroduce the behaviour.
+  **Never gate the `manual` path with it** — a version written `if(syncManualOnly)` swallowed
+  "Sync now" too and turned the setting into a broken sync. No `ics_sync_result` row: a sync that
+  never started is not one of the five outcomes; the skip is `ics_autosync_off`, one row per load
+  rather than per foreground return. The field is deliberately **not** named `ical*` — §33's
+  Invariant 13 check scans the whole outgoing blob for `/ical|webcal|basic\.ics/i` and the guard is
+  worth more blunt than the name is worth tidy. The Settings copy is conditional for the same
+  reason the labels in §26 are asserted off the DOM: it used to promise unconditionally that
+  BadgeBudget "checks it each time you open the app", which the switch makes false. Courtney asked
+  for this twice in 28 hours, the second time **39 seconds** after a cold-load sync re-proposed the
+  126-event plan she had already declined. Pinned by `tests/smoke.mjs` §46.
   **The sync is now offered, not just available** (2026-10-01): it shipped 2026-09-03 and lived at
   the bottom of Settings behind a label that assumed a feed URL was already in hand — the owner's
   own first real sync took a hand-held walkthrough. A home-screen card ("Want to sync your
@@ -739,7 +755,7 @@ rule. It never blocks; a missing `docs/cos/now.md` prints nothing.
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
 `node scripts/check_build.mjs` (gate), `node scripts/test_groom_seed.mjs` (33),
-`node tests/core.test.mjs` (111, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
+`node tests/core.test.mjs` (116, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
 iPhone 13). `tests/equality.mjs` is the wage-core check against
 the **deployed** build — by hand only, needs network. Every new assertion is negative-tested. Scratch
 copies point `SUPABASE_URL` at `.invalid` so the harness can never write to production analytics.
