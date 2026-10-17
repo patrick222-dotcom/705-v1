@@ -81,7 +81,13 @@ does not resurrect shipped themes.
   every prop passed through the core's `obEventProps` whitelist so no typed figure can ride one
   (`docs/onboarding-funnel-spec.md`; query `scripts/onboarding_funnel.sql`),
   `signed_in`, `view_changed` `{view}`, `today_jump`, `shift_saved`, `note_saved`,
-  `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`, `ics_exported`,
+  `day_event_added/removed`, `template_saved/applied/tap`, `paystub_imported`,
+  `paystub_failed` `{reason}` — one of `size` / `photo` / `type` (refused before any read),
+  `reader` (pdf.js could not load its worker) / `parse` (the read threw) / `empty` (the read
+  SUCCEEDED and found no pay details, 2026-10-17). `reason` is the whole payload: never the
+  file name and never anything read out of the stub. `empty` was the last silent one — it is
+  also what makes the 2026-09-02 rewrite of that modal's copy measurable,
+  `ics_exported`,
   `ics_import_parsed`, `ics_import_done` `{added,updated,skipped,removed,shown,provider}`,
   `ics_sync_done` `{events,provider}`,
   `ics_sync_result` `{result,provider}` — **the only event that fires on EVERY sync that reached the

@@ -24,6 +24,11 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   fell 109 → 67 on 10-14, which is the raise/effective-dated-rate item costing her her own history ·
   → outcome pending
 
+- 2026-10-17 · session BadgeBudget nightly · the paystub modal Courtney actually hit — a parse that
+  SUCCEEDED and found nothing — rendered a dead end and tracked nothing, so her 10-14 `broken`
+  report read as a file-picker block; now `paystub_failed {reason:'empty'}`. Quiet groom otherwise:
+  no new feedback, no events in 24h, `silence_watch` FRESH · → outcome pending
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after

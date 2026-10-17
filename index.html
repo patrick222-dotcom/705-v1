@@ -5128,7 +5128,15 @@ function App(){
       e.target.value=''; return;
     }
     setParsing(true);
-    try{ const p=await parsePDF(f); setPaystub(p); }
+    /* The file opened, pdf.js read it, and nothing came back. Until tonight this branch rendered
+       the "Couldn't read that paystub" modal and called no `track()` at all, so "the parse
+       succeeded and found nothing" was the one paystub outcome invisible in `events` -- which is
+       how device f184ffa5's 2026-10-14 `broken` report (a photo saved as a PDF) looked like a
+       file-picker block rather than an empty parse. It also makes the 2026-09-02 copy rewrite on
+       that modal measurable for the first time. Coarse and money-free, like every other
+       `paystub_failed`. Pinned by `tests/smoke.mjs` section 47. */
+    try{ const p=await parsePDF(f); setPaystub(p);
+      if(paystubIsEmpty(p)) track('paystub_failed', {reason:'empty'}, user?.id); }
     catch(err){
       const reader = isReaderFailure(err);
       toast(reader ? "Couldn't load the PDF reader — reload the page and try again." : 'Could not parse that paystub.','error');
@@ -5618,10 +5626,15 @@ function App(){
 
 function greeting(){ const h=new Date().getHours(); return h<12?'Good morning':h<18?'Good afternoon':'Good evening'; }
 
+/* A parse that SUCCEEDED and found nothing. One definition, two callers -- the review sheet, which
+   renders the "Couldn't read that paystub" modal off it, and `onPaystub`, which counts it. They
+   used to be the same expression written twice, which is how a predicate drifts. */
+function paystubIsEmpty(p){ p=p||{}; return !p.baseRate && !p.grossPay && !(p.shifts&&p.shifts.length); }
+
 /* ---------- Paystub review sheet (shown after a scan; applyPaystub is wired here) ---------- */
 function PaystubReview({paystub,differentials,onApply,onCancel}){
   const p=paystub||{};
-  const empty = !p.baseRate && !p.grossPay && !(p.shifts&&p.shifts.length);
+  const empty = paystubIsEmpty(p);
   const [base,setBase]=useState(p.baseRate!=null?String(p.baseRate):'');
   const [pps,setPps]=useState(p.payPeriodStart||'');
   const [pre,setPre]=useState(p.pretaxDeductions!=null?String(p.pretaxDeductions):'');
