@@ -243,6 +243,9 @@ function sanitizeData(d){
   const setNum = (key,v)=>{ const n=Number(v); if(isFinite(n)) out[key]=n; };
   if(typeof d.name==='string') out.name = d.name;
   if(d.baseRate!=null) setNum('baseRate', d.baseRate);
+  /* Effective-dated rates (2026-10-17). Absent or empty leaves the key out, so the blob prices
+     byte-identically and applyData's authoritative reset clears any previous account's list. */
+  if('rateChanges' in d){ const rc = sanitizeRateChanges(d.rateChanges); if(rc.length) out.rateChanges = rc; }
   if(d.federalTaxRate!=null) setNum('federalTaxRate', d.federalTaxRate);
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
@@ -460,7 +463,7 @@ function sanitizeData(d){
        rate and differentials move onto it verbatim, so no historical shift reprices. This is
        the bug the job record fixes today, before any second employer exists — one global
        baseRate means changing status (per diem -> staff) silently repriced every past shift. */
-    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate,
+    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate, rateChanges: out.rateChanges,
       differentials: out.differentials || null,
       workPeriod: out.workPeriod, otMethod: out.otMethod,
       otPeriodHours: out.otPeriodHours, otPeriodDays: out.otPeriodDays, otPeriodStart: out.otPeriodStart,
@@ -543,6 +546,44 @@ const PAY_FREQUENCIES = ['weekly','biweekly','semimonthly'];
 const MEAL_MODES = ['included','deducted'];
 const DEFAULT_MEAL_MINS = 30;
 
+/* ---------- effective-dated rates (2026-10-17) ---------------------------------------
+   docs/effective-dated-rates-spec.md. A raise takes effect ON A DATE: each shift is priced by
+   the rate in force on its own date key (the day it starts), and baseRate is the rate for every
+   date before the first change. Before this, one baseRate priced every shift ever logged, so a
+   raise typed into Settings silently re-priced shifts she had already worked and been paid for.
+   With no list, or an empty one, rateEntryOn returns baseRate ITSELF -- not a copy, not a
+   rounded figure -- so every expression downstream is the one it always was. */
+const MAX_RATE_CHANGES = 24;
+const RATE_CHANGE_MAX = 1000;
+/* Shared by sanitizeData and makeJob, so there is one definition of the bounds. Out-of-range
+   entries are DROPPED, never clamped (the otMult rule): a $0 "raise" would price every later
+   shift at $0. Same date twice: the later entry wins (the UI appends, so it is a correction).
+   Sorted ascending, latest MAX_RATE_CHANGES kept -- the latest are the ones pricing shifts she
+   has not worked yet. */
+function sanitizeRateChanges(list){
+  if(!Array.isArray(list)) return [];
+  const byDate = {};
+  list.forEach(c=>{
+    if(!c || typeof c!=='object' || !isISODate(c.from)) return;
+    const r = Number(c.rate);
+    if(c.rate==null || c.rate==='' || !isFinite(r) || !(r>0) || r>RATE_CHANGE_MAX) return;
+    byDate[c.from] = Math.round(r*10000)/10000;
+  });
+  return Object.keys(byDate).sort().slice(-MAX_RATE_CHANGES).map(from=>({from, rate:byDate[from]}));
+}
+/* {rate, from} in force on dateKey: the latest change with from <= dateKey, else the base rate
+   with from:null. Expects a sanitized (ascending) list. */
+function rateEntryOn(baseRate, rateChanges, dateKey){
+  let e = { rate: baseRate, from: null };
+  const list = rateChanges || [];
+  for(let i=0;i<list.length;i++){
+    if(list[i].from <= dateKey) e = { rate: list[i].rate, from: list[i].from };
+    else break;
+  }
+  return e;
+}
+function rateOn(baseRate, rateChanges, dateKey){ return rateEntryOn(baseRate, rateChanges, dateKey).rate; }
+
 function makeJob(o){
   const j = o && typeof o==='object' ? o : {};
   const rate = Number(j.baseRate);
@@ -550,6 +591,9 @@ function makeJob(o){
     id: (typeof j.id==='string' && j.id) ? j.id : DEFAULT_JOB_ID,
     name: typeof j.name==='string' ? j.name.trim().slice(0,40) : '',
     baseRate: isFinite(rate) ? rate : 0,
+    /* A rate is what an employer decides, so dated changes live on the job too. Always an array:
+       empty prices exactly as a job without the concept did. */
+    rateChanges: sanitizeRateChanges(j.rateChanges),
     differentials: (j.differentials && typeof j.differentials==='object' && !Array.isArray(j.differentials))
       ? j.differentials : null,
     workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
@@ -652,11 +696,21 @@ function overtimePremiumCents(job, shifts, dateKeys){
   const rule = workPeriodRule(job);
   const threshold = rule ? rule.hours : 40;
   const out = { otHours:0, premiumCents:0, flaggedHours:0, periods:[] };
+  const rateChanges = job && job.rateChanges;
 
   workPeriodChunks(job, dateKeys).forEach(keys=>{
     let hours=0, stCents=0, flaggedHours=0, dailyExcess=0;
+    /* For the base-plus-diff shortcut across a raise: the base rates worked, weighted by hours.
+       `oneBase` stays the exact rate while every hour in the period was priced at the same one,
+       so a period at one rate uses that rate, never a computed average with float dust in it. */
+    let baseHourCents=0, oneBase=null, mixedBase=false;
     keys.forEach(k=>{
       let dayHours = 0;
+      /* Each day at its own rate (effective-dated rates, 2026-10-17). Straight time per shift at
+         that shift's rate, summed and divided by hours below, is the FLSA regular rate across a
+         raise: 29 CFR 778.109, and 778.115's "weighted average of such rates". */
+      const dayBaseCents = rateChanges && rateChanges.length
+        ? toCents(rateOn(job.baseRate, rateChanges, k)) : baseCents;
       ((shifts||{})[k]||[]).forEach(s=>{
         if(job && job.id && typeof s.jobId==='string' && s.jobId!==job.id) return;
         /* Paid hours, not logged hours: a missed lunch is half an hour of real work and
@@ -665,7 +719,9 @@ function overtimePremiumCents(job, shifts, dateKeys){
            actual hours (not 44)" (tests/core.test.mjs pins that exact week). */
         const h = paidHoursOf(s, job);
         hours += h; dayHours += h;
-        stCents += straightTimeCents(baseCents, diffs[s.shiftType], s, job);
+        stCents += straightTimeCents(dayBaseCents, diffs[s.shiftType], s, job);
+        baseHourCents += dayBaseCents * h;
+        if(oneBase===null) oneBase = dayBaseCents; else if(oneBase!==dayBaseCents) mixedBase = true;
         if(s.isOvertime===true) flaggedHours += h;
       });
       if(dayHours > 8) dailyExcess += dayHours - 8;
@@ -683,7 +739,9 @@ function overtimePremiumCents(job, shifts, dateKeys){
       ? Math.max(dailyExcess, Math.max(0, hours - 80))
       : Math.max(0, hours - threshold);
     const unflagged = Math.max(0, otHours - flaggedHours);
-    const premiumBase = method==='base-plus-diff' ? baseCents : regularRateCents;
+    const premiumBase = method==='base-plus-diff'
+      ? (mixedBase ? baseHourCents / hours : (oneBase!==null ? oneBase : baseCents))
+      : regularRateCents;
     const premiumCents = roundCents(0.5 * premiumBase * unflagged);
     out.otHours += unflagged;
     out.flaggedHours += flaggedHours;
@@ -709,7 +767,7 @@ function groupHoursByJob(jobs, shifts, dateKeys, dayEvents){
       const b = bucket(id);
       b.hours += paidHoursOf(s, job);
       b.shifts++;
-      if(job) b.grossCents += shiftGrossCents(toCents(job.baseRate), (job.differentials||{})[s.shiftType], s, job);
+      if(job) b.grossCents += shiftGrossCents(toCents(rateOn(job.baseRate, job.rateChanges, k)), (job.differentials||{})[s.shiftType], s, job);
     });
     /* PTO is paid by a specific employer too, but a day event carries no job today, so it lands
        on the default job — the same job every pre-migration shift landed on. */
@@ -720,7 +778,7 @@ function groupHoursByJob(jobs, shifts, dateKeys, dayEvents){
       const b = bucket(id);
       b.ptoHours += Number(e.hours)||0;
       b.hours += Number(e.hours)||0;
-      if(job) b.grossCents += roundCents(toCents(job.baseRate) * (Number(e.hours)||0));
+      if(job) b.grossCents += roundCents(toCents(rateOn(job.baseRate, job.rateChanges, k)) * (Number(e.hours)||0));
     });
   });
   return out;
@@ -983,30 +1041,48 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      so the Breakdown can say so. Hours stay hours WORKED: a minimum pays hours, it adds none. */
   const minTopUp = { cents:0, shifts:0 };
   const periodKeys = new Set(dateKeys);
+  /* Effective-dated rates (2026-10-17): every date is priced at the rate in force on it. With no
+     changes rateEntryOn hands back `baseRate` itself, so each line below is the one it was.
+     `rates` tallies which rate priced what, in date order, so the Breakdown can say so when a
+     period straddles a raise. Keyed by the change's date, not the rate: a cut and a restore to the
+     same figure are two entries. */
+  const rateChanges = job && job.rateChanges;
+  const rateTally = {};
+  const tally = (k, isShift, h)=>{
+    const e = rateEntryOn(baseRate, rateChanges, k);
+    const id = e.from || '';
+    const t = rateTally[id] = rateTally[id] || { rate:e.rate, from:e.from, shifts:0, hours:0 };
+    if(isShift) t.shifts++;
+    t.hours += h;
+    return e.rate;
+  };
   Object.keys(shifts).forEach(k=>{
     if(!periodKeys.has(k)) return;
     (shifts[k]||[]).forEach(s=>{
-      gross += shiftGross(baseRate, differentials[s.shiftType], s, job);
-      hours += paidHoursOf(s, job);
-      const top = minimumTopUpCents(toCents(baseRate), differentials[s.shiftType], s, job);
+      const h = paidHoursOf(s, job);
+      const rate = tally(k, true, h);
+      gross += shiftGross(rate, differentials[s.shiftType], s, job);
+      hours += h;
+      const top = minimumTopUpCents(toCents(rate), differentials[s.shiftType], s, job);
       if(top>0){ minTopUp.cents += top; minTopUp.shifts++; }
     });
   });
-  // PTO: hours × baseRate adds to gross like worked time (taxed normally), but skips
+  // PTO: hours × the day's base rate adds to gross like worked time (taxed normally), but skips
   // differentials/bonuses entirely — scoped to the active pay period same as shifts.
   Object.keys(dayEvents).forEach(k=>{
     if(!periodKeys.has(k)) return;
     (dayEvents[k]||[]).forEach(e=>{
-      if(e.kind==='pto' && e.hours>0){ gross += e.hours*baseRate; hours += e.hours; }
+      if(e.kind==='pto' && e.hours>0){ gross += e.hours*tally(k, false, e.hours); hours += e.hours; }
     });
   });
+  const rates = Object.keys(rateTally).sort().map(id=>rateTally[id]);
   /* Overtime is a property of the work period: shiftGross has already paid every hour at its
      own rate, and this adds half the FLSA regular rate on the hours past the threshold. Hours
      the nurse flagged by hand are excluded inside overtimePremiumCents, so a figure she is
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp};
+  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -1242,6 +1318,11 @@ export {
   PAY_FREQUENCIES,
   MEAL_MODES,
   DEFAULT_MEAL_MINS,
+  MAX_RATE_CHANGES,
+  RATE_CHANGE_MAX,
+  sanitizeRateChanges,
+  rateEntryOn,
+  rateOn,
   makeJob,
   jobMap,
   straightTimeCents,

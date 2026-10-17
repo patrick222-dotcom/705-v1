@@ -219,7 +219,8 @@ check(3, 'Pay math never reads the persona', () => {
     'computeNet', 'periodPaycheck', 'keepRatioOf', 'keepRatio', 'calc', 'statOf', 'ptoStatOf',
     'sampleNet', 'patternMetrics', 'patternCellToShift', 'patternCellShiftType', 'firstActiveShiftType',
     'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL',
-    'otMultOf', 'minHoursOf', 'minimumTopUpCents'];
+    'otMultOf', 'minHoursOf', 'minimumTopUpCents',
+    'sanitizeRateChanges', 'rateEntryOn', 'rateOn'];
   /* Two patterns, because the case matters for one of them: `ob` + capital is the funnel's own
      namespace (obSeedOpts, obExtrasOn, OB_SCREENS…) and must not match `Object`. */
   /* payEvent (court / call-back / report, session 3, 2026-10-11) is the same kind of thing: a label

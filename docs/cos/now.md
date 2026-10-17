@@ -36,6 +36,10 @@ Updated 2026-10-12 by the chief of staff. Charter: `docs/leadership.md`. Caps (e
 
 - **D1 — Is `personas` the third thread?** Assumed, because it is the one already moving.
   Default: yes. Defaults on 2026-10-19.
+- **D2 — Merge the raise PR (effective-dated rates)?** It moves figures, so it waits for Pat's
+  merge per the approval tiers; the before → after card is in the PR body. Default: none — a
+  figure-moving merge never defaults. Opened 2026-10-17. Session 4 (dated pay items) stays next
+  after it.
 
 ## Parked
 
