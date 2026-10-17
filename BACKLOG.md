@@ -85,8 +85,12 @@ positioning (sync, paycheck) are failing her in them.
   Build order, therefore: (1) confirm whether planner-deleting an `icsUid` shift records the uid;
   (2) if not, record it — that alone stops the loop she is describing; (3) then the manual-sync
   toggle she actually asked for, as a setting, default unchanged for everyone else.
-- [ ] **The paystub modal she actually hit tracks NOTHING, and it is not the branch that was fixed
-  on 2026-10-14** (P1 · source:feedback · `harness:drivable`) — **this is a correction to tonight's
+- [x] ~~**The paystub modal she actually hit tracks NOTHING, and it is not the branch that was fixed
+  on 2026-10-14**~~ — **SHIPPED 2026-10-17** (see Done log): `paystub_failed {reason:'empty'}`,
+  pinned by `tests/smoke.mjs` §47. The groom defect the item also names — selecting `contact` and
+  `user_id`, and re-reading `feedback` at the END of the run — has been followed on every groom
+  since and was followed again tonight. The original note, unedited, follows.
+  (P1 · source:feedback · `harness:drivable`) — **this was a correction to the 2026-10-14
   build.** The `contact` field of her 07:06 `broken` report carries the app's own error pasted back:
   *"couldn't read that paystub. We couldn't find any pay details in this PDF. It works best with the
   detailed paystub from your Payroll portal workday UKG Kronos…"* That is the **empty-parse modal**
@@ -167,6 +171,33 @@ positioning (sync, paycheck) are failing her in them.
   the fix exists to produce: `paystub_failed` has **never fired, not once, for any reason** — the
   only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from 2026-07-30.
   Still one device, still one sample. **Do not build a worker mitigation on this.**
+
+### P2 (new, groom 2026-10-17)
+- [ ] **The app recorded NOTHING for 24.4 hours and that is a quiet night, not a broken pipe**
+  (P3 · source:groom · no action) — `node scripts/silence_watch.mjs` says **FRESH**, newest event
+  24.4h old inside its 48h window, so the distinction the script exists to draw comes down on the
+  "nobody came" side and not the "telemetry is dead" side. Quote the verdict, not the gap.
+- [ ] **`ics_autosync_off` has zero rows and that is NOT evidence the 10-16 toggle is broken**
+  (P2 · housekeeping, written down so a future groom does not read it as a regression) — the
+  manual-sync switch went live in `c691fd0` on 2026-10-16 at ~09:30 UTC. Courtney's last event of
+  any kind is `shift_saved` at **2026-10-15 12:30:37**, 21 hours *before* it shipped, and she has
+  not opened the app since. So the counter cannot have fired yet: nobody has had the chance to
+  turn the switch on. `ics_autosync_pref` is likewise empty for the same reason. **The first real
+  reading is her next load** — if she turns it on, expect one `ics_autosync_pref {manual:true}`
+  and then one `ics_autosync_off` per load, and §27's five-state `ics_sync_result` to stop
+  appearing on cold loads. Until then the toggle is shipped-and-live but **field-unverified**, and
+  saying otherwise would be the over-claim the 2026-09-29 `webcal:` correction exists to prevent.
+- [ ] **The landing-only cohort did NOT grow — tonight's two devices are already in the seven**
+  (P3 · housekeeping on the 10-16 item, so the figure is not re-derived upward) — the only events
+  in the last 30 hours are `9a50c0df` (2026-10-16 06:25) and `85138c1d` (07:52), both
+  `app_open {fresh:true}` → `ob_view {screen:'landing'}` → `ob_step {step:0}`, `85138c1d` with a
+  6-second `session_end {shifts:0}`. Both ids are already named in the 10-16 list. **The count
+  stands at seven**, and the blocker is unchanged: the device classifier is half-done, so none of
+  the seven can be told apart from a crawler. Fix the classifier before designing for this cohort.
+- [ ] **No open PRs against the deploy branch** (housekeeping) — checked before picking tonight's
+  item, as the loop requires. #156 is long since merged, so the two older notes in this file
+  warning that it gates `index.html` regions are **stale**; nothing in the repo gates a nightly
+  item on PR state right now.
 
 ### P1 (new, groom 2026-10-16)
 - [ ] **The repair path for the uids she rejected BEFORE 2026-10-15 is now moot for her and still
@@ -2347,6 +2378,37 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-17 — **The paystub failure she actually hit was the one that counted nothing.** Nightly
+  loop; `index.html` (`paystubIsEmpty` + one `track`), `tests/smoke.mjs` §47 (5 assertions, three
+  deliberate breaks), `docs/project-notes.md` (the `paystub_failed` reasons, written down for the
+  first time). No wage core: nothing here reads or writes a dollar figure, the extractor emits an
+  identical core, and the gate's persona rule still passes on 31 wage definitions.
+  **What was wrong.** Her 2026-10-14 07:06 `broken` report pasted the app's own words into the
+  `contact` field — *"couldn't read that paystub. We couldn't find any pay details in this PDF."*
+  That is the **empty-parse modal**, not the non-PDF toast fixed the same night: her file opened,
+  pdf.js read it, and it simply had no extractable text (a photo saved as a PDF). That branch
+  rendered a dead end and called no `track()` at all, so the single paystub outcome that produced
+  **no row of any kind** was the one she hit. The 10-14 build fixed a real but different branch;
+  this closes the correction the groom filed against it the same night.
+  **What shipped.** `paystub_failed {reason:'empty'}` on the success-that-found-nothing path, and
+  the emptiness test promoted to one named function, `paystubIsEmpty`, with two callers — the
+  review sheet that renders the modal and `onPaystub` that counts it. It used to be the same
+  expression typed twice, which is how a predicate drifts apart from the UI it is supposed to
+  describe. `reason` is still the whole payload: never the file name, never anything read out of
+  the stub.
+  **Why it is worth a build item at all:** `paystub_failed` has **never fired, not once, for any
+  reason** — the only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from
+  2026-07-30 — and the 2026-09-02 rewrite of this modal's copy has therefore never been measurable.
+  It is now.
+  **Negative-tested three ways**, each restored afterwards: deleting the `track` call (2 of 5
+  fail); changing the reason to `'parse'`, collapsing it into an existing bucket (2 fail); and
+  making `paystubIsEmpty` return `false`, which routes a blank PDF into the review sheet (4 fail).
+  **The second break is why one assertion was rewritten.** The distinct-reason check read
+  `rows.every(...)`, and `[].every()` is **true** — so it passed on the revert that tracked
+  nothing, the exact state it exists to catch. `rows.length === 1` is now load-bearing in it, with
+  the reason in a comment so it is not "simplified" back. That is the harness skill's
+  unfalsifiable-assertion trap, same shape as §33's deleted clock check and §35's two.
+  Suites: gate 14/14, groom-seed 33/33, core 116/0, smoke **791/0** on iPhone 13.
 - 2026-10-16 — **"Only sync when I tap Sync now" — she asked twice in 28 hours and now has a
   switch.** Nightly loop; `index.html` (`syncManualOnly`), `tests/smoke.mjs` §46 (14 assertions,
   five deliberate breaks), `tests/core.test.mjs` (+5). A new sanitizer branch for a new data shape,

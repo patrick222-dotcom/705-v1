@@ -5815,6 +5815,74 @@ const run = async () => {
     }
   }
 
+  /* ---- 47. a parse that succeeded and found nothing is countable ---------------------- */
+  if (want(47)) {
+    /* Device f184ffa5, 2026-10-14 07:06 UTC, a `broken` report whose contact field carried the
+       app's own words back: "couldn't read that paystub ... we couldn't find any pay details in
+       this PDF". That is the EMPTY-PARSE modal, not the non-PDF toast shipped the same night --
+       her file opened and parsed fine and simply had no extractable text (a photo saved as a
+       PDF). That branch rendered a dead end and called no `track()`, so the only paystub outcome
+       that looked like silence was the one she actually hit. §44 covers the refusals; this covers
+       the success that finds nothing. */
+    const { ctx, page, errors } = await newPage(browser, url);
+    const tracked = [];
+    await page.route('**/rest/v1/events*', async (r) => {
+      try { tracked.push(JSON.parse(r.request().postData() || 'null')); } catch (_) {}
+      await r.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    /* A real, well-formed PDF with real text in it -- just no pay details anywhere. This is the
+       shape a phone photo "saved to PDF" lands in once OCR has given it a caption and nothing
+       else, and it is the only fixture that reaches the `empty` branch: a malformed file would
+       throw and score as {reason:'parse'} instead. */
+    const blank = makeMinimalPdf(['Scanned Document', 'Page 1 of 1']);
+    await page.locator('.topbar .avatar, .topbar button').first().click().catch(() => {});
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll('button, a')].find((x) => /settings/i.test(x.textContent));
+      if (b) b.click();
+    });
+    await page.waitForTimeout(400);
+    await page.locator('input[type=file][accept=".pdf"]').first()
+      .setInputFiles({ name: 'scan.pdf', mimeType: 'application/pdf', buffer: blank });
+
+    /* Wait for either sheet, so a parser that suddenly reads this fixture reports as a failed
+       assertion rather than as a 25s harness timeout. */
+    await page.waitForFunction(
+      () => /Review your paystub|Couldn't read that paystub/.test(document.body.innerText),
+      null, { timeout: 25000 }).catch(() => {});
+    const body = await page.evaluate(() => document.body.innerText.replace(/\u00a0/g, ' '));
+    ok('empty: a PDF with no pay details lands on the "couldn\'t read that paystub" modal',
+      /Couldn't read that paystub/.test(body) && !/Review your paystub/.test(body),
+      (body.match(/Review your paystub|Couldn't read that paystub/) || ['<neither>'])[0]);
+
+    await page.waitForTimeout(800);
+    const rows = tracked.flatMap((b) => (Array.isArray(b) ? b : b ? [b] : []))
+      .filter((r) => r && r.name === 'paystub_failed');
+    ok('empty: and it is countable as paystub_failed {reason:empty} -- it used to track NOTHING',
+      rows.length === 1 && rows[0].props && rows[0].props.reason === 'empty',
+      JSON.stringify(rows.map((r) => r.props)));
+    /* Invariant 13's shape for this path: a stub is money, and the row may carry neither the
+       file it came from nor anything read out of it. */
+    ok('empty: the row carries no file name and no money, like every other paystub_failed',
+      rows.length > 0 && rows.every((r) => Object.keys(r.props || {}).join(',') === 'reason'),
+      JSON.stringify(rows.map((r) => Object.keys(r.props || {}))));
+    /* The reason exists to be DISTINCT from the two refusals, or the groom cannot tell "she
+       picked the wrong file" from "the right kind of file had nothing in it". */
+    /* `rows.length === 1` is load-bearing, not belt-and-braces: `[].every()` is true, so without
+       it this assertion passes when NOTHING was tracked -- which is exactly the state it is here
+       to catch. The first draft read that way and survived the revert. */
+    ok('empty: and it is a distinct reason from photo / type / reader / parse',
+      rows.length === 1
+        && !['photo', 'type', 'reader', 'parse', 'size'].includes(rows[0].props && rows[0].props.reason),
+      JSON.stringify(rows.map((r) => r.props && r.props.reason)));
+    ok('empty: no page errors across section 47',
+      errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+      errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
