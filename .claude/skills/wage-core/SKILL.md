@@ -1,6 +1,6 @@
 ---
 name: wage-core
-description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, otMultOf, minHoursOf, minimumTopUpCents, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
+description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, otMultOf, minHoursOf, minimumTopUpCents, rateOn, rateEntryOn, sanitizeRateChanges, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
 ---
 
 # Wage core
@@ -71,6 +71,13 @@ overtime multiplier and the court / call-back / report minimum. Every shift is p
 and the sanitizer's `payEventFields` uses the same two helpers so there is one definition of the
 bounds. Spec: `docs/pay-events-spec.md`.
 
+**And `rateOn` / `rateEntryOn` / `sanitizeRateChanges`** (2026-10-17) — which rate a date is priced
+at. A raise takes effect on a date (`rateChanges [{from, rate}]`); every per-date surface prices
+through `rateOn(baseRate, job.rateChanges, dateKey)`, and `baseRate` means the rate before the first
+change. **A shift carries no rate** — the BACKLOG once said it did, and that was false. With no
+list `rateEntryOn` must hand back `baseRate` itself; `tests/core.test.mjs` pins that against the
+deployed build's literals. Spec: `docs/effective-dated-rates-spec.md`.
+
 **And `firstActiveShiftType`** — which shift type the Add-Shift draft opens on. It decides which
 differential a preview prices, so it moves a dollar figure even though it returns a string.
 `active:false` means "don't offer me this in a picker" and NEVER "stop paying a shift already
@@ -120,6 +127,11 @@ pinned by an assertion in `tests/smoke.mjs`:
   `tests/core.test.mjs`; moving `minHours` into the threshold or the regular rate fails it.
 - **`payEvent` (court / call-back / report) is a label the math never reads**, like the persona.
   `check_build.mjs` fails if any wage definition names it.
+- **A shift is priced by the rate on the day it STARTS** (2026-10-17). An overnight shift that
+  crosses into a raise is wholly at the old rate; that is the same attribution the paycheck and the
+  workweek use. Across a raise the regular rate is the hours-weighted average of straight time
+  (**29 CFR 778.109, 778.115**), which falls out of pricing each shift at its own rate — never
+  "re-price everything", which is what one global `baseRate` used to do to worked shifts.
 - **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispHealth`/
   `dispPost` are display-only, capped in that order; `net` uses the uncapped figures.
 

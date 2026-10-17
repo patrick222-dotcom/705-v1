@@ -77,21 +77,35 @@ const CASES = [
   ['health premium', base({ pretaxDeductions: 200, pretaxHealth: 266.03 })],
   /* Pay events (session 3, 2026-10-11, docs/pay-events-spec.md). Two IDENTICAL probes first: a
      stored 1.5 is the absent value and a kind with no minimum is a label, so neither may move a
-     figure. Then the named differences: the deployed sanitizer keeps the unknown fields (it
-     spreads the shift) but its shiftGross never reads them, so it prices every one of these at
-     the hours logged and 1.5x. */
+     figure. The four after them were named differences in session 3's run; #174 (97f8e86) is live
+     since 2026-10-12, so from 2026-10-17 they must come back IDENTICAL like every other case. */
   ['marked overtime with an explicit 1.5x', { ...base(), shifts: SHIFTS({ isOvertime: true, otMult: 1.5 }) }],
   ['a court label with no minimum', { ...base(), shifts: SHIFTS({ payEvent: 'court' }) }],
   ['court 1 h on a 2 h minimum at 2.5x', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [{ id: 20, shiftType: 'base', hours: 1, bonusType: 'none', isOvertime: true, otMult: 2.5, minHours: 2, payEvent: 'court' }] } },
-    'intended: deployed pays 1 h at 1.5x ($75); local pays 2 h at 2.5x ($250)'],
+  ],
   ['call-back 1 h on a 4 h minimum at straight time', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [{ id: 21, shiftType: 'base', hours: 1, bonusType: 'none', minHours: 4, payEvent: 'callback' }] } },
-    'intended: deployed pays 1 h ($50); local pays 4 h ($200)'],
+  ],
   ['nurse 2x past 12 h, logged as a second entry', { ...base(), shifts: { ...SHIFTS(), [plus(2)]: [
       { id: 22, shiftType: 'night', hours: 12, bonusType: 'none' },
       { id: 23, shiftType: 'night', hours: 4, bonusType: 'none', isOvertime: true, otMult: 2 }] } },
-    'intended: deployed pays the 4 h at 1.5x; local at 2x'],
+  ],
   ['48-hour week + a call-back minimum, 40-hour rule', { ...base(), shifts: { ...WEEK48, [plus(4)]: [{ id: 24, shiftType: 'base', hours: 2, bonusType: 'none', isOvertime: true, minHours: 3, payEvent: 'callback' }] } },
-    'intended: local adds the 1 h top-up; the derived premium counts 50 actual hours on both sides'],
+  ],
+  /* Effective-dated rates (2026-10-17, docs/effective-dated-rates-spec.md). Three IDENTICAL
+     probes: an empty list, a raise dated after the fortnight, and a list the sanitizer drops
+     entirely must price exactly as deployed. Then the named differences -- the deployed build
+     never reads `rateChanges`, so it prices every shift at the $50 base. */
+  ['an empty raise list', base({ rateChanges: [] })],
+  ['a raise dated after the period', base({ rateChanges: [{ from: plus(40), rate: 60 }] })],
+  ['a raise list the sanitizer drops', base({ rateChanges: [{ from: 'soon', rate: 60 }, { from: plus(2), rate: 0 }, { from: plus(3), rate: 5000 }] })],
+  ['a raise to $55 from day 4', base({ rateChanges: [{ from: plus(4), rate: 55 }] }),
+    'intended: deployed prices all four shifts at $50; local prices the two on days 5 and 8 at $55'],
+  ['a raise to $55 dated before the period', base({ rateChanges: [{ from: plus(-40), rate: 55 }] }),
+    'intended: deployed prices every shift at $50; local at $55'],
+  ['a raise to $55 inside a 48-hour week', { ...base(), shifts: WEEK48, rateChanges: [{ from: plus(2), rate: 55 }] },
+    'intended: local prices days 2-3 at $55 and the 8 h premium on the weighted regular rate'],
+  ['PTO on the day a raise starts', base({ dayEvents: { [plus(2)]: [{ kind: 'pto', hours: 12 }] }, rateChanges: [{ from: plus(2), rate: 55 }] }),
+    'intended: local pays the PTO day and the later shifts at $55'],
 ];
 
 /* Text changes that are NOT figure changes, named before the run and applied to the DEPLOYED

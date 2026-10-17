@@ -114,8 +114,10 @@ shift is deleted.
    list is byte-identical); a smoke section on iPhone 13 that drives entry and reads the hero and
    Breakdown; negative-test every new assertion against a broken copy, never the working tree;
    tests/equality.mjs against badgebudget.com with 0 unintended differences and each new case named.
-4. Ship: PR to the deploy branch, opened ready with auto-merge OFF, because wage-core waits for the
-   owner's merge. Say so in the PR and in your reply. Update the wage-core skill, BACKLOG.md and
+4. Ship: PR to the deploy branch, opened ready, merged by the approval tiers in docs/leadership.md
+   (2026-10-12): auto-merge ON only if tests/equality.mjs shows every case identical; if it moves a
+   figure (it will, for any item entered), auto-merge OFF and a before -> after card of 3 example
+   paychecks in the PR body — that card is what the owner approves. Say which in the PR and your reply. Update the wage-core skill, BACKLOG.md and
    CLAUDE.md. After he merges, confirm node scripts/deploy_watch.mjs reads LIVE.
 5. End with a short session log in docs/ and a ready-to-paste kickoff prompt for session 5.
 

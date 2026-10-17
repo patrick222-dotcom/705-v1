@@ -35,3 +35,8 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   the first cabinet proves the brief is worth reading; until then capture is `/cos <idea>`.
 - 2026-10-12 · cos · gate check that a diff inside `@core` regions is number-moving unless the
   equality check is green · → attach: CTO queue item 1 (failure mode 6 in the pre-mortem).
+
+- 2026-10-17 · session Courtney's raise (dedicated wage-core) · effective-dated rates built ("New
+  rate from [date]"), plus a Settings fix: a rate typed and closed without a blur was discarded.
+  BACKLOG's "a shift stores its own rate" was false; the 109 → 67 drop is better explained by her
+  deleting mis-coded synced shifts. PR waits for Pat (moves figures) · → outcome pending
