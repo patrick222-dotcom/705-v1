@@ -5599,10 +5599,10 @@ const run = async () => {
         [today]: [
           sh('synced', 12, { icsUid: 'ng-del@nursegrid' }),   // came from the feed
           sh('typed', 8, {}),                                  // hers, no uid
-          /* A third row so neither deletion below ever EMPTIES the day: an empty list makes the
-             sheet's primary button re-add the configured draft instead of saving nothing (its
-             label changes to "Add shift" there), and a test that walked into that path would be
-             measuring that quirk rather than this fix. */
+          /* A third row so neither deletion below ever EMPTIES the day. That quirk is FIXED as
+             of 2026-10-18 -- an emptied day now saves empty (S48) -- but the seed stays: this
+             section is about the uid memory, and a day that still holds rows keeps it measuring
+             that and nothing else. */
           sh('keeper', 6, {}),
         ],
       },
@@ -5881,6 +5881,109 @@ const run = async () => {
       errors.filter((e) => !isExpectedNetwork(e)).length === 0,
       errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
+  }
+
+  /* ---- 48. emptying a day saves it empty, and the button says what it does ------------- */
+  if (want(48)) {
+    /* Two reports from the same morning, one surface. (a) 2026-10-14 08:05 UTC, device
+       f184ffa5: "Instead of 'add shift' button, maybe put 'save changes'" -- filed 37 seconds
+       after a `shift_saved`, in the middle of six edits in eight minutes. (b) found while
+       writing S45, which had to seed a THIRD shift to route around it: `AddShiftSheet`'s primary
+       button was `onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]))`, so
+       removing the last row on a day and tapping the only button on screen handed back a freshly
+       configured 12-hour day shift and the day she had just cleared came back priced.
+       Scrim-dismiss already saved a cleared day as cleared; the button disagreed with it.
+       The fix is NOT "never commit the draft" -- the one-tap add on a blank day is the most
+       common action in the app, and dropping a draft she HAS configured is the same silent loss
+       in the other direction. It is: commit the draft unless she emptied the day herself and
+       touched nothing since. All three states are driven here, off the PERSISTED blob rather
+       than the DOM, because what is at stake is which shifts exist. */
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = iso(new Date());
+    const oneShift = () => ({ ...SEEDED_STATE, payPeriodStart: today,
+      shifts: { [today]: [{ id: 'solo', shiftType: 'night', hours: 10, bonusType: 'none', customBonus: 0 }] } });
+
+    /* Settled with a fixed wait, never waitForFunction: a predicate that never comes true aborts
+       the run instead of failing an assertion (one of the three ways this check lies). */
+    const dayOf = (page) => page.evaluate(([key, d]) => new Promise((r) => setTimeout(() => {
+      const b = JSON.parse(localStorage.getItem(key) || '{}');
+      r((b.shifts || {})[d] || []);
+    }, 900)), [STORAGE_KEY, today]);
+    const openDay = async (page) => {
+      await page.locator('.fab').click();
+      await page.waitForSelector('.sheet[aria-label="Add a shift"]', { timeout: 15000 });
+    };
+    const primary = (page) => page.locator('.sheet .btn-primary').first();
+
+    /* --- (A) she empties the day and taps the button: the day stays empty. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: oneShift() });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      await openDay(page);
+      ok('empty-day: the sheet opens holding the one seeded shift',
+        (await page.locator('.sheet .row-item:has(button.danger-link)').count()) === 1);
+      const before = await primary(page).innerText();
+      ok('empty-day: with a shift on the day the button reads "Save day", as it always has',
+        before.trim() === 'Save day', JSON.stringify(before));
+
+      await page.locator('.sheet button.danger-link').first().click();
+      await page.waitForTimeout(150);
+      const after = await primary(page).innerText();
+      ok('empty-day: after Remove it reads "Save changes" -- it used to read "Add shift"',
+        after.trim() === 'Save changes', JSON.stringify(after));
+
+      await primary(page).click();
+      const day = await dayOf(page);
+      ok('empty-day: and the day she cleared STAYS cleared -- no phantom 12-hour shift comes back',
+        day.length === 0, JSON.stringify(day));
+      ok('empty-day: no page errors in (A)', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* --- (B) the one-tap add on a blank day is untouched. This is the regression the fix could
+           most easily have caused, and it is the commonest action in the app. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: { ...SEEDED_STATE, payPeriodStart: today } });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      await openDay(page);
+      const label = await primary(page).innerText();
+      ok('empty-day: on a day with nothing on it the button still reads "Add shift"',
+        label.trim() === 'Add shift', JSON.stringify(label));
+      await primary(page).click();
+      const day = await dayOf(page);
+      ok('empty-day: and one tap still commits the configured draft, as it always has',
+        day.length === 1 && day[0].hours === 12, JSON.stringify(day));
+      ok('empty-day: no page errors in (B)', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
+
+    /* --- (C) her actual edit flow. There is no edit-in-place: to change a shift she removes the
+           row and configures a replacement. That draft must still commit, or the fix trades a
+           silent add for a silent loss. */
+    {
+      const { ctx, page, errors } = await newPage(browser, url, { seed: oneShift() });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+      await openDay(page);
+      await page.locator('.sheet button.danger-link').first().click();
+      const hours = page.locator('.sheet input[aria-label="Hours"]');
+      await hours.click(); await hours.fill('8'); await hours.press('Enter');
+      await page.waitForTimeout(150);
+      const label = await primary(page).innerText();
+      ok('empty-day: Remove then reconfigure still reads "Save changes"',
+        label.trim() === 'Save changes', JSON.stringify(label));
+      await primary(page).click();
+      const day = await dayOf(page);
+      ok('empty-day: and the replacement she configured IS saved -- the old row gone, 8 h in its place',
+        day.length === 1 && day[0].hours === 8 && day[0].id !== 'solo', JSON.stringify(day));
+      ok('empty-day: no page errors in (C)', errors.filter((e) => !isExpectedNetwork(e)).length === 0,
+        errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+      await ctx.close();
+    }
   }
 
   await browser.close();

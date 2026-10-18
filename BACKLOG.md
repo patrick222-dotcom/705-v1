@@ -155,7 +155,11 @@ positioning (sync, paycheck) are failing her in them.
   only because the *remedy* if it recurs is not a retry — a token minted in the future stays
   invalid until the clock catches up, so the honest handling would be to say so rather than spin.
   Read a second occurrence first.
-- [ ] **"Add shift" is the button label even when she is editing a shift that already exists**
+- [x] ~~**"Add shift" is the button label even when she is editing a shift that already exists**~~
+  — **SHIPPED 2026-10-18** (see Done log), together with the P2 empty-day bug below exactly as
+  that item asked: same handler, same button, one push. It now reads `Save changes` once anything
+  has been removed in the sheet, which is the state her edit flow is always in. Pinned by
+  `tests/smoke.mjs` §48. Original note follows.
   (P3 · source:feedback · `harness:drivable`) — her words, 2026-10-14 08:05 UTC: *"Instead of
   'add shift' button, maybe put 'save changes'"*, filed 37 seconds after a `shift_saved` and in
   the middle of six edits in eight minutes. Small, local, no wage core — the label is cosmetic and
@@ -171,6 +175,45 @@ positioning (sync, paycheck) are failing her in them.
   the fix exists to produce: `paystub_failed` has **never fired, not once, for any reason** — the
   only `paystub%` row in the whole table is one `paystub_imported {shifts:0}` from 2026-07-30.
   Still one device, still one sample. **Do not build a worker mitigation on this.**
+
+### P2 (new, groom 2026-10-18)
+- [ ] **Every single event in the last 48 hours is crawler-shaped, and the device classifier is
+  the only reason that is a guess** (P1 · source:groom · `harness:unscoped`) — 13 rows, four
+  devices, zero human-shaped sessions. Three arrived within 52 seconds of each other at
+  **2026-10-18 02:08:50–02:09:42** (`d712f5d0`, `6325f4ae`, `829e98f1`), all
+  `Chrome/154.0.0.0` on **X11; Linux x86_64**, all `app_open {fresh:true}` → `ob_view
+  {screen:'landing'}` → `ob_step {step:0}` and nothing after; one filed `session_end {secs:28,
+  shifts:0}`. A fourth (`279640eb`, 2026-10-17 21:19) carries `360Spider` in its user agent
+  outright. **No iPhone has opened the app since 2026-10-15 12:30** — Courtney's last event of any
+  kind. So the "seven landing-only devices" figure from the 10-16 groom is now **eleven**, and the
+  three added tonight are desktop Linux arriving in a burst, which is the least human shape yet.
+  **This is the strongest argument in the file for finishing the device classifier**, not for
+  designing anything for the landing screen: `app_open {fresh}` landed 2026-10-12 and is half the
+  job; nothing yet excludes a self-declared crawler (`360Spider`, `meta-externalagent`) or a
+  headless Linux Chrome from an activation count. Until it does, **every landing-screen figure in
+  this file is an upper bound on a number that may be zero.**
+- [ ] **`silence_watch` says FRESH, so the quiet is "nobody came", not "telemetry is dead"**
+  (P3 · source:groom · no action) — newest event 6.0h old inside the 48h window. Quote the
+  verdict, not the gap. `deploy_watch.mjs` says **LIVE** (`index.html` serving `cf75064`,
+  2026-10-17), so nothing is merged-but-unshipped going into tonight.
+- [ ] **No new feedback since 2026-10-15 12:30, re-read at the END of the run as the 10-14 item
+  requires** (housekeeping) — the whole `feedback` table was selected with every column,
+  `contact` and `user_id` included, which is the defect that caused the 10-14 misread. Six rows
+  from Courtney on 10-14 and one on 10-15; nothing after.
+- [ ] **PR #187 is open, ready, and is the raise/effective-dated-rates work — it was checked
+  before tonight's item was picked** (housekeeping) — `claude/charming-bohr-3x27lm`, opened
+  2026-10-17, titled *"waits for Pat: moves figures"*. Its `index.html` hunks run through
+  `sanitizeData`, the wage core, `App`, `Breakdown`, `NumInput` and `Settings`; the last one before
+  `Settings` ends at ~line 6089 and the next begins at ~6853, so **`AddShiftSheet` (6149–6454) is
+  untouched by it** and tonight's build cannot conflict. It is the dedicated session the raise item
+  has been asking for since 10-14 and it needs Pat, not the loop: it moves dollar figures, which is
+  the owner tier.
+- [ ] **The first Sunday cabinet is due TODAY (2026-10-18) and `docs/cos/brief.md` still says no
+  cabinet has run** (P2 · source:groom · needs the weekly routine, not the nightly) — the brief was
+  last written 2026-10-12, so it is 6 days old and the dead-man's switch has **not** fired. It
+  crosses the 8-day line on **2026-10-20**; if the cabinet does not run today, the next two nightly
+  notify lines should carry **CABINET MISSED**. Decision **D1** ("is `personas` the third thread?")
+  defaults to yes on 2026-10-19.
 
 ### P2 (new, groom 2026-10-17)
 - [ ] **The app recorded NOTHING for 24.4 hours and that is a quiet night, not a broken pipe**
@@ -236,7 +279,14 @@ positioning (sync, paycheck) are failing her in them.
   new failure. One occurrence.
 
 ### P2 (new, groom 2026-10-15)
-- [ ] **Emptying a day in the shift sheet re-adds a default shift instead of saving an empty day**
+- [x] ~~**Emptying a day in the shift sheet re-adds a default shift instead of saving an empty
+  day**~~ — **SHIPPED 2026-10-18** (see Done log), with the P3 label item, as this note asked.
+  The rule is narrower than the "Save day / Add shift split" sketched below, deliberately: a
+  split that never commits the draft breaks the one-tap add on a blank day, and one that never
+  commits it *after a remove* eats the replacement she just configured. What shipped commits the
+  draft unless she emptied the day and has touched nothing since (`removedAny` AND
+  `draftIsPristine`). The over-aggressive version is negative-tested in `tests/smoke.mjs` §48(C).
+  Original note follows.
   (P2 · source:groom · `harness:drivable`) — found while writing §45, which had to seed a third
   shift to route around it. `AddShiftSheet`'s primary button is
   `onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), …)`, so when she removes
@@ -2378,6 +2428,40 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-18 — **A day she empties stays empty, and the button finally says what it does.** Nightly
+  loop; `index.html` (`AddShiftSheet`: one new state flag, one derived predicate, one label),
+  `tests/smoke.mjs` §48 (11 assertions, three deliberate breaks) plus a stale comment corrected in
+  §45. No wage core: no math function is touched, `extract_core.mjs` emits an identical core, and
+  the gate's persona rule still passes on 31 wage definitions. What moves is *which shifts exist*,
+  not what any of them is worth.
+  **The two reports it closes are one surface.** (a) 2026-10-14 08:05 UTC, device `f184ffa5`:
+  *"Instead of 'add shift' button, maybe put 'save changes'"*, filed 37 seconds after a
+  `shift_saved` and in the middle of six edits in eight minutes. (b) the 10-15 groom finding, which
+  is why she was looking at that button at all: `AddShiftSheet`'s primary was
+  `onSave(list.length ? list : (hasOtherContent ? [] : [draftShift()]), …)`, so removing the last
+  row on a day and tapping the only button on screen handed back a **freshly configured 12-hour day
+  shift** and the day she had just cleared came back priced. There is no edit-in-place in that
+  sheet — to change a shift she removes the row and configures a replacement — so "Remove, then the
+  primary button" *is* her edit flow, and both complaints land in the same two taps.
+  **Why the obvious fix is wrong, and what shipped instead.** "Never commit the draft after a
+  remove" trades a silent add for a silent loss: she removes, reconfigures, taps, and the
+  replacement vanishes. "Never commit the draft at all" breaks the one-tap add on a blank day,
+  which is the commonest action in the app. The rule that shipped is narrower: commit the pending
+  draft **unless she emptied the day herself and has touched nothing since** — `removedAny` (set by
+  `remove`) AND `draftIsPristine` (every draft control still exactly as the sheet opened it).
+  Scrim-dismiss has always saved a cleared day as cleared; it was the button that disagreed with
+  it, and now they agree. The label follows the same reading: `Save changes` once anything has been
+  removed, `Add shift` on a blank day, `Save day` otherwise.
+  **Negative-tested three ways, because two of the three failure modes are invisible to a one-sided
+  check.** Reverting to the pre-fix rule fails the "stays cleared" assertion; reverting the label
+  fails both `Save changes` assertions and nothing else; and the *over-aggressive* fix
+  (`!removedAny`, never commit after a remove) fails only the (C) assertion that her reconfigured
+  8-hour replacement is saved — a suite written without (C) would have passed the version that
+  eats her edit.
+  **Not claimed:** nobody has reported the phantom shift from the field. It was found in the
+  harness while writing §45, which had to seed a third row to route around it, and it is filed on
+  the strength of the code path plus her own label complaint from the same two taps — not on an
+  event. `shift_saved` carries no before/after count, so the app could not have seen it.
 - 2026-10-17 — **The paystub failure she actually hit was the one that counted nothing.** Nightly
   loop; `index.html` (`paystubIsEmpty` + one `track`), `tests/smoke.mjs` §47 (5 assertions, three
   deliberate breaks), `docs/project-notes.md` (the `paystub_failed` reasons, written down for the
