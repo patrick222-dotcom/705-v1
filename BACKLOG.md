@@ -28,6 +28,43 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P2 (new, groom 2026-10-19)
+- [ ] **Zero new events and zero new feedback since the last groom — tonight's tables are
+  byte-for-byte the 10-18 groom's tables** (P3 · source:groom · no action, and a figure NOT to
+  re-derive upward) — `events` holds **1,681 rows**, newest `2026-10-18 02:09:42`, and a 72-hour
+  window returns exactly the 13 crawler-shaped rows the 10-18 note already named across the same
+  four devices (`d712f5d0`, `6325f4ae`, `829e98f1`, and `279640eb` with `360Spider` in its agent).
+  So the landing-only cohort still stands at **eleven**, not thirteen. `node
+  scripts/silence_watch.mjs` says **FRESH** (newest event 29.9h old inside its 48h window), so the
+  quiet is "nobody came" and not "telemetry is dead" — quote the verdict, not the gap.
+- [ ] **No iPhone has opened the app in four days, and that is the fact behind every other quiet
+  number tonight** (P2 · source:groom · `harness:unscoped`) — Courtney's last event of any kind is
+  `shift_saved` at **2026-10-15 12:30:37**. Three consequences already written down stay true and
+  stay **field-unverified** for the same single reason, which is worth stating once rather than
+  re-deriving nightly: the manual-sync switch (`ics_autosync_off` / `ics_autosync_pref`, live since
+  `c691fd0` on 10-16) has had no load to fire on; the 10-15 planner-delete fix (§45) has had no sync
+  to be tested by; and `paystub_failed {reason:'empty'}` (10-17) has had no upload. **None of those
+  zeroes is evidence of a regression.** The first real reading of all three is her next load.
+- [ ] **`client_error` is unchanged at its 2026-10-15 16:45 row, so nothing new broke** (P3 ·
+  housekeeping) — the whole table was read: newest is the `auth check timed out` row on device
+  `daf590c4` that the 10-16 groom already classified as **Invariant 1 working** (the 4s
+  `getSession()` race fired, the app degraded to localStorage-only and still booted). No new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met** and
+  `paystub_failed` has **still never fired for any reason**. Do not build a worker mitigation.
+- [ ] **PR #187 is still the only open PR, still ready, still waits for Pat — and it was checked
+  before tonight's item was picked** (housekeeping) — `claude/charming-bohr-3x27lm`, *"A raise
+  takes effect on a date — effective-dated pay rates (waits for Pat: moves figures)"*, last touched
+  2026-10-17. Tonight's build touched **no `index.html` region at all** (two files under
+  `scripts/`), so conflict was structurally impossible rather than merely checked. It is the owner
+  tier because it moves dollar figures: `docs/leadership.md` → *Approval tiers*.
+- [ ] **The first Sunday cabinet did NOT run yesterday, and the dead-man's switch crosses tomorrow**
+  (P2 · source:groom · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was last
+  written 2026-10-12 and still reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."*
+  It is **7.0 days** old, so the switch has not fired tonight; it crosses the 8-day line on
+  **2026-10-20**, and from then the nightly notify line carries **CABINET MISSED** until a cabinet
+  runs. Decision **D1** ("is `personas` the third thread?") reached its default date today and the
+  nightly cos pass applied the default — see `docs/cos/now.md`.
+
 ### P1 (new, groom 2026-10-14)
 **Who this morning's six reports are from: Courtney — the owner's wife, the one real user this app
 exists for.** All six carry `contact: bagwellc0387@gmail.com` and `user_id e96ea234`, device
@@ -192,6 +229,10 @@ positioning (sync, paycheck) are failing her in them.
   job; nothing yet excludes a self-declared crawler (`360Spider`, `meta-externalagent`) or a
   headless Linux Chrome from an activation count. Until it does, **every landing-screen figure in
   this file is an upper bound on a number that may be zero.**
+  **Moved to `## Needs a dedicated session` 2026-10-19**, with the reason, rather than being
+  re-deferred a fourth night: "which user agents are human" is a judgement call that silently
+  re-baselines every activation figure in this file, and `harness:unscoped` means there is no
+  surface to drive it against. The evidence note stays here; the build lives there.
 - [ ] **`silence_watch` says FRESH, so the quiet is "nobody came", not "telemetry is dead"**
   (P3 · source:groom · no action) — newest event 6.0h old inside the 48h window. Quote the
   verdict, not the gap. `deploy_watch.mjs` says **LIVE** (`index.html` serving `cf75064`,
@@ -1085,6 +1126,17 @@ positioning (sync, paycheck) are failing her in them.
   status code in a production row.
 
 ### P2 (new, groom 2026-10-12)
+- [x] ~~**`deploy_watch.mjs` printed `LIVE` while badgebudget.com was still serving the PREVIOUS
+  commit, and it did it to this run tonight**~~ — **SHIPPED 2026-10-19** (see Done log), the
+  cheapest-correct version the note itself specified: the watch fetches the deploy ref before
+  judging anything against it, and a fetch it cannot complete degrades `LIVE` to `UNKNOWN_BUILD`
+  rather than printing a warning. 29 new assertions in `scripts/test_deploy_watch.mjs` (84, was
+  55), six deliberate breaks. **Two of the first-draft assertions were unfalsifiable and both were
+  caught by the negative test rather than by review** — one checked `detail.includes('aaaaaaa')`,
+  which the *undegraded* LIVE detail also contains, and two more crashed the suite instead of
+  failing (`fetched.local` read off `undefined`), which is the "an aborted run is not a failed
+  assertion" trap in the `harness` skill, hit at script level. The code is null-safe now so the
+  break is a clean FAIL. Original note follows.
 - [ ] **`deploy_watch.mjs` printed `LIVE` while badgebudget.com was still serving the PREVIOUS
   commit, and it did it to this run tonight** — `harness:drivable` (script-level), and it goes
   near the top of P2 because this is the one tool the deploy ritual trusts to prove a merge
@@ -1535,6 +1587,32 @@ positioning (sync, paycheck) are failing her in them.
   question is whether the estimate card is a result or an obstacle, which is a design call.
 
 ## Needs a dedicated session (NOT for the nightly loop)
+
+- [ ] **Finish the device classifier — nothing excludes a self-declared crawler or the harness from
+  an activation figure** (moved here 2026-10-19 from the 10-18 groom section, which keeps the
+  evidence). `app_open {fresh}` landed 2026-10-12 and is **half** the job: it tells a minted
+  `anon_id` from a read-back one, so an ephemeral-storage device can be dropped from a cohort. What
+  is still missing is the other half — a rule for which rows are a person at all. As of tonight
+  **eleven** devices have reached `ob_view {screen:'landing'}` and gone no further, and the last
+  three arrived as a 52-second burst of desktop `Chrome/154.0.0.0` on `X11; Linux x86_64` while a
+  fourth carried `360Spider` outright. **Every landing-screen figure in `BACKLOG.md` is therefore an
+  upper bound on a number that may be zero**, and CLAUDE.md already records every activation figure
+  since 2026-09-07 as inflated.
+  **Why this is not a nightly item**, and the reason it kept getting re-deferred instead of being
+  written down: the deliverable is a *definition* ("which user agents count as a nurse"), it
+  re-baselines every figure already quoted in this file and in the ops dashboard the moment it
+  lands, and it has no existing surface to drive — `harness:unscoped`. A nightly that guesses the
+  definition produces a number nobody can audit, which is the failure mode the three disproved doc
+  claims in the 2026-09-13 council run came from.
+  **What it needs:** one place that decides, not three. The read-side exclusions are currently
+  duplicated by hand in `scripts/dashboard_snapshot.sql`, `scripts/onboarding_funnel.sql` and every
+  groom query (the Playwright `iPhone OS 15_0` + `Version/18.0` pair, `nostore-%`, insiders), which
+  is the same two-copies-of-one-rule shape `deploy_watch.mjs` imports `urlIsGradeable` from
+  `silence_watch.mjs` to avoid. Shape worth considering: a classifier module with its own assertion
+  suite (the `silence_watch` / `deploy_watch` pattern), returning `human` / `crawler` / `harness` /
+  `unknown` and **never** collapsing `unknown` into `human` — an unplaceable device is a check that
+  could not be established. Then re-baseline the cohort figures once, in one commit, and say in the
+  ops dashboard which rule produced them.
 
 - [ ] **Effective-dated pay rates — Courtney got a raise and every future shift she already entered
   is still priced at the old rate** (**wage-core, owner-approval tier**; the queue copy with her
@@ -2428,6 +2506,57 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-19 — **The deploy watch fetches before it judges, so `LIVE` can no longer mean a stale
+  clone.** Nightly loop; `scripts/deploy_watch.mjs` and `scripts/test_deploy_watch.mjs` only —
+  **`index.html` is untouched**, so no wage core, no publish set, no conflict with open PR #187.
+  **The bug, from the 2026-10-11 groom:** the watch printed `deploy-watch: LIVE … serving 81c1954`
+  twenty-four seconds after #175 merged, naming the **pre-merge** commit. It was telling the truth
+  about the bytes and the wrong thing about the question — the served `index.html` really did hash
+  to a git blob it knew, but the local clone had not fetched the new head, so `history[0]` was not
+  the tip of the deploy branch at all. That is Invariant 10's rule ("fetch before touching the
+  deploy branch", clones seen 14 commits behind) arriving on the *read* side, and it is **worse
+  than the ritual it replaced**: a `curl | grep <marker>` against stale bytes returns 0 and looks
+  like a failure, whereas this returns the one word the operator is waiting for. CLAUDE.md's whole
+  four-night Pages-stall lesson is *treat every merge as unshipped until the watch says `LIVE`*, so
+  a false `LIVE` is precisely the all-clear that lesson exists to prevent.
+  **What shipped** is the cheapest-correct version the backlog note itself specified. `gitFetchRef`
+  refreshes the deploy ref once, before the per-file loop (one fetch, not three — every file is
+  placed against the same ref). `applyRefFreshness` then makes `LIVE` carry a *precondition* rather
+  than just a hash match: when the fetch could not establish that the ref is the tip, the verdict
+  degrades to `UNKNOWN_BUILD`, which this script already treats as not-green and exits 2 on, for
+  the same reason `silence_watch`'s `UNKNOWN` is not-green — **a check that could not be
+  established is not a check that passed.** Deliberately a verdict change and not a printed
+  warning: the verdict word is the part that gets read. The report now also states which ref was
+  used and whether it was current, which the 2026-10-11 run printed nowhere.
+  **Only `LIVE` moves, and that is load-bearing.** `BEHIND`, `NOT_THE_APP` and `UNREACHABLE` are
+  already true under a stale ref — bytes matching an older blob are stale whether or not a newer
+  commit exists — and a stale ref can only make `BEHIND`'s unshipped count too **low**, never
+  invent one. A deliberate break that degrades every verdict fails five assertions.
+  **The guard lives inside `classifyDeploy`, not in its caller.** The original defect was a missing
+  step, and a fix that depends on remembering a step is the same bug twice; it is idempotent, since
+  after one pass no file is `LIVE`. A break that moves it back out to the caller fails three
+  assertions and nothing else.
+  **84 assertions (was 55), 29 new, six deliberate breaks** — and the negative test earned its
+  keep twice. One new assertion read `detail.includes('aaaaaaa')`, which the *undegraded* `LIVE`
+  detail also contains, so it was **unfalsifiable**; it is phrased against the stale wording and
+  the sha together now. Two more did not fail under their break — they **crashed the suite**,
+  because `applyRefFreshness` read `fetched.local` off `undefined`. That is the `harness` skill's
+  "an aborted run is not a failed assertion" trap, hit at script level, and the fix is in the
+  production code rather than the test: `fetched` and `r.fetched` are normalised up front, so the
+  break is now a clean FAIL. **Live-verified** on the real site (`LIVE`, `6000f72`, with the new
+  `[ok] deploy ref — fetched … before judging` line) and against a bogus remote, which correctly
+  reports `UNKNOWN_BUILD` instead of `LIVE`.
+  **And proved against a deliberately stale clone, which is the condition itself.** A scratch copy
+  of this repo with its `origin/claude/migrate-to-github-deploy-3F5RD` rewound four `index.html`
+  commits: the **old** script answered `UNKNOWN_BUILD` ("matches no commit in the last 23 that
+  touched index.html") and left the ref stale; the **new** one fetched, repaired the ref to
+  `6000f72` and answered `LIVE … serving 6000f72`, which is the true state. **Be precise about what
+  that shows:** it proves the fetch repairs a stale clone and that a stale clone really does change
+  the answer. It does **not** reproduce the 10-11 *false `LIVE`* itself, which additionally needs
+  the served bytes to equal the stale head's own blob — i.e. a merge that changed `index.html`
+  seconds earlier. Same single cause, same single fix; one of its two symptoms was reproduced
+  end to end and the other was not.
+
 - 2026-10-18 — **A day she empties stays empty, and the button finally says what it does.** Nightly
   loop; `index.html` (`AddShiftSheet`: one new state flag, one derived predicate, one label),
   `tests/smoke.mjs` §48 (11 assertions, three deliberate breaks) plus a stale comment corrected in
