@@ -28,6 +28,10 @@
  * and has never changed; `CNAME` is checked for presence only, because it is the one whose
  * absence is a total outage rather than a stale page.
  *
+ * It fetches the deploy ref itself before judging anything against it, and says so in the report.
+ * It did not always: see `applyRefFreshness` for the 2026-10-11 run that printed `LIVE` while
+ * badgebudget.com was serving the pre-merge commit, because the local clone was behind origin.
+ *
  * Needs network, so like tests/equality.mjs and silence_watch.mjs's live probes it is NOT part
  * of the CI gate. Its pure logic is, via scripts/test_deploy_watch.mjs.
  */
@@ -129,15 +133,71 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
   };
 }
 
+/* `origin/claude/migrate-to-github-deploy-3F5RD` → the remote to fetch and the branch on it.
+   A ref with no `/` is a local ref: there is no remote to refresh it from, which is a fact about
+   what can be PROVEN and not an error, so it gets its own reason rather than being reported as a
+   network failure. */
+export function parseRef(ref) {
+  const s = String(ref || '');
+  const slash = s.indexOf('/');
+  if (slash < 1 || slash === s.length - 1) return { remote: null, branch: null, local: true };
+  return { remote: s.slice(0, slash), branch: s.slice(slash + 1), local: false };
+}
+
+/* The whole reason this exists: on 2026-10-11 the watch printed `LIVE … serving 81c1954`
+ * twenty-four seconds after a merge, naming the PRE-merge commit. It was telling the truth about
+ * the bytes and the wrong thing about the question — the served `index.html` really did hash to a
+ * blob it knew, but the local clone had not fetched the new head, so `history[0]` was not the tip
+ * of the deploy branch at all.
+ *
+ * That is worse than the ritual it replaced. A `curl | grep <marker>` against stale bytes returns
+ * 0 and looks like a failure; this returns the one word the operator is waiting for, and
+ * CLAUDE.md's four-night Pages-stall lesson is *treat every merge as unshipped until the watch
+ * says LIVE*. A false LIVE is exactly the all-clear that lesson exists to prevent.
+ *
+ * So LIVE carries a precondition, not just a hash match: the ref it was measured against has to
+ * BE the tip. When the fetch could not establish that, the verdict degrades to UNKNOWN_BUILD —
+ * which this file already treats as not-green, for the same reason silence_watch's UNKNOWN is
+ * not-green: a check that could not be established is not a check that passed. Deliberately a
+ * verdict change and not a printed warning; the verdict word is the part that gets read.
+ *
+ * Only LIVE is affected. BEHIND, NOT_THE_APP and UNREACHABLE are already true under a stale ref —
+ * bytes that match an older blob are stale whether or not a newer commit exists — and a stale ref
+ * can only make BEHIND's unshipped count too LOW, never invent one. */
+export function applyRefFreshness(files, fetched) {
+  const list = Array.isArray(files) ? files : [];
+  /* Normalized up front so every read below is null-safe. Not defensive habit: a version that
+     read `fetched.local` directly turned a deliberate break into a THROWN suite rather than a
+     failed assertion, and a break that crashes the runner negative-tests nothing. */
+  const f = fetched || {};
+  if (f.ok !== false) return list;
+  const why = f.local
+    ? `the deploy ref is local (${f.ref || 'no remote'}), so it cannot be shown to be the tip`
+    : `the deploy ref could not be refreshed (${f.error || 'fetch failed'})`;
+  return list.map((f) => {
+    if (!f || f.verdict !== 'LIVE') return f;
+    const head = f.head ? `${String(f.head.sha).slice(0, 7)} (${f.head.date})` : 'the local head';
+    return {
+      ...f,
+      verdict: 'UNKNOWN_BUILD',
+      staleRef: true,
+      detail: `served bytes match local head ${head}, but ${why} — a newer commit may already be `
+        + `merged and unshipped, so this cannot be called live`,
+    };
+  });
+}
+
 /* Worst file wins. The ordering is the point: BEHIND outranks UNKNOWN_BUILD because "we know it
    is wrong" is more actionable than "we could not tell", and NOT_THE_APP outranks both. */
 const RANK = { LIVE: 0, UNKNOWN_BUILD: 1, UNREACHABLE: 2, BEHIND: 3, NOT_THE_APP: 4 };
 const EXIT = { LIVE: 0, UNKNOWN_BUILD: 2, UNREACHABLE: 2, BEHIND: 1, NOT_THE_APP: 1 };
 
-export function classifyDeploy(files, cname) {
-  const list = Array.isArray(files) ? files.slice() : [];
+export function classifyDeploy(files, cname, fetched) {
+  /* The freshness guard runs HERE rather than in the caller so it cannot be forgotten by one.
+     It is idempotent — after one pass no file is LIVE, so a second application is a no-op. */
+  const list = applyRefFreshness(Array.isArray(files) ? files.slice() : [], fetched);
   if (!list.length) {
-    return { verdict: 'UNKNOWN_BUILD', exitCode: 2, files: [], cname, reason: 'no files were checked' };
+    return { verdict: 'UNKNOWN_BUILD', exitCode: 2, files: [], cname, fetched, reason: 'no files were checked' };
   }
   let worst = list[0];
   for (const f of list) if (RANK[f.verdict] > RANK[worst.verdict]) worst = f;
@@ -156,7 +216,7 @@ export function classifyDeploy(files, cname) {
   if (verdict === 'BEHIND' && behind.length > 1) {
     reason += ` (and ${behind.length - 1} other published file${behind.length === 2 ? '' : 's'} behind too)`;
   }
-  return { verdict, exitCode: EXIT[verdict], files: list, cname, reason };
+  return { verdict, exitCode: EXIT[verdict], files: list, cname, fetched, reason };
 }
 
 export function render(r) {
@@ -166,6 +226,16 @@ export function render(r) {
   const MARK = { LIVE: 'ok', BEHIND: 'FAIL', NOT_THE_APP: 'FAIL', UNKNOWN_BUILD: '??', UNREACHABLE: '??' };
   for (const f of r.files || []) lines.push(`  [${MARK[f.verdict] || '??'}] ${f.path} — ${f.detail}`);
   if (r.cname) lines.push(`  [${r.cname.ok ? 'ok' : 'FAIL'}] CNAME — ${r.cname.detail}`);
+  /* A failed fetch is `??`, not FAIL: nothing about the deploy was proven wrong, the question
+     simply could not be answered. The line is printed on success too, because "which ref was
+     this measured against, and was it current" is the one thing the 2026-10-11 false LIVE
+     needed someone to know. */
+  const fx = r.fetched || null;
+  if (fx) {
+    lines.push(fx.ok
+      ? `  [ok] deploy ref — fetched ${fx.ref} before judging`
+      : `  [??] deploy ref — NOT refreshed: ${fx.local ? 'local ref, no remote to fetch' : fx.error}`);
+  }
   return lines.join('\n');
 }
 
@@ -190,6 +260,21 @@ async function probeCname(origin) {
     return { ok: body === want, detail: res.status === 200 ? `serves "${body}"${body === want ? '' : ` (expected "${want}")`}` : `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, detail: String(e.message || e) };
+  }
+}
+
+/* Refresh the deploy ref before anything is judged against it. Invariant 10's rule ("fetch before
+   touching the deploy branch", fresh checkouts seen 14 commits behind) applied to the read side:
+   this script's whole answer is "are the served bytes the tip", and it cannot know the tip from a
+   clone it has not refreshed. Cheap — one ref, and the script already needs network. */
+function gitFetchRef(ref) {
+  const { remote, branch, local } = parseRef(ref);
+  if (local) return { ok: false, local: true, ref };
+  try {
+    execFileSync('git', ['fetch', remote, branch], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ok: true, ref };
+  } catch (e) {
+    return { ok: false, local: false, ref, error: String(e.stderr || e.message || e).trim().split('\n').pop() };
   }
 }
 
@@ -221,6 +306,10 @@ async function main() {
   const li = argv.indexOf('--limit');
   const limit = li !== -1 && argv[li + 1] ? Number(argv[li + 1]) : DEFAULT_LIMIT;
 
+  /* Once, before the per-file loop — every file is placed against the same ref, so refreshing it
+     per path would be three fetches to answer one question. */
+  const fetched = gitFetchRef(DEPLOY_REF);
+
   const files = [];
   for (const path of WATCHED) {
     const probe = await probeFile(SITE_ORIGIN, path);
@@ -229,7 +318,7 @@ async function main() {
   }
   const cname = await probeCname(SITE_ORIGIN);
 
-  const result = { ...classifyDeploy(files, cname), origin: SITE_ORIGIN, ref: DEPLOY_REF, checkedAt: new Date().toISOString() };
+  const result = { ...classifyDeploy(files, cname, fetched), origin: SITE_ORIGIN, ref: DEPLOY_REF, checkedAt: new Date().toISOString() };
   console.log(asJson ? JSON.stringify(result, null, 2) : render(result));
   process.exit(result.exitCode);
 }
