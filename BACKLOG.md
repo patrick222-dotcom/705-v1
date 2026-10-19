@@ -29,6 +29,15 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P2 (new, groom 2026-10-19)
+- [ ] **Tonight's live confirmation, and why `index.html: serving 6000f72` is NOT `BEHIND`**
+  (housekeeping, so a future groom does not read it as a stall) — #189 squash-merged as **`f9a368a`**
+  and `node scripts/deploy_watch.mjs` reports **LIVE** on the new code, with the whole publish set
+  current and `CNAME` serving badgebudget.com. The verdict names `6000f72` (2026-10-18) for
+  `index.html` because **`f9a368a` touches no publish-set file at all** — the diff is `scripts/` and
+  docs, and `scripts/` is not deployed (Invariant 8's five files). So the newest commit that *touched*
+  `index.html` is still last night's, the watch is placing it correctly, and there is nothing
+  merged-but-unshipped. A commit that ships nothing to Pages is the one case where `LIVE` and an
+  older `index.html` commit are both true at once.
 - [ ] **Zero new events and zero new feedback since the last groom — tonight's tables are
   byte-for-byte the 10-18 groom's tables** (P3 · source:groom · no action, and a figure NOT to
   re-derive upward) — `events` holds **1,681 rows**, newest `2026-10-18 02:09:42`, and a 72-hour
