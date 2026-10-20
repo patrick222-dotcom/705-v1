@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-12 by the chief of staff. Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-10-19 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -34,12 +34,14 @@ Updated 2026-10-12 by the chief of staff. Charter: `docs/leadership.md`. Caps (e
 
 ## Needs Pat
 
-- **D1 — Is `personas` the third thread?** Assumed, because it is the one already moving.
-  Default: yes. Defaults on 2026-10-19.
-- **D2 — Merge the raise PR (effective-dated rates)?** It moves figures, so it waits for Pat's
-  merge per the approval tiers; the before → after card is in the PR body. Default: none — a
-  figure-moving merge never defaults. Opened 2026-10-17. Session 4 (dated pay items) stays next
-  after it.
+_(none open)_
+
+**D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
+which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.
+It is reversible: say the word and T3 is swapped for something else. Nothing else was open.
+
+**D2 — Merge the raise PR (effective-dated rates)? — APPROVED by Pat on 2026-10-20** ("looks good,
+merge and push"); merged as #187. Session 4 (dated pay items) is next on T3.
 
 ## Parked
 

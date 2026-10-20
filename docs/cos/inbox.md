@@ -29,6 +29,20 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   report read as a file-picker block; now `paystub_failed {reason:'empty'}`. Quiet groom otherwise:
   no new feedback, no events in 24h, `silence_watch` FRESH · → outcome pending
 
+- 2026-10-18 · session BadgeBudget nightly · emptying a day in the shift sheet silently put a
+  12-hour shift back on it, and the button she asked about ("save changes", not "add shift") was
+  the same two taps — both fixed in one push, §48. Groom: every event in 48h is crawler-shaped and
+  no iPhone has opened the app since 10-15, so the device classifier is now the blocker on every
+  landing-screen figure · → outcome pending
+
+
+- 2026-10-19 · session BadgeBudget nightly · the deploy watch could print `LIVE` against a clone it
+  had not fetched — it now refreshes the deploy ref first and degrades to `UNKNOWN_BUILD` when it
+  cannot, so a false all-clear is no longer reachable from the one check the ship ritual trusts.
+  Tooling, under no thread. Groom: zero new events and zero new feedback since 10-18, no iPhone in
+  four days, `silence_watch` FRESH, `deploy_watch` LIVE · → outcome pending
+
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after

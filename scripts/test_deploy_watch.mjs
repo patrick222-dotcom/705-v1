@@ -10,7 +10,7 @@
  * reporting green for a build that could not be placed at all, and printing one commit's subject
  * beside another commit's sha.
  */
-import { sha256, matchCommit, classifyFile, classifyDeploy, render, WATCHED } from './deploy_watch.mjs';
+import { sha256, matchCommit, classifyFile, classifyDeploy, render, parseRef, applyRefFreshness, WATCHED } from './deploy_watch.mjs';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => { (cond ? pass++ : fail++); console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
@@ -161,6 +161,89 @@ ok('render: marks an unplaceable file ?? rather than FAIL', /\[\?\?\] index\.htm
 ok('render: never marks an unplaceable file ok', !/\[ok\]/.test(mixed));
 ok('render: includes the CNAME line when one was probed',
   String(render(noCname)).includes('CNAME — HTTP 404'));
+
+// 13. ref freshness — the case this script got WRONG in production on 2026-10-11, 24 seconds
+//     after #175 merged: `LIVE … serving 81c1954`, the PRE-merge commit, because the local clone
+//     had not fetched the new head and so `history[0]` was not the tip of the deploy branch.
+//     A false LIVE is the exact all-clear CLAUDE.md's four-night Pages-stall lesson exists to
+//     prevent, and it is worse than the `curl | grep <marker>` ritual it replaced: a marker grep
+//     against stale bytes returns 0 and looks like a failure, this returns the word being waited
+//     for. The fix is a VERDICT change, not a printed warning.
+const FETCH_OK = { ok: true, ref: 'origin/claude/migrate-to-github-deploy-3F5RD' };
+const FETCH_DEAD = { ok: false, local: false, ref: 'origin/claude/migrate-to-github-deploy-3F5RD', error: 'fatal: unable to access' };
+const FETCH_LOCAL = { ok: false, local: true, ref: 'HEAD' };
+
+ok('ref: a remote ref splits into remote and branch',
+  parseRef('origin/claude/migrate-to-github-deploy-3F5RD').remote === 'origin'
+  && parseRef('origin/claude/migrate-to-github-deploy-3F5RD').branch === 'claude/migrate-to-github-deploy-3F5RD');
+ok('ref: a branch name containing slashes keeps all of them',
+  parseRef('upstream/a/b/c').branch === 'a/b/c', parseRef('upstream/a/b/c').branch);
+ok('ref: a ref with no slash is local, with nothing to fetch', parseRef('HEAD').local === true);
+ok('ref: a trailing slash is not a branch', parseRef('origin/').local === true);
+ok('ref: an empty ref is local', parseRef('').local === true);
+
+// 13a. a successful fetch leaves every verdict exactly as it was
+ok('freshness: a fetched ref leaves LIVE alone', applyRefFreshness([live], FETCH_OK)[0].verdict === 'LIVE');
+ok('freshness: no fetch info at all leaves LIVE alone (pure callers, unit tests)',
+  applyRefFreshness([live], undefined)[0].verdict === 'LIVE');
+
+// 13b. the bug itself: bytes matching a head the script cannot prove is the tip
+const staleLive = applyRefFreshness([live], FETCH_DEAD)[0];
+ok('freshness: LIVE degrades to UNKNOWN_BUILD when the ref could not be fetched',
+  staleLive.verdict === 'UNKNOWN_BUILD', staleLive.verdict);
+ok('freshness: and it is flagged as the stale-ref case specifically', staleLive.staleRef === true);
+ok('freshness: the detail says a newer commit may be unshipped',
+  /newer commit may already be\s+merged and unshipped/.test(String(staleLive.detail)), staleLive.detail);
+ok('freshness: the detail carries the fetch error', String(staleLive.detail).includes('unable to access'));
+/* Phrased against the stale wording and the sha TOGETHER. `includes('aaaaaaa')` alone passes on
+   the undegraded LIVE detail too, so it would have been unfalsifiable — the trap this repo's
+   negative-test rule exists to catch, found by break A while negative-testing this section. */
+ok('freshness: the detail still names the commit the bytes DID match',
+  /match local head aaaaaaa/.test(String(staleLive.detail)), staleLive.detail);
+ok('freshness: a local ref degrades too, and says so rather than naming a network error',
+  applyRefFreshness([live], FETCH_LOCAL)[0].verdict === 'UNKNOWN_BUILD'
+  && /is local/.test(String(applyRefFreshness([live], FETCH_LOCAL)[0].detail)),
+  applyRefFreshness([live], FETCH_LOCAL)[0].detail);
+
+// 13c. only LIVE moves. BEHIND, NOT_THE_APP and UNREACHABLE are already true under a stale ref —
+//      bytes matching an older blob are stale whether or not a newer commit exists — and a stale
+//      ref can only make BEHIND's unshipped count too low, never invent one.
+ok('freshness: BEHIND is untouched by a failed fetch',
+  applyRefFreshness([behind], FETCH_DEAD)[0].verdict === 'BEHIND');
+ok('freshness: NOT_THE_APP is untouched by a failed fetch',
+  applyRefFreshness([stub], FETCH_DEAD)[0].verdict === 'NOT_THE_APP');
+ok('freshness: UNREACHABLE is untouched by a failed fetch',
+  applyRefFreshness([dead], FETCH_DEAD)[0].verdict === 'UNREACHABLE');
+ok('freshness: an already-UNKNOWN_BUILD file keeps its own reason, not the stale-ref one',
+  applyRefFreshness([unk], FETCH_DEAD)[0].staleRef === undefined);
+
+// 13d. the guard lives INSIDE classifyDeploy so a caller cannot forget it — the false LIVE was a
+//      missing step, and a fix that depends on remembering a step is the same bug twice.
+const staleDeploy = classifyDeploy([live, priv], { ok: true, detail: 'serves "badgebudget.com"' }, FETCH_DEAD);
+ok('deploy: a failed fetch makes an all-live deploy UNKNOWN_BUILD, not LIVE',
+  staleDeploy.verdict === 'UNKNOWN_BUILD', staleDeploy.verdict);
+ok('deploy: and it does NOT exit 0', staleDeploy.exitCode === 2, `exit ${staleDeploy.exitCode}`);
+ok('deploy: a fetched ref still reaches LIVE and exits 0',
+  classifyDeploy([live, priv], { ok: true, detail: 'ok' }, FETCH_OK).verdict === 'LIVE'
+  && classifyDeploy([live, priv], { ok: true, detail: 'ok' }, FETCH_OK).exitCode === 0);
+ok('deploy: applying the guard twice is a no-op',
+  classifyDeploy(applyRefFreshness([live], FETCH_DEAD), null, FETCH_DEAD).verdict === 'UNKNOWN_BUILD');
+ok('deploy: a failed fetch never downgrades a real BEHIND',
+  classifyDeploy([behind, live], null, FETCH_DEAD).verdict === 'BEHIND');
+ok('deploy: a missing CNAME still outranks a stale ref',
+  classifyDeploy([live], { ok: false, detail: 'HTTP 404' }, FETCH_DEAD).verdict === 'NOT_THE_APP');
+
+// 13e. the report has to SAY which ref it measured against and whether it was current — that is
+//      the one thing the 2026-10-11 run needed its reader to know, and it printed it nowhere.
+const okText = render(classifyDeploy([live, priv], { ok: true, detail: 'ok' }, FETCH_OK));
+ok('render: a fetched ref is reported as fetched', /\[ok\] deploy ref — fetched origin\//.test(okText), okText);
+const staleText = render(staleDeploy);
+ok('render: an unfetched ref is reported', /\[\?\?\] deploy ref — NOT refreshed/.test(staleText), staleText);
+ok('render: an unfetched ref is ?? and never ok', !/\[ok\] deploy ref/.test(staleText));
+ok('render: a stale-ref run never leads with LIVE', !staleText.startsWith('deploy-watch: LIVE'), staleText.split('\n')[0]);
+ok('render: a local ref says there is no remote to fetch',
+  /no remote to fetch/.test(render(classifyDeploy([live], null, FETCH_LOCAL))));
+ok('render: omits the ref line entirely when no fetch was attempted', !/deploy ref/.test(render(oneBehind)));
 
 console.log(`\n==== deploy_watch tests: ${pass} passed / ${fail} failed ====`);
 process.exit(fail === 0 ? 0 : 1);

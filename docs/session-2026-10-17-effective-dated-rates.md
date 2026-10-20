@@ -50,8 +50,8 @@ carry `{count}` only.
 | `node tests/core.test.mjs` | **135/135** (19 new) |
 | Mutants of the extracted core (11) | every new core assertion fails under at least one; `bpdavg` (always average, never the exact base) is **equivalent** — 896 randomized fortnights showed no float dust, so the exact-base branch is defensive |
 | Differential sweep, deployed core vs new, 896 fortnights × 4 empty/no-op lists | **0 differ** |
-| `tests/smoke.mjs` §48, iPhone 13 | 15/15; 10 broken copies, each caught |
-| full `tests/smoke.mjs` | **806/806** (791 + §48's 15) |
+| `tests/smoke.mjs` §49 (was §48 before the merge with #188), iPhone 13 | 15/15; 10 broken copies, each caught |
+| full `tests/smoke.mjs` | **806/806** (791 + §49's 15) before the merge with #188 |
 | `tests/equality.mjs` vs badgebudget.com | **26 identical / 0 unintended / 4 of 4 named** — and the four session-3 cases un-named, since #174 is live |
 
 ## 4. Not done, on purpose

@@ -4,6 +4,12 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-10-19 — D1 defaulted: `personas` is the third thread
+
+Opened 2026-10-12 with its own expiry rule ("Default: yes. Defaults on 2026-10-19"). Pat did not
+answer by that date, so the nightly chief-of-staff pass applied the default and recorded it. Not a
+new call and reversible: T3 can be swapped for something else on a word. `docs/cos/now.md`.
+
 ## 2026-10-12 — the operating committee
 
 Pat could no longer track what he had started; the MCP gateway sat a month at step 1 because it was
