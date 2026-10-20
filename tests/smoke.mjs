@@ -5986,6 +5986,118 @@ const run = async () => {
     }
   }
 
+  /* ---- 49. a raise from a date (effective-dated rates, 2026-10-17) ----------------------- */
+  if (want(49)) {
+    /* Courtney, 2026-10-14 08:51 (`wish`): "update my pay rate for future shifts because of a raise.
+       the shifts I've already put into the app for future shifts do not update to my new pay rate".
+       Two halves, both driven on the iPhone 13 profile:
+       A. the bug proven in this session: a rate typed into Settings and closed without the field
+          losing focus first was discarded. WebKit does not focus a <button> on tap, so the X can
+          close the sheet with the field still focused; `el.click()` in page JS reproduces exactly
+          that (Playwright's own click focuses the button first, which is why §1 never saw it).
+       B. the feature: "New rate from [date]" prices shifts on/after the date at the new rate and
+          leaves the worked one alone, and the Breakdown says which rate priced which shift. */
+    const dk = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const md = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+    const base = (id) => ({ id, shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false });
+    /* The period runs today-6 .. today+7 (landCurrent keeps the phase), so both shifts are in it;
+       taxes zeroed so the hero IS gross and every figure below is plain arithmetic. */
+    const seed = { setupComplete: true, baseRate: 48, payPeriodStart: dk(-6), federalTaxRate: 0, stateTaxRate: 0,
+      ficaWithholdingType: 'none', differentials: { base: { name: 'Day', amount: 0, type: 'dollar', active: true } },
+      shifts: { [dk(-1)]: [base(1)], [dk(1)]: [base(2)] } };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero', { timeout: 20000 });
+    const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || '{}'), STORAGE_KEY);
+    const openSettings = async () => {
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.modal[aria-label="Settings"]', { timeout: 5000 });
+    };
+    const closeLikeWebKit = () => page.evaluate(() => document.querySelector('.modal[aria-label="Settings"] .sheet-h button.back').click());
+    const breakdown = async () => {
+      await page.locator('.hero button:has-text("See the full breakdown")').click();
+      await page.waitForSelector('.modal[aria-label="Your paycheck math"]', { timeout: 4000 });
+      const t = await page.locator('.modal[aria-label="Your paycheck math"]').innerText();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.modal[aria-label="Your paycheck math"]', { state: 'detached', timeout: 4000 }).catch(() => {});
+      return t;
+    };
+    const gross = (t) => { const m = t.match(/Gross pay[\s\S]*?\$([\d,]+)/); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
+
+    /* A. type 50 into the rate and close with the field still focused. */
+    await openSettings();
+    const rate = page.locator('input[aria-label="Base hourly rate"]');
+    await rate.click(); await rate.fill('50');
+    const stillFocused = await page.evaluate(() => document.activeElement && document.activeElement.getAttribute('aria-label'));
+    await closeLikeWebKit();
+    await page.waitForSelector('.modal[aria-label="Settings"]', { state: 'detached', timeout: 4000 });
+    await page.waitForTimeout(800);
+    ok('rate: the field was still focused when the sheet closed (the WebKit tap, reproduced)', stillFocused === 'Base hourly rate', String(stillFocused));
+    ok('rate: a rate typed and closed without a blur is SAVED, not discarded (was 48)', (await stored()).baseRate === 50, JSON.stringify((await stored()).baseRate));
+    ok('rate: and it re-prices both shifts at once, as one base rate always has (2 x 12 x 50 = 1200)', gross(await breakdown()) === 1200);
+    /* put the starting rate back the ordinary way, with a real blur */
+    await openSettings(); await rate.fill('48'); await rate.press('Tab');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.modal[aria-label="Settings"]', { state: 'detached', timeout: 4000 });
+    ok('rate: back at 48 for part B (2 x 12 x 48 = 1152)', gross(await breakdown()) === 1152);
+
+    /* B. "Got a raise? New rate from [date]": $52 from tomorrow. */
+    await openSettings();
+    const dflt = await page.locator('input[aria-label="New rate starts on"]').inputValue();
+    ok('raise: the date defaults to the start of the next pay period (today + 8)', dflt === dk(8), `${dflt} vs ${dk(8)}`);
+    await page.locator('input[aria-label="New rate starts on"]').fill(dk(1));
+    await page.locator('input[aria-label="New hourly rate"]').fill('52');
+    await page.locator('.raises button:has-text("Add")').click();
+    const row = await page.locator('.raises .raise-row').first().innerText().catch(() => '(no row)');
+    const fromLong = await page.evaluate((k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }, dk(1));
+    ok('raise: Settings lists it as "From <date> $52.00/hr"', row.includes(`From ${fromLong}`) && row.includes('$52.00/hr'), JSON.stringify(row));
+    const lab = await page.locator('label.field:has(input[aria-label="Base hourly rate"]) .lab').innerText();
+    ok('raise: and the base field now says it is the rate BEFORE that date', lab === `Hourly rate before ${fromLong}`, JSON.stringify(lab));
+    const wide = await page.evaluate(() => { const m = document.querySelector('.modal[aria-label="Settings"]'); const r = document.querySelector('.raises');
+      return { modal: m.clientWidth, raises: r.scrollWidth, right: Math.round(r.getBoundingClientRect().right - m.getBoundingClientRect().right) }; });
+    ok('raise: the rows fit the sheet on an iPhone 13, no sideways scroll (measured against the sheet)', wide.raises <= wide.modal && wide.right <= 0, JSON.stringify(wide));
+    await page.waitForTimeout(800);   // the save is debounced 500ms
+    const blob = await stored();
+    ok('raise: the blob carries it, and baseRate is still the old rate', JSON.stringify(blob.rateChanges) === JSON.stringify([{ from: dk(1), rate: 52 }]) && blob.baseRate === 48,
+      JSON.stringify({ rc: blob.rateChanges, b: blob.baseRate }));
+    await closeLikeWebKit();
+    await page.waitForSelector('.modal[aria-label="Settings"]', { state: 'detached', timeout: 4000 });
+    const bd = await breakdown();
+    ok('raise: the worked shift keeps $48 and the future one takes $52 (576 + 624 = 1200)', gross(bd) === 1200, String(gross(bd)));
+    ok('raise: the Breakdown says which rate priced which shift',
+      bd.includes(`Priced at two rates: 1 shift at $48.00/hr (before ${md(dk(1))}), 1 shift at $52.00/hr (from ${md(dk(1))}).`), JSON.stringify((bd.match(/Priced at[^\n]*/) || [''])[0]));
+    /* The Add-Shift preview prices its draft at the rate on the sheet's own day. The draft's shift
+       type (and so its differential) is the app's default, so compare the same draft on both
+       sides of the raise: 12 h x ($52 - $48) = $48 apart, whatever the differential is. */
+    const previewOn = async (k) => {
+      await page.evaluate((key) => { const el = document.querySelector(`.cell[data-date="${key}"]`); if (el) el.click(); }, k);
+      const up = await page.waitForSelector('.sheet[aria-label="Add a shift"] .preview', { timeout: 4000 }).then(() => true).catch(() => false);
+      const t = up ? await page.locator('.sheet[aria-label="Add a shift"] .preview').innerText() : '';
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet[aria-label="Add a shift"]', { state: 'detached', timeout: 4000 }).catch(() => {});
+      const m = t.match(/\+\$([\d,]+) gross/); return m ? Number(m[1].replace(/,/g, '')) : NaN;
+    };
+    const pPast = await previewOn(dk(-1)), pFut = await previewOn(dk(1));
+    ok('raise: the Add-Shift preview on a day after the raise prices $48 above the same draft before it', pFut - pPast === 48, `${pPast} -> ${pFut}`);
+
+    /* Remove asks first, then the future shift goes back to $48. */
+    await openSettings();
+    await page.locator('.raises button:has-text("Remove")').click();
+    const asked = await page.waitForSelector('.cdlg', { timeout: 4000 }).then(() => true).catch(() => false);
+    const askText = asked ? await page.locator('.cdlg').innerText() : '';
+    ok('raise: removing one asks first, naming the rate it goes back to', asked && askText.includes('$48.00/hr'), JSON.stringify(askText));
+    if (asked) await page.locator('.cdlg .btn-danger').click();
+    await page.waitForSelector('.raises .raise-row', { state: 'detached', timeout: 4000 }).catch(() => {});
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.modal[aria-label="Settings"]', { state: 'detached', timeout: 4000 });
+    const bd2 = await breakdown();
+    ok('raise: removed, both shifts are back at $48 and the note is gone', gross(bd2) === 1152 && !/Priced at/.test(bd2), String(gross(bd2)));
+    ok('raise: no page errors across section 49', errors.filter((e) => !isExpectedNetwork(e)).length === 0, errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

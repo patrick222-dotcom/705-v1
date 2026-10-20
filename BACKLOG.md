@@ -81,16 +81,22 @@ exists for.** All six carry `contact: bagwellc0387@gmail.com` and `user_id e96ea
 density for what it is: **six reports in 110 minutes from the primary user**, and both halves of the
 positioning (sync, paycheck) are failing her in them.
 
-- [ ] **Courtney got a RAISE and every future shift she already entered is still priced at the old
+- [ ] **IN REVIEW 2026-10-17 (dedicated session, PR to the deploy branch, waits for the owner — it
+  moves figures): effective-dated rates + the Settings rate-field commit fix.** Spec
+  `docs/effective-dated-rates-spec.md`, log `docs/session-2026-10-17-effective-dated-rates.md`.
+  **Correction, 2026-10-17:** the sentence below beginning "A shift stores its own rate at entry"
+  is **FALSE** — no shift carries a rate; one App-level `baseRate` priced every shift, past and
+  future, so a rate change re-priced everything at once (including worked shifts). It is kept
+  struck rather than deleted so the history stays honest.
+  **Courtney got a RAISE and every future shift she already entered is still priced at the old
   rate — her only workaround is deleting all of them** (**P0 for wrongness, but wage-core, so it is
   NOT a nightly item** — see the dedicated-session queue; logged here because it is the most
   wrong-money thing in the file). Her words, 2026-10-14 08:51 UTC: *"update my pay rate for future
   shifts because of a raise. the shifts I've already put into the app for future shifts do not
   update to my new pay rate so the amount is inaccurate unless I delete all the shifts."*
-  **This is the app's one job failing on its one user.** A shift stores its own rate at entry (which
-  is correct for a worked shift — history must not be rewritten) and there is no notion of a rate
-  that takes effect on a date, so a raise silently splits her data into "priced right" and "priced
-  wrong" with no way to tell which is which. **The fix is effective-dated pay rates**, not a
+  **This is the app's one job failing on its one user.** ~~A shift stores its own rate at entry (which
+  is correct for a worked shift — history must not be rewritten)~~ (false, see the correction above)
+  and there is no notion of a rate that takes effect on a date. **The fix is effective-dated pay rates**, not a
   bulk-rewrite button: a rate with a start date, shifts priced by the rate in force on their own
   date. A "re-price everything" button is the tempting shortcut and it is **wrong** — it would
   rewrite shifts she already worked and paid tax on.
@@ -301,7 +307,13 @@ positioning (sync, paycheck) are failing her in them.
   she is ready to read — so the honest options stay the two the 10-14 item named ("offer the whole
   plan once more and remember every skip", or nothing) and neither is urgent. **Do not build this
   on her evidence any more**; it needs a second account that has rejected synced shifts.
-- [ ] **Her shift count fell 109 → 67 between 08:05 and 08:17 on 2026-10-14, and the raise item is
+- [x] **CORRECTED 2026-10-17: the 109 → 67 drop is NOT explained by the raise — her own words put
+  it on the sync.** Her 08:03:37 report (*"I was not careful with which dates got pulled over"*) and
+  08:55:26 report (*"Once I deleted shifts that were not coded properly on BB"*) bracket the
+  deletions; the raise wish came at 08:51, after them. The likelier reading is that she deleted
+  mis-imported NurseGrid shifts. Unverified either way without asking her; the item below is kept
+  as written.
+  **Her shift count fell 109 → 67 between 08:05 and 08:17 on 2026-10-14, and the raise item is
   the likely why** (P1 · housekeeping on the raise item, which is already a dedicated session) —
   `session_end {shifts:109}` at 08:05:12, `{shifts:67}` at 08:17:58, with six `shift_saved` rows in
   between and the raise complaint filed at 08:51. She wrote that her workaround is *"delete all the
@@ -1597,6 +1609,23 @@ positioning (sync, paycheck) are failing her in them.
 
 ## Needs a dedicated session (NOT for the nightly loop)
 
+- [ ] **Paystub import still overwrites `baseRate` even when a raise is entered** (P2 · wage-core ·
+  `harness:drivable`, found 2026-10-17). With "New rate from Oct 25" saved, importing a post-raise
+  stub sets the *pre-raise* rate to the new figure and re-prices every worked shift — the exact
+  thing effective-dated rates exist to prevent. Fix: when `rateChanges` is non-empty, the import
+  offers "New rate from [stub period start]" instead of writing `baseRate`. Spec "Known limits".
+- [ ] **A list-row number field still loses an edit when its sheet closes before it blurs** (P3 ·
+  `harness:drivable`, found 2026-10-17). `NumInput`'s `commitOnUnmount` is on the Settings scalar
+  fields only (rate, taxes, deductions). Differential amounts and goal targets are left off on
+  purpose: their `onCommit` closes over the list as rendered, so committing after a Delete would put
+  the deleted row back. The fix is a functional update (`setDiff(d => …)`) in those handlers first,
+  then the flag. Repro: `tests/smoke.mjs` §49 part A's `el.click()` close.
+- [ ] **A typed base rate is rounded to cents for shifts but not for PTO** (P3 · wage-core ·
+  pre-existing, found 2026-10-17). `shiftGrossCents` receives `toCents(base)` (67.034424 → 6703¢,
+  12 h = $804.36) while PTO multiplies the dollar rate (8 h = $536.28, not $536.24). Real base rates
+  are 2 dp, so no user is known to be affected; the `money` comment's "rates stay fractional" is
+  true of the computed regular rate, not of a typed base. Pick one rule in a wage-core session.
+
 - [ ] **Finish the device classifier — nothing excludes a self-declared crawler or the harness from
   an activation figure** (moved here 2026-10-19 from the 10-18 groom section, which keeps the
   evidence). `app_open {fresh}` landed 2026-10-12 and is **half** the job: it tells a minted
@@ -1623,10 +1652,13 @@ positioning (sync, paycheck) are failing her in them.
   could not be established. Then re-baseline the cohort figures once, in one commit, and say in the
   ops dashboard which rule produced them.
 
-- [ ] **Effective-dated pay rates — Courtney got a raise and every future shift she already entered
+- [ ] **IN REVIEW 2026-10-17 — built in a dedicated session, PR waits for the owner (moves figures).**
+  **Effective-dated pay rates — Courtney got a raise and every future shift she already entered
   is still priced at the old rate** (**wage-core, owner-approval tier**; the queue copy with her
-  exact words is in the 2026-10-14 groom section). A shift stores its rate at entry, which is right
-  for a worked shift and wrong for one she has not worked yet, and there is no rate-with-a-start-date
+  exact words is in the 2026-10-14 groom section). ~~A shift stores its rate at entry, which is right
+  for a worked shift and wrong for one she has not worked yet~~ — **false (2026-10-17): no shift
+  carries a rate; one `baseRate` priced every shift, so a rate change re-priced worked shifts too** —
+  and there is no rate-with-a-start-date
   concept, so a raise splits her data into priced-right and priced-wrong with nothing marking which.
   Her only workaround today is deleting every future shift. **The fix is a rate that takes effect on
   a date**, with each shift priced by the rate in force on its own date — **never** a bulk re-price
@@ -2600,6 +2632,19 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   harness while writing §45, which had to seed a third row to route around it, and it is filed on
   the strength of the code path plus her own label complaint from the same two taps — not on an
   event. `shift_saved` carries no before/after count, so the app could not have seen it.
+- 2026-10-17 — **A raise now takes effect on a date, and a rate typed into Settings can no longer be
+  silently discarded.** Dedicated wage-core session, **not merged by the agent** — it moves figures,
+  so the PR waits for the owner with a before → after card. Spec
+  `docs/effective-dated-rates-spec.md`; log `docs/session-2026-10-17-effective-dated-rates.md`.
+  `rateChanges [{from, rate}]` priced per date key through `rateOn` (core `money` region, 3 new
+  wage definitions in the gate); `periodPaycheck` returns which rate priced what and the Breakdown
+  says so; Settings "Got a raise? New rate from [date]". `tests/core.test.mjs` 116 → 135,
+  `tests/smoke.mjs` §49 (15; numbered §48 until the 10-18 planner fix took that number), every new assertion negative-tested against a mutant.
+  **Diagnosis:** the BACKLOG's "a shift stores its own rate" was false. One real defect was proven
+  — `NumInput` commits on blur only and React never delivers onBlur to an unmounting field, so a
+  rate typed and closed with the X (WebKit does not focus a tapped button) was dropped. Whether that
+  is what she hit is **unverified**. Two-device sync was ruled out for 10-14: her only other device
+  (`592667f1`) was last seen 2026-10-04.
 - 2026-10-17 — **The paystub failure she actually hit was the one that counted nothing.** Nightly
   loop; `index.html` (`paystubIsEmpty` + one `track`), `tests/smoke.mjs` §47 (5 assertions, three
   deliberate breaks), `docs/project-notes.md` (the `paystub_failed` reasons, written down for the

@@ -40,6 +40,9 @@ _(none open)_
 which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.
 It is reversible: say the word and T3 is swapped for something else. Nothing else was open.
 
+**D2 — Merge the raise PR (effective-dated rates)? — APPROVED by Pat on 2026-10-20** ("looks good,
+merge and push"); merged as #187. Session 4 (dated pay items) is next on T3.
+
 ## Parked
 
 See `docs/cos/inbox.md`. Everything not above lives there or in `BACKLOG.md`.

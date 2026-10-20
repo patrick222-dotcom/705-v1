@@ -20,6 +20,7 @@ const modPath = process.env.CORE_MODULE
 const C = await import(pathToFileURL(modPath).href);
 
 let pass = 0, fail = 0;
+let ID_DIFFS, ID_TAX, ID_KEYS, ID_SH, WANT_ID;   // the deployed-build identity fixture, set where it is defined
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 function ok(name, cond, detail = ''){
   if(cond){ pass++; console.log(`PASS  ${name}`); }
@@ -603,6 +604,94 @@ ok('pay: a blank, negative or junk salary is no rate at all',
     return JSON.stringify([r.gross, r.net, r.hours, r.ot.premiumCents, r.ot.otHours]) !== JSON.stringify(WANT[wp]) || r.minTopUp.cents !== 0;
   });
   ok('events identity: a fortnight without the fields, under all four work periods', movedP.length === 0, movedP.join(','));
+  ID_DIFFS = idDiffs; ID_TAX = idTax; ID_KEYS = idKeys; ID_SH = idSh; WANT_ID = WANT;   // reused by the effective-dated-rates identity check
+}
+
+/* ---- effective-dated rates (2026-10-17, docs/effective-dated-rates-spec.md) ----------------
+   A raise takes effect on a date; each shift is priced by the rate on its own date key. The
+   figures below are worked by hand in the comments, not read back from the code under test. */
+{
+  const nt = { ficaType: 'none', ficaPct: '', federalTaxRate: 0, stateTaxRate: 0, pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+  const fort = Array.from({ length: 14 }, (_, i) => `2026-10-${String(4 + i).padStart(2, '0')}`); // Sun 10-04 .. Sat 10-17
+  const sh = (shiftType = 'base', hours = 12, extra = {}) => ({ id: Math.random(), shiftType, hours, bonusType: 'none', customBonus: 0, isOvertime: false, ...extra });
+  const dz = { base: { type: 'dollar', amount: 0 }, night: { type: 'dollar', amount: 5 } };
+  const pp = (shifts, base, rateChanges, opts = {}) => C.periodPaycheck({ shifts, dayEvents: opts.dayEvents || {}, dateKeys: opts.keys || fort,
+    baseRate: base, differentials: dz, taxInputs: nt,
+    job: C.makeJob({ id: 'job-1', baseRate: base, differentials: dz, rateChanges, workPeriod: opts.wp || '40', otMethod: opts.method }) });
+
+  /* A raise on day 8 of a 14-day period splits it exactly: 3 x 12 h at $48 + 3 x 12 h at $52. */
+  const six = { '2026-10-05': [sh()], '2026-10-07': [sh()], '2026-10-09': [sh()],
+                '2026-10-12': [sh()], '2026-10-14': [sh()], '2026-10-16': [sh()] };
+  const split = pp(six, 48, [{ from: '2026-10-11', rate: 52 }]);
+  ok('rates: a raise on day 8 splits the period exactly (1728 + 1872 = 3600)', split.gross === 3600 && split.ot.premiumCents === 0, `gross=${split.gross}`);
+  ok('rates: periodPaycheck says which rate priced which shifts',
+    JSON.stringify(split.rates) === JSON.stringify([{ rate: 48, from: null, shifts: 3, hours: 36 }, { rate: 52, from: '2026-10-11', shifts: 3, hours: 36 }]), JSON.stringify(split.rates));
+
+  /* Worked shifts before the date keep the old rate: week 1 alone is 3 x 12 x 48 with or without it. */
+  const wk1 = fort.slice(0, 7);
+  ok('rates: shifts before the raise date keep the old rate (1728 either way)',
+    pp(six, 48, [{ from: '2026-10-11', rate: 52 }], { keys: wk1 }).gross === 1728 && pp(six, 48, [], { keys: wk1 }).gross === 1728);
+  ok('rates: the raise date itself is the first day at the new rate (12 x 52 = 624)',
+    pp({ '2026-10-11': [sh()] }, 48, [{ from: '2026-10-11', rate: 52 }]).gross === 624);
+  ok('rates: a shift is priced by the day it STARTS — an overnight from the 10th stays at $48 (12.5 x 48 = 600)',
+    pp({ '2026-10-10': [sh('base', 12.5, { start: '19:00' })] }, 48, [{ from: '2026-10-11', rate: 52 }]).gross === 600);
+  ok('rates: PTO is paid at the rate on its own date (8 x 52 = 416)',
+    pp({}, 48, [{ from: '2026-10-11', rate: 52 }], { dayEvents: { '2026-10-12': [{ kind: 'pto', hours: 8 }], '2026-10-06': [{ kind: 'pto', hours: 8 }] } }).gross === 416 + 384);
+  {
+    const court = pp({ '2026-10-13': [sh('base', 1, { minHours: 3, payEvent: 'court' })] }, 48, [{ from: '2026-10-11', rate: 52 }]);
+    ok('rates: a minimum tops up at the dated rate (3 x 52 = 156, of which 104 is the top-up)',
+      court.gross === 156 && court.minTopUp.cents === 10400, `gross=${court.gross} top=${court.minTopUp.cents}`);
+  }
+
+  /* A workweek straddling a raise: 36 h at $45 (base 40 + night 5) then 12 h at $49 (44 + 5) = 48 h.
+     Straight time 1620 + 588 = 2208. Regular rate 2208 / 48 = 46.00 (29 CFR 778.109 / 778.115's
+     weighted average) -> premium 0.5 x 46 x 8 = 184. The base-plus-diff shortcut on the hours-
+     weighted base (36 x 40 + 12 x 44) / 48 = 41 -> 0.5 x 41 x 8 = 164. */
+  const wk = { '2026-10-05': [sh('night')], '2026-10-06': [sh('night')], '2026-10-07': [sh('night')], '2026-10-08': [sh('night')] };
+  const rr = pp(wk, 40, [{ from: '2026-10-08', rate: 44 }], { keys: wk1 });
+  ok('rates: a straddling week gets the weighted-average regular rate (premium 184, gross 2392)',
+    rr.ot.premiumCents === 18400 && rr.gross === 2392 && rr.ot.periods[0].regularRateCents === 4600,
+    `premium=${rr.ot.premiumCents} gross=${rr.gross} rr=${rr.ot.periods[0].regularRateCents}`);
+  const bd = pp(wk, 40, [{ from: '2026-10-08', rate: 44 }], { keys: wk1, method: 'base-plus-diff' });
+  ok('rates: base-plus-diff uses the hours-weighted base across the raise (premium 164)', bd.ot.premiumCents === 16400, `premium=${bd.ot.premiumCents}`);
+  const bdNew = pp({ '2026-10-12': [sh()], '2026-10-13': [sh()], '2026-10-14': [sh()], '2026-10-15': [sh()] }, 40, [{ from: '2026-10-11', rate: 44 }],
+    { keys: fort.slice(7), method: 'base-plus-diff' });
+  ok('rates: base-plus-diff in a week wholly after the raise uses the NEW base (0.5 x 44 x 8 = 176)', bdNew.ot.premiumCents === 17600, `premium=${bdNew.ot.premiumCents}`);
+
+  /* No list = identical. The fortnight fixture above, pinned to the deployed build's literals,
+     under all four work periods: absent, empty, and a raise after the period all match WANT. */
+  const variants = { absent: undefined, empty: [], later: [{ from: '2027-01-01', rate: 99 }] };
+  const moved = [];
+  Object.entries(variants).forEach(([nm, rc]) => Object.keys(WANT_ID).forEach((wp) => {
+    const j = C.makeJob({ baseRate: 47.13, differentials: ID_DIFFS, workPeriod: wp, otPeriodDays: 14, otPeriodHours: 86, mealBreakMins: 30, rateChanges: rc });
+    const r = C.periodPaycheck({ shifts: ID_SH, dayEvents: {}, dateKeys: ID_KEYS, baseRate: 47.13, differentials: ID_DIFFS, taxInputs: ID_TAX, job: j });
+    if (JSON.stringify([r.gross, r.net, r.hours, r.ot.premiumCents, r.ot.otHours]) !== JSON.stringify(WANT_ID[wp]) || r.rates.length !== 1) moved.push(`${nm}/${wp}`);
+  }));
+  ok('rates identity: no list, an empty list, or a raise after the period price the fortnight exactly as deployed', moved.length === 0, moved.join(','));
+  ok('rates identity: with no change rateOn hands back baseRate itself', C.rateOn(47.13, [], '2026-10-05') === 47.13 && C.rateOn(47.13, undefined, '2026-10-05') === 47.13);
+  /* The base must come back as the same number, not a tidied one. A shift rounds its base to
+     cents inside shiftGrossCents already, but PTO multiplies the dollar rate directly: 8 h x
+     67.034424 = 536.275392 -> 536.28, where a base rounded to 67.03 on the way through prints 536.24. */
+  ok('rates identity: a fractional base rate reaches PTO unrounded (536.28)',
+    pp({}, 67.034424, [], { dayEvents: { '2026-10-06': [{ kind: 'pto', hours: 8 }] } }).gross === 536.28 && C.rateOn(67.034424, [], '2026-10-05') === 67.034424);
+
+  /* Sanitizer bounds. */
+  const rc = C.sanitizeRateChanges([
+    { from: '2026-11-01', rate: 50 }, { from: '2026-10-25', rate: '52.123456' }, { from: '2026-11-01', rate: 51 },  // same date: later wins
+    { from: '2026-02-30', rate: 50 }, { from: '10/25/2026', rate: 50 }, { from: '2026-12-01', rate: 0 },
+    { from: '2026-12-02', rate: -5 }, { from: '2026-12-03', rate: 1001 }, { from: '2026-12-04', rate: 'abc' },
+    { from: '2026-12-05', rate: null }, { from: '2026-12-06', rate: '' }, null, 'x', { from: '2026-12-07' }]);
+  ok('rates sanitize: keeps real dates and 0 < rate <= 1000, drops the rest, sorts, later entry wins, 4 dp',
+    JSON.stringify(rc) === JSON.stringify([{ from: '2026-10-25', rate: 52.1235 }, { from: '2026-11-01', rate: 51 }]), JSON.stringify(rc));
+  const many = C.sanitizeRateChanges(Array.from({ length: 30 }, (_, i) => ({ from: `2027-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + Math.floor(i / 12)).padStart(2, '0')}`, rate: 40 + i })));
+  ok('rates sanitize: at most 24, keeping the latest', many.length === 24 && many[23].from === '2027-12-02' && many[0].from === '2027-03-01', `${many.length} ${many[0].from}..${many[23].from}`);
+  ok('rates sanitize: not an array -> empty', C.sanitizeRateChanges('x').length === 0 && C.sanitizeRateChanges(undefined).length === 0);
+  const d0 = C.sanitizeData({ baseRate: 48 }), d1 = C.sanitizeData({ baseRate: 48, rateChanges: [] }),
+        d2 = C.sanitizeData({ baseRate: 48, rateChanges: [{ from: '2026-10-25', rate: 52 }, { from: 'bad', rate: 1 }] });
+  ok('rates sanitize: a blob without it, or with an empty list, gains no key', !('rateChanges' in d0) && !('rateChanges' in d1));
+  ok('rates sanitize: a blob with it keeps the valid entries and mirrors them onto the job',
+    JSON.stringify(d2.rateChanges) === '[{"from":"2026-10-25","rate":52}]' && JSON.stringify(d2.jobs[0].rateChanges) === JSON.stringify(d2.rateChanges));
+  ok('rates: makeJob without the field carries an empty list', JSON.stringify(C.makeJob({ baseRate: 48 }).rateChanges) === '[]');
 }
 
 console.log(`\n==== core: ${pass} passed / ${fail} failed ====`);
