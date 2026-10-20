@@ -28,6 +28,66 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P2 (new, groom 2026-10-20)
+- [ ] **The raise is SHIPPED and LIVE — `a103682` is what badgebudget.com serves tonight**
+  (housekeeping, and the close of the P1 that has led this file since 2026-10-14) — Pat approved
+  the effective-dated-rates PR (#187) and it merged; `node scripts/deploy_watch.mjs` places
+  `index.html` at **`a103682` (2026-10-19)** with `privacy.html`, `ops.html` and `CNAME` all `ok`,
+  so nothing is merged-but-unshipped going into tonight. Decision **D2** in `docs/cos/now.md`
+  records the approval in his words. **What is NOT verified is the only thing that matters next:**
+  Courtney has not opened the app since 2026-10-15 12:30, so the fix for the complaint she filed on
+  10-14 has had no load to run on. Its first real reading is her next sync — and the figure to
+  watch is her shift count, which fell 109 → 67 when deleting was her only workaround.
+- [ ] **CABINET MISSED — `docs/cos/brief.md` is 8.0 days old and the dead-man's switch fired
+  tonight** (P2 · needs the weekly routine, not the nightly) — the brief was last written
+  2026-10-12 and still reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* The
+  10-18 and 10-19 grooms both predicted the switch would cross on **2026-10-20**; it has. Per
+  CLAUDE.md → *Autonomous nightly loop* step 1 this run's notify line carries **CABINET MISSED**,
+  and every nightly from here does until a cabinet runs. The nightly cannot clear it — writing the
+  brief is the Sunday cabinet pass's job, not this loop's.
+- [ ] **Three consecutive grooms have now read a byte-identical `events` table, and tonight the
+  verdict word CHANGED without anything breaking** (P3 · source:groom · no action, and the one
+  figure not to misread) — `events` holds **1,681 rows**, newest `2026-10-18 02:09:42`, identical
+  to the 10-18 and 10-19 grooms. `node scripts/silence_watch.mjs` now says **SILENT_BUT_HEALTHY**
+  rather than the `FRESH` of the last two nights: the newest event is **53.9h** old and has fallen
+  out of its 48h window, so the script can no longer say "someone came recently" — but it still
+  establishes the other side (the site serves 553,205 characters with 5 SRI scripts and the
+  `events` insert policy is intact). **That is the script working, not a regression**: the quiet is
+  "nobody came", and `SILENT_BUT_HEALTHY` exits zero by design. The landing-only cohort is
+  unchanged at **eleven** — the last 96h hold only the 13 crawler-shaped rows the 10-18 note
+  already named (`d712f5d0`, `6325f4ae`, `829e98f1` in a 52-second burst on desktop Linux Chrome,
+  and `279640eb` with `360Spider` in its agent).
+- [ ] **`feedback` is unchanged at Courtney's 2026-10-15 12:30 row, and `client_error` at her
+  2026-10-15 16:45 row** (housekeeping, re-read at the END of the run with every column as the
+  10-14 item requires) — six reports from her on 10-14 and one on 10-15, nothing after. The newest
+  `client_error` is still the `auth check timed out` row on `daf590c4` that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Nothing new broke; do not build a worker mitigation.
+- [ ] **The wordmark is ellipsised on a real first-gen iPhone SE, and tonight's test fix
+  deliberately did NOT change the CSS to hide that** (P3 · source:groom · `harness:drivable`, and
+  the figures are measured rather than guessed) — the 320pt row gives the wordmark **107.4px**, of
+  which **97.2px** can hold content once the 10px flex gap is paid; the fallback face needs
+  **87px** and the real Bricolage face needs **more than 97.2px**. So it clips on the device by
+  about **10–12px**. Two honest ways to buy that back, neither taken tonight because this sandbox
+  has no route to fonts.googleapis.com and so **cannot verify a CSS fix against the face that
+  actually clips**: drop `.brand` from 12px to 11px inside the `≤360px` block (~7px), or spend
+  some of the 10px container padding. Whoever takes it should hold §30's other pins — the avatar
+  stays 36px, every control keeps a 44pt tap target, the page does not scroll sideways — and must
+  be able to render the real face, or the fix is the same blind guess the old assertion was.
+  **It is cosmetic**: the brand clipping *is* the backstop that keeps the page from scrolling
+  sideways (§30's 2.2x check), so nothing is broken, only abbreviated.
+- [ ] **PR #191 is open, is session 4 (dated pay items), and waits for Pat — checked before
+  tonight's item was picked** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened
+  2026-10-20 03:25, ready. It changes `index.html` in **20 scattered hunks** from ~line 1473 to
+  ~7050 plus the wage core, `tests/core.test.mjs`, `tests/equality.mjs` and `scripts/check_build.mjs`,
+  so it is the owner tier (it moves dollar figures). Tonight's build touched **no `index.html`
+  region at all** — `tests/smoke.mjs` only — and its one smoke hunk is at ~line 6098 while §30 sits
+  at ~3300, so the code conflict is structurally impossible. **It does overlap in `BACKLOG.md`,
+  which every nightly must write**: whoever drives #191 should expect to update its branch after
+  tonight's merge. That is the cheap half of the overlap and the reason the index.html half was
+  checked first.
+
 ### P2 (new, groom 2026-10-19)
 - [ ] **Tonight's live confirmation, and why `index.html: serving 6000f72` is NOT `BEHIND`**
   (housekeeping, so a future groom does not read it as a stall) — #189 squash-merged as **`f9a368a`**
@@ -1184,8 +1244,28 @@ positioning (sync, paycheck) are failing her in them.
   is that the verdict word is what gets read.
   Drivable at script level: its 55-assertion classifier suite already stubs the git side, so a
   case for "local clone behind origin" is an addition to that suite, not a live probe.
-- [ ] **`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
-  and cost this run one CI cycle** — `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
+- [x] ~~**`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
+  and cost this run one CI cycle**~~ — **SHIPPED 2026-10-20** (see Done log), as fix (b): the
+  cosmetic claim is gone and a font-independent one took its place. **The three red runs were
+  RIGHT and the green twins were the lie** — measured tonight in the sandbox, the wordmark needs
+  **87px** of the **97.2px** the 320pt row can give it (11.7% of face-width headroom) and the
+  runner's real Bricolage face needs more than 97.2px, which is exactly what `spare=10`
+  (= the flex gap, i.e. the brand maxed out and still overflowing) was reporting. So the wordmark
+  **is** ellipsised on a real first-gen iPhone SE and the assertion pinned a falsehood;
+  `document.fonts.ready` (fix (a)) would have turned a flake into a steady red, which is why the
+  note below says it is not enough. What replaced it is `the wordmark keeps its share of the row`
+  — the room between the brand's left edge and `.top-actions` (107.4px at 320pt, 131.2px at 390pt),
+  which is set by the controls, the gaps and the padding and **not by the face**, so it reads the
+  same in both environments and still catches what the old assertion was really guarding: a fourth
+  control squeezing the wordmark to a stub (~46px, four times the floor's margin). `clipped` and
+  `spare` are still printed, so the ambient face stays on the record with no verdict resting on it.
+  Negative-tested by a 20px `padding-left` on `.top-actions` in a `git archive` copy: both new
+  assertions FAIL (40 passed / 2 failed, nothing aborted) and the SE row reproduced the runner's
+  exact `clipped=true spare=10` signature. Assertion count unchanged at **817** — two in, two out.
+  §30's own header claim that "the fallback face is wider than Bricolage, so a pass here is
+  conservative" was **false in that direction** and is corrected in the file. Original note
+  follows.
+  `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
   ellipsised at this width` failed once and passed once **on the same commit** (`e738670`, runs
   38224339630 and 38224378362), reporting `clipped=true spare=10`.
   **Second instance, 2026-10-14, and it is cleaner evidence than the first.** PR #181 (a
@@ -2547,6 +2627,35 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-20 — **§30's wordmark assertion was measuring the font, not the layout — it is now
+  font-independent, and the three CI failures it caused were the truthful readings.** The
+  assertion `top bar [iPhone SE]: the wordmark is not ellipsised at this width` failed on the
+  GitHub runner and passed in this sandbox **on the same commit** three times (`e738670` 10-11,
+  `0aa4ef4` 10-14 — a docs-only diff that cannot clip a wordmark — and `63ed891` 10-16), every
+  time reporting `clipped=true spare=10`, every red run with a green twin: three CI cycles and
+  three groom sessions. Measured tonight: the 320pt row gives the wordmark 107.4px, of which
+  97.2px holds content; the fallback face this sandbox falls back to needs **87px** and the
+  runner's real Bricolage Grotesque needs **more than 97.2px** — `spare=10` is exactly the flex
+  gap, i.e. the brand maxed out and still overflowing. So the wordmark **is** ellipsised on a real
+  first-gen iPhone SE, the assertion pinned a falsehood, and the green runs were a font-load race;
+  fix (a) (`document.fonts.ready`) would have converted the flake into a steady red. Shipped fix
+  (b): the cosmetic pass/fail is gone at both widths and `the wordmark keeps its share of the row`
+  replaces it — the room between the brand's left edge and `.top-actions`, floored at 96px (SE) and
+  120px (iPhone 13) against 107.4 and 131.2 measured. That quantity is set by the controls, the
+  gaps and the container padding, **not by the face**, so it reads the same in CI and here, and it
+  still catches the regression the old assertion was guarding: a fourth control costs ~46px, four
+  times the floor's margin. `clipped`, `spare`, `needs` and `has` are all still printed, so the
+  ambient face stays on the record with nothing resting on it; the guarantees that matter at 320pt
+  (no sideways scroll, the brand gives first, the avatar stays on screen) were already asserted and
+  are untouched. §30's header claim that "the fallback face is wider than Bricolage, so a pass here
+  is conservative for the real font" was **false in that direction** and is corrected in place —
+  that claim is what the flake was built on. Negative-tested in a `git archive` copy with a 20px
+  `padding-left` on `.top-actions`: both new assertions FAIL (40 passed / 2 failed, nothing
+  aborted) and the SE row reproduced the runner's exact `clipped=true spare=10`. Gate: 817 smoke
+  (count unchanged — two in, two out), 14/14 mechanical, 33 groom-seed, 135 core. No `index.html`
+  change, so the publish set is byte-identical and `deploy_watch` stays `LIVE` on `a103682`. The
+  real-device clipping is filed as a P3 with the exact pixel figures rather than fixed blind, because
+  this sandbox cannot render the face that clips. Thread: none (tooling).
 - 2026-10-19 — **The deploy watch fetches before it judges, so `LIVE` can no longer mean a stale
   clone.** Nightly loop; `scripts/deploy_watch.mjs` and `scripts/test_deploy_watch.mjs` only —
   **`index.html` is untouched**, so no wage core, no publish set, no conflict with open PR #187.

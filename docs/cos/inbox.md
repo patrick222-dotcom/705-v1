@@ -42,6 +42,14 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   Tooling, under no thread. Groom: zero new events and zero new feedback since 10-18, no iPhone in
   four days, `silence_watch` FRESH, `deploy_watch` LIVE · → outcome pending
 
+- 2026-10-20 · session BadgeBudget nightly · §30's "the wordmark is not ellipsised" assertion was
+  measuring whichever font had resolved — three CI cycles on a coin flip, and the red runs were the
+  truthful ones: the wordmark really does clip at 320pt with the real face. Replaced with a
+  font-independent floor on the row the wordmark is given; the cosmetic CSS fix is filed as P3 with
+  measured pixels, unbuilt because this sandbox cannot render the face that clips. Tooling, under no
+  thread. Groom: third consecutive byte-identical `events` table, `silence_watch` SILENT_BUT_HEALTHY
+  (53.9h, out of its 48h window — quiet, not broken), `deploy_watch` LIVE on `a103682`, and
+  **CABINET MISSED** — `brief.md` turned 8.0 days old tonight · → outcome pending
 
 ## Parked
 
