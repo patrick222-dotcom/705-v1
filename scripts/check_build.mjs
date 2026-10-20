@@ -220,20 +220,24 @@ check(3, 'Pay math never reads the persona', () => {
     'sampleNet', 'patternMetrics', 'patternCellToShift', 'patternCellShiftType', 'firstActiveShiftType',
     'toCents', 'fromCents', 'roundCents', 'BONUS', 'BONUS_LABEL',
     'otMultOf', 'minHoursOf', 'minimumTopUpCents',
-    'sanitizeRateChanges', 'rateEntryOn', 'rateOn'];
+    'sanitizeRateChanges', 'rateEntryOn', 'rateOn',
+    'sanitizePayItems', 'payItemOccursOn', 'payItemOccurrences', 'payItemCents'];
   /* Two patterns, because the case matters for one of them: `ob` + capital is the funnel's own
      namespace (obSeedOpts, obExtrasOn, OB_SCREENS…) and must not match `Object`. */
   /* payEvent (court / call-back / report, session 3, 2026-10-11) is the same kind of thing: a label
      she picks, never a pay rule. The minimum's HOURS are the pay; "court pays differently" would be
      a branch no Settings screen shows. */
-  const FORBIDDEN_I = /persona|preset|payEvent|PAY_EVENT/i, FORBIDDEN_CS = /^(workStatus|union|obShift|obPay)$|^ob[A-Z]|^OB_/;
+  /* A dated pay item's `label` (session 4, 2026-10-20) likewise: "Longevity" and "Bonus" pay what
+     their amount says. Case-sensitive and exact, so BONUS_LABEL (a table name) is not a hit. */
+  const FORBIDDEN_I = /persona|preset|payEvent|PAY_EVENT/i, FORBIDDEN_CS = /^(workStatus|union|obShift|obPay|label)$|^ob[A-Z]|^OB_/;
   const FORBIDDEN = { test: (x) => FORBIDDEN_I.test(x) || FORBIDDEN_CS.test(x) };
   const found = new Set(), hits = [];
   const isFn = (n) => n && /Function|Arrow/.test(n.type);
   const scan = (name, path) => {
     found.add(name);
     path.traverse({
-      Identifier(p) { if (FORBIDDEN.test(p.node.name)) hits.push(`${name} -> ${p.node.name}`); },
+      /* sanitizePayItems is the one wage name that must touch `label`: it validates and trims it. */
+      Identifier(p) { if (FORBIDDEN.test(p.node.name) && !(name === 'sanitizePayItems' && p.node.name === 'label')) hits.push(`${name} -> ${p.node.name}`); },
       StringLiteral(p) { if (/^(healthcare|other|court|callback|report)$/.test(p.node.value) || FORBIDDEN.test(p.node.value)) hits.push(`${name} -> '${p.node.value}'`); },
     });
   };
@@ -249,7 +253,7 @@ check(3, 'Pay math never reads the persona', () => {
   const missing = WAGE.filter((n) => !found.has(n));
   must(!missing.length, `wage-core definitions not found (renamed? update this list): ${missing.join(', ')}`);
   must(!hits.length, `the pay math reads the persona — a persona may only set starting values: ${hits.join('; ')}`);
-  return `${WAGE.length} wage definitions, none names a persona or a pay-event label`;
+  return `${WAGE.length} wage definitions, none names a persona, a pay-event label or a pay-item label`;
 });
 
 /* ---- operating-committee caps (docs/leadership.md) -------------------------------------- */

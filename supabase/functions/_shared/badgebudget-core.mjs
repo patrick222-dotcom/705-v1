@@ -246,6 +246,8 @@ function sanitizeData(d){
   /* Effective-dated rates (2026-10-17). Absent or empty leaves the key out, so the blob prices
      byte-identically and applyData's authoritative reset clears any previous account's list. */
   if('rateChanges' in d){ const rc = sanitizeRateChanges(d.rateChanges); if(rc.length) out.rateChanges = rc; }
+  /* Dated pay items (2026-10-20), the same shape of rule: absent or empty leaves the key out. */
+  if('payItems' in d){ const pi = sanitizePayItems(d.payItems); if(pi.length) out.payItems = pi; }
   if(d.federalTaxRate!=null) setNum('federalTaxRate', d.federalTaxRate);
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
@@ -463,7 +465,7 @@ function sanitizeData(d){
        rate and differentials move onto it verbatim, so no historical shift reprices. This is
        the bug the job record fixes today, before any second employer exists — one global
        baseRate means changing status (per diem -> staff) silently repriced every past shift. */
-    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate, rateChanges: out.rateChanges,
+    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate, rateChanges: out.rateChanges, payItems: out.payItems,
       differentials: out.differentials || null,
       workPeriod: out.workPeriod, otMethod: out.otMethod,
       otPeriodHours: out.otPeriodHours, otPeriodDays: out.otPeriodDays, otPeriodStart: out.otPeriodStart,
@@ -584,6 +586,73 @@ function rateEntryOn(baseRate, rateChanges, dateKey){
 }
 function rateOn(baseRate, rateChanges, dateKey){ return rateEntryOn(baseRate, rateChanges, dateKey).rate; }
 
+/* ---------- dated pay items (session 4, 2026-10-20) ----------------------------------
+   docs/dated-pay-items-spec.md. Money that lands in one particular check -- a January holiday
+   lump sum, June/December longevity, a ratification bonus -- as a list on the job, not on a
+   shift, so deleting or re-syncing a shift can never take it with it. An item lands in the pay
+   period whose 14 days contain its date (a period date, not the payday printed on the check:
+   the app has no pay lag to convert one). The label is display only -- check_build.mjs forbids
+   it in every wage definition, like payEvent. */
+const MAX_PAY_ITEMS = 12;
+const PAY_ITEM_CADENCES = ['once','monthly','semiannual','annual'];
+const PAY_ITEM_WITHHOLDING = ['bonus','regular'];
+const PAY_ITEM_MAX_AMOUNT = 25000, PAY_ITEM_MAX_HOURS = 400;
+/* IRS Pub 15 s.7, method 1a: "Withhold a flat 22% (no other percentage allowed)". */
+const SUPPLEMENTAL_FED_RATE = 22;
+/* Shared by sanitizeData and makeJob. Out-of-range values DROP the item, never clamp it (the
+   otMult rule): a clamped $25,000 is a number she never typed. Exactly one of amount / hours. */
+function sanitizePayItems(list){
+  if(!Array.isArray(list)) return [];
+  const out = [], seen = {};
+  const num = (v, max) => { if(v==null || v==='') return null; const n = Number(v);
+    return (isFinite(n) && n>0 && n<=max) ? Math.round(n*100)/100 : NaN; };
+  list.forEach((x,i)=>{
+    if(out.length>=MAX_PAY_ITEMS || !x || typeof x!=='object' || Array.isArray(x)) return;
+    const nm = typeof x.label==='string' ? x.label.trim() : '';
+    if(!nm || nm.length>80) return;
+    if(PAY_ITEM_CADENCES.indexOf(x.cadence)<0 || !isISODate(x.date)) return;
+    const wh = x.withholding==null ? 'bonus' : x.withholding;
+    if(PAY_ITEM_WITHHOLDING.indexOf(wh)<0) return;
+    const amt = num(x.amount, PAY_ITEM_MAX_AMOUNT), hrs = num(x.hours, PAY_ITEM_MAX_HOURS);
+    if(Number.isNaN(amt) || Number.isNaN(hrs) || (amt===null)===(hrs===null)) return;
+    const id = (typeof x.id==='string' && x.id && x.id.length<=40) || (typeof x.id==='number' && isFinite(x.id)) ? x.id : 'pi-'+i;
+    if(seen[id]) return;
+    seen[id] = true;
+    const o = { id, label:nm.slice(0,40), cadence:x.cadence, date:x.date };
+    if(amt!==null) o.amount = amt; else o.hours = hrs;
+    o.withholding = wh;
+    out.push(o);
+  });
+  return out;
+}
+/* Does an item pay on dateKey? Never before its first date. A day past the end of a short month
+   lands on that month's last day (Jan 31 monthly -> Feb 28), so no occurrence is lost or doubled. */
+function payItemOccursOn(item, dateKey){
+  if(!item || !isISODate(dateKey) || dateKey < item.date) return false;
+  if(item.cadence==='once') return dateKey===item.date;
+  const a = parseISODate(item.date), d = parseISODate(dateKey);
+  const months = (d.getFullYear()-a.getFullYear())*12 + (d.getMonth()-a.getMonth());
+  const step = item.cadence==='monthly' ? 1 : item.cadence==='semiannual' ? 6 : item.cadence==='annual' ? 12 : 0;
+  if(!step || months % step) return false;
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return d.getDate()===Math.min(a.getDate(), lastDay);
+}
+/* Every occurrence inside dateKeys, in date order: [{item, date}]. */
+function payItemOccurrences(items, dateKeys){
+  const out = [];
+  if(!items || !items.length) return out;
+  (dateKeys||[]).slice().sort().forEach(k=>{
+    items.forEach(it=>{ if(payItemOccursOn(it, k)) out.push({ item:it, date:k }); });
+  });
+  return out;
+}
+/* One occurrence in whole cents. Hours are paid at the rate in force on the day it occurs --
+   never the global baseRate -- with no differential, like PTO, rounded once as a payroll line. */
+function payItemCents(item, dateKey, baseRate, rateChanges){
+  if(item.hours!=null) return roundCents(toCents(rateOn(baseRate, rateChanges, dateKey)) * item.hours);
+  return toCents(item.amount);
+}
+
 function makeJob(o){
   const j = o && typeof o==='object' ? o : {};
   const rate = Number(j.baseRate);
@@ -594,6 +663,9 @@ function makeJob(o){
     /* A rate is what an employer decides, so dated changes live on the job too. Always an array:
        empty prices exactly as a job without the concept did. */
     rateChanges: sanitizeRateChanges(j.rateChanges),
+    /* Dated pay items (2026-10-20) are what an employer pays on a date, so they ride the job too.
+       Always an array: empty prices exactly as a job without the concept did. */
+    payItems: sanitizePayItems(j.payItems),
     differentials: (j.differentials && typeof j.differentials==='object' && !Array.isArray(j.differentials))
       ? j.differentials : null,
     workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
@@ -1009,7 +1081,16 @@ function computeNet(grossIn, t){
   let fica = 0;
   if(t.ficaType==='standard') fica = roundCents(ficaBase*0.0765);
   else if(t.ficaType==='percent') fica = roundCents(ficaBase*((parseFloat(t.ficaPct)||0)/100));
-  const fed = roundCents(incomeTaxBase*((Number(t.federalTaxRate)||0)/100));
+  /* Supplemental wages withheld at the flat rate (dated pay items marked 'bonus', 2026-10-20).
+     IRS Pub 15 s.7: method 1a is "a flat 22% (no other percentage allowed)", and only "if you
+     withheld income tax from an employee's regular wages" -- so with a 0% federal rate there is
+     no flat rate. Only the income-tax base the item adds is taxed at 22%; the rest keeps her
+     rate. With none, suppBase is 0 and this is the federal line it always was. */
+  const fedRate = Number(t.federalTaxRate)||0;
+  const supp = isSplit && fedRate>0 ? Math.max(0, toCents(grossIn.supplemental)) : 0;
+  const suppBase = Math.min(supp, incomeTaxBase);
+  const fedSupp = suppBase ? roundCents(suppBase*(SUPPLEMENTAL_FED_RATE/100)) : 0;
+  const fed = roundCents((incomeTaxBase - suppBase)*(fedRate/100)) + fedSupp;
   const st  = roundCents(incomeTaxBase*((Number(t.stateTaxRate)||0)/100));
   let cw = 0;
   (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent'
@@ -1027,7 +1108,7 @@ function computeNet(grossIn, t){
   return {gross:fromCents(taxable), nonTaxable:fromCents(nonTaxable), total:fromCents(total),
     fica:fromCents(fica), fed:fromCents(fed), st:fromCents(st), cw:fromCents(cw),
     ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), health:fromCents(dispHealth), post:fromCents(dispPost),
-    pct: total>0 ? Math.round(net/total*100) : 0};
+    pct: total>0 ? Math.round(net/total*100) : 0, ...(fedSupp ? {fedSupp:fromCents(fedSupp)} : {})};
 }
 
 /* One pay period's paycheck: the hero figure and its Breakdown. Hoisted out of App's calc()
@@ -1082,7 +1163,19 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates};
+  /* Dated pay items (2026-10-20): each occurrence inside these dates lands in this check. Added
+     AFTER the overtime premium and never seen by it -- 29 CFR 778.209(a) apportions a bonus "back
+     over the workweeks of the period during which it may be said to have been earned", so putting
+     it into this period's regular rate would be wrong. No hours: they are not hours worked
+     (778.218(a)). With no occurrence nothing below runs, so the period prices as it always did. */
+  const occ = payItemOccurrences(job && job.payItems, dateKeys);
+  if(!occ.length) return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates};
+  const items = occ.map(o=>({ item:o.item, date:o.date, cents:payItemCents(o.item, o.date, baseRate, rateChanges) }));
+  let itemCents = 0, suppCents = 0;
+  items.forEach(o=>{ itemCents += o.cents; if(o.item.withholding!=='regular') suppCents += o.cents; });
+  gross += fromCents(itemCents);
+  return {...computeNet({taxable:gross, nonTaxable:0, supplemental:fromCents(suppCents)}, taxInputs),
+    hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates, items, itemCents};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -1323,6 +1416,16 @@ export {
   sanitizeRateChanges,
   rateEntryOn,
   rateOn,
+  MAX_PAY_ITEMS,
+  PAY_ITEM_CADENCES,
+  PAY_ITEM_WITHHOLDING,
+  PAY_ITEM_MAX_AMOUNT,
+  PAY_ITEM_MAX_HOURS,
+  SUPPLEMENTAL_FED_RATE,
+  sanitizePayItems,
+  payItemOccursOn,
+  payItemOccurrences,
+  payItemCents,
   makeJob,
   jobMap,
   straightTimeCents,
