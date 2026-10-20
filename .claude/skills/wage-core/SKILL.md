@@ -1,6 +1,6 @@
 ---
 name: wage-core
-description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, otMultOf, minHoursOf, minimumTopUpCents, rateOn, rateEntryOn, sanitizeRateChanges, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
+description: "The Invariant 3 protocol for touching BadgeBudget's wage math. Use BEFORE editing shiftGross, hourlyRate, computeNet, calc, periodPaycheck, keepRatioOf, statOf, ptoStatOf, patternMetrics, patternCellToShift, sampleNet, keepRatio, the rate/differential coercions in sanitizeData, the BONUS table, the *Cents helpers, paidHoursOf, otMultOf, minHoursOf, minimumTopUpCents, rateOn, rateEntryOn, sanitizeRateChanges, sanitizePayItems, payItemOccursOn, payItemOccurrences, payItemCents, or anything that changes a displayed dollar figure — including arithmetic in a UI component that prints one. Use it when a nightly queue item asks for any of these, however small it is called. Also use when reviewing a diff that touches them, or when the user mentions take-home, differentials, overtime, FICA, tax math or paycheck figures."
 ---
 
 # Wage core
@@ -78,6 +78,15 @@ change. **A shift carries no rate** — the BACKLOG once said it did, and that w
 list `rateEntryOn` must hand back `baseRate` itself; `tests/core.test.mjs` pins that against the
 deployed build's literals. Spec: `docs/effective-dated-rates-spec.md`.
 
+**And `sanitizePayItems` / `payItemOccursOn` / `payItemOccurrences` / `payItemCents`** (2026-10-20,
+session 4) — dated pay items: money that lands in one particular check (longevity, holiday cash, a
+ratification lump), a `payItems` list on the job, never on a shift. `periodPaycheck` adds each
+occurrence inside the period's dates **after** the overtime premium and returns `items` / `itemCents`;
+`computeNet` takes a `supplemental` share of taxable wages that a `bonus` item is withheld on at the
+flat 22% (`SUPPLEMENTAL_FED_RATE`). The year view adds items by month. With no occurrence in the
+period nothing new runs, which is what keeps every existing figure identical — `tests/core.test.mjs`
+pins that against the deployed build's literals. Spec: `docs/dated-pay-items-spec.md`.
+
 **And `firstActiveShiftType`** — which shift type the Add-Shift draft opens on. It decides which
 differential a preview prices, so it moves a dollar figure even though it returns a string.
 `active:false` means "don't offer me this in a picker" and NEVER "stop paying a shift already
@@ -132,6 +141,16 @@ pinned by an assertion in `tests/smoke.mjs`:
   workweek use. Across a raise the regular rate is the hours-weighted average of straight time
   (**29 CFR 778.109, 778.115**), which falls out of pricing each shift at its own rate — never
   "re-price everything", which is what one global `baseRate` used to do to worked shifts.
+- **A dated pay item never enters the overtime computation of the check it lands in** (2026-10-20).
+  29 CFR 778.209(a): a bonus covering more than a workweek "must be apportioned back over the
+  workweeks of the period during which it may be said to have been earned" — so adding a six-month
+  longevity payment to one fortnight's regular rate would overstate that check. The retroactive
+  true-up over the earning weeks is a known limit, not modelled (~$29 a year on $1,200 at 100 OT
+  hours). Items add **no hours** (778.218(a)). An hours item is paid at `rateOn` its own date.
+- **A `bonus` item's federal withholding is a flat 22% of the income-tax base it adds; everything
+  else keeps her rate** (IRS Pub 15 §7, method 1a). With a 0% federal rate there is no flat rate
+  (1a needs withholding on regular wages). Items are always FICA wages. The `label` is display
+  only — `check_build.mjs` fails if any wage definition but the sanitizer names it.
 - **Displayed pre/post-tax rows are capped so `Breakdown` still sums.** `dispPre`/`dispHealth`/
   `dispPost` are display-only, capped in that order; `net` uses the uncapped figures.
 

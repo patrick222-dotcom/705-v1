@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-19 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-10-20 by the session-4 build (T3), after the 10-19 nightly pass. Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -26,15 +26,20 @@ Updated 2026-10-19 by the chief of staff (nightly pass). Charter: `docs/leadersh
 
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
-- **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174).
-- **Next:** session 4 — dated pay items. Kickoff prompt: `docs/session-2026-10-11-pay-events.md`.
+- **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174);
+  effective-dated rates shipped (#187). Session 4 (dated pay items) built 2026-10-20 — PR waits on D3.
+- **Next:** session 5 — the Law enforcement and Fire & EMS tiles. Kickoff prompt:
+  `docs/session-2026-10-20-dated-pay-items.md`.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
 - **Waiting on:** a dedicated session.
 
 ## Needs Pat
 
-_(none open)_
+
+**D3 — Merge the dated-pay-items PR (session 4)?** It moves figures only for someone who adds an
+item; with none, every figure matched the live site. The PR opens with a before → after card of
+three example paychecks — that card is the decision. Default: none; it waits for Pat.
 
 **D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
 which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.

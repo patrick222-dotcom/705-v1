@@ -1620,6 +1620,19 @@ positioning (sync, paycheck) are failing her in them.
   purpose: their `onCommit` closes over the list as rendered, so committing after a Delete would put
   the deleted row back. The fix is a functional update (`setDiff(d => …)`) in those handlers first,
   then the flag. Repro: `tests/smoke.mjs` §49 part A's `el.click()` close.
+- [ ] **A dated pay item's overtime true-up is not modelled** (P3 · wage-core · found 2026-10-20,
+  session 4). 29 CFR 778.209(a): a non-discretionary bonus (a contractual longevity payment, a
+  ratification lump — 778.211(c)) "must be apportioned back over the workweeks of the period during
+  which it may be said to have been earned", with half its per-hour share owed on each week's
+  overtime hours. The app correctly keeps the item out of the landing period's overtime, but pays
+  no true-up. Bound: $1,200 a year over 2,080 h at 100 OT hours ≈ $29 a year, and employers often
+  pay it as a later separate line. Needs an earning period per item (a one-off has none) — design
+  first. Spec `docs/dated-pay-items-spec.md` (d).
+- [ ] **A dated pay item is matched by period date, not by payday** (P3 · `harness:unscoped` ·
+  2026-10-20). The app has no pay lag, so an item lands in the period whose 14 days hold its date;
+  a nurse who types the payday printed on the check gets it one check late. The Settings row says
+  which paycheck the date lands in, live, so she can see it before saving. A pay-date model (lag per
+  job) would fix it and would also be what the 0/+1 custom-period lag item needs — do them together.
 - [ ] **A typed base rate is rounded to cents for shifts but not for PTO** (P3 · wage-core ·
   pre-existing, found 2026-10-17). `shiftGrossCents` receives `toCents(base)` (67.034424 → 6703¢,
   12 h = $804.36) while PTO multiplies the dollar rate (8 h = $536.28, not $536.24). Real base rates
@@ -1652,7 +1665,7 @@ positioning (sync, paycheck) are failing her in them.
   could not be established. Then re-baseline the cohort figures once, in one commit, and say in the
   ops dashboard which rule produced them.
 
-- [ ] **IN REVIEW 2026-10-17 — built in a dedicated session, PR waits for the owner (moves figures).**
+- [x] **SHIPPED 2026-10-20 (#187, owner-merged, LIVE at `a103682`).** ~~IN REVIEW 2026-10-17~~.
   **Effective-dated pay rates — Courtney got a raise and every future shift she already entered
   is still priced at the old rate** (**wage-core, owner-approval tier**; the queue copy with her
   exact words is in the 2026-10-14 groom section). ~~A shift stores its rate at entry, which is right
@@ -1701,6 +1714,12 @@ positioning (sync, paycheck) are failing her in them.
   “how much of my paycheck”, and they give different answers because OT hours are priced at the
   overtime premium on the differential-inclusive rate while “set aside” is a flat slice of net. Pick
   one as the headline figure rather than printing both — the owner's call, and it is one sentence.
+  **2026-10-20 — the money side is in place (session 4, dated pay items, in review).** A December
+  longevity check or a January holiday lump now lives in `periodPaycheck` for the check it lands in,
+  so the deadline feature can sum `periodPaycheck` over the checks between now and the goal date and
+  see it — pinned in `tests/core.test.mjs` (an annual item adds its amount exactly once across 26
+  checks). None of today's three goal lines is a dated paycheck, so none of them changed. What is
+  still missing is exactly (1)–(3) above.
   **Fits the positioning squarely** (CLAUDE.md): “tell her what the paycheck will be **and whether
   the goal is reachable**” is half of the stated product, and the “whether” half is the one with no
   deadline in it. Sequence it against the FICA health-premium fix, which is the owner's current
@@ -1732,7 +1751,10 @@ positioning (sync, paycheck) are failing her in them.
      Spec `docs/pay-events-spec.md`; session log `docs/session-2026-10-11-pay-events.md`.
      **NEXT: session 4, dated pay items** — kickoff prompt at the end of that session log.
      Original brief: (wage-core): court, call-back, report pay. Replaces the hard-coded `otMult`.
-  4. **Dated pay items** (wage-core): lump sums and periodic pays, summed in `periodPaycheck` by date.
+  4. **Dated pay items** — **IN REVIEW 2026-10-20**: built in a dedicated session, the PR waits for
+     the owner (it moves figures). Spec `docs/dated-pay-items-spec.md`; session log
+     `docs/session-2026-10-20-dated-pay-items.md`, which ends with the session 5 kickoff prompt.
+     Original brief (wage-core): lump sums and periodic pays, summed in `periodPaycheck` by date.
   5. **Law enforcement + Fire & EMS personas**, on top of 2–4: presets, the Social Security
      question (FICA → custom 1.45%), and their cards.
   6. **Jobs**: the `jobId` stamp below → activate the spine → job switcher → migration 008 (one
@@ -2547,6 +2569,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-20 — **Money that lands in one particular check finally has a home: dated pay items.**
+  Session 4 of the multi-persona plan; dedicated wage-core session, **not merged by the agent** —
+  it moves figures for anyone who adds an item, so the PR waits for the owner with a before → after
+  card. Spec `docs/dated-pay-items-spec.md` (committed before code); log
+  `docs/session-2026-10-20-dated-pay-items.md`. `payItems` on the job (once / monthly /
+  semi-annual / annual; dollars or hours; taxed as a bonus at 22% or like regular pay), landing in
+  the pay period whose dates hold its date, never in that period's overtime (29 CFR 778.209(a)).
+  Settings *Extra pay on a set date*, a Breakdown note, the year view by month. Core 135 → 175,
+  smoke 817 → 836 (§50, 19), 18 core + 17 smoke mutants all caught, a 4,800-case sweep against the
+  deployed core with 0 differences, and `tests/equality.mjs` vs badgebudget.com **34 identical /
+  0 unintended / 5 of 5 named**.
 - 2026-10-19 — **The deploy watch fetches before it judges, so `LIVE` can no longer mean a stale
   clone.** Nightly loop; `scripts/deploy_watch.mjs` and `scripts/test_deploy_watch.mjs` only —
   **`index.html` is untouched**, so no wage core, no publish set, no conflict with open PR #187.

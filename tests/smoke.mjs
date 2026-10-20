@@ -6098,6 +6098,139 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 50. extra pay on a set date (dated pay items, session 4, 2026-10-20) --------------- */
+  if (want(50)) {
+    /* docs/dated-pay-items-spec.md. A payment that lands in one particular check -- longevity,
+       holiday cash, a ratification lump -- entered in Settings, read back off the hero, the
+       Breakdown and the year view on the iPhone 13 profile. One 12 h shift at $48 (576) in a
+       period running today-6 .. today+7; federal 12%, standard FICA 7.65%, no state:
+         before:  576 - fed 69.12 - FICA 44.06                    = 462.82  -> hero $463
+         + $600 "Longevity", twice a year, taxed as a bonus (22% federal, IRS Pub 15 s.7):
+                  gross 1176; fed 576 x 12% + 600 x 22% = 69.12 + 132 = 201.12;
+                  FICA 1176 x 7.65% = 89.96 (an item is FICA wages); net 884.92 -> $885 */
+    const dk = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const md = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); };
+    const mdy = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+    const seed = { setupComplete: true, baseRate: 48, payPeriodStart: dk(-6), federalTaxRate: 12, stateTaxRate: 0,
+      ficaWithholdingType: 'standard', differentials: { base: { name: 'Day', amount: 0, type: 'dollar', active: true } },
+      shifts: { [dk(-1)]: [{ id: 1, shiftType: 'base', hours: 12, bonusType: 'none', customBonus: 0, isOvertime: false }] } };
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    const posted = [];
+    await page.route('**/rest/v1/events*', async (route) => {
+      try { posted.push(JSON.parse(route.request().postData() || 'null')); } catch (_) { posted.push(null); }
+      await route.fulfill({ status: 201, contentType: 'application/json', body: '' });
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.hero .num', { timeout: 20000 });
+    const stored = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k) || '{}'), STORAGE_KEY);
+    const hero = async () => Number((await page.locator('.hero .num').first().innerText()).replace(/[^\d.]/g, ''));
+    const openSettings = async () => {
+      await page.locator('.avatar').click();
+      await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+      await page.waitForSelector('.modal[aria-label="Settings"]', { timeout: 5000 });
+    };
+    const closeSettings = async () => {
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.modal[aria-label="Settings"]', { state: 'detached', timeout: 4000 });
+    };
+    const breakdown = async () => {
+      await page.locator('.hero button:has-text("See the full breakdown")').click();
+      await page.waitForSelector('.modal[aria-label="Your paycheck math"]', { timeout: 4000 });
+      const t = await page.locator('.modal[aria-label="Your paycheck math"]').innerText();
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.modal[aria-label="Your paycheck math"]', { state: 'detached', timeout: 4000 }).catch(() => {});
+      return t;
+    };
+    const money = (t, label) => { const m = t.match(new RegExp(label + '[\\s\\S]*?\\$([\\d,]+)')); return m ? Number(m[1].replace(/,/g, '')) : NaN; };
+
+    ok('items: before any item the hero is the shift alone (576 - 69.12 - 44.06 = $463)', (await hero()) === 463, String(await hero()));
+
+    await openSettings();
+    await page.locator('input[aria-label="What the pay is"]').fill('Longevity');
+    await page.locator('input[aria-label="Amount"]').fill('600');
+    await page.locator('select[aria-label="How often"]').selectOption('semiannual');
+    await page.locator('input[aria-label="First paid on"]').fill(dk(2));
+    const lands = await page.locator('.pay-items .pi-lands').innerText().catch(() => '(none)');
+    const periodLbl = await page.evaluate((k) => periodRangeLabel(k), dk(-6));
+    ok('items: the entry says which paycheck the date lands in, before she saves', lands.includes(`Lands in your ${periodLbl} paycheck`), JSON.stringify(lands));
+    ok('items: the tax choice defaults to "Taxed as a bonus (22% federal)"',
+      (await page.locator('select[aria-label="How federal tax is withheld"]').inputValue()) === 'bonus');
+    await page.locator('.pay-items button:has-text("Add")').click();
+    const row = await page.locator('.pay-items .pay-item-row').first().innerText().catch(() => '(no row)');
+    ok('items: Settings lists it as "Longevity · $600.00 · twice a year from <date>"', row.includes(`Longevity · $600.00 · twice a year from ${mdy(dk(2))}`), JSON.stringify(row));
+    const wide = await page.evaluate(() => { const m = document.querySelector('.modal[aria-label="Settings"]'); const r = document.querySelector('.pay-items');
+      return { modal: m.clientWidth, items: r.scrollWidth, right: Math.round(r.getBoundingClientRect().right - m.getBoundingClientRect().right) }; });
+    ok('items: the section fits the sheet on an iPhone 13, no sideways scroll (measured against the sheet)', wide.items <= wide.modal && wide.right <= 0, JSON.stringify(wide));
+    await page.waitForTimeout(800);   // the save is debounced 500ms
+    const blob = await stored();
+    ok('items: the blob carries the item, on its own list, not on a shift',
+      Array.isArray(blob.payItems) && blob.payItems.length === 1 && blob.payItems[0].label === 'Longevity' && blob.payItems[0].amount === 600
+      && blob.payItems[0].cadence === 'semiannual' && blob.payItems[0].date === dk(2) && blob.payItems[0].withholding === 'bonus'
+      && Object.values(blob.shifts || {}).flat().every((s) => s.bonusType === 'none'), JSON.stringify(blob.payItems));
+    await closeSettings();
+
+    ok('items: the hero takes it in the check it lands in (gross 1176, fed 201.12, FICA 89.96, net 884.92 -> $885)', (await hero()) === 885, String(await hero()));
+    const bd = await breakdown();
+    ok('items: the Breakdown gross includes it ($1,176)', money(bd, 'Gross pay') === 1176, String(money(bd, 'Gross pay')));
+    ok('items: the Breakdown federal line carries the 22% on the item ($201)', money(bd, 'Federal income tax') === 201, String(money(bd, 'Federal income tax')));
+    ok('items: the Breakdown FICA line taxes the item as wages (1176 x 7.65% = $90)', money(bd, 'FICA') === 90, String(money(bd, 'FICA')));
+    ok('items: the Breakdown names it, its amount and its date',
+      bd.includes(`Includes $600.00 paid on a set date: Longevity $600.00 (${md(dk(2))}).`), JSON.stringify((bd.match(/Includes \$[^\n]*set date[^\n]*/) || [''])[0]));
+    ok('items: and says the bonus rate applied', bd.includes('Federal tax on it is withheld at the 22% bonus rate.'));
+
+    const flat = posted.flatMap((p) => (Array.isArray(p) ? p : [p])).filter(Boolean);
+    const ev = flat.find((r) => r && r.name === 'pay_item_added');
+    ok('items: pay_item_added carries {count, cadence} and never the amount or the label',
+      !!ev && ev.props && ev.props.count === 1 && ev.props.cadence === 'semiannual' && !/600|Longevity/.test(JSON.stringify(ev.props)), JSON.stringify(ev && ev.props));
+
+    /* A one-off outside this period (8 h of holiday cash in 20 days) moves nothing here. */
+    await openSettings();
+    await page.locator('input[aria-label="What the pay is"]').fill('Holiday cash');
+    await page.locator('select[aria-label="Paid as dollars or hours"]').selectOption('hours');
+    await page.locator('input[aria-label="Hours paid at your rate"]').fill('8');
+    await page.locator('input[aria-label="Paid on"]').fill(dk(20));
+    await page.locator('select[aria-label="How federal tax is withheld"]').selectOption('regular');
+    await page.locator('.pay-items button:has-text("Add")').click();
+    const row2 = await page.locator('.pay-items .pay-item-row').nth(1).innerText().catch(() => '(no row)');
+    ok('items: an hours item lists as "8 hrs at your rate · on <date>"', row2.includes(`Holiday cash · 8 hrs at your rate · on ${mdy(dk(20))}`), JSON.stringify(row2));
+    await closeSettings();
+    ok('items: a one-off outside the visible period moves nothing ($885 still)', (await hero()) === 885, String(await hero()));
+
+    /* The year view puts each item in the month of its date (no hours: they are not time worked). */
+    await page.locator('.viewseg button:has-text("Year")').click();
+    await page.waitForSelector('.yearlist', { timeout: 4000 });
+    const MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const y = new Date().getFullYear();
+    const exp = {};   // month -> {g, n, x} for this year only
+    const add = (k, g, n, x) => { if (+k.slice(0, 4) !== y) return; const m = +k.slice(5, 7) - 1; exp[m] = exp[m] || { g: 0, n: 0, x: 0 }; exp[m].g += g; exp[m].n += n; exp[m].x += x; };
+    add(dk(-1), 576, 1, 0); add(dk(2), 600, 0, 600); add(dk(20), 384, 0, 384);
+    { const d = new Date(); d.setDate(d.getDate() + 2); d.setMonth(d.getMonth() + 6); add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, 600, 0, 600); }
+    const rows = await page.locator('.yearlist .yrow').allInnerTexts();
+    const bad = Object.entries(exp).filter(([m, e]) => {
+      const t = rows[+m] || '';
+      const want = e.n > 0 ? `$${e.g.toLocaleString('en-US')}` : `No shifts · $${e.x.toLocaleString('en-US')} paid on a set date`;
+      return !t.includes(want) || !t.startsWith(MN[+m]);
+    }).map(([m]) => `${MN[+m]}: ${JSON.stringify(rows[+m])}`);
+    ok('items: the year view adds each occurrence to the month of its date', Object.keys(exp).length > 0 && bad.length === 0, bad.join(' | '));
+    await page.locator('.viewseg button:has-text("Month")').click();
+
+    /* Remove asks first, then the check goes back to the shift alone. */
+    await openSettings();
+    await page.locator('.pay-items button[aria-label="Remove Longevity"]').click();
+    const asked = await page.waitForSelector('.cdlg', { timeout: 4000 }).then(() => true).catch(() => false);
+    const askText = asked ? await page.locator('.cdlg').innerText() : '';
+    ok('items: removing one asks first, naming it', asked && askText.includes('Longevity'), JSON.stringify(askText));
+    if (asked) await page.locator('.cdlg .btn-danger').click();
+    await page.waitForFunction(() => document.querySelectorAll('.pay-items .pay-item-row').length === 1, null, { timeout: 4000 }).catch(() => {});
+    await closeSettings();
+    const bd2 = await breakdown();
+    ok('items: removed, the hero and Breakdown are back to the shift alone ($463, gross $576, no note)',
+      (await hero()) === 463 && money(bd2, 'Gross pay') === 576 && !/paid on a set date/.test(bd2), `${await hero()} ${money(bd2, 'Gross pay')}`);
+    ok('items: no page errors across section 50', errors.filter((e) => !isExpectedNetwork(e)).length === 0, errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

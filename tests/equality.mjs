@@ -93,19 +93,39 @@ const CASES = [
   ],
   /* Effective-dated rates (2026-10-17, docs/effective-dated-rates-spec.md). Three IDENTICAL
      probes: an empty list, a raise dated after the fortnight, and a list the sanitizer drops
-     entirely must price exactly as deployed. Then the named differences -- the deployed build
-     never reads `rateChanges`, so it prices every shift at the $50 base. */
+     entirely must price exactly as deployed. The four after them were named differences in that
+     session's run; #187 (a103682) is live since 2026-10-20, so from session 4 on they must come
+     back IDENTICAL like every other case. */
   ['an empty raise list', base({ rateChanges: [] })],
   ['a raise dated after the period', base({ rateChanges: [{ from: plus(40), rate: 60 }] })],
   ['a raise list the sanitizer drops', base({ rateChanges: [{ from: 'soon', rate: 60 }, { from: plus(2), rate: 0 }, { from: plus(3), rate: 5000 }] })],
-  ['a raise to $55 from day 4', base({ rateChanges: [{ from: plus(4), rate: 55 }] }),
-    'intended: deployed prices all four shifts at $50; local prices the two on days 5 and 8 at $55'],
-  ['a raise to $55 dated before the period', base({ rateChanges: [{ from: plus(-40), rate: 55 }] }),
-    'intended: deployed prices every shift at $50; local at $55'],
-  ['a raise to $55 inside a 48-hour week', { ...base(), shifts: WEEK48, rateChanges: [{ from: plus(2), rate: 55 }] },
-    'intended: local prices days 2-3 at $55 and the 8 h premium on the weighted regular rate'],
-  ['PTO on the day a raise starts', base({ dayEvents: { [plus(2)]: [{ kind: 'pto', hours: 12 }] }, rateChanges: [{ from: plus(2), rate: 55 }] }),
-    'intended: local pays the PTO day and the later shifts at $55'],
+  ['a raise to $55 from day 4', base({ rateChanges: [{ from: plus(4), rate: 55 }] })],
+  ['a raise to $55 dated before the period', base({ rateChanges: [{ from: plus(-40), rate: 55 }] })],
+  ['a raise to $55 inside a 48-hour week', { ...base(), shifts: WEEK48, rateChanges: [{ from: plus(2), rate: 55 }] }],
+  ['PTO on the day a raise starts', base({ dayEvents: { [plus(2)]: [{ kind: 'pto', hours: 12 }] }, rateChanges: [{ from: plus(2), rate: 55 }] })],
+  /* Dated pay items (session 4, 2026-10-20, docs/dated-pay-items-spec.md). Four IDENTICAL probes
+     first: an empty list, items that occur only outside this fortnight, and a list the sanitizer
+     drops entirely. Then the named differences -- the deployed build never reads `payItems`, so it
+     prices only the shifts. */
+  ['an empty pay-item list', base({ payItems: [] })],
+  ['a one-off dated after the period', base({ payItems: [{ id: 'a', label: 'Bonus', cadence: 'once', date: plus(40), amount: 900 }] })],
+  ['an annual item whose first date is next year', base({ payItems: [{ id: 'b', label: 'Longevity', cadence: 'annual', date: plus(367), amount: 1200 }] })],
+  ['a pay-item list the sanitizer drops', base({ payItems: [
+    { id: 'c', label: 'Bad cadence', cadence: 'weekly', date: plus(2), amount: 100 },
+    { id: 'd', label: 'Zero', cadence: 'once', date: plus(2), amount: 0 },
+    { id: 'e', label: 'Too big', cadence: 'once', date: plus(2), amount: 30000 },
+    { id: 'f', label: 'Both', cadence: 'once', date: plus(2), amount: 100, hours: 8 },
+    { id: 'g', label: '', cadence: 'once', date: plus(2), amount: 100 }] })],
+  ['a $600 longevity check, taxed as a bonus', base({ payItems: [{ id: 'h', label: 'Longevity', cadence: 'once', date: plus(2), amount: 600 }] }),
+    'intended: local adds $600 to gross, FICA on it, and federal at 22% on it'],
+  ['a $1,000 bonus taxed like regular pay', base({ payItems: [{ id: 'i', label: 'Bonus', cadence: 'once', date: plus(6), amount: 1000, withholding: 'regular' }] }),
+    'intended: local adds $1,000 to gross, taxed at her own rates'],
+  ['semi-annual longevity first paid six months ago', base({ payItems: [{ id: 'j', label: 'Longevity', cadence: 'semiannual', date: (() => { const d = new Date(TODAY); d.setDate(d.getDate() + 2); d.setMonth(d.getMonth() - 6); return iso(d); })(), amount: 750 }] }),
+    'intended: the second occurrence lands in this fortnight'],
+  ['8 h of holiday cash after a raise to $55', base({ payItems: [{ id: 'k', label: 'Holiday cash', cadence: 'once', date: plus(6), hours: 8, withholding: 'regular' }], rateChanges: [{ from: plus(4), rate: 55 }] }),
+    'intended: local adds 8 x $55 = $440 (and the raise, live since #187, prices the same on both sides)'],
+  ['a $4,510 ratification lump in a 48-hour week', { ...base(), shifts: WEEK48, payItems: [{ id: 'l', label: 'Ratification', cadence: 'once', date: plus(1), amount: 4510 }] },
+    'intended: gross up $4,510 and its taxes; the overtime premium is the same on both sides'],
 ];
 
 /* Text changes that are NOT figure changes, named before the run and applied to the DEPLOYED

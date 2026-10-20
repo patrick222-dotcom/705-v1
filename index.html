@@ -1473,6 +1473,8 @@ function sanitizeData(d){
   /* Effective-dated rates (2026-10-17). Absent or empty leaves the key out, so the blob prices
      byte-identically and applyData's authoritative reset clears any previous account's list. */
   if('rateChanges' in d){ const rc = sanitizeRateChanges(d.rateChanges); if(rc.length) out.rateChanges = rc; }
+  /* Dated pay items (2026-10-20), the same shape of rule: absent or empty leaves the key out. */
+  if('payItems' in d){ const pi = sanitizePayItems(d.payItems); if(pi.length) out.payItems = pi; }
   if(d.federalTaxRate!=null) setNum('federalTaxRate', d.federalTaxRate);
   if(d.stateTaxRate!=null) setNum('stateTaxRate', d.stateTaxRate);
   if(d.pretaxDeductions!=null) setNum('pretaxDeductions', d.pretaxDeductions);
@@ -1690,7 +1692,7 @@ function sanitizeData(d){
        rate and differentials move onto it verbatim, so no historical shift reprices. This is
        the bug the job record fixes today, before any second employer exists — one global
        baseRate means changing status (per diem -> staff) silently repriced every past shift. */
-    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate, rateChanges: out.rateChanges,
+    out.jobs = [makeJob({ id: DEFAULT_JOB_ID, baseRate: out.baseRate, rateChanges: out.rateChanges, payItems: out.payItems,
       differentials: out.differentials || null,
       workPeriod: out.workPeriod, otMethod: out.otMethod,
       otPeriodHours: out.otPeriodHours, otPeriodDays: out.otPeriodDays, otPeriodStart: out.otPeriodStart,
@@ -1811,6 +1813,73 @@ function rateEntryOn(baseRate, rateChanges, dateKey){
 }
 function rateOn(baseRate, rateChanges, dateKey){ return rateEntryOn(baseRate, rateChanges, dateKey).rate; }
 
+/* ---------- dated pay items (session 4, 2026-10-20) ----------------------------------
+   docs/dated-pay-items-spec.md. Money that lands in one particular check -- a January holiday
+   lump sum, June/December longevity, a ratification bonus -- as a list on the job, not on a
+   shift, so deleting or re-syncing a shift can never take it with it. An item lands in the pay
+   period whose 14 days contain its date (a period date, not the payday printed on the check:
+   the app has no pay lag to convert one). The label is display only -- check_build.mjs forbids
+   it in every wage definition, like payEvent. */
+const MAX_PAY_ITEMS = 12;
+const PAY_ITEM_CADENCES = ['once','monthly','semiannual','annual'];
+const PAY_ITEM_WITHHOLDING = ['bonus','regular'];
+const PAY_ITEM_MAX_AMOUNT = 25000, PAY_ITEM_MAX_HOURS = 400;
+/* IRS Pub 15 s.7, method 1a: "Withhold a flat 22% (no other percentage allowed)". */
+const SUPPLEMENTAL_FED_RATE = 22;
+/* Shared by sanitizeData and makeJob. Out-of-range values DROP the item, never clamp it (the
+   otMult rule): a clamped $25,000 is a number she never typed. Exactly one of amount / hours. */
+function sanitizePayItems(list){
+  if(!Array.isArray(list)) return [];
+  const out = [], seen = {};
+  const num = (v, max) => { if(v==null || v==='') return null; const n = Number(v);
+    return (isFinite(n) && n>0 && n<=max) ? Math.round(n*100)/100 : NaN; };
+  list.forEach((x,i)=>{
+    if(out.length>=MAX_PAY_ITEMS || !x || typeof x!=='object' || Array.isArray(x)) return;
+    const nm = typeof x.label==='string' ? x.label.trim() : '';
+    if(!nm || nm.length>80) return;
+    if(PAY_ITEM_CADENCES.indexOf(x.cadence)<0 || !isISODate(x.date)) return;
+    const wh = x.withholding==null ? 'bonus' : x.withholding;
+    if(PAY_ITEM_WITHHOLDING.indexOf(wh)<0) return;
+    const amt = num(x.amount, PAY_ITEM_MAX_AMOUNT), hrs = num(x.hours, PAY_ITEM_MAX_HOURS);
+    if(Number.isNaN(amt) || Number.isNaN(hrs) || (amt===null)===(hrs===null)) return;
+    const id = (typeof x.id==='string' && x.id && x.id.length<=40) || (typeof x.id==='number' && isFinite(x.id)) ? x.id : 'pi-'+i;
+    if(seen[id]) return;
+    seen[id] = true;
+    const o = { id, label:nm.slice(0,40), cadence:x.cadence, date:x.date };
+    if(amt!==null) o.amount = amt; else o.hours = hrs;
+    o.withholding = wh;
+    out.push(o);
+  });
+  return out;
+}
+/* Does an item pay on dateKey? Never before its first date. A day past the end of a short month
+   lands on that month's last day (Jan 31 monthly -> Feb 28), so no occurrence is lost or doubled. */
+function payItemOccursOn(item, dateKey){
+  if(!item || !isISODate(dateKey) || dateKey < item.date) return false;
+  if(item.cadence==='once') return dateKey===item.date;
+  const a = parseISODate(item.date), d = parseISODate(dateKey);
+  const months = (d.getFullYear()-a.getFullYear())*12 + (d.getMonth()-a.getMonth());
+  const step = item.cadence==='monthly' ? 1 : item.cadence==='semiannual' ? 6 : item.cadence==='annual' ? 12 : 0;
+  if(!step || months % step) return false;
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  return d.getDate()===Math.min(a.getDate(), lastDay);
+}
+/* Every occurrence inside dateKeys, in date order: [{item, date}]. */
+function payItemOccurrences(items, dateKeys){
+  const out = [];
+  if(!items || !items.length) return out;
+  (dateKeys||[]).slice().sort().forEach(k=>{
+    items.forEach(it=>{ if(payItemOccursOn(it, k)) out.push({ item:it, date:k }); });
+  });
+  return out;
+}
+/* One occurrence in whole cents. Hours are paid at the rate in force on the day it occurs --
+   never the global baseRate -- with no differential, like PTO, rounded once as a payroll line. */
+function payItemCents(item, dateKey, baseRate, rateChanges){
+  if(item.hours!=null) return roundCents(toCents(rateOn(baseRate, rateChanges, dateKey)) * item.hours);
+  return toCents(item.amount);
+}
+
 function makeJob(o){
   const j = o && typeof o==='object' ? o : {};
   const rate = Number(j.baseRate);
@@ -1821,6 +1890,9 @@ function makeJob(o){
     /* A rate is what an employer decides, so dated changes live on the job too. Always an array:
        empty prices exactly as a job without the concept did. */
     rateChanges: sanitizeRateChanges(j.rateChanges),
+    /* Dated pay items (2026-10-20) are what an employer pays on a date, so they ride the job too.
+       Always an array: empty prices exactly as a job without the concept did. */
+    payItems: sanitizePayItems(j.payItems),
     differentials: (j.differentials && typeof j.differentials==='object' && !Array.isArray(j.differentials))
       ? j.differentials : null,
     workPeriod: WORK_PERIODS.indexOf(j.workPeriod)>=0 ? j.workPeriod : '40',
@@ -2236,7 +2308,16 @@ function computeNet(grossIn, t){
   let fica = 0;
   if(t.ficaType==='standard') fica = roundCents(ficaBase*0.0765);
   else if(t.ficaType==='percent') fica = roundCents(ficaBase*((parseFloat(t.ficaPct)||0)/100));
-  const fed = roundCents(incomeTaxBase*((Number(t.federalTaxRate)||0)/100));
+  /* Supplemental wages withheld at the flat rate (dated pay items marked 'bonus', 2026-10-20).
+     IRS Pub 15 s.7: method 1a is "a flat 22% (no other percentage allowed)", and only "if you
+     withheld income tax from an employee's regular wages" -- so with a 0% federal rate there is
+     no flat rate. Only the income-tax base the item adds is taxed at 22%; the rest keeps her
+     rate. With none, suppBase is 0 and this is the federal line it always was. */
+  const fedRate = Number(t.federalTaxRate)||0;
+  const supp = isSplit && fedRate>0 ? Math.max(0, toCents(grossIn.supplemental)) : 0;
+  const suppBase = Math.min(supp, incomeTaxBase);
+  const fedSupp = suppBase ? roundCents(suppBase*(SUPPLEMENTAL_FED_RATE/100)) : 0;
+  const fed = roundCents((incomeTaxBase - suppBase)*(fedRate/100)) + fedSupp;
   const st  = roundCents(incomeTaxBase*((Number(t.stateTaxRate)||0)/100));
   let cw = 0;
   (t.customWithholdings||[]).forEach(w=>{ cw += w.type==='percent'
@@ -2254,7 +2335,7 @@ function computeNet(grossIn, t){
   return {gross:fromCents(taxable), nonTaxable:fromCents(nonTaxable), total:fromCents(total),
     fica:fromCents(fica), fed:fromCents(fed), st:fromCents(st), cw:fromCents(cw),
     ded:fromCents(ded), net:fromCents(net), pre:fromCents(dispPre), health:fromCents(dispHealth), post:fromCents(dispPost),
-    pct: total>0 ? Math.round(net/total*100) : 0};
+    pct: total>0 ? Math.round(net/total*100) : 0, ...(fedSupp ? {fedSupp:fromCents(fedSupp)} : {})};
 }
 
 /* One pay period's paycheck: the hero figure and its Breakdown. Hoisted out of App's calc()
@@ -2309,7 +2390,19 @@ function periodPaycheck({shifts, dayEvents, dateKeys, baseRate, differentials, t
      already seeing cannot double. */
   const ot = overtimePremiumCents(job, shifts, dateKeys);
   gross += fromCents(ot.premiumCents);
-  return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates};
+  /* Dated pay items (2026-10-20): each occurrence inside these dates lands in this check. Added
+     AFTER the overtime premium and never seen by it -- 29 CFR 778.209(a) apportions a bonus "back
+     over the workweeks of the period during which it may be said to have been earned", so putting
+     it into this period's regular rate would be wrong. No hours: they are not hours worked
+     (778.218(a)). With no occurrence nothing below runs, so the period prices as it always did. */
+  const occ = payItemOccurrences(job && job.payItems, dateKeys);
+  if(!occ.length) return {...computeNet(gross, taxInputs), hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates};
+  const items = occ.map(o=>({ item:o.item, date:o.date, cents:payItemCents(o.item, o.date, baseRate, rateChanges) }));
+  let itemCents = 0, suppCents = 0;
+  items.forEach(o=>{ itemCents += o.cents; if(o.item.withholding!=='regular') suppCents += o.cents; });
+  gross += fromCents(itemCents);
+  return {...computeNet({taxable:gross, nonTaxable:0, supplemental:fromCents(suppCents)}, taxInputs),
+    hours, ot, otWorkPeriod:job.workPeriod, otRule:workPeriodRule(job), minTopUp, rates, items, itemCents};
 }
 
 /* Effective per-shift take-home ratio for live previews (Add-Shift, calendar cells, goal lines).
@@ -3713,6 +3806,9 @@ function App(){
      sanitized. baseRate is the rate before the first entry. */
   const [rateChanges,setRateChangesRaw] = useState([]);
   const setRateChanges = list => setRateChangesRaw(sanitizeRateChanges(list));
+  /* Dated pay items (2026-10-20): money that lands in one particular check. Sanitized on every write. */
+  const [payItems,setPayItemsRaw] = useState([]);
+  const setPayItems = list => setPayItemsRaw(sanitizePayItems(list));
   const [federalTaxRate,setFederal] = useState(DEFAULT_PRESET.federalTaxRate);
   const [stateTaxRate,setState] = useState(DEFAULT_PRESET.stateTaxRate);
   const [pretaxDeductions,setPretax] = useState(DEFAULT_PRESET.pretaxDeductions);   // retirement: FICA-taxable
@@ -3841,7 +3937,7 @@ function App(){
 
   /* ---- single serializer (used by save effect, export, and flush) ---- */
   const serializeState = ()=>({
-    name,baseRate,rateChanges,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,
+    name,baseRate,rateChanges,payItems,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,
     ficaWithholdingType:ficaType,ficaWithholdingPercent:ficaPct,
     payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,syncManualOnly,
     workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,
@@ -3861,6 +3957,7 @@ function App(){
     /* Authoritative, like pretaxHealth: a blob without the field has no raises, and one account's
        raise never lingers into another's on a shared phone. */
     setRateChanges(d.rateChanges || []);
+    setPayItems(d.payItems || []);
     if(d.federalTaxRate!=null) setFederal(d.federalTaxRate);
     if(d.stateTaxRate!=null) setState(d.stateTaxRate);
     if(d.pretaxDeductions!=null) setPretax(d.pretaxDeductions);
@@ -3909,7 +4006,7 @@ function App(){
   /* ---- reset every field back to first-run defaults (sign-out) ---- */
   const resetToDefaults = ()=>{
     const P = DEFAULT_PRESET;
-    setName('there'); setBaseRate(P.baseRate); setRateChanges([]); setFederal(P.federalTaxRate); setState(P.stateTaxRate);
+    setName('there'); setBaseRate(P.baseRate); setRateChanges([]); setPayItems([]); setFederal(P.federalTaxRate); setState(P.stateTaxRate);
     setPretax(P.pretaxDeductions); setPretaxHealth(P.pretaxHealth); setPosttax(P.posttaxDeductions); setFicaType(P.ficaType); setFicaPct(P.ficaPct);
     setPPS(todayISO()); setShifts({}); setCW([]); setDiff(P.differentials); setTemplates([]);
     setDayEvents({}); setNotes({}); setIcsIgnored({}); setGoals([]); setPatterns([]); setSetupComplete(false); setEstimateMode('');
@@ -4167,7 +4264,7 @@ function App(){
       }
     },500);
     return ()=>clearTimeout(id);
-  },[ready,user,name,baseRate,rateChanges,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,syncManualOnly,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
+  },[ready,user,name,baseRate,rateChanges,payItems,federalTaxRate,stateTaxRate,pretaxDeductions,pretaxHealth,posttaxDeductions,ficaType,ficaPct,payPeriodStart,shifts,customWithholdings,differentials,templates,dayEvents,notes,icsIgnored,goals,patterns,setupComplete,estimateMode,syncManualOnly,workPeriod,otMethod,mealBreakMins,mealBreakMode,persona,workStatus,union,otPeriodHours,otPeriodDays,otPeriodStart]);
 
   /* flush the latest snapshot on backgrounding / tab close (500ms debounce would otherwise drop it) */
   useEffect(()=>{
@@ -4349,9 +4446,9 @@ function App(){
   /* The employer whose pay rules price this period. One job for now, assembled from the state
      above rather than from the blob's `jobs` array so there is exactly one source of truth for
      the rate; the array is the migration target the multi-job UI will switch to. */
-  const activeJob = useMemo(()=> makeJob({ id:DEFAULT_JOB_ID, baseRate, rateChanges, differentials, workPeriod, otMethod,
+  const activeJob = useMemo(()=> makeJob({ id:DEFAULT_JOB_ID, baseRate, rateChanges, payItems, differentials, workPeriod, otMethod,
     mealBreakMins, mealBreakMode, otPeriodHours, otPeriodDays, otPeriodStart }),
-    [baseRate,rateChanges,differentials,workPeriod,otMethod,mealBreakMins,mealBreakMode,otPeriodHours,otPeriodDays,otPeriodStart]);
+    [baseRate,rateChanges,payItems,differentials,workPeriod,otMethod,mealBreakMins,mealBreakMode,otPeriodHours,otPeriodDays,otPeriodStart]);
   /* The rate in force on a date, and today. Every per-date surface prices through rateOnDate; the
      rate-of-thumb previews (pattern lab, the goal hint) use today's. */
   const rateOnDate = k => rateOn(baseRate, activeJob.rateChanges, k);
@@ -4495,7 +4592,15 @@ function App(){
       Object.keys(shifts).forEach(k=>{ if(k.indexOf(prefix)===0){ const rate=rateOn(baseRate,activeJob.rateChanges,k); (shifts[k]||[]).forEach(s=>{ g+=shiftGross(rate,differentials[s.shiftType],s,activeJob); h+=paidHoursOf(s,activeJob); n++; }); } });
       // PTO adds to gross/hours like every other rollup (statOf/calc) — n counts shifts only, not PTO days.
       Object.keys(dayEvents).forEach(k=>{ if(k.indexOf(prefix)===0){ const rate=rateOn(baseRate,activeJob.rateChanges,k); (dayEvents[k]||[]).forEach(e=>{ if(e.kind==='pto' && e.hours>0){ g+=e.hours*rate; h+=e.hours; } }); } });
-      return {m,g,h,n};
+      // Dated pay items land in the month of their date (no hours: they are not time worked).
+      let x=0;
+      if(activeJob.payItems.length){
+        const last = new Date(y, m+1, 0).getDate();
+        const keys = Array.from({length:last},(_,i)=>prefix+String(i+1).padStart(2,'0'));
+        payItemOccurrences(activeJob.payItems, keys).forEach(o=>{ x += fromCents(payItemCents(o.item, o.date, baseRate, activeJob.rateChanges)); });
+        g += x;
+      }
+      return {m,g,h,n,x};
     });
   },[calView,calFocus,shifts,dayEvents,baseRate,differentials,activeJob]);
 
@@ -5667,6 +5772,11 @@ function App(){
           rateChanges={activeJob.rateChanges} rateToday={rateToday} nextPeriodStart={addDaysISO(currentPeriodStart(payPeriodStart),14)}
           setRateChanges={(list,verb)=>{ const next = sanitizeRateChanges(list); setRateChanges(next);
             track(verb==='removed' ? 'rate_change_removed' : 'rate_change_added', {count:next.length}, user&&user.id); }}
+          payItems={activeJob.payItems}
+          setPayItems={(list,verb,cadence)=>{ const next = sanitizePayItems(list); setPayItems(next);
+            /* {count, cadence} only -- a whitelisted token, never an amount or a label (Analytics rule). */
+            track(verb==='removed' ? 'pay_item_removed' : 'pay_item_added',
+              {count:next.length, cadence: PAY_ITEM_CADENCES.indexOf(cadence)>=0 ? cadence : null}, user&&user.id); }}
           mealBreakMins={mealBreakMins} setMealMins={setMealMins} mealBreakMode={mealBreakMode} setMealMode={setMealMode}
           {...{name,setName,baseRate,setBaseRate,federalTaxRate,setFederal,stateTaxRate,setState,ficaType,setFicaType,ficaPct,setFicaPct,
             pretaxDeductions,setPretax,pretaxHealth,setPretaxHealth,posttaxDeductions,setPosttax,differentials,setDiff,customWithholdings,setCW,num,
@@ -6079,7 +6189,7 @@ function YearList({months,onPick}){
       {months.map(mm=>(
         <button key={mm.m} className={'yrow'+(mm.n>0?' has':'')} onClick={()=>onPick(mm.m)}>
           <span className="ym">{MN[mm.m]}</span>
-          <span className="yd">{mm.n>0 ? <>{mm.h.toFixed(mm.h%1?1:0)} hrs · <span className="num">{fmt(mm.g)}</span> · {mm.n} {mm.n===1?'shift':'shifts'}</> : 'No shifts'}</span>
+          <span className="yd">{mm.n>0 ? <>{mm.h.toFixed(mm.h%1?1:0)} hrs · <span className="num">{fmt(mm.g)}</span> · {mm.n} {mm.n===1?'shift':'shifts'}</> : mm.x>0 ? <>No shifts · <span className="num">{fmt(mm.x)}</span> paid on a set date</> : 'No shifts'}</span>
           <span className="ychev" aria-hidden="true">›</span>
         </button>
       ))}
@@ -6122,6 +6232,20 @@ function Breakdown({calc,embedded}){
             const what = r.shifts ? `${r.shifts} shift${r.shifts===1?'':'s'}` : `${r.hours} hrs of PTO`;
             return <span key={r.from||'base'}>{i>0?', ':''}{what} at <b>{fmt2(r.rate)}/hr</b> ({when})</span>;
           })}.
+        </div>}
+      {/* Dated pay items (2026-10-20): what landed in this check on a set date, from periodPaycheck's
+          own list so it sums with gross. The math never reads a label; this note is where it shows. */}
+      {calc.items && calc.items.length>0 &&
+        <div className="bd-note items-note">
+          Includes <b>{fmt2(calc.itemCents/100)}</b> paid on a set date:{' '}
+          {calc.items.map((o,i)=>{
+            const md = parseISODate(o.date).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+            return <span key={o.item.id+'@'+o.date}>{i>0?', ':''}{o.item.label} <b>{fmt2(o.cents/100)}</b> ({md})</span>;
+          })}.
+          {calc.fedSupp>0 &&
+            <span style={{display:'block',marginTop:3,color:'var(--muted-2)'}}>
+              Federal tax on {calc.items.some(o=>o.item.withholding==='regular') ? 'the bonus part' : 'it'} is withheld at the 22% bonus rate.
+            </span>}
         </div>}
       {/* A projection that goes UP has to say why, and which rule produced it. Naming the rate
           and the threshold is also what makes a gap against her real stub diagnosable instead of
@@ -6980,7 +7104,7 @@ function Settings(props){
     user,icalUrl,setIcalUrl,icalSub,icalBusy,syncManualOnly,setSyncManualOnly,onSaveIcalUrl,onRemoveIcalUrl,onSyncIcal,onIcalHowTo,
     workPeriod,setWorkPeriod,otMethod,setOtMethod,mealBreakMins,setMealMins,mealBreakMode,setMealMode,
     otPeriodHours,setOtPeriodHours,otPeriodDays,setOtPeriodDays,otPeriodStart,setOtPeriodStart,periodStartToday,
-    rateChanges,setRateChanges,rateToday,nextPeriodStart}=props;
+    rateChanges,setRateChanges,rateToday,nextPeriodStart,payItems,setPayItems}=props;
   useEscape(onClose);
   /* "New rate from [date]" (effective-dated rates, 2026-10-17). Plain controlled inputs, read by the
      Add button: nothing here commits on blur, so a tap straight from the field to Add can't lose it. */
@@ -6998,6 +7122,32 @@ function Settings(props){
     const prev = i>0 ? raises[i-1].rate : baseRate;
     if(!(await confirmAsync(`Shifts from ${fmtFrom(from)} go back to ${fmt2(prev)}/hr.`,{title:'Remove this rate?',confirm:'Remove',danger:true}))) return;
     setRateChanges(raises.filter(c=>c.from!==from),'removed');
+  };
+  /* "Extra pay on a set date" (dated pay items, 2026-10-20). Plain controlled inputs read by Add,
+     like the raise row, so a tap straight from a field to Add can't lose a value. */
+  const items = payItems||[];
+  const [piLabel,setPiLabel]=useState('');
+  const [piUnit,setPiUnit]=useState('amount');
+  const [piValue,setPiValue]=useState('');
+  const [piCadence,setPiCadence]=useState('once');
+  const [piDate,setPiDate]=useState(nextPeriodStart||todayISO());
+  const [piWithholding,setPiWithholding]=useState('bonus');
+  const piMax = piUnit==='hours' ? PAY_ITEM_MAX_HOURS : PAY_ITEM_MAX_AMOUNT;
+  const piOk = piLabel.trim().length>0 && parseFloat(piValue)>0 && parseFloat(piValue)<=piMax && isISODate(piDate);
+  const CADENCE_TEXT = { once:'once', monthly:'every month', semiannual:'twice a year', annual:'once a year' };
+  const piWhat = it => it.hours!=null ? `${it.hours} hrs at your rate` : fmt2(it.amount);
+  const piWhen = it => it.cadence==='once' ? `on ${fmtFrom(it.date)}` : `${CADENCE_TEXT[it.cadence]} from ${fmtFrom(it.date)}`;
+  const addItem=()=>{
+    if(!piOk || items.length>=MAX_PAY_ITEMS) return;
+    const it = { id:'pi-'+Date.now().toString(36), label:piLabel.trim().slice(0,40), cadence:piCadence, date:piDate,
+      [piUnit==='hours'?'hours':'amount']: parseFloat(piValue), withholding:piWithholding };
+    setPayItems([...items, it], 'added', piCadence); setPiLabel(''); setPiValue('');
+  };
+  const delItem=async id=>{
+    const it=items.find(x=>x.id===id);
+    if(!it) return;
+    if(!(await confirmAsync(`"${it.label}" comes off every paycheck it lands in.`,{title:'Remove this pay?',confirm:'Remove',danger:true}))) return;
+    setPayItems(items.filter(x=>x.id!==id),'removed',it.cadence);
   };
   const [newName,setNewName]=useState('');
   const [newAmt,setNewAmt]=useState(0);
@@ -7048,6 +7198,38 @@ function Settings(props){
             <button className="btn btn-soft" onClick={addRaise} disabled={!(parseFloat(raiseRate)>0) || !isISODate(raiseFrom)}>Add</button>
           </div>
           <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6}}>Shifts on or after that date use the new rate. Shifts before it keep the old one.</div>
+        </div>
+
+        {/* Dated pay items (docs/dated-pay-items-spec.md): money that lands in one check -- longevity,
+            holiday cash, a ratification bonus. On the job, never on a shift, so deleting a shift
+            can't take it along. The date is a day INSIDE the pay period, not the payday. */}
+        <div className="sec-lab" style={{marginTop:14}}>EXTRA PAY ON A SET DATE</div>
+        <div className="pay-items" aria-label="Extra pay on a set date">
+          {items.map(it=>(
+            <div className="drow pay-item-row" key={it.id}>
+              <span className="nm" style={{minWidth:0,overflowWrap:'anywhere'}}>{it.label} · <span className="num">{piWhat(it)}</span> · {piWhen(it)}</span>
+              <button className="danger-link" onClick={()=>delItem(it.id)} style={{flex:'0 0 auto'}} aria-label={`Remove ${it.label}`}>Remove</button>
+            </div>
+          ))}
+          {items.length<MAX_PAY_ITEMS && <>
+            <div className="hint" style={{fontSize:11.5,color:'var(--muted-2)',margin:'2px 0 8px'}}>Longevity, holiday cash, a bonus — anything paid in one particular check.</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <div className="inp" style={{flex:'1 1 100%',minWidth:0}}><input value={piLabel} maxLength={40} placeholder="What is it? e.g. Longevity" onChange={e=>setPiLabel(e.target.value)} aria-label="What the pay is"/></div>
+              <div className="inp" style={{flex:'0 0 auto'}}><select value={piUnit} onChange={e=>setPiUnit(e.target.value)} aria-label="Paid as dollars or hours">
+                <option value="amount">$</option><option value="hours">hours</option></select></div>
+              <div className={'inp'+(piUnit==='amount'?' pre':'')} style={{flex:'1 1 100px',minWidth:0}}>{piUnit==='amount' && <span className="pfx">$</span>}<input type="number" inputMode="decimal" step="0.01" min="0" value={piValue} placeholder={piUnit==='amount'?'0.00':'hours'} onChange={e=>setPiValue(e.target.value)} aria-label={piUnit==='amount'?'Amount':'Hours paid at your rate'}/></div>
+              <div className="inp" style={{flex:'1 1 140px',minWidth:0}}><select value={piCadence} onChange={e=>setPiCadence(e.target.value)} aria-label="How often">
+                <option value="once">Once</option><option value="monthly">Every month</option><option value="semiannual">Twice a year</option><option value="annual">Once a year</option></select></div>
+              <div className="inp" style={{flex:'1 1 140px',minWidth:0}}><input type="date" value={piDate} onChange={e=>setPiDate(e.target.value)} aria-label={piCadence==='once'?'Paid on':'First paid on'}/></div>
+              <div className="inp" style={{flex:'1 1 100%',minWidth:0}}><select value={piWithholding} onChange={e=>setPiWithholding(e.target.value)} aria-label="How federal tax is withheld">
+                <option value="bonus">Taxed as a bonus (22% federal)</option><option value="regular">Taxed like my regular pay</option></select></div>
+            </div>
+            {isISODate(piDate) && periodStartToday &&
+              <div className="hint pi-lands" style={{fontSize:11.5,color:'var(--muted-2)',marginTop:6}}>
+                Lands in your {periodRangeLabel(periodStartOf(piDate, periodStartToday))} paycheck. Pick a day inside the pay period it's paid with.
+              </div>}
+            <button className="btn btn-soft" style={{marginTop:8,width:'100%'}} onClick={addItem} disabled={!piOk}>Add</button>
+          </>}
         </div>
 
         <div className="sec-lab" style={{marginTop:14}}>SHIFT DIFFERENTIALS</div>
