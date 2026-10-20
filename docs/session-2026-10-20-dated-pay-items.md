@@ -46,7 +46,7 @@ carry `{count, cadence}` only.
 | Differential sweep, deployed core vs new, 1,200 random fortnights × 4 lists (absent / empty / one-off after / annual outside) | **4,800 compared, 0 differ** (full JSON of `periodPaycheck`) |
 | Pinned literals from the deployed module (`git show origin/…:…/badgebudget-core.mjs`), 4 work periods × 5 lists | identical — in `tests/core.test.mjs` |
 | `tests/smoke.mjs` §50, iPhone 13 | **19/19**; 17 broken copies, 16 caught by §50 and the 17th (a one-off recurring yearly — no next-year date is on screen) caught by the core suite |
-| full `tests/smoke.mjs` | **SEE_FULL** |
+| full `tests/smoke.mjs` (clean archive of the branch) | **836/836** (817 + §50's 19); the deploy branch did not move during the session, so there was nothing to merge in |
 | `tests/equality.mjs` vs badgebudget.com | **34 identical / 0 unintended / 5 of 5 named** — the four raise cases un-named and IDENTICAL, four new item identity probes IDENTICAL |
 
 Every named difference was checked by hand against the rows it printed, e.g. the $600 bonus case:
