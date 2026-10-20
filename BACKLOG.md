@@ -2569,6 +2569,17 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-20 — **Money that lands in one particular check finally has a home: dated pay items.**
+  Session 4 of the multi-persona plan; dedicated wage-core session, **not merged by the agent** —
+  it moves figures for anyone who adds an item, so the PR waits for the owner with a before → after
+  card. Spec `docs/dated-pay-items-spec.md` (committed before code); log
+  `docs/session-2026-10-20-dated-pay-items.md`. `payItems` on the job (once / monthly /
+  semi-annual / annual; dollars or hours; taxed as a bonus at 22% or like regular pay), landing in
+  the pay period whose dates hold its date, never in that period's overtime (29 CFR 778.209(a)).
+  Settings *Extra pay on a set date*, a Breakdown note, the year view by month. Core 135 → 175,
+  smoke 817 → 836 (§50, 19), 18 core + 17 smoke mutants all caught, a 4,800-case sweep against the
+  deployed core with 0 differences, and `tests/equality.mjs` vs badgebudget.com **34 identical /
+  0 unintended / 5 of 5 named**.
 - 2026-10-19 — **The deploy watch fetches before it judges, so `LIVE` can no longer mean a stale
   clone.** Nightly loop; `scripts/deploy_watch.mjs` and `scripts/test_deploy_watch.mjs` only —
   **`index.html` is untouched**, so no wage core, no publish set, no conflict with open PR #187.
