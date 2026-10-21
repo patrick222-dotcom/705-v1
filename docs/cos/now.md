@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-19 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-10-21 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -27,14 +27,18 @@ Updated 2026-10-19 by the chief of staff (nightly pass). Charter: `docs/leadersh
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
 - **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174).
-- **Next:** session 4 — dated pay items. Kickoff prompt: `docs/session-2026-10-11-pay-events.md`.
+  Session 4 is **built and open as PR #191**, waiting on Pat since 2026-10-20 (it moves figures).
+- **Next:** Pat merges #191 (D3 below), then session 5 — the Law enforcement and Fire & EMS tiles.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
 - **Waiting on:** a dedicated session.
 
 ## Needs Pat
 
-_(none open)_
+**D3 — Merge PR #191, session 4 (dated pay items)? — opened 2026-10-21, no default.** It is the
+owner tier: it moves dollar figures, so the loop may not merge it. Two nights open. The raise PR
+(D2) waited three nights and she deleted 42 of her own shifts in the meantime, which is the cost
+of a slow read on this tier rather than an argument to lower it.
 
 **D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
 which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.

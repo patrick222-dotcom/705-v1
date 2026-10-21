@@ -28,6 +28,91 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-21)
+- [x] ~~**Courtney came back after five days, synced three more times, imported nothing — and the
+  switch she asked for TWICE has never been turned on by anyone**~~ — **SHIPPED 2026-10-21** (see
+  Done log): the switch is now offered on the re-sync banner in the Settings switch's own words,
+  pinned by `tests/smoke.mjs` §50. (P1 · source:groom+feedback · `harness:drivable`) The evidence,
+  which is the first new field data in this file since 10-15: device `f184ffa5` filed **three loads
+  on 2026-10-20** — 20:15:30, 22:26:01 and 23:02:03 UTC — and every one is
+  `ics_sync_result {changes, nursegrid}` with `ics_sync_done {events:125}`. **Zero
+  `ics_import_done`**, which still last fired 2026-10-10 and still has **10 rows ever**. Her shift
+  count went 71 → 69 across the evening (she deleted two; two `shift_saved` and two `note_saved` at
+  20:18). The 23:02 load raised the quiet banner (`ics_resync_found`, 8 rows now).
+  **And the number that made this tonight's build: `ics_autosync_pref` has ZERO rows and
+  `ics_autosync_off` has ZERO rows.** The manual-sync switch went live 2026-10-16 in direct answer
+  to two written requests; she has now had three loads with it available and has never touched it.
+  The 10-17 note correctly said the first real reading would be her next load — this is that
+  reading, and it is **not** "the toggle is broken", it is **"she cannot find it"**. It sits at the
+  bottom of Settings inside the iCal section; the thing she is complaining about meets her on the
+  home screen. So the banner carries the setting now.
+  **What is still unverified:** whether she taps it. The first reading is her next foreground
+  return, and the row to look for is `ics_autosync_pref {manual:true, src:'banner'}`.
+- [ ] **The import stepper — the cold-load door, and 2 of her 3 loads last night — does NOT carry
+  the opt-out** (P1 · source:groom · `harness:drivable`) — tonight's build put the switch on the
+  quiet re-sync banner, which fired on exactly **one** of her three 10-20 loads. The other two were
+  cold loads, and a cold load opens the import stepper by design (CLAUDE.md → Calendar sync), so on
+  two thirds of her visits she still meets a 125-event confirm sheet with no way to say "stop asking
+  me". Deliberately not built in the same push: `IcsImportSheet` is a separate component and the
+  switch would have to be threaded through its props, and a mis-tap on a sheet whose job is
+  confirming wage-affecting changes turns her sync off. It wants its own run and its own negative
+  tests. Region check for whoever takes it: the sheet is ~5853–6100 in `index.html`, which PR #191
+  does not touch.
+- [ ] **PR #191 is open, is session 4 (dated pay items), and waits for Pat — checked before
+  tonight's item was picked** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20
+  03:25, ready, unchanged since. It touches `index.html` in 20 hunks: `sanitizeData` (1475–1693),
+  the `rateOn` region (1813), `App` (3715/3844/3863/3912/4170/4352/4354/4498/5669), `Breakdown`
+  (6125) and `Settings` (6983/7001/7052), plus the wage core. Tonight's build is at **5413** —
+  between #191's 4498 and 5669 hunks, with no overlap — and the CSS at 184. It is the owner tier
+  (it moves dollar figures): `docs/leadership.md` → *Approval tiers*. **It has now waited two
+  nights**; the raise PR waited three and cost her 42 deleted shifts in the meantime.
+- [ ] **CABINET MISSED (second night) — `docs/cos/brief.md` is 9.0 days old** (P2 · needs the
+  weekly routine, not the nightly) — last written 2026-10-12, still reads *"No cabinet has run yet.
+  The first runs Sunday 2026-10-18."* The switch crossed on 10-20 and this run's notify line carries
+  **CABINET MISSED** again. The nightly cannot clear it: writing the brief is the Sunday cabinet
+  pass's job. Yesterday (2026-10-19) was the second Sunday to pass without one.
+- [ ] **`silence_watch` is back to FRESH and that is because a real person came, not because the
+  script changed its mind** (P3 · source:groom · no action) — `events` holds **1,703 rows** (up 22
+  from three nights of 1,681), newest `2026-10-20 23:02:03`, **9.1h** old and inside the 48h window.
+  Last night's `SILENT_BUT_HEALTHY` was the same script reporting a 53.9h gap honestly; tonight's
+  `FRESH` is Courtney's three loads. `deploy_watch.mjs` says **LIVE**, `index.html` serving
+  `a103682` (2026-10-19) with `privacy.html`, `ops.html` and `CNAME` all `ok` — nothing is
+  merged-but-unshipped going in. Note `e8daa40` (#192, 2026-10-20) touches no publish-set file, so
+  `LIVE` naming an older `index.html` commit is correct, per the 10-19 note.
+- [ ] **Three more landing-only devices, and one of them lost every row but its beacon** (P2 ·
+  source:groom · `harness:unscoped`) — the cohort goes **eleven → fourteen**. `01340852` and
+  `4ba96588` arrived 22 seconds apart on 2026-10-20 11:37:45 and 11:38:07, both desktop
+  `X11; Linux x86_64` Chrome, both `app_open {fresh:true}` → `ob_view {screen:'landing'}` →
+  `ob_step {step:0}` and nothing after — the same burst shape as the 10-18 trio, which is still the
+  least human pattern in the table. The third, `aab30e25` (2026-10-20 22:52, **Windows**), is
+  stranger and worth its own line: **its only row is `session_end {n:4, ob:0, secs:6, shifts:0}`**.
+  `n:4` says the load fired four events; three of them never arrived. `session_end` rides
+  `beaconInsert()` (keepalive) while `track()` does not, so the shape is consistent with a load
+  discarded before its ordinary inserts flushed — which is exactly what `scrubpay_events_pending`
+  exists for, and it only replays on a **next** load that never came. **Not buildable on one row**;
+  recorded because it means a `track()`-only funnel undercounts short visits, which makes every
+  landing-screen figure in this file an upper bound for a *second* reason on top of the classifier.
+- [ ] **`feedback` is unchanged at Courtney's 2026-10-15 12:30 row, and `client_error` at her
+  2026-10-15 16:45 row — re-read at the END of the run with every column** (housekeeping, as the
+  10-14 item requires) — the whole `feedback` table was selected including `contact` and `user_id`:
+  six rows from her on 10-14, one on 10-15, nothing after. `client_error` holds **28 rows**, newest
+  still the `auth check timed out` row on `daf590c4` that the 10-16 groom classified as **Invariant
+  1 working**. So three loads last night produced **no new errors at all** — the first positive
+  reading of the 10-19/10-20 code on a real phone. No new `pdf.worker` rows, so the 10-13 item's
+  "read a second device" bar is **still not met**, and `paystub_failed` has **still never fired for
+  any reason**. Do not build a worker mitigation.
+- [ ] **The effective-dated-rate fix went live on 10-19 and nothing in `events` can tell you
+  whether she used it** (P2 · source:groom · `harness:drivable`) — she had three loads on the new
+  build and the table holds no row for adding, editing or removing a dated rate: the feature ships
+  with **no telemetry**, so "did the fix for the most wrong-money complaint in this file actually
+  get used" is unanswerable from here. This is the same shape as the `ics_sync_result` gap (10-02)
+  and the `paystub_failed {reason:'empty'}` gap (10-17): a branch that renders and counts nothing.
+  **Deliberately not built tonight** — the save path is in `Settings` at ~7001–7052 and the rate
+  code at ~1813, both of which PR #191 edits, so a `track()` call there is exactly the conflict the
+  loop is told to skip. Take it the run after #191 merges. A `track()` beside a wage-core caller is
+  not wage core (it moves no figure), but it must stay **outside** any `@core:begin` region — the
+  extractor refuses a region that references anything the core cannot see.
+
 ### P2 (new, groom 2026-10-20)
 - [ ] **The raise is SHIPPED and LIVE — `a103682` is what badgebudget.com serves tonight**
   (housekeeping, and the close of the P1 that has led this file since 2026-10-14) — Pat approved
@@ -2627,6 +2712,36 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-21 — **The manual-sync switch she asked for twice is now offered on the banner that is
+  asking, because three loads proved she never found it in Settings.** `syncManualOnly` shipped
+  2026-10-16 in direct answer to two written requests (2026-10-14 08:55, 2026-10-15 12:30) and
+  landed at the bottom of Settings, inside the iCal section. Tonight's groom read her first three
+  loads since: **2026-10-20 20:15:30, 22:26:01 and 23:02:03 UTC**, each one
+  `ics_sync_result {changes, nursegrid}` with `ics_sync_done {events:125}`, **zero
+  `ics_import_done`** (last fired 2026-10-10, 10 rows ever), shift count 71 → 69 — and
+  **`ics_autosync_pref` and `ics_autosync_off` both at zero rows from any device, ever**. That is
+  not a broken toggle, it is an unreachable one. The quiet re-sync banner now carries a third,
+  lower-weight affordance under "Review" / "Not now", worded **identically to the Settings switch**
+  (`Only sync when I tap "Sync now"`) so she meets one setting and not two: it sets the same
+  `syncManualOnly`, fires the same `ics_autosync_pref` with `src:'banner'` (a row with no `src`
+  came from Settings), and remembers the plan's fingerprint exactly as "Not now" does.
+  Three deliberate non-decisions, all load-bearing: it **does not replace "Not now"** ("not this
+  plan" is the common answer and stays the easy one); it **does not fire `ics_resync_dismissed`**,
+  because that row is the complaint proxy this whole thread was read off — she dismissed at
+  08:54:05 on 10-14 and filed *"it keeps asking me to approve"* **81 seconds** later — and a tap
+  meaning "thank you, stop" would corrupt the one metric that found the work; and it does **not**
+  go on the import stepper, the cold-load door that met 2 of her 3 loads, which is filed as P1 for
+  its own run (a mis-tap on a sheet confirming wage-affecting changes must not turn her sync off).
+  No wage core: no dollar figure moves, the feed link stays saved, and "Sync now" is untouched.
+  Pinned by `tests/smoke.mjs` §50, 15 assertions, **five deliberate breaks** — the preference not
+  actually set (the only assertion that proves the tap did anything is `window.__invokes`: the next
+  foreground return must not reach the feed), the dismissal row fired too, the copy rewritten into
+  friendlier words, the affordance removed outright, and "Not now" removed instead of joined. The
+  fourth break found a defect in the section itself: a locator matching nothing aborted the run on
+  a 30s timeout instead of failing, which is the first of the three ways the `harness` skill says a
+  negative test lies, so the copy, tap-target and click reads are now guarded and the same break
+  reports **nine clean failures**. Suites: 14 mechanical checks, 33 groom-seed, 135 core,
+  **832 smoke** (817 → 832).
 - 2026-10-20 — **§30's wordmark assertion was measuring the font, not the layout — it is now
   font-independent, and the three CI failures it caused were the truthful readings.** The
   assertion `top bar [iPhone SE]: the wordmark is not ellipsised at this width` failed on the
