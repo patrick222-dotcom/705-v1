@@ -6134,6 +6134,165 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* == 50. The manual-sync switch is offered on the re-sync banner (2026-10-21) =================
+     Courtney asked for the switch twice (2026-10-14 08:55, 2026-10-15 12:30) and it shipped
+     2026-10-16 into Settings, under the iCal section. The 10-21 groom read her first three loads
+     since: 2026-10-20 20:15, 22:26 and 23:02 UTC, each one `ics_sync_result {changes}` with
+     `ics_sync_done {events:125}`, zero `ics_import_done` (last fired 2026-10-10), and
+     `ics_autosync_pref` with ZERO rows from any device ever. She never found it. So the switch is
+     now offered on the banner itself -- the surface that is asking.
+
+     Driven against the real handler with §37B's stub, because the only assertion that proves the
+     tap did anything is `window.__invokes`: a button that flipped a local flag and left the
+     automatic sync running would pass every DOM check here. §46 already pins what the preference
+     DOES once set (cold load, foreground, Settings copy, "Sync now" still working); this section
+     pins only the new door into it. */
+  if (want(50)) {
+    const FEED_URL = 'https://app.nursegrid.com/calendars/777/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+    const FEED = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', 'UID:ng-opt-a', `DTSTART:${dayOut(5)}T190000Z`, `DTEND:${dayOut(5)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT',
+      'END:VCALENDAR'].join('\r\n');
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.addInitScript(([feed, feedUrl]) => {
+      window.__ev = []; window.__invokes = 0; window.__skew = 0;
+      const realNow = Date.now;
+      Date.now = () => realNow() + window.__skew;
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* `functions` is a prototype getter in supabase-js 2.45.4 -- shadow it with an own
+                   property or the stub never takes (§27's lesson; __invokes is the proof). */
+                const fx = { invoke: async () => { window.__invokes++; return { data: window.__feed || feed, error: null }; } };
+                Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [FEED, FEED_URL]);
+
+    const ev = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+    const row = (n) => page.evaluate((name) => (window.__ev || []).filter((r) => r && r.name === name).pop() || null, n);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'), null, { timeout: 15000 });
+    ok('banner opt-out: the stub reached the proxy, so the drive is real', (await page.evaluate(() => window.__invokes)) === 1,
+      String(await page.evaluate(() => window.__invokes)));
+
+    /* The cold-load sync opens the stepper. Close it without confirming -- what the real device
+       did, and what leaves a live plan for the foreground re-sync to rebuild into the banner. */
+    await page.waitForSelector('.sheet', { timeout: 8000 });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.sheet', { state: 'detached', timeout: 6000 }).catch(() => {});
+
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => window.__invokes > 1, null, { timeout: 15000 });
+    await page.waitForTimeout(600);
+    ok('banner opt-out: coming back to the app raises the quiet banner', await page.locator('.sync-banner').isVisible(), (await ev()).join(','));
+
+    /* The copy is asserted off the rendered DOM and must MATCH the Settings label, because the
+       whole point is that she recognises the same setting in both places (§26's rule for the
+       NurseGrid walkthrough labels, same reason). */
+    const opt = page.locator('.sync-banner button.opt');
+    const optCount = await opt.count();
+    ok('banner opt-out: the banner carries a third affordance', optCount === 1, String(optCount));
+    /* Read the copy only if it is there. An absent button is the regression this section exists to
+       catch, and reading from a locator that matches nothing aborts the whole run on a 30s timeout
+       instead of failing the assertions below it -- the first of the three ways the harness skill
+       says a negative test lies. Found by negative-testing this very section. */
+    const optText = optCount ? (await opt.innerText()).replace(/\u201c|\u201d/g, '"') : '';
+    ok('banner opt-out: and its words are the Settings switch\'s words, not new copy',
+      /Only sync when I tap "Sync now"/.test(optText), JSON.stringify(optText));
+    /* It must not have displaced "Not now": "not this plan" and "stop asking" are different
+       answers and the common one stays the easy one. */
+    ok('banner opt-out: "Review" and "Not now" are both still there',
+      (await page.locator('.sync-banner .row button').count()) === 2
+      && /Not now/.test(await page.locator('.sync-banner .row button.ghost').innerText()), (await ev()).join(','));
+    /* §30's rule: every control keeps a 44pt tap target. */
+    const optBox = optCount ? await opt.boundingBox() : null;
+    ok('banner opt-out: it keeps a 44pt tap target', optBox && optBox.height >= 44, JSON.stringify(optBox));
+
+    const dismissedBefore = (await ev()).filter((n) => n === 'ics_resync_dismissed').length;
+    if (optCount) await opt.click();
+    /* Same reason as the copy read: with the button gone this wait must not abort the run. The
+       assertion below still reads the DOM, so the catch weakens nothing -- a banner that stayed up
+       fails here either way. */
+    await page.waitForSelector('.sync-banner', { state: 'detached', timeout: 6000 }).catch(() => {});
+    ok('banner opt-out: tapping it puts the banner away', !(await page.locator('.sync-banner').count()));
+
+    const pref = await row('ics_autosync_pref');
+    ok('banner opt-out: one ics_autosync_pref row, and it says the preference is ON',
+      !!pref && pref.props && pref.props.manual === true, JSON.stringify(pref && pref.props));
+    ok('banner opt-out: tagged src:banner, so Settings taps stay distinguishable from these',
+      !!pref && pref.props && pref.props.src === 'banner', JSON.stringify(pref && pref.props));
+    ok('banner opt-out: exactly one pref row, not one per render',
+      (await ev()).filter((n) => n === 'ics_autosync_pref').length === 1, (await ev()).join(','));
+    /* ics_resync_dismissed is the complaint proxy (she dismissed at 08:54:05 on 2026-10-14 and
+       filed "it keeps asking me to approve" 81 seconds later). A tap meaning "thank you, stop"
+       must not land in it, or the metric that found this work stops meaning anything. */
+    ok('banner opt-out: it does NOT fire ics_resync_dismissed -- that row means "ask me again"',
+      (await ev()).filter((n) => n === 'ics_resync_dismissed').length === dismissedBefore, (await ev()).join(','));
+
+    /* The assertion the whole section exists for: the preference is LIVE, not recorded. A button
+       that tracked an event and set nothing would pass every check above. */
+    const invokesBefore = await page.evaluate(() => window.__invokes);
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(1800);   // fixed wait: a predicate that never comes true aborts the run (§46)
+    ok('banner opt-out: the next foreground return does not reach the feed at all',
+      (await page.evaluate(() => window.__invokes)) === invokesBefore,
+      `${invokesBefore} -> ${await page.evaluate(() => window.__invokes)}`);
+    ok('banner opt-out: and no banner comes back', !(await page.locator('.sync-banner').count()));
+
+    /* And it set the same field the Settings switch reads, not a second flag beside it. */
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 10000 });
+    await page.waitForSelector('button[role="switch"][aria-label="Only sync when I tap Sync now"]', { timeout: 12000 });
+    ok('banner opt-out: Settings now shows that very switch ON',
+      (await page.locator('button[role="switch"][aria-label="Only sync when I tap Sync now"]').getAttribute('aria-checked')) === 'true');
+
+    const real50 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('banner opt-out: no page errors across section 50', real50.length === 0, real50[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

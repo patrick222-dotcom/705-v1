@@ -51,6 +51,15 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   (53.9h, out of its 48h window — quiet, not broken), `deploy_watch` LIVE on `a103682`, and
   **CABINET MISSED** — `brief.md` turned 8.0 days old tonight · → outcome pending
 
+- 2026-10-21 · session BadgeBudget nightly · the manual-sync switch Courtney asked for twice, and
+  which shipped 10-16 into Settings, has **never been turned on by anyone** — her first three loads
+  since (2026-10-20) were three more 125-event `changes` syncs with zero imports. Not a broken
+  toggle, an unreachable one: it is now offered on the re-sync banner in the Settings switch's own
+  words, §50. The import stepper half is filed P1. Groom: `silence_watch` FRESH (9.1h, a real
+  person came), `deploy_watch` LIVE on `a103682`, no new feedback, no new `client_error` from three
+  real loads, landing-only cohort 11 → 14, and **CABINET MISSED** (brief 9.0 days old, second
+  night) · → outcome pending
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after
