@@ -28,6 +28,72 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-22)
+- [x] ~~**The import stepper does not carry the manual-sync opt-out**~~ — **SHIPPED 2026-10-22**,
+  tonight's build. See the Done log and the 10-21 band below for the evidence that ordered it.
+  What is **still unverified** is the same thing the 10-21 band left unverified, and tonight's data
+  could not move it one inch: **whether she taps either copy of it.** The rows to look for are
+  `ics_autosync_pref {manual:true, src:'banner'}` and `{src:'stepper'}`, and the count is still
+  **zero from any device, ever**.
+- [ ] **Courtney has not opened the app since the banner switch shipped, so last night's build has
+  had no load to run on — do NOT read its zero as a failure** (P2 · source:groom · the one figure
+  most likely to be misread tomorrow) — her last event of any kind is still
+  `ics_sync_result` at **2026-10-20 23:02:03**, which is *before* `d438d58` (the 10-21 banner
+  switch) went live. So `ics_autosync_pref` at zero rows tonight is **expected**, not evidence the
+  banner affordance is broken or unfindable: nobody has seen it yet. Tonight's stepper build is in
+  the same position from tomorrow. The first honest reading of both is her next foreground return,
+  and a *cold* load is now the more likely door of the two (2 of her last 3). Whoever grooms next:
+  if the count is still zero and she *has* loaded, that is a real finding; if she has not loaded,
+  it is not a finding at all.
+- [ ] **Three more landing-only devices, all three crawler-shaped, and one says so in its own
+  user-agent** (P3 · source:groom · `harness:unscoped`) — the cohort goes **fourteen →
+  seventeen**, and tonight's three are the least ambiguous batch yet. `e5651376` (2026-10-21
+  18:03:54) carries **`360Spider`** at the end of a Windows/Edge agent string and filed a single
+  `ob_view {screen:'landing'}` — the same self-identifying crawler the 10-19 and 10-20 notes
+  already matched on. `50ef1e92` and `ac700bdc` arrived **13 seconds apart** (22:04:01 and
+  22:04:14), both desktop `X11; Linux x86_64` Chrome/**154**, each firing exactly
+  `app_open {fresh:true}` → `ob_view {landing}` → `ob_step {step:0}` and nothing after. That
+  burst-of-two-on-desktop-Linux shape is now the fourth sighting (10-18 trio, 10-20 pair, tonight's
+  pair). **Still not buildable** — the device classifier is the fix and it is a dedicated-session
+  item — but it is worth stating that of the 17-device landing-only cohort, the majority now carry
+  a positive crawler signal rather than merely an absent one, so the cohort is better read as
+  "bots found the domain" than as "humans bounced off the landing screen".
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now four grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table was selected including `contact` and `user_id`: **18 rows**, newest
+  still Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH, and this time that word is doing less work than it looks**
+  (P3 · source:groom · no action) — `events` holds **1,710 rows** (up **7** from 1,703), newest
+  `2026-10-21 22:04:14`, **10.0h** old and comfortably inside the 48h window, so the script reports
+  **FRESH**. Quote the verdict, but read what is under it: **all 7 of those rows are the three
+  crawler-shaped devices above.** No human has loaded the app in ~33 hours. `FRESH` means
+  "telemetry is alive and something arrived recently", which is true and is all it claims — it has
+  never meant "a user came", and tonight is the cleanest example yet of the gap between the two.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited
+  THREE nights — checked before tonight's item was picked** (housekeeping) —
+  `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head `c41b8cc`, unchanged since
+  it opened. Its `index.html` hunks were read from the actual diff rather than trusted from the
+  10-21 note: the relevant pair are `@@ -5667,6` (covering old lines 5667–5672) and `@@ -6079,7`,
+  so **lines 5673–6078 are untouched by it**. Tonight's build is the mount at **5732** and
+  `IcsImportSheet` at **5887–6015**, both inside that clean span, plus CSS at ~187 which #191 does
+  not reach (its first hunk is 1473). So the conflict was ruled out structurally, not by proximity.
+  It overlaps in `BACKLOG.md` as every nightly does — whoever drives #191 should update its branch
+  after tonight's merge. It is the owner tier (it moves dollar figures): `docs/leadership.md` →
+  *Approval tiers*, and **it needs a yes or a no, not more review**.
+- [ ] **CABINET MISSED (third night) — and the Sunday count in the last two grooms was wrong**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` is **10.0 days** old
+  (last written 2026-10-12) and still reads *"No cabinet has run yet. The first runs Sunday
+  2026-10-18."* This run's notify line carries **CABINET MISSED** again. **The correction:** the
+  10-19 and 10-21 notes both call 2026-10-19 "the second Sunday to pass without one", but
+  **2026-10-19 was a Monday**. Exactly **one** Sunday has passed without a cabinet — 2026-10-18 —
+  and the next is **2026-10-25**. Fixed in `docs/cos/now.md` rather than left to compound; the
+  dead-man's switch itself (8 days) is unaffected and correctly fired. The nightly cannot clear
+  this — writing the brief is the Sunday cabinet pass's job.
+
 ### P1 (new, groom 2026-10-21)
 - [x] ~~**Courtney came back after five days, synced three more times, imported nothing — and the
   switch she asked for TWICE has never been turned on by anyone**~~ — **SHIPPED 2026-10-21** (see
@@ -48,8 +114,10 @@ and the push P0 it pointed at was fixed the same day.
   home screen. So the banner carries the setting now.
   **What is still unverified:** whether she taps it. The first reading is her next foreground
   return, and the row to look for is `ics_autosync_pref {manual:true, src:'banner'}`.
-- [ ] **The import stepper — the cold-load door, and 2 of her 3 loads last night — does NOT carry
-  the opt-out** (P1 · source:groom · `harness:drivable`) — tonight's build put the switch on the
+- [x] ~~**The import stepper — the cold-load door, and 2 of her 3 loads last night — does NOT carry
+  the opt-out**~~ — **SHIPPED 2026-10-22** (see Done log): the confirm card carries the same
+  opt-out in the same words, `src:'stepper'`, and deliberately does **not** dismiss the sheet.
+  Pinned by `tests/smoke.mjs` §51. (P1 · source:groom · `harness:drivable`) — the 10-21 build put the switch on the
   quiet re-sync banner, which fired on exactly **one** of her three 10-20 loads. The other two were
   cold loads, and a cold load opens the import stepper by design (CLAUDE.md → Calendar sync), so on
   two thirds of her visits she still meets a 125-event confirm sheet with no way to say "stop asking
@@ -2712,6 +2780,42 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-22 — **The opt-out now sits on the door she actually walks through: the import stepper's
+  confirm card.** Last night put *Only sync when I tap "Sync now"* on the quiet re-sync banner,
+  which was right and reached one third of the problem. The banner fires on a **foreground
+  return**; it raised on exactly **one** of Courtney's three 2026-10-20 loads. The other two were
+  **cold loads**, and a cold load opens the import stepper by design (CLAUDE.md → Calendar sync),
+  so on two thirds of her visits she still met a 125-event confirm sheet with no way to say "stop
+  asking me". The stepper now carries the same affordance, worded **identically** to the Settings
+  switch and the banner so she meets one setting and not three, setting the same `syncManualOnly`
+  and firing the same `ics_autosync_pref` with **`src:'stepper'`** (banner rows say `'banner'`; a
+  row with no `src` came from Settings).
+  **Two design decisions are load-bearing, and both are pinned rather than left to a reader's
+  judgment.** (1) It renders on the **confirm card only** — on the classify cards it would be one
+  copy per group, which for her feed is 125 copies of a single setting. (2) **It does not dismiss
+  the sheet**, which is where it deliberately diverges from the banner's copy: the banner's whole
+  job is "ask me later", but this sheet's plan may hold changes she wants, so a tap meaning "stop
+  the asking" must never also throw the plan away. It sets the preference, acknowledges itself in
+  place (*"Automatic syncing is off. Tap 'Sync now' in Settings when you want to check for
+  changes."*), and leaves Confirm working — the §51 assertion that Confirm still imports
+  afterwards is what would catch a regression into the banner's behaviour.
+  The 10-21 note flagged the real risk here — *"a mis-tap on a sheet whose job is confirming
+  wage-affecting changes turns her sync off"* — so the control is answered against it structurally:
+  it sits **below** the primary row and is **narrower** than it (188px vs 292px, measured), keeps a
+  44pt tap target (§30's rule), and is offered only when a feed subscription exists, because a file
+  import has nothing to stop. Both geometry facts are assertions, not intentions.
+  **Pinned by `tests/smoke.mjs` §51** — 18 new assertions, suite **832 → 850**. Negative-tested
+  three ways in three scratch copies, never the working tree: the affordance removed (11 fail), the
+  handler tracking the event but setting nothing — the "recorded, not live" break (2 fail: the next
+  foreground return still reaches the feed, and the Settings switch stays off), and the handler
+  dismissing the sheet like the banner's copy (3 fail). **That third break initially ABORTED the
+  run** after one failure — a detached-locator read timing out at 30s, which is §50's own first-draft
+  mistake one layer down and reads like one caught regression while leaving an unknown number of
+  assertions unproven. Fixed by capturing the sheet-open state once and guarding every read after
+  it; the break then fails honestly. Gate: 14/14 mechanical, groom-seed 33/33, core 135/135, smoke
+  850/0. No `index.html` region shared with open PR #191 (its hunks stop at old line 5672 and
+  resume at 6079; this build is at 5732 and 5887–6015), verified against the actual diff rather
+  than the previous night's note. `Thread: none` — filed in `docs/cos/inbox.md`.
 - 2026-10-21 — **The manual-sync switch she asked for twice is now offered on the banner that is
   asking, because three loads proved she never found it in Settings.** `syncManualOnly` shipped
   2026-10-16 in direct answer to two written requests (2026-10-14 08:55, 2026-10-15 12:30) and

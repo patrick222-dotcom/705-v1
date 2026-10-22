@@ -185,6 +185,13 @@
   /* The manual-sync opt-out. Lower weight than "Not now" on purpose: "not this plan" is the
      common answer and must stay the easy one. Keeps the 44px tap target (tests/smoke.mjs 30). */
   .sync-banner button.opt{background:transparent;color:#474DA0;border:0;padding:6px 0 0;min-height:44px;font-weight:600;font-size:12px;text-align:left;text-decoration:underline}
+  /* The same opt-out on the import stepper's confirm card (2026-10-22). Deliberately NOT
+     full-width and deliberately below the Confirm row: this sheet's job is confirming
+     wage-affecting changes, so the affordance that turns syncing off must be the hardest
+     thing on the card to hit by accident, not a peer of the primary button. Shrink-to-fit
+     keeps the 44px tap target (tests/smoke.mjs 30) while giving a mis-tap far less area. */
+  .sheet button.opt{background:transparent;color:#474DA0;border:0;padding:6px 0 0;min-height:44px;font-weight:600;font-size:12px;text-align:left;text-decoration:underline}
+  .sheet .opt-done{font-size:12px;color:var(--muted-2);line-height:1.45;padding-top:12px}
   /* An exhausted cloud LOAD, not a failed save — see the `cloudLoad` state. Danger palette on
      purpose: nothing she types is being kept while this is up, which is worse than the stale-row
      case the top-bar sync link covers. */
@@ -5731,7 +5738,12 @@ function App(){
       {icsImport &&
         <IcsImportSheet state={icsImport} differentials={differentials}
           onAnswer={icsAnswer} onBack={icsBack} onNext={icsNext}
-          onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices} />}
+          onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices}
+          syncManualOnly={syncManualOnly}
+          onManualOnly={icalSub ? ()=>{
+            setSyncManualOnly(true);
+            track('ics_autosync_pref',{manual:true,src:'stepper'},user&&user.id);
+          } : null} />}
 
       <input ref={fileImport} type="file" accept=".json" onChange={importData} style={{display:'none'}} />
     </div>
@@ -5884,8 +5896,11 @@ function fmtShiftUpdate(u){
   if((u.prevStart||null)!==(u.start||null)) parts.push(`${ps||'no start time'} → ${ns||'no start time'}`);
   return parts.join(', ');
 }
-function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
+function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices,syncManualOnly,onManualOnly}){
   const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
+  /* Local, because the prop flips to true the moment she taps and the button would vanish with
+     no acknowledgement. This remembers that the tap happened HERE, so the card can say so. */
+  const [optedOut,setOptedOut] = useState(false);
   const toRemove = state.toRemove || [];
   const toUpdateEvents = state.toUpdateEvents || [];
   const toRemoveEvents = state.toRemoveEvents || [];
@@ -5967,6 +5982,28 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
             {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
             <button className="btn btn-primary" style={{flex:1}} onClick={onConfirm}>Confirm</button>
           </div>
+          {/* The manual-sync opt-out, on the door the banner could not reach (2026-10-22).
+              The banner carried it from 2026-10-21, but the banner fired on ONE of her three
+              2026-10-20 loads -- the other two were cold loads, and a cold load opens this
+              stepper by design (CLAUDE.md -> Calendar sync). So on two thirds of her visits she
+              met a 125-event confirm sheet with no way to say "stop asking me".
+              Worded IDENTICALLY to the Settings switch and the banner so she meets one setting
+              and not three. Same state, same event; `src` is the only difference, and a row with
+              no `src` came from Settings.
+              Unlike the banner's copy of this button it does NOT dismiss anything: the banner's
+              whole job is "ask me later", but the plan on this card may hold changes she wants,
+              and throwing it away on a tap that means "stop the asking" would cost her the
+              shifts too. The sheet stays open; Confirm and Close are untouched.
+              Offered only when a feed subscription exists (see the mount) -- a file import has
+              nothing to stop -- and only while automatic syncing is still on. */}
+          {onManualOnly && (optedOut
+            ? <div className="opt-done" role="status">
+                Automatic syncing is off. Tap &ldquo;Sync now&rdquo; in Settings when you want to check for changes.
+              </div>
+            : !syncManualOnly &&
+              <button className="opt" onClick={()=>{ setOptedOut(true); onManualOnly(); }}>
+                Only sync when I tap &ldquo;Sync now&rdquo;
+              </button>)}
         </div>
       </div>
     );
