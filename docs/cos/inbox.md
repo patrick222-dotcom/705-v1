@@ -60,6 +60,12 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   real loads, landing-only cohort 11 → 14, and **CABINET MISSED** (brief 9.0 days old, second
   night) · → outcome pending
 
+- 2026-10-22 · session BadgeBudget nightly · the manual-sync opt-out now sits on the import stepper's
+  confirm card too — the cold-load door, which was 2 of Courtney's 3 loads on 10-20, where the
+  10-21 banner could never reach her. Same wording, same field, `src:'stepper'`. It deliberately
+  does NOT dismiss the sheet (the banner's copy does), so a tap meaning "stop asking" never costs
+  her the plan · → outcome pending
+
 ## Parked
 
 - 2026-10-12 · cos · status page with a phone capture box (artifact + `db`) · → park: build after

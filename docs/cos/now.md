@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-21 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-10-22 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -27,7 +27,8 @@ Updated 2026-10-21 by the chief of staff (nightly pass). Charter: `docs/leadersh
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
 - **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174).
-  Session 4 is **built and open as PR #191**, waiting on Pat since 2026-10-20 (it moves figures).
+  Session 4 is **built and open as PR #191**, waiting on Pat since 2026-10-20 (it moves figures) —
+  **three nights** as of tonight.
 - **Next:** Pat merges #191 (D3 below), then session 5 — the Law enforcement and Fire & EMS tiles.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
@@ -35,10 +36,18 @@ Updated 2026-10-21 by the chief of staff (nightly pass). Charter: `docs/leadersh
 
 ## Needs Pat
 
-**D3 — Merge PR #191, session 4 (dated pay items)? — opened 2026-10-21, no default.** It is the
-owner tier: it moves dollar figures, so the loop may not merge it. Two nights open. The raise PR
-(D2) waited three nights and she deleted 42 of her own shifts in the meantime, which is the cost
-of a slow read on this tier rather than an argument to lower it.
+**D3 — Merge PR #191, session 4 (dated pay items)? — opened 2026-10-20, no default.** It is the
+owner tier: it moves dollar figures, so the loop may not merge it. **Three nights open**, which
+is now exactly as long as the raise PR (D2) waited — and in that window she deleted 42 of her own
+shifts. That is the cost of a slow read on this tier, not an argument to lower it. Nothing in the
+PR has changed since it opened; it needs a yes or a no, not more review.
+
+**CABINET MISSED (third night).** `docs/cos/brief.md` is **10.0 days** old and still reads *"No
+cabinet has run yet. The first runs Sunday 2026-10-18."* Exactly **one** Sunday has passed without
+a cabinet — 2026-10-18 — and the next is **2026-10-25**. (The 10-19 and 10-21 groom notes call
+10-19 "the second Sunday"; 2026-10-19 was a Monday, so that count was wrong and is corrected here
+rather than carried forward.) The nightly cannot clear this — writing the brief is the Sunday
+cabinet pass's job — so the notify line carries it until a cabinet runs.
 
 **D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
 which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.

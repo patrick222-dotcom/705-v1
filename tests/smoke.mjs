@@ -6293,6 +6293,190 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* == 51. The same opt-out on the import stepper's confirm card (2026-10-22) ==================
+     50 put the switch on the quiet re-sync banner. The banner fired on exactly ONE of Courtney's
+     three 2026-10-20 loads -- the other two were cold loads, and a cold load opens the import
+     stepper by design (CLAUDE.md -> Calendar sync), so on two thirds of her visits she still met a
+     125-event confirm sheet with no way to say "stop asking me". This is that door.
+
+     Two design decisions this section exists to pin, both of which a DOM-only test would miss:
+       (a) it is on the FINAL card only -- on the classify cards it would render once per group,
+           which at her 125 events is 125 copies of a setting;
+       (b) tapping it does NOT dismiss the sheet. The banner's copy does, because the banner's job
+           is "ask me later"; this sheet's plan may hold changes she wants, so throwing it away on
+           a tap meaning "stop the asking" would cost her the shifts too. The Confirm-still-imports
+           assertion below is the one that would catch a regression into the banner's behaviour.
+     Same stub as 50, for the same reason: `window.__invokes` is the only thing that can tell a
+     live preference from a recorded one. 46 pins what the preference DOES once set. */
+  if (want(51)) {
+    const FEED_URL = 'https://app.nursegrid.com/calendars/778/6f1c8e2a-0000-4a11-9c33-abcdef012346';
+    const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+    const FEED = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', 'UID:ng-step-a', `DTSTART:${dayOut(6)}T190000Z`, `DTEND:${dayOut(6)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT',
+      'END:VCALENDAR'].join('\r\n');
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.addInitScript(([feed, feedUrl]) => {
+      window.__ev = []; window.__invokes = 0; window.__skew = 0;
+      const realNow = Date.now;
+      Date.now = () => realNow() + window.__skew;
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* `functions` is a prototype getter in supabase-js 2.45.4 -- shadow it with an own
+                   property or the stub never takes (27's lesson; __invokes is the proof). */
+                const fx = { invoke: async () => { window.__invokes++; return { data: window.__feed || feed, error: null }; } };
+                Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [FEED, FEED_URL]);
+
+    const ev = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+    const row = (n) => page.evaluate((name) => (window.__ev || []).filter((r) => r && r.name === name).pop() || null, n);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'), null, { timeout: 15000 });
+    ok('stepper opt-out: the stub reached the proxy, so the drive is real', (await page.evaluate(() => window.__invokes)) === 1,
+      String(await page.evaluate(() => window.__invokes)));
+
+    /* The cold-load sync opens the stepper on its first classify card -- the door the banner
+       cannot reach, and 2 of her 3 loads on 2026-10-20. */
+    await page.waitForSelector('.sheet', { timeout: 10000 });
+    ok('stepper opt-out: the cold load opened the import stepper, not the banner',
+      (await page.locator('.sheet[aria-label="Classify imported shift"]').count()) === 1
+      && !(await page.locator('.sync-banner').count()), (await ev()).join(','));
+
+    /* (a) Not on the classify cards. At 125 events this would be 125 copies of one setting. */
+    ok('stepper opt-out: the classify card does NOT carry it',
+      (await page.locator('.sheet button.opt').count()) === 0);
+
+    await page.locator('.chips-grid button.chip-sel').first().click();
+    await page.locator('.sheet .btn-primary').click();
+    await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { timeout: 8000 });
+
+    const opt = page.locator('.sheet button.opt');
+    const optCount = await opt.count();
+    ok('stepper opt-out: the confirm card carries it', optCount === 1, String(optCount));
+    /* Read copy only if present. An absent button is the regression this section exists to catch,
+       and reading a locator that matches nothing aborts the whole run on a 30s timeout instead of
+       failing -- the first of the three ways the harness skill says a negative test lies. It is
+       exactly how 50's own first draft was wrong. */
+    const optText = optCount ? (await opt.innerText()).replace(/“|”/g, '"') : '';
+    ok('stepper opt-out: worded as the Settings switch and the banner, not new copy',
+      /Only sync when I tap "Sync now"/.test(optText), JSON.stringify(optText));
+
+    /* The mis-tap rule: this sheet confirms wage-affecting changes, so the control that turns
+       syncing off must sit BELOW the primary row and must not be its full-width peer. */
+    const optBox = optCount ? await opt.boundingBox() : null;
+    const confirmBox = await page.locator('.sheet .btn-primary').boundingBox();
+    ok('stepper opt-out: it keeps a 44pt tap target', optBox && optBox.height >= 44, JSON.stringify(optBox));
+    ok('stepper opt-out: it sits BELOW Confirm, so it is not the button she reaches for',
+      optBox && confirmBox && optBox.y > confirmBox.y, JSON.stringify([optBox && optBox.y, confirmBox && confirmBox.y]));
+    ok('stepper opt-out: and it is narrower than Confirm, not a full-width peer',
+      optBox && confirmBox && optBox.width < confirmBox.width, JSON.stringify([optBox && optBox.width, confirmBox && confirmBox.width]));
+
+    const dismissedBefore = (await ev()).filter((n) => n === 'ics_resync_dismissed').length;
+    if (optCount) await opt.click();
+    await page.waitForTimeout(400);
+
+    /* (b) The decision that separates this from the banner's copy. Everything below reads the
+       sheet, so whether it is still there is captured ONCE and used to guard those reads: a
+       regression into the banner's dismiss-on-tap behaviour must FAIL these assertions, not abort
+       the run by timing out against a detached locator. Negative-testing that exact break is what
+       found this -- it printed one failure and then died, which reads like one caught regression
+       and is really an unknown number of unproven assertions. */
+    const sheetOpen = (await page.locator('.sheet[aria-label="Confirm schedule import"]').count()) === 1;
+    ok('stepper opt-out: tapping it leaves the sheet OPEN -- the plan is not thrown away', sheetOpen);
+    ok('stepper opt-out: and acknowledges the tap, so she does not tap again',
+      sheetOpen
+      && (await page.locator('.sheet .opt-done').count()) === 1
+      && (await page.locator('.sheet button.opt').count()) === 0,
+      sheetOpen ? await page.locator('.sheet').innerText() : 'sheet was dismissed');
+
+    const pref = await row('ics_autosync_pref');
+    ok('stepper opt-out: one ics_autosync_pref row, and it says the preference is ON',
+      !!pref && pref.props && pref.props.manual === true, JSON.stringify(pref && pref.props));
+    ok('stepper opt-out: tagged src:stepper, so banner and Settings taps stay distinguishable',
+      !!pref && pref.props && pref.props.src === 'stepper', JSON.stringify(pref && pref.props));
+    ok('stepper opt-out: exactly one pref row, not one per render',
+      (await ev()).filter((n) => n === 'ics_autosync_pref').length === 1, (await ev()).join(','));
+    /* ics_resync_dismissed is the complaint proxy (she dismissed at 08:54:05 on 2026-10-14 and
+       filed "it keeps asking me to approve" 81 seconds later). A tap meaning "thank you, stop"
+       must not land in it, or the metric that found this work stops meaning anything. */
+    ok('stepper opt-out: it does NOT fire ics_resync_dismissed -- that row means "ask me again"',
+      (await ev()).filter((n) => n === 'ics_resync_dismissed').length === dismissedBefore, (await ev()).join(','));
+
+    /* The plan survived the tap in substance, not just on screen: Confirm still imports. Guarded
+       for the same reason -- with the sheet gone there is nothing to click, and the assertion
+       below must report that rather than hang. */
+    if (sheetOpen) {
+      await page.locator('.sheet .btn-primary').click();
+      await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_import_done'), null, { timeout: 10000 })
+        .catch(() => {});
+    }
+    const done = await row('ics_import_done');
+    ok('stepper opt-out: Confirm still imports after opting out', !!done, (await ev()).join(','));
+
+    /* The assertion the section exists for: the preference is LIVE, not recorded. A button that
+       tracked an event and set nothing would pass every check above. */
+    const invokesBefore = await page.evaluate(() => window.__invokes);
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(1800);   // fixed wait: a predicate that never comes true aborts the run (46)
+    ok('stepper opt-out: the next foreground return does not reach the feed at all',
+      (await page.evaluate(() => window.__invokes)) === invokesBefore,
+      `${invokesBefore} -> ${await page.evaluate(() => window.__invokes)}`);
+
+    /* And it set the same field the Settings switch reads, not a second flag beside it. */
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 10000 });
+    await page.waitForSelector('button[role="switch"][aria-label="Only sync when I tap Sync now"]', { timeout: 12000 });
+    ok('stepper opt-out: Settings now shows that very switch ON',
+      (await page.locator('button[role="switch"][aria-label="Only sync when I tap Sync now"]').getAttribute('aria-checked')) === 'true');
+
+    const real51 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('stepper opt-out: no page errors across section 51', real51.length === 0, real51[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
