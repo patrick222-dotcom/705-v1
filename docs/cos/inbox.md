@@ -77,3 +77,9 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   rate from [date]"), plus a Settings fix: a rate typed and closed without a blur was discarded.
   BACKLOG's "a shift stores its own rate" was false; the 109 → 67 drop is better explained by her
   deleting mis-coded synced shifts. PR waits for Pat (moves figures) · → outcome pending
+
+- 2026-10-23 · session BadgeBudget nightly · a queued P3 ("the wordmark is clipped on a 320pt
+  phone") was withdrawn, not built: its blocker — "this sandbox can't load the real font" — is
+  false, and with the font loaded the wordmark has 22px of slack, so the proposed 11px fix was a
+  regression. The removed ellipsis assertion is restored, now webfont-guarded and deterministic ·
+  → outcome pending
