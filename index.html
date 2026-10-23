@@ -585,9 +585,15 @@
        measured on the fallback face, 14px leaves 0px of spare between the brand and
        .top-actions, 13px leaves ~5px and 12px leaves ~12px, and real Bricolage ran ~5px wider
        than the fallback on the runner — so 12px is the first size with real margin under either
-       face. Reverting to 14px alone does NOT fail a test (the clip absorbs it); it just clips the
-       wordmark. That is recorded rather than asserted because this sandbox cannot load the face
-       the choice is about.
+       face.
+       UPDATED 2026-10-23 — the sentence that used to end this paragraph ("recorded rather than
+       asserted because this sandbox cannot load the face the choice is about") was FALSE: the
+       sandbox does reach fonts.googleapis.com and does render real Bricolage Grotesque 800.
+       Measured in it at 320pt, this rule gives the wordmark 87px of 109.2px — 22px spare, not
+       clipped — while 14px needs 100px in 99px and DOES clip. So 12px is now asserted, not just
+       recorded: tests/smoke.mjs §30 settles the webfont, confirms off the FontFaceSet that the
+       row really was laid out in it, and only then checks the fit — so reverting to 14px fails a
+       test instead of silently clipping the wordmark.
        `min-width:0` was in the first draft of this rule and is DELETED on purpose, not forgotten:
        it is redundant with the overflow above, and keeping both made the test unfalsifiable --
        deleting either one alone still passed, because each is independently sufficient. One rule,

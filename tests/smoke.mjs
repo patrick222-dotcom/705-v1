@@ -3345,6 +3345,23 @@ const run = async () => {
       await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }, [STORAGE_KEY, seed]);
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('.hero .hero-stats', { timeout: 25000 });
+      /* SETTLE THE WEBFONT BEFORE MEASURING ANYTHING ABOUT THE WORDMARK (2026-10-23).
+         The ellipsis assertion that used to live below was a coin flip for three CI cycles
+         because it read the box in whichever face had resolved by then. Waiting for the font
+         set to finish loading removes that race outright.
+         Two things about HOW it waits are deliberate, and the first draft got both wrong:
+         · the bound is `waitForFunction`'s own timeout, enforced by the driver, not a
+           `setTimeout` inside the page. An in-page timer is subject to the page's own
+           scheduling, so it bounds the promise but not necessarily the wall clock.
+         · it reads `document.fonts.status` rather than awaiting `document.fonts.ready`.
+           `ready` resolves with the FontFaceSet itself, which `page.evaluate` would then have
+           to SERIALIZE -- a non-serializable return value on the hot path of a 52-section
+           suite. `status` is a string, and the predicate returns a boolean.
+         A font that never arrives therefore costs 6s and degrades to "measured in whatever
+         face we had"; it can never hang the suite. The face-resolution fields below record
+         which case this run actually got, so a skipped verdict is always diagnosable. */
+      await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 6000 })
+        .catch(() => {});
       const m = await page.evaluate(() => {
         const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
         const rr = (sel) => { const b = r(sel); return b && { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; };
@@ -3373,7 +3390,35 @@ const run = async () => {
         const brandEl = document.querySelector('.brand');
         const bb = brandEl.getBoundingClientRect();
         const actsBox = document.querySelector('.top-actions').getBoundingClientRect();
+        /* WHICH FACE THIS RUN ACTUALLY LAID THE WORDMARK OUT IN. Read off the FontFaceSet,
+           because the two cheaper tests were BOTH negative-tested here and BOTH lie (2026-10-23):
+           · `document.fonts.check('800 12px "Bricolage Grotesque"')` returns TRUE on a page with
+             the webfont stylesheet deleted and no @font-face for the family at all — it answers
+             "can this text be rendered", which a fallback satisfies. Useless as a guard.
+           · "force sans-serif and see if the width moves" also fires with no webfont, because
+             an unresolvable family falls back to Chromium's DEFAULT font, which is not
+             `sans-serif` — so the two measurements differ (74px vs 83px at 320pt) and the
+             width-diff concludes a webfont rendered when none did.
+           What does distinguish them is the set of declared faces: with the stylesheet the set
+           holds Bricolage entries and the 800 weight reaches `status:'loaded'`; without it the
+           set holds none. The forced-fallback width is still measured, but only to PRINT
+           alongside — it is not part of the verdict. Restored immediately. */
+        const bricolage = [...document.fonts].filter((f) => /Bricolage/.test(f.family));
+        const loadedWeights = bricolage.filter((f) => f.status === 'loaded').map((f) => f.weight);
+        const probe = document.createElement('style');
+        probe.textContent = '.brand{font-family:sans-serif!important}';
+        document.head.appendChild(probe);
+        void brandEl.offsetWidth;
+        const brandWidthFallback = brandEl.scrollWidth;
+        probe.remove();
+        void brandEl.offsetWidth;
         return {
+          brandFamily: getComputedStyle(brandEl).fontFamily,
+          brandFaceRendered: /Bricolage/.test(getComputedStyle(brandEl).fontFamily)
+            && loadedWeights.includes('800'),
+          brandFacesDeclared: bricolage.length,
+          brandLoadedWeights: loadedWeights.join('/') || 'none',
+          brandWidthFallback,
           tiles: document.querySelectorAll('.stats, .stat').length,
           chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
           stats: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt),
@@ -3439,39 +3484,71 @@ const run = async () => {
          once the bar fits. */
       ok(`top bar ${tag}: the add-shift button sits 16px inside the right edge`,
         m.fabRight === m.vw - 16, `fabRight=${m.fabRight} vw=${m.vw}`);
-      /* WHAT THIS ROW MAY ASSERT, and why it is no longer "the wordmark is not ellipsised".
-         That assertion lived here until 2026-10-20 and was non-deterministic: it failed on the
+      /* WHAT THIS ROW MAY ASSERT, and the 2026-10-20 reading of it that was WRONG IN BOTH
+         DIRECTIONS. The history matters because the wrong reading had a P3 build queued behind
+         it that would have been a regression.
+         The ellipsis assertion here was non-deterministic for three CI cycles: it failed on the
          GitHub runner and passed in this sandbox ON THE SAME COMMIT three times (2026-10-11
          `e738670`, 2026-10-14 `0aa4ef4` -- a docs-only diff -- and 2026-10-16 `63ed891`), every
-         time reporting `clipped=true spare=10`, and every red run had a green twin. Three CI
-         cycles and three groom sessions on a coin flip.
-         The cause is that it measured whichever face had resolved by the time it read the box.
-         This sandbox has no route to fonts.googleapis.com and lays the bar out in the fallback
-         face; the runner gets real Bricolage Grotesque. At 320pt the row has only ~11.7% of
-         face-width headroom -- the wordmark needs 87px of the 97.2px the row can give it -- and
-         the real face needs more than that (hence `spare=10`, which is exactly the flex gap, i.e.
-         the brand maxed out and still overflowing). So `clipped=true` on the runner was the TRUTH:
-         the wordmark IS ellipsised on a real first-gen iPhone SE, and the green twins were a
-         font-load race. Awaiting `document.fonts.ready` would have removed the race and left a
-         deterministic red, because the claim itself is false at this width.
-         The cosmetic half therefore stops being pass/fail, and the deterministic half takes its
-         place: how much of the row the wordmark is GIVEN. That is set by the controls' widths, the
-         gaps and the container padding, not by the face, so it reads the same in both
-         environments -- and it is what the old assertion was really guarding: a fourth control, or
-         a wider one, squeezing the wordmark to a stub. A real squeeze costs ~46px (a 36px control
-         plus its gap); the face can only move this number by the few px it adds to the "Sign in"
-         pill, so the floor sits clear of the font and well under a regression. Measured when it
-         was set: 107.4px at 320pt, 131.2px at 390pt.
-         `clipped`, `spare`, `needs` and `has` are all still PRINTED, so what the ambient face did
-         stays on the record without a verdict resting on it. The guarantee that matters here --
-         the page does not scroll sideways, and the brand is what gives when something must -- is
-         asserted above and by the 2.2x check below, neither of which depends on which face won.
-         Do NOT restore the ellipsis assertion to "re-pin the cosmetics": at 320pt it is false on
-         the device, and the fix for that is slack in the CSS (BACKLOG P3, with the figures). */
+         time reporting `clipped=true spare=10`, and every red run had a green twin. The race was
+         real: it measured whichever face had resolved by the time it read the box.
+         The CAUSE assigned to it was not. That note concluded "this sandbox has no route to
+         fonts.googleapis.com and lays the bar out in the fallback face; the runner gets real
+         Bricolage Grotesque", and therefore that `clipped=true` on the runner was the truth and
+         "the wordmark IS ellipsised on a real first-gen iPhone SE".
+         MEASURED 2026-10-23, with the face settled and its identity read off the FontFaceSet
+         (see the probe above for the two cheaper tests that were tried and proved to lie): this
+         sandbox reaches fonts.googleapis.com and fonts.gstatic.com fine -- 200 on the stylesheet
+         and on the Bricolage woff2 -- and lays the bar out in REAL Bricolage Grotesque 800. In
+         that face, at 320pt, the wordmark needs **87px** of **109.2px** of room: 22px spare, NOT
+         clipped. Pure `sans-serif` needs 83px and Plus Jakarta Sans 90px, so the number is
+         genuinely face-sensitive and 87px is the real face's.
+         So every figure in the old note is off: the "97.2px the row can give it" subtracted a
+         flex gap that is not the constraint, the fallback needs 83 not 87, and the real face
+         needs 87 -- not "more than 97.2". The wordmark is NOT ellipsised at 320pt in the face
+         this app actually ships, and the queued P3 ("drop .brand to 11px to buy back 10-12px")
+         would have shaved 7px off a row with 22px of slack.
+         Its 107.4px is reproducible, and that is the tell: 107.4 is what this row measures with
+         the webfont stylesheet DELETED (the "Sign in" pill is a couple of px narrower in the
+         fallback), against 109.2 with it. So the old note was measured without the webfont, in
+         the environment it believed it was in -- and then reasoned about a face it had not
+         loaded.
+         What the runner's `clipped=true spare=10` most likely was, then, is the OPPOSITE of the
+         old reading: a run that did not get the webfont and fell back to a WIDER system face
+         (DejaVu Sans on an Ubuntu runner is the candidate). Corroborated, not proved, by this
+         section's own negative test: reverting `.brand` to 14px makes real Bricolage need 100px
+         and reproduces the runner's signature exactly -- `needs=100 has=99 clipped=true
+         spare=10`. So `spare=10` is the fingerprint of a ~100px wordmark in this row, and at
+         12px only a face ~15% wider than Bricolage gets there.
+         UNVERIFIED: nothing here can read the runner's font stack, and nobody has measured a
+         real first-gen iPhone SE. Those are the two open questions; neither is a reason to
+         change the CSS, because the only environment that demonstrably renders the shipped face
+         shows the wordmark fitting with room to spare.
+         So the verdict is restored, but GUARDED rather than ambient: awaiting
+         `document.fonts.ready` kills the race, and the fit is asserted only on a run that
+         provably rendered the real face. A run without the webfont prints its numbers and skips
+         the verdict instead of guessing -- which is what makes this deterministic in both
+         environments rather than a coin flip in one. The font-independent floor below stays
+         exactly as it was: it guards a different thing (a fourth control squeezing the wordmark
+         to a stub, ~46px) and it reads the same whatever the face did. */
       const roomFloor = dev === 'iPhone SE' ? 96 : 120;
       ok(`top bar ${tag}: the wordmark keeps its share of the row`, m.brandRoom >= roomFloor,
         `room=${m.brandRoom} floor=${roomFloor} needs=${m.brandNeed} has=${m.brandHave} `
         + `clipped=${m.brandClipped} spare=${m.brandSpare}`);
+      const faceDetail = `family=${m.brandFamily} faces=${m.brandFacesDeclared} `
+        + `loaded=${m.brandLoadedWeights} rendered=${m.brandFaceRendered} `
+        + `real=${m.brandNeed}px forcedFallback=${m.brandWidthFallback}px `
+        + `room=${m.brandRoom} spare=${m.brandSpare}`;
+      if (m.brandFaceRendered) {
+        /* The claim the 10-20 note believed was false. It is the shipped face, at the width where
+           the row is tightest, so a CSS change that genuinely over-tightens the bar FAILs here. */
+        ok(`top bar ${tag}: the wordmark fits unclipped in the real Bricolage face`,
+          !m.brandClipped && m.brandNeed <= m.brandHave, faceDetail);
+      } else {
+        /* Not a pass and not a failure: the run had no webfont, so it has nothing to say about
+           one. Printed so a red CI run is diagnosable instead of mysterious. */
+        console.log(`    – top bar ${tag}: webfont did not render; fit verdict skipped (${faceDetail})`);
+      }
       /* THE FONT-PROOF CHECK, and the one this section was missing.
          The first version of the ≤360px fix summed to exactly 0 overflow here and was still 5px
          over on the GitHub runner, because this sandbox has no route to fonts.googleapis.com and

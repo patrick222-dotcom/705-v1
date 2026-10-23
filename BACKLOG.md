@@ -28,6 +28,90 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-23)
+- [x] ~~**The P3 wordmark-clipping item is NOT A DEFECT — every figure behind it was measured
+  without the webfont, and the fix it proposed would have been a regression**~~ — **CORRECTED
+  2026-10-23**, tonight's build. The 10-20 item said the wordmark is ellipsised on a first-gen
+  iPhone SE and proposed dropping `.brand` from 12px to 11px to buy back "10–12px". Measured
+  tonight with the real face settled and its identity read off the FontFaceSet: at 320pt the
+  wordmark needs **87px** of **109.2px** of room — **22px spare, not clipped.**
+  **The blocker the item rested on is false.** It said "this sandbox has no route to
+  fonts.googleapis.com and so cannot verify a CSS fix against the face that actually clips".
+  Probed directly: `fonts.googleapis.com` returns **200** on the stylesheet, `fonts.gstatic.com`
+  **200** on the Bricolage woff2, and in-browser `.brand` computes to `"Bricolage Grotesque"` with
+  the 700 and 800 weights at `status:'loaded'`. The sandbox renders the shipped face.
+  **So the figures invert.** The real face needs **87px**, not "more than 97.2"; pure
+  `sans-serif` needs **83px**, not 87; Plus Jakarta Sans needs 90px. The "97.2px the row can give
+  it" subtracted a flex gap that is not the constraint. And the item's own **107.4px** is
+  reproducible — it is what this row measures with the webfont stylesheet **deleted** (109.2 with
+  it), so the old note was measured in a no-webfont page and then reasoned about a face it had
+  never loaded. Dropping to 11px would have shaved 7px off a row with 22px of slack.
+- [ ] **What the GitHub runner's `clipped=true spare=10` actually was is now the open question,
+  and the answer is probably the OPPOSITE of the 10-20 reading** (P3 · source:build ·
+  `harness:unscoped`, and **unverified**) — that note concluded the runner got real Bricolage and
+  this sandbox did not, therefore CI's red was the truth. It is the other way round: the sandbox
+  demonstrably renders Bricolage, so the runner's red is most consistent with the runner **not**
+  getting the webfont and falling back to a **wider** system face (DejaVu Sans on an Ubuntu
+  runner is the candidate). **Corroborated, not proved,** by tonight's own negative test:
+  reverting `.brand` to 14px makes real Bricolage need 100px and reproduces CI's signature
+  exactly — `needs=100 has=99 clipped=true spare=10`. So `spare=10` is the fingerprint of a
+  ~100px wordmark in this row, and at 12px only a face ~15% wider than Bricolage reaches it.
+  **What would settle it:** read the face-resolution fields §30 now prints (`faces=`,
+  `loaded=`, `rendered=`) off a real CI run — tonight's merge produces one. If it reports
+  `faces=0 loaded=none`, the runner has no webfont and the question is closed.
+  **Not a reason to touch the CSS either way**, and the second open question is unchanged and
+  older: nobody has measured a real first-gen iPhone SE.
+- [ ] **One new event since the last groom, and it is a self-identifying crawler — the
+  landing-only cohort goes seventeen → eighteen** (P3 · source:groom · `harness:unscoped`) —
+  `events` holds **1,711 rows** (up **1** from 1,710), newest `2026-10-23 00:07:45`. That one row
+  is device `ea32d8b0`, a `session_end {n:3, secs:4, shifts:0, last:'ob_view'}` carrying
+  **`360Spider`** at the end of a Windows/Edge agent string — the fourth sighting of that
+  self-declared crawler. It is also the **second** instance of the shape the 10-21 groom named
+  ("lost every row but its beacon"): `n:3` says three events fired, and **only the keepalive
+  beacon landed** — the `track()` inserts are ordinary supabase-js calls and a tab that closes in
+  4 seconds cancels them, which is the same browsing-context-discarded failure the unload save was
+  moved to `keepalive` for on 2026-10-05. **Not worth building for**: the devices losing rows this
+  way are crawlers, and `scrubpay_events_pending` already re-sends deferred events on the next
+  load — which a crawler never makes.
+- [ ] **Courtney still has not opened the app, so BOTH sync opt-outs remain field-unverified —
+  and the 10-22 item predicted exactly this** (P2 · housekeeping, and the figure most likely to be
+  misread) — her last event of any kind is still `ics_sync_result` at **2026-10-20 23:02:03**,
+  which predates `d438d58` (the banner switch) and `cd77392` (the stepper switch). So
+  `ics_autosync_pref` at **zero rows from any device, ever** and `ics_autosync_off` at **zero** are
+  **expected**, not evidence either affordance is broken or unfindable. Three days of zero now.
+  The first honest reading is her next foreground return, and a **cold** load is still the more
+  likely door (2 of her last 3), which is the one the stepper switch now covers.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now five grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH, and for the second night running the word is carried entirely
+  by a crawler** (P3 · source:groom · no action) — newest event **8.3h** old, comfortably inside
+  the 48h window, so the script reports **FRESH** and that is exactly what it claims: telemetry is
+  alive and something arrived recently. What arrived was `360Spider`. **No human has loaded the
+  app in ~57 hours.** Quote the verdict, but never as "a user came".
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited
+  FOUR nights — checked before tonight's item was picked** (housekeeping) —
+  `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head `c41b8cc`, **unchanged
+  since it opened**. Its hunks were read from the actual diff again rather than trusted: its one
+  `tests/smoke.mjs` hunk is a pure append at **`@@ -6098,6 +6098,139 @@`**, and its 20
+  `index.html` hunks start at **1473**. Tonight's work is §30 at ~3340–3530 in `tests/smoke.mjs`
+  and a comment-only edit at `index.html`:588, so both conflicts are ruled out **structurally**,
+  not by proximity. It overlaps in `BACKLOG.md` as every nightly does — whoever drives #191 should
+  update its branch after tonight's merge. It is the owner tier (it moves dollar figures):
+  `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **CABINET MISSED (fourth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (10.8 days) and still reads *"No cabinet has
+  run yet. The first runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**.
+  The 10-22 correction stands and is worth not re-breaking: exactly **one** Sunday has passed
+  without a cabinet (2026-10-18), and the next is **2026-10-25** — two days out. The nightly
+  cannot clear this; writing the brief is the Sunday cabinet pass's job.
+
 ### P1 (new, groom 2026-10-22)
 - [x] ~~**The import stepper does not carry the manual-sync opt-out**~~ — **SHIPPED 2026-10-22**,
   tonight's build. See the Done log and the 10-21 band below for the evidence that ordered it.
@@ -217,8 +301,17 @@ and the push P0 it pointed at was fixed the same day.
   classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
   second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
   reason**. Nothing new broke; do not build a worker mitigation.
-- [ ] **The wordmark is ellipsised on a real first-gen iPhone SE, and tonight's test fix
-  deliberately did NOT change the CSS to hide that** (P3 · source:groom · `harness:drivable`, and
+- [x] ~~**The wordmark is ellipsised on a real first-gen iPhone SE, and tonight's test fix
+  deliberately did NOT change the CSS to hide that**~~ — **WITHDRAWN 2026-10-23: the premise is
+  false and so is every figure in it.** Measured with the webfont settled, the wordmark needs 87px
+  of 109.2px at 320pt — 22px spare, not clipped — and this item's own 107.4px turns out to be the
+  **no-webfont** measurement of the same row. The "figures are measured rather than guessed" claim
+  below is the part that did not hold: they were measured on a page that had not loaded the face
+  they were reasoning about. See the 10-23 band at the top of this file for the probe, the
+  corrected numbers, and the one question that survives (what CI's face actually was). **Do not
+  build the 11px fix** — it would shave 7px off a row with 22px of slack. Original note follows,
+  struck but unedited, because the lesson is the reasoning and not the numbers.
+  (P3 · source:groom · `harness:drivable`, and
   the figures are measured rather than guessed) — the 320pt row gives the wordmark **107.4px**, of
   which **97.2px** can hold content once the 10px flex gap is paid; the fallback face needs
   **87px** and the real Bricolage face needs **more than 97.2px**. So it clips on the device by
@@ -892,7 +985,15 @@ positioning (sync, paycheck) are failing her in them.
   abandoned** so the work can be rebuilt on a fresh branch. Until one of those happens the loop has no
   P1 to take, and a nightly with no P1 ships polish.
   Original scoping kept below:
-- [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
+- [x] ~~**Quiet the swap-board CTAs (positioning, 2026-09-19)**~~ — **SHIPPED 2026-09-27 in PR
+  #118** (commit `6ea400e`); this checkbox was simply never ticked, and it has been read as open
+  work by five grooms since. Verified in the tree 2026-10-23 rather than taken on trust: the
+  dashboard `.whatif mob-only` card is **gone** (the comment at `index.html`:5561 records why and
+  notes the board stays reachable from Settings), the Settings card survives as the durable route
+  in, and the word "anonymously" is absent from both subtitles — `index.html`:5657 now reads
+  *"Trade shifts with your unit"*, with the comment at 5654 citing `security-00` as the reason the
+  claim may not come back. `swapPendingCount` and its badge are untouched at every remaining site,
+  as the note required. Original note follows. — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
   compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
   (1) the dashboard `.whatif mob-only` card at ~index.html:4077-4080 — **remove it**, it sits on the
@@ -2780,6 +2881,48 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-23 — **A queued P3 was a regression waiting to happen: the wordmark is not clipped, and
+  the only environment anyone had measured was one without the webfont.** Tonight's item was the
+  10-20 P3 *"the wordmark is ellipsised on a real first-gen iPhone SE"*, which proposed dropping
+  `.brand` from 12px to 11px at ≤360px. It was blocked on its own stated impossibility — *"this
+  sandbox has no route to fonts.googleapis.com and so cannot verify a CSS fix against the face
+  that actually clips"*. **That blocker is false.** `fonts.googleapis.com` returns 200 on the
+  stylesheet and `fonts.gstatic.com` 200 on the Bricolage woff2; in-browser, `.brand` computes to
+  `"Bricolage Grotesque"` with the 700 and 800 weights at `status:'loaded'`. So the fix was
+  checkable, and checking it killed it: **87px needed of 109.2px available at 320pt — 22px spare,
+  not clipped.** Pure `sans-serif` needs 83px, Plus Jakarta Sans 90px, so the number is genuinely
+  face-sensitive and 87 is the shipped face's. Every figure in the old note was off in the same
+  direction, and its 107.4px is reproducible as the **webfont-deleted** measurement of that row.
+  **What shipped is therefore not the CSS change — it is the verdict the 10-20 note believed was
+  unobtainable.** The ellipsis assertion had been removed as a coin flip (three CI cycles, red on
+  the runner and green here on the same commit, including a docs-only diff). It is restored, with
+  the two things that made it a coin flip fixed: §30 now awaits `document.fonts.ready` (raced
+  against a 6s timeout, so a hung font request degrades instead of hanging the suite), and the fit
+  is asserted **only on a run that provably rendered the real face**, printing its numbers and
+  abstaining otherwise. Deterministic in both environments rather than lucky in one.
+  **The guard's first draft was wrong and the negative tests are what caught it** — worth
+  recording, because both discarded tests look convincing: (1) `document.fonts.check('800 12px
+  "Bricolage Grotesque"')` returns **true** on a page with the stylesheet deleted and no
+  `@font-face` for the family at all, because it answers "can this text be rendered" and a
+  fallback satisfies that; (2) "force `sans-serif` and see if the width moves" **also** fires with
+  no webfont, because an unresolvable family falls back to Chromium's *default* font, which is not
+  `sans-serif` (74px vs 83px at 320pt). The first draft used both and certified a face that was
+  not there. The guard now reads the `FontFaceSet` directly — Bricolage entries present **and**
+  the 800 weight `loaded` **and** `.brand` still computing to it.
+  **Three deliberate breaks, each one rule:** reverting `.brand` to 14px FAILs the fit assertion
+  on the SE (and reproduces CI's historical signature exactly — `needs=100 has=99 clipped=true
+  spare=10`, which is the corroboration behind tonight's P3 about what the runner's face really
+  was); deleting the webfont stylesheet gives `faces=0 loaded=none rendered=false` and the verdict
+  correctly **abstains** rather than passing vacuously; and pointing `.brand` at Plus Jakarta
+  while the webfont still loads gives `faces=12 loaded=700/800` but `rendered=false`, so both
+  halves of the conjunction are load-bearing and neither is dead code.
+  `tests/smoke.mjs` **850 → 852**. The false "this sandbox cannot load the face the choice is
+  about" sentence in `index.html`'s own ≤360px comment is corrected in place, so 12px is now
+  asserted rather than merely recorded. **No `index.html` behaviour changed** — the diff there is
+  comment-only, which is also why it could not conflict with PR #191.
+  Also bookkeeping, both verified in the tree rather than assumed: the 2026-09-19 *"Quiet the
+  swap-board CTAs"* item has been shipped since PR #118 on 09-27 and was ticked (five grooms had
+  been reading it as open), and the 10-20 wordmark item is struck with the correction.
 - 2026-10-22 — **The opt-out now sits on the door she actually walks through: the import stepper's
   confirm card.** Last night put *Only sync when I tap "Sync now"* on the quiet re-sync banner,
   which was right and reached one third of the problem. The banner fires on a **foreground
