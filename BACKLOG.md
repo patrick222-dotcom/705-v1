@@ -29,6 +29,20 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P1 (new, groom 2026-10-23)
+- [x] **LIVE CONFIRMED — `dfff8ce` is what badgebudget.com serves.** PR #195 squash-merged after
+  both required checks went green on head `54863f4` (gate 12s; smoke **09:03:01 → 09:12:10**, 9m09s,
+  which is squarely the normal 8–10 min band), and `node scripts/deploy_watch.mjs` then reported
+  **LIVE** with `index.html` at `dfff8ce (2026-10-23)`, `privacy.html`/`ops.html` current and
+  `CNAME` serving badgebudget.com. Nothing is merged-but-unshipped going into tomorrow.
+  **One process note worth keeping, because it is a reading error a future run can repeat.** Mid-run
+  this session twice concluded CI was "stuck ~30 minutes" and amended on that basis. It was not:
+  the elapsed time had been inferred from background `sleep`s that were launched and then polled
+  *past* without ever waiting for them, so almost no wall clock had actually passed. CI was healthy
+  throughout and the first commit (`ac922e2`) passed smoke 852/0 on its own. The amend it triggered
+  was independently correct (see the Done log — awaiting `document.fonts.ready` inside
+  `page.evaluate` returns a non-serializable `FontFaceSet`), so nothing bad shipped, but the
+  inference was wrong. **Read a job's own `started_at`/`completed_at`, never a felt duration**, and
+  note that the check-runs endpoint lags the jobs endpoint by minutes.
 - [x] ~~**The P3 wordmark-clipping item is NOT A DEFECT — every figure behind it was measured
   without the webfont, and the fix it proposed would have been a regression**~~ — **CORRECTED
   2026-10-23**, tonight's build. The 10-20 item said the wordmark is ellipsised on a first-gen
