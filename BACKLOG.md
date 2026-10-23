@@ -46,21 +46,34 @@ and the push P0 it pointed at was fixed the same day.
   reproducible — it is what this row measures with the webfont stylesheet **deleted** (109.2 with
   it), so the old note was measured in a no-webfont page and then reasoned about a face it had
   never loaded. Dropping to 11px would have shaved 7px off a row with 22px of slack.
-- [ ] **What the GitHub runner's `clipped=true spare=10` actually was is now the open question,
-  and the answer is probably the OPPOSITE of the 10-20 reading** (P3 · source:build ·
-  `harness:unscoped`, and **unverified**) — that note concluded the runner got real Bricolage and
-  this sandbox did not, therefore CI's red was the truth. It is the other way round: the sandbox
-  demonstrably renders Bricolage, so the runner's red is most consistent with the runner **not**
-  getting the webfont and falling back to a **wider** system face (DejaVu Sans on an Ubuntu
-  runner is the candidate). **Corroborated, not proved,** by tonight's own negative test:
-  reverting `.brand` to 14px makes real Bricolage need 100px and reproduces CI's signature
-  exactly — `needs=100 has=99 clipped=true spare=10`. So `spare=10` is the fingerprint of a
-  ~100px wordmark in this row, and at 12px only a face ~15% wider than Bricolage reaches it.
-  **What would settle it:** read the face-resolution fields §30 now prints (`faces=`,
-  `loaded=`, `rendered=`) off a real CI run — tonight's merge produces one. If it reports
-  `faces=0 loaded=none`, the runner has no webfont and the question is closed.
-  **Not a reason to touch the CSS either way**, and the second open question is unchanged and
-  older: nobody has measured a real first-gen iPhone SE.
+- [ ] **The runner DOES get the webfont — its Bricolage is just 9px wider than ours, and that
+  killed my own hypothesis within the hour** (P2 · source:build · `harness:unscoped`) — the
+  10-20 note said the runner got real Bricolage and this sandbox did not; my first draft of this
+  item said the opposite, that the runner's red came from **missing** the webfont and falling
+  back to a wider system face (DejaVu Sans). **Read off CI and it is neither.** Run
+  `39925978022` on `ac922e2` (smoke 08:38:18→08:47:28, 852/0) printed the new face-resolution
+  fields from the runner itself:
+  · iPhone SE — `family="Bricolage Grotesque" faces=12 loaded=700/800 rendered=true real=96px
+    forcedFallback=83px room=109 spare=13`
+  · iPhone 13 — `real=109px forcedFallback=96px room=131 spare=22`
+  So the runner renders the **real webfont**, exactly as the 10-20 note said, and my
+  wider-system-face reading is **disproved**. What actually differs is the **file**: the same
+  family at the same 12px/800 needs **96px on the runner and 87px here**, while
+  `forcedFallback` agrees across both environments at **83px**. A difference that shows up only
+  in the webfont and not in the fallback is a difference in the font *binary*, not the stack —
+  Google Fonts serves per-user-agent builds and Bricolage Grotesque is a **variable** font with
+  an `opsz` axis, so the two environments plausibly get different advance widths. **Which file
+  each gets is unverified** and would be settled by diffing the two `fonts.gstatic.com` URLs.
+  **Two consequences, and the first is the one that matters.** (1) The P3 withdrawal above
+  **stands on both environments** — CI passed the new fit assertion, so the wordmark is unclipped
+  in the real face on the runner too, and the 11px change remains unnecessary. (2) But the
+  runner's margin is **13px, not 22px**, so quote 13 as the real headroom at 320pt and do not
+  let anyone spend it. `needs=96 has=96` there is exact.
+  **Still not fully explained:** the historical `clipped=true spare=10` at this same 12px. The
+  runner now reports `clipped=false spare=13`, so whatever produced the red is **no longer
+  reachable** — the most likely remaining cause is the font-load race itself, i.e. it measured
+  mid-load. Not worth chasing now that the race is gone; recorded so nobody re-derives it.
+  **The older open question is unchanged:** nobody has measured a real first-gen iPhone SE.
 - [ ] **One new event since the last groom, and it is a self-identifying crawler — the
   landing-only cohort goes seventeen → eighteen** (P3 · source:groom · `harness:unscoped`) —
   `events` holds **1,711 rows** (up **1** from 1,710), newest `2026-10-23 00:07:45`. That one row

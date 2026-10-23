@@ -3513,19 +3513,31 @@ const run = async () => {
          fallback), against 109.2 with it. So the old note was measured without the webfont, in
          the environment it believed it was in -- and then reasoned about a face it had not
          loaded.
-         What the runner's `clipped=true spare=10` most likely was, then, is the OPPOSITE of the
-         old reading: a run that did not get the webfont and fell back to a WIDER system face
-         (DejaVu Sans on an Ubuntu runner is the candidate). Corroborated, not proved, by this
-         section's own negative test: reverting `.brand` to 14px makes real Bricolage need 100px
-         and reproduces the runner's signature exactly -- `needs=100 has=99 clipped=true
-         spare=10`. So `spare=10` is the fingerprint of a ~100px wordmark in this row, and at
-         12px only a face ~15% wider than Bricolage gets there.
-         UNVERIFIED: nothing here can read the runner's font stack, and nobody has measured a
-         real first-gen iPhone SE. Those are the two open questions; neither is a reason to
-         change the CSS, because the only environment that demonstrably renders the shipped face
-         shows the wordmark fitting with room to spare.
-         So the verdict is restored, but GUARDED rather than ambient: awaiting
-         `document.fonts.ready` kills the race, and the fit is asserted only on a run that
+         AND THE RUNNER'S NUMBERS ARE NOW IN, which killed the first guess made here too. These
+         fields were added partly to find out what CI's face was, and the guess written in this
+         comment was "the runner missed the webfont and fell back to something wider". Wrong.
+         Run 39925978022 (`ac922e2`, 852/0) printed, from the runner:
+           SE  family="Bricolage Grotesque" faces=12 loaded=700/800 rendered=true
+               real=96px forcedFallback=83px room=109 spare=13
+           13  real=109px forcedFallback=96px room=131 spare=22
+         So the runner DOES render the real webfont. What differs is the font FILE: the same
+         family at the same 12px/800 needs 96px there and 87px here, while `forcedFallback`
+         agrees at 83px in both. A gap that appears only in the webfont and not in the fallback
+         is a difference in the binary, not the stack -- Google Fonts serves per-user-agent
+         builds and Bricolage Grotesque is a VARIABLE font with an `opsz` axis. Which file each
+         environment gets is UNVERIFIED; diffing the two fonts.gstatic.com URLs would settle it.
+         Two things follow. The fit claim holds in BOTH environments (CI passed this assertion),
+         so the CSS is right and stays. But the real headroom at 320pt is the RUNNER's 13px, not
+         this sandbox's 22px, and `needs=96 has=96` there is exact -- so do not spend it.
+         The historical `clipped=true spare=10` at this same 12px is still not fully explained,
+         but it is no longer reachable: the runner now reports `clipped=false spare=13`, and the
+         likeliest remaining cause is the font-load race this section just removed, i.e. it was
+         measuring mid-load. Not worth chasing further.
+         STILL UNVERIFIED, and older than any of this: nobody has measured a real first-gen
+         iPhone SE. Not a reason to change the CSS -- both environments that render the shipped
+         face show the wordmark fitting.
+         So the verdict is restored, but GUARDED rather than ambient: settling the font set
+         kills the race, and the fit is asserted only on a run that
          provably rendered the real face. A run without the webfont prints its numbers and skips
          the verdict instead of guessing -- which is what makes this deterministic in both
          environments rather than a coin flip in one. The font-independent floor below stays
