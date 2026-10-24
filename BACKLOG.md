@@ -28,6 +28,95 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-24)
+- [x] ~~**Invariant 6 had no round-trip test, and that is the one invariant whose blast radius is
+  measured in duplicated wage hours**~~ — **SHIPPED 2026-10-24**, tonight's build (see Done log).
+  (P1 · source:build · `harness:drivable`) Picked because **the Queue held no unblocked build item
+  at all** — see the next item — and because CLAUDE.md names this gap in Invariant 6's own Verify
+  trailer: *"`check_build.mjs` asserts both halves; there is no round-trip test — a known gap."*
+  The gap is the invariant: the gate asserts the two string **literals are present**, which a change
+  to the UID *shape* leaves untouched, and §26 only greps the source for the two controls. Nothing
+  in this repo had ever exported an .ics and fed it back. `tests/smoke.mjs` §52, 8 assertions, six
+  deliberate breaks.
+- [ ] **The Queue has no unblocked build item left, and that is a finding rather than a quiet
+  night** (P2 · housekeeping · the thing the next run should read first) — every `- [ ]` in
+  `## Queue` was triaged tonight and they fall into three piles: groom notes that say *do not build
+  on this evidence* (the crawler cohort, `pdf.worker`, `PGRST303`, the DST item), items parked into
+  `## Needs a dedicated session` (the goal deadline, the device classifier), and **one** real
+  candidate — the dated-rate telemetry below — which #191 has now blocked for five nights. So
+  tonight's item was promoted from CLAUDE.md's own invariant notes instead of from the queue. That
+  is a legitimate source and the loop should keep using it, but a queue that cannot feed its own
+  build step is worth saying out loud rather than papering over with a thin build.
+- [ ] **The dated-rate telemetry item is blocked by PR #191 for the FIFTH night, and the overlap was
+  re-read from the diff rather than trusted** (P2 · source:groom · `harness:drivable`) — the 10-20
+  item wants a `track()` on the add/edit/remove path for an effective-dated rate, because the fix
+  for the most wrong-money complaint in this file shipped 10-19 with **no telemetry at all**. Its
+  two regions are `index.html`:~1813 (the rate code) and ~7001–7052 (the Settings save path).
+  #191's `index.html` hunks, read tonight off `git diff` against the merge base: `@@ -1813,0`,
+  `@@ -7001,0` and `@@ -7052,0` — *the same three*, not merely nearby. Structurally confirmed, so
+  skipping it is correct and is not caution. It becomes buildable the run after #191 merges.
+- [ ] **A real returning iPhone came back tonight, which breaks a two-night run of nothing-but-
+  crawlers** (P2 · source:groom · the figure most likely to be misread) — `events` holds **1,715
+  rows** (up 4 from 1,711), newest `2026-10-24 02:51:31`. All four new rows are device
+  **`b67ce1b6`**, and it is not a bot: `Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 …) Version/26.6.1`
+  is an internally consistent real Safari UA (contrast Playwright's `iPhone OS 15_0` + `Version/18.0`
+  pair), it has **41 rows since 2026-10-10**, and tonight it filed `app_open {via:'qr'}` →
+  `share_opened {topbar}` → `share_sent {topbar}` → `session_end {secs:38, setup:true, shifts:14}`.
+  So: an activated non-Courtney user with 14 shifts logged, who came back and **shared the app**.
+  **Two things not to over-read.** (1) 38 seconds and no `shift_saved` — she opened it to share it,
+  not to use it. (2) This is the same device as the two `pdf.worker.min.js` failures on 10-13, and
+  it filed **no** new `client_error` and no `paystub_failed` tonight, so the 10-13 item's
+  "read a second device" bar is **still not met** and the worker remains unexplained. Do not build
+  a worker mitigation.
+- [ ] **Courtney still has not opened the app — four days now — so BOTH sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both are **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10. The first honest
+  reading is her next foreground return, and a **cold** load is still the likelier door (2 of her
+  last 3), which the stepper switch now covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now six grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**.
+- [ ] **`silence_watch` says FRESH, and tonight — unlike the last two nights — a human is what
+  makes it true** (P3 · source:groom · no action) — newest event **5.4h** old, inside the 48h
+  window. The 10-22 and 10-23 grooms both had to note that `FRESH` was being carried entirely by
+  `360Spider`; tonight it is carried by `b67ce1b6`, a real returning iPhone. The verdict word did
+  not change, so quote it the same way either night: it means "telemetry is alive and something
+  arrived recently", never "a user came". What changed is what is underneath it.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited FIVE
+  nights** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head
+  `c41b8cc`, **unchanged since it opened**. Tonight's work is a pure append to `tests/smoke.mjs`
+  and **zero lines of `index.html`**, so there is no `index.html` conflict to rule out at all;
+  #191's own smoke hunk is an append at the same spot (after §49 in its base), which is the same
+  overlap §50 and §51 already created on 10-21 and 10-22 — whoever drives #191 updates its branch
+  after tonight's merge. It is the owner tier (it moves dollar figures): `docs/leadership.md` →
+  *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **CABINET MISSED (fifth night) — but the next Sunday is TOMORROW** (P2 · needs the weekly
+  routine, not the nightly) — `docs/cos/brief.md` was last written **2026-10-12** (11.8 days) and
+  still reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line
+  carries **CABINET MISSED**. Exactly one Sunday has passed without a cabinet (2026-10-18); the
+  next is **2026-10-25**, i.e. tomorrow. The nightly cannot clear this — writing the brief is the
+  Sunday cabinet pass's job.
+- [ ] **The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**
+  (P3 · source:build · `harness:drivable` (script-level) · no action needed tonight) — the default
+  is `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell` and this container
+  ships **1243**, at `chrome-headless-shell-linux64/chrome-headless-shell`. The fallback then
+  resolves playwright-core's own expected path (`chromium-1134`), which is absent too, so the suite
+  dies with Playwright's "just installed or updated" banner — a **harness error, not a failed
+  assertion**, which is the first of the three ways the harness skill says this check lies. Worked
+  around with the env override the suite already supports: `PW_CHROMIUM=…/chrome-headless-shell`.
+  **Deliberately not "fixed" by bumping the constant** — the next container will move again, and CI
+  is unaffected (GitHub's runners get their browser from `npx playwright install chromium`, which
+  playwright-core resolves itself). What would actually fix it is globbing
+  `/opt/pw-browsers/chromium*{,_headless_shell}*/**/{chrome,headless_shell,chrome-headless-shell}`
+  and taking the first hit; one run, drivable, but it changes the file every section depends on, so
+  it is a queue item rather than a thing to slip into a build about something else.
+
 ### P1 (new, groom 2026-10-23)
 - [x] **LIVE CONFIRMED — `dfff8ce` is what badgebudget.com serves.** PR #195 squash-merged after
   both required checks went green on head `54863f4` (gate 12s; smoke **09:03:01 → 09:12:10**, 9m09s,
@@ -2883,6 +2972,17 @@ here so the loop's queue contains only work it can actually finish; pick these u
   progress, and the check-run API can report `in_progress` for a while after a job has really
   finished, so neither is evidence of a hang on its own.
 
+- **The hardcoded Playwright binary path in `tests/smoke.mjs` drifts with the container
+  (seen 2026-10-24).** The default is `chromium_headless_shell-1194/chrome-linux/headless_shell`;
+  that night's container shipped **1243**, at `chrome-headless-shell-linux64/chrome-headless-shell`.
+  The fallback then resolves playwright-core's own expected path (`chromium-1134`), which is absent
+  too, so the suite dies with Playwright's *"just installed or updated"* banner — a **harness
+  error, not a failed assertion**, so a run that hits it has proved nothing. Do not `npx playwright
+  install`; the browser is already there. Find it and pass it:
+  `PW_CHROMIUM=$(ls -d /opt/pw-browsers/chromium*headless_shell*/*/chrome-headless-shell 2>/dev/null | head -1)`
+  (or `.../headless_shell` on older layouts), which is an override the suite already supports. CI is
+  unaffected — GitHub's runners get their browser from `npx playwright install chromium`.
+
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
 _Generated by `scripts/groom_seed.mjs` from `docs/reddit_seed.json`. Deduped against CLAUDE.md + BACKLOG.md. Promote an item into the priority queues above (and delete it here) once a human/groom confirms it; these still pass the normal safety gate before any deploy._
@@ -2908,6 +3008,54 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-24 — **Invariant 6 now has the round-trip test its own Verify trailer said it did not,
+  and writing it deleted two of my own assertions for being unfalsifiable.** The invariant is the
+  `@scrubpay` self-recognition sentinel: export stamps `scrubpay-<date>-<id>@scrubpay`, import drops
+  any UID containing `@scrubpay`, and if either half moves **every previously exported shift
+  re-imports as a duplicate** — which inflates hours and therefore every wage figure downstream of
+  them. Its `Detect` is `none`; the symptom is duplicate shifts the nurse sees and reports nowhere.
+  What guarded it until tonight was `check_build.mjs` asserting the two string **literals are
+  present** and §26 grepping the source for the two controls. **Nothing had ever exported a file and
+  fed it back.** `tests/smoke.mjs` §52 does: it seeds two shifts and a day event, taps *Add to
+  calendar (.ics)*, captures the real blob, asserts all three UIDs off those bytes, hands that very
+  file to the `.ics` picker, and checks the import reports nothing, opens no stepper, and writes
+  nothing. 8 assertions, driven anonymously (both halves are localStorage-only paths, so no auth
+  stub and it is the drive a signed-out nurse gets).
+  **Six deliberate breaks, and three of them did more than confirm a FAIL.**
+  · export stamps `@badgebudget` → 5 FAIL · import's guard removed → 4 FAIL, and the UID-shape
+  assertion **passes**, so the two halves are told apart rather than lumped · import drops *every*
+  event → only the 3 selectivity assertions FAIL, which is the proof the "nothing to import"
+  assertions are not vacuous · the UID loses its date but keeps both literals → **exactly 1 FAIL**,
+  which is the case `check_build.mjs` is structurally blind to and the reason the shape is asserted
+  at all · the blob's MIME is `text/plain` → the capture guard FAILs rather than silently asserting
+  an empty string · the import window shrunk to 1 day → see below.
+  **Two assertions I wrote were deleted, both found by the negative tests rather than by review.**
+  (1) *"the blob still holds exactly the two seeded shifts, not four"*, read mid-drive, **passed on
+  every break** — a build with the sentinel broken *offers* the duplicates through the stepper and
+  writes nothing until she confirms, so the count is 2 either way at that point. Replaced by a read
+  **after a confirm** on the selectivity file: exactly three shifts, one carrying the foreign uid,
+  which is 6 on a broken build and is the only assertion here that sees what a re-import actually
+  writes. (2) *"nothing was skipped for window, cap or recurrence"*, meant to rule out the reading
+  that these events were dropped for being out of window — `parseICSSchedule` tests the sentinel
+  **before** the window, so `droppedWindow` is 0 on a file of our own UIDs however narrow the window
+  is, and shrinking it to one day left the assertion green. The window confound is ruled out by the
+  selectivity drive instead, which that same break **did** fail. Both deletions are recorded at the
+  source, §33's rule.
+  **And the gate covers LESS of this invariant than its own label says — measured, not assumed.**
+  `check_build.mjs`'s check prints `[6] @scrubpay .ics sentinel, both halves`, and run against a
+  *patched copy* (the script resolves its root from its own path, so running it from a scratch
+  directory silently reads the real `index.html` — a first attempt at this measurement proved
+  nothing and was thrown away) it reports **all 14 checks passed** on a build whose export stamps
+  `@badgebudget`, and again on one whose UID drops its date. It fails, correctly, only when the
+  **import**-side drop is removed. So the export half of a two-half invariant was unguarded for its
+  entire life, and §52's UID-shape assertion is now the only thing under it. The control that makes
+  this measurement trustworthy is in the log: deleting the import guard in the same copy printed
+  `✗ [6] … import no longer drops its own UIDs` and `1 of 14 checks FAILED`.
+  **Why this was tonight's item at all:** the Queue had no unblocked build item. Its one real
+  candidate (dated-rate telemetry) is blocked by PR #191 for the fifth night — the overlap was
+  re-read off `git diff` and #191 touches the *same three* hunks, `@@ -1813,0`, `@@ -7001,0`,
+  `@@ -7052,0`, not merely nearby lines. Tonight's work touches **zero lines of `index.html`**, so
+  it cannot conflict with #191 at all.
 - 2026-10-23 — **A queued P3 was a regression waiting to happen: the wordmark is not clipped, and
   the only environment anyone had measured was one without the webfont.** Tonight's item was the
   10-20 P3 *"the wordmark is ellipsised on a real first-gen iPhone SE"*, which proposed dropping
