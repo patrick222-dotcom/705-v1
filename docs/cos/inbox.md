@@ -7,6 +7,12 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-24 · session BadgeBudget nightly · Invariant 6 (the `@scrubpay` .ics sentinel) had no
+  round-trip test, as its own Verify trailer said — now pinned by `tests/smoke.mjs` §52, six breaks,
+  two of my own assertions deleted as unfalsifiable. Belongs to no live thread; the groom finding
+  worth a seat's attention is that the **Queue had no unblocked build item**, its one candidate
+  blocked by PR #191 for a fifth night · → outcome pending
+
 - 2026-10-13 · session BadgeBudget nightly · paystub import failed 3x on a real phone — the pdf.js
   worker would not load; message + tracking fixed, the worker's own failure is still unexplained ·
   → outcome pending

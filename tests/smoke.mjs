@@ -6566,6 +6566,161 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* == 52. Invariant 6 round trip: our own export re-imports as NOTHING (2026-10-24) ===========
+     Invariant 6 is the `@scrubpay` self-recognition sentinel: export stamps every UID as
+     `scrubpay-<date>-<id>@scrubpay`, and import drops any UID containing `@scrubpay`. CLAUDE.md's
+     Verify trailer for it ends "there is no round-trip test — a known gap", and that gap is the
+     whole invariant: `check_build.mjs` asserts the two string literals are PRESENT, which a change
+     to the UID *shape* leaves untouched, and §26 only greps the source for the two controls. So
+     until tonight nothing in this repo had ever exported a file and fed it back.
+
+     Its blast radius is why that matters: every previously exported shift re-imports as a
+     duplicate, which inflates hours and therefore every wage figure downstream of them, and its
+     Detect is `none` — the symptom is duplicate shifts the nurse sees and reports nowhere.
+
+     Driven anonymously on purpose. Both halves live in localStorage-only paths (`exportICS` builds
+     the blob, `onImportICS` reads the file), so no auth stub is needed and the drive is the one a
+     signed-out nurse actually gets. */
+  if (want(52)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayKey = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+    const compact = (k) => k.replace(/-/g, '');
+    /* Dates a few days out: comfortably inside the import window (-60d .. +365d), because an
+       event dropped for being OUTSIDE that window would make the "nothing to import" assertions
+       below pass for entirely the wrong reason -- see the deleted assertion further down, which
+       tried to rule that out directly and could not. */
+    const kTimed = dayKey(3), kAllDay = dayKey(4), kPto = dayKey(5);
+    /* Three entries covering both UID-stamping branches in exportICS: a timed shift
+       (DTSTART + DURATION), an all-day shift (VALUE=DATE), and a day event. */
+    const seed = { ...SEEDED_STATE, payPeriodStart: dayKey(0),
+      shifts: {
+        [kTimed]: [{ id: 'rt-timed', shiftType: 'night', hours: 12, bonusType: 'none', customBonus: 0, start: '19:00' }],
+        [kAllDay]: [{ id: 'rt-allday', shiftType: 'base', hours: 8, bonusType: 'none', customBonus: 0 }],
+      },
+      dayEvents: { [kPto]: [{ id: 'rt-pto', kind: 'pto', hours: 8 }] } };
+
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    /* Capture what exportICS actually WRITES. The blob is the export, so reading it is the only
+       way to assert the UID stamp off real output instead of off the source. Filtered on the
+       calendar MIME type so a blob from any other path (the JSON export, pdf.js's fake worker)
+       cannot land in this slot and be asserted as the calendar. */
+    await page.addInitScript(() => {
+      window.__ics = null;
+      const realCreate = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (b) => {
+        try { if (b && /text\/calendar/.test(b.type || '')) b.text().then((t) => { window.__ics = t; }); } catch (_) {}
+        return realCreate(b);
+      };
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 12000 });
+    await page.locator('button:has-text("Add to calendar")').click();
+    await page.waitForFunction(() => typeof window.__ics === 'string' && window.__ics.length > 0,
+      null, { timeout: 10000 }).catch(() => {});
+    const icsText = await page.evaluate(() => window.__ics);
+    ok('round trip: tapping "Add to calendar (.ics)" produced a calendar file',
+      typeof icsText === 'string' && /BEGIN:VCALENDAR/.test(icsText) && /END:VCALENDAR/.test(icsText),
+      String(icsText).slice(0, 60));
+
+    /* Invariant 6, export half — asserted on the real bytes, and it is the half nothing else
+       guards. Measured against a patched copy of index.html rather than assumed: the gate's own
+       `[6] @scrubpay .ics sentinel, both halves` check prints OK, and all 14 checks pass, both on
+       a build whose export stamps `@badgebudget` and on one whose UID drops its date. It fails
+       only when the IMPORT-side drop is removed. So `check_build.mjs` covers one half of a
+       two-half invariant, and this assertion is the only thing standing under the other. */
+    const uidLines = String(icsText || '').split(/\r?\n/).filter((l) => l.startsWith('UID:'));
+    ok('round trip: all three exported UIDs are stamped scrubpay-<date>-<id>@scrubpay',
+      uidLines.length === 3
+      && uidLines.every((l) => /^UID:scrubpay-\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+@scrubpay$/.test(l)),
+      uidLines.join(' | '));
+
+    /* The round trip itself: hand that very file back to the import picker in the same panel. */
+    const picker = page.locator('input[type=file][accept=".ics,text/calendar"]');
+    await picker.setInputFiles({ name: 'badgebudget-calendar.ics', mimeType: 'text/calendar',
+      buffer: Buffer.from(String(icsText || ''), 'utf8') });
+    await page.waitForSelector('.toaster .toast', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const toasts = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.toaster .toast')).map((n) => n.innerText));
+    ok('round trip: re-importing our own export reports nothing to import',
+      toasts.some((t) => /No shifts found to import/i.test(t)), JSON.stringify(toasts));
+    /* Nothing to confirm means no sheet: a stepper that opened here would be offering her the
+       shifts she already has. Both cards are checked because either one opening is the defect. */
+    const classifyOpen = await page.locator('.sheet[aria-label="Classify imported shift"]').count();
+    const confirmOpen = await page.locator('.sheet[aria-label="Confirm schedule import"]').count();
+    ok('round trip: the import stepper never opens, so there is nothing to confirm',
+      classifyOpen === 0 && confirmOpen === 0, `classify=${classifyOpen} confirm=${confirmOpen}`);
+    /* A second assertion was written here and DELETED: "nothing was skipped for window, cap or
+       recurrence", on the absence of a `Skipped:` toast, meant to rule out the reading that these
+       events were dropped for being outside the import window rather than by the sentinel. It is
+       unfalsifiable. `parseICSSchedule` tests the `@scrubpay` guard BEFORE the window, so on a file
+       of our own UIDs droppedWindow is 0 no matter how narrow the window is — negative-tested by
+       shrinking ICS_IMPORT_PAST_DAYS/FUTURE_DAYS to 1, where it passed. The window confound is
+       ruled out by the selectivity drive below instead, which that same break DID fail: a foreign
+       event out of window is dropped too, so "still offered" is the check that needs the dates to
+       be inside it.
+
+       A mid-drive "the blob still holds two shifts" assertion was written here first and DELETED,
+       because it passed on every break this section was negative-tested against: a build with the
+       sentinel broken OFFERS the duplicates through the stepper and writes nothing until she
+       confirms, so the count is still 2 at this point either way. What is at stake is which shifts
+       exist, so the honest place to read the blob is after a confirm — which is what the last
+       assertion in this section does. (§33 deleted an unfalsifiable assertion for the same reason.)
+
+       Selectivity next, and it is what stops every assertion above from passing on a build whose
+       import is simply broken. Same file, same dates, plus ONE event with a foreign UID: that one
+       must still be offered. A build whose import dropped EVERYTHING would pass every assertion
+       above and fail here, which is what stops them being vacuous. */
+    const foreign = ['BEGIN:VEVENT', 'UID:ng-round-trip-1', `DTSTART:${compact(dayKey(6))}T190000`,
+      'DURATION:PT12H', 'SUMMARY:ICU', 'END:VEVENT'].join('\r\n');
+    const hybrid = String(icsText || '').replace('END:VCALENDAR', `${foreign}\r\nEND:VCALENDAR`);
+    await picker.setInputFiles({ name: 'mixed.ics', mimeType: 'text/calendar',
+      buffer: Buffer.from(hybrid, 'utf8') });
+    const classify = page.locator('.sheet[aria-label="Classify imported shift"]');
+    /* waitFor, then assert on the count: reading from a locator that matches nothing aborts the
+       run on a 30s timeout instead of failing the assertion, which is the first of the three ways
+       the harness skill says a negative test lies (§50 and §51 were both bitten by it). */
+    await classify.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    const classifyNow = await classify.count();
+    ok('round trip: a FOREIGN uid in the same file is still offered, so the drop is selective',
+      classifyNow === 1, String(classifyNow));
+    if (classifyNow === 1) {
+      await classify.locator('.btn-primary').click();
+      await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { timeout: 12000 }).catch(() => {});
+    }
+    const confirmText = (await page.locator('.sheet[aria-label="Confirm schedule import"]').count())
+      ? await page.locator('.sheet[aria-label="Confirm schedule import"]').innerText() : '(no confirm card)';
+    ok('round trip: and exactly ONE shift is offered — our own three were all dropped',
+      /Add 1 shift\?/.test(confirmText), JSON.stringify(confirmText.slice(0, 160)));
+
+    /* Confirm it, then read the PERSISTED blob: this is the only assertion here that sees what a
+       re-import actually WRITES, and the one the invariant's blast radius is about. Exactly three
+       shifts — the two seeded plus the foreign one — so a build that re-offered our own export
+       lands 6 here, not 3, whether it duplicated them silently or through a stepper she confirmed. */
+    if (/Add 1 shift\?/.test(confirmText)) {
+      await page.locator('.sheet[aria-label="Confirm schedule import"] .btn-primary').click();
+      await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { state: 'detached', timeout: 10000 }).catch(() => {});
+    }
+    /* Settled with a fixed wait, not waitForFunction: a predicate that never comes true aborts the
+       run instead of failing the assertion (the harness skill's second way a negative test lies). */
+    await page.waitForTimeout(900);
+    const written = await page.evaluate((k) => {
+      const b = JSON.parse(localStorage.getItem(k) || '{}');
+      return Object.entries(b.shifts || {}).flatMap(([d, a]) => (a || []).map((s) => `${d}:${s.icsUid || 'typed'}`)).sort();
+    }, STORAGE_KEY);
+    ok('round trip: confirming writes exactly ONE new shift — our own two were never duplicated',
+      written.length === 3 && written.filter((s) => /:ng-round-trip-1$/.test(s)).length === 1,
+      JSON.stringify(written));
+
+    const real52 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('round trip: no page errors across section 52', real52.length === 0, real52[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
