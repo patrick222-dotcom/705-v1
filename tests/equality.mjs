@@ -19,8 +19,8 @@
  * is no third reading, and "probably rounding" is not one of them.
  */
 import { chromium, devices } from 'playwright-core';
-import { buildScratch, serve, STORAGE_KEY } from './harness.mjs';
-import { existsSync, rmSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
+import { buildScratch, serve, STORAGE_KEY, chromiumLaunch } from './harness.mjs';
+import { rmSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,8 +28,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SP = join(tmpdir(), 'badgebudget-equality');
 const LIVE = process.env.EQUALITY_URL || 'https://badgebudget.com/index.html';
-const shell = '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
-const LAUNCH = { args: ['--no-sandbox'], ...(existsSync(shell) ? { executablePath: shell } : {}) };
+const LAUNCH = chromiumLaunch();
 
 /* Anchor the pay period on TODAY so every seeded shift is inside the fortnight the hero shows --
    the first pass put 2 of 3 shifts outside it, so the OT and PTO cases silently priced nothing. */

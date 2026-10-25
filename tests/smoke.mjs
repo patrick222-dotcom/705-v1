@@ -11,19 +11,16 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
+import { rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY, findChromium, chromiumLaunch } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = join(ROOT, '.harness-scratch');
-/* The remote sandbox ships a browser at a fixed path; GitHub's runners get one from
-   `npx playwright install chromium`, which playwright-core resolves on its own. Use the
-   explicit path only when it actually exists so the same file runs in both places. */
-const BROWSER = process.env.PW_CHROMIUM
-  || '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
-const LAUNCH = existsSync(BROWSER)
-  ? { executablePath: BROWSER, args: ['--no-sandbox'] }
-  : { args: ['--no-sandbox'] };
+/* The remote sandbox ships a browser under /opt/pw-browsers; GitHub's runners get one from
+   `npx playwright install chromium`, which playwright-core resolves on its own. `chromiumLaunch`
+   discovers the first and says nothing about the second, so the same file runs in both places —
+   see the resolver's own note in harness.mjs for why this is discovered and not pinned. */
+const LAUNCH = chromiumLaunch();
 
 /* SMOKE_ONLY=3,4 runs just those sections. This exists for negative testing: proving an assertion
    actually fails when its invariant is broken means one full run per break, and re-running all six
@@ -59,6 +56,82 @@ const newPage = async (browser, url, { seed = true } = {}) => {
 };
 
 const run = async () => {
+  /* ======================= 53: the browser is FOUND, not pinned ==========================
+   *
+   * This section runs BEFORE chromium.launch on purpose. A resolver that names a path which does
+   * not exist takes the whole suite out with Playwright's "just installed or updated" banner —
+   * a harness error, which the `harness` skill names as the first of the three ways this check
+   * lies: nothing fails, nothing passes, and the gate looks un-run rather than red. Asserting
+   * first means that break prints a FAIL line before the launch throws, so it is legible.
+   *
+   * Every case below drives the resolver against a SYNTHETIC tree, because the real one is
+   * whatever this container happens to ship and an assertion about it would say nothing about
+   * the container after. Each fake executable is an empty file: the resolver's job is to pick a
+   * path, and it is never asked to be a working browser. */
+  if (want(53)) {
+    const bRoot = join(ROOT, '.harness-browsers');
+    rmSync(bRoot, { recursive: true, force: true });
+    const fake = (rel) => {
+      const full = join(bRoot, rel);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, '');
+      return full;
+    };
+
+    /* The shape this container actually shipped on 2026-10-24, which the old literal missed:
+       a new build number AND a new directory name under it. */
+    const newShape = fake('chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell');
+    ok('53 browser: finds the headless shell under a directory shape it has never seen',
+      findChromium(bRoot) === newShape, String(findChromium(bRoot)));
+
+    /* The 1194 shape the literal was written for still has to resolve — a container that has
+       only the old one must keep working, so this is not merely backwards compatibility theatre. */
+    const oldShape = fake('chromium_headless_shell-1194/chrome-linux/headless_shell');
+    ok('53 browser: prefers the HIGHEST build when two shells are installed',
+      findChromium(bRoot) === newShape, String(findChromium(bRoot)));
+
+    rmSync(join(bRoot, 'chromium_headless_shell-1243'), { recursive: true, force: true });
+    ok('53 browser: still finds the old chrome-linux/headless_shell shape on its own',
+      findChromium(bRoot) === oldShape, String(findChromium(bRoot)));
+
+    /* With no shell at all, `/opt/pw-browsers/chromium` is the path that survives a version
+       bump — this image keeps it as a symlink to the full browser — so it must outrank a
+       versioned directory. */
+    rmSync(join(bRoot, 'chromium_headless_shell-1194'), { recursive: true, force: true });
+    const versionedFull = fake('chromium-1243/chrome-linux64/chrome');
+    const stable = fake('chromium');
+    ok('53 browser: falls back to the stable chromium entry point ahead of a versioned directory',
+      findChromium(bRoot) === stable, String(findChromium(bRoot)));
+
+    rmSync(stable, { force: true });
+    ok('53 browser: falls back to a versioned full browser when there is no shell and no symlink',
+      findChromium(bRoot) === versionedFull, String(findChromium(bRoot)));
+
+    /* The CI answer, and the one that must stay `null`. GitHub's runners install Chromium into
+       playwright-core's own cache, so inventing a path for them would break the one environment
+       that was never broken. */
+    rmSync(bRoot, { recursive: true, force: true });
+    mkdirSync(bRoot, { recursive: true });
+    ok('53 browser: says NOTHING when the root is empty, leaving playwright-core to resolve',
+      findChromium(bRoot) === null, String(findChromium(bRoot)));
+
+    /* PW_CHROMIUM is the operator override and wins outright when it exists; when it does not,
+       it must NOT become the executablePath — naming a missing binary is the original bug. */
+    const override = fake('my-own-build/headless_shell');
+    ok('53 browser: PW_CHROMIUM wins when it exists',
+      chromiumLaunch({ PW_CHROMIUM: override }).executablePath === override);
+    ok('53 browser: a PW_CHROMIUM that does not exist is never used as the executablePath',
+      chromiumLaunch({ PW_CHROMIUM: join(bRoot, 'nope/headless_shell') }).executablePath !== join(bRoot, 'nope/headless_shell'));
+
+    /* And the live property, which holds in both environments: the launch object this very run
+       is about to use either names a binary that exists, or names none at all. */
+    const live = chromiumLaunch();
+    ok('53 browser: this run\'s launch object never names a path that does not exist',
+      !live.executablePath || existsSync(live.executablePath), live.executablePath || '(playwright-core resolves)');
+
+    rmSync(bRoot, { recursive: true, force: true });
+  }
+
   rmSync(SCRATCH, { recursive: true, force: true });
   buildScratch(ROOT, SCRATCH);
   const { server, url } = await serve(ROOT, SCRATCH);

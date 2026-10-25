@@ -8,7 +8,7 @@
  * Versions here are pinned to exactly what index.html loads. If you bump a CDN pin, bump it here
  * too or the harness stops testing the code that ships.
  */
-import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { join, extname } from 'node:path';
@@ -196,4 +196,90 @@ export function makeMinimalPdf(lines) {
     + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')
     + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(pdf, 'latin1');
+}
+
+/* WHERE IS CHROMIUM? Resolve it; never pin it.
+ *
+ * `tests/smoke.mjs`, `tests/wage_equality.mjs` and `tests/equality.mjs` each carried the same
+ * literal: `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`. On
+ * 2026-10-24 this sandbox shipped build **1243** at `chrome-headless-shell-linux64/
+ * chrome-headless-shell` — a different build number AND a different directory shape — so the
+ * literal missed, the `existsSync` guard handed resolution to playwright-core, ITS expected build
+ * (1134) was absent too, and the suite died with Playwright's "just installed or updated" banner.
+ *
+ * That failure is a HARNESS ERROR, not a failed assertion — the first of the three ways the
+ * `harness` skill says this check lies — so the entire nightly gate is unrunnable behind it until
+ * a human notices and exports PW_CHROMIUM by hand. Bumping the constant to 1243 would buy exactly
+ * one container; the next one moves again.
+ *
+ * Order is deliberate, not alphabetical:
+ *   1. PW_CHROMIUM, when it points at something that exists — the operator's override wins.
+ *   2. the highest-numbered headless-shell build, because every recorded run of this suite used
+ *      the shell and it is the lighter binary.
+ *   3. `/opt/pw-browsers/chromium`, which this image maintains as a symlink to the full browser.
+ *      It is the one path that survives a version bump, which is why it ranks above a versioned
+ *      directory and below nothing else.
+ *   4. the highest-numbered full-browser build.
+ *   5. `null`, meaning SAY NOTHING. On GitHub's runners the browser comes from
+ *      `npx playwright install chromium` and playwright-core resolves it itself, so an empty
+ *      launch object is the correct answer there and must stay the fallback — a resolver that
+ *      invents a path for CI would break the one environment that was never broken.
+ */
+const EXE_NAMES = ['headless_shell', 'chrome-headless-shell', 'chrome'];
+
+/* statSync follows symlinks on purpose: `/opt/pw-browsers/chromium` is a link to a file and must
+   read as one. Depth is bounded because this walks a directory nobody in this repo controls. */
+const exeIn = (dir, depth = 2) => {
+  for (const name of EXE_NAMES) {
+    const p = join(dir, name);
+    try { if (statSync(p).isFile()) return p; } catch { /* not here */ }
+  }
+  if (depth <= 0) return null;
+  let kids = [];
+  try { kids = readdirSync(dir, { withFileTypes: true }); } catch { return null; }
+  for (const name of kids.filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+    const hit = exeIn(join(dir, name), depth - 1);
+    if (hit) return hit;
+  }
+  return null;
+};
+
+/* Newest build first. `chromium-1243` and `chromium_headless_shell-1243` are different prefixes,
+   so the anchored regex keeps the two families apart rather than ranking them together. */
+const buildsIn = (root, prefix) => {
+  let kids = [];
+  try { kids = readdirSync(root, { withFileTypes: true }); } catch { return []; }
+  const re = new RegExp(`^${prefix}-(\\d+)$`);
+  return kids
+    .filter((d) => d.isDirectory() && re.test(d.name))
+    .map((d) => ({ dir: join(root, d.name), n: Number(re.exec(d.name)[1]) }))
+    .sort((a, b) => b.n - a.n)
+    .map((x) => x.dir);
+};
+
+export function findChromium(root = '/opt/pw-browsers') {
+  for (const dir of buildsIn(root, 'chromium_headless_shell')) {
+    const hit = exeIn(dir);
+    if (hit) return hit;
+  }
+  const stable = join(root, 'chromium');
+  try { if (statSync(stable).isFile()) return stable; } catch { /* not a file here */ }
+  for (const dir of buildsIn(root, 'chromium')) {
+    const hit = exeIn(dir);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/* The launch object every entrypoint in tests/ uses. It never names a path that does not exist —
+   that property is what §53 pins, because naming a missing one is precisely the old bug. */
+export function chromiumLaunch(env = process.env) {
+  const args = ['--no-sandbox'];
+  const want = env.PW_CHROMIUM;
+  if (want) {
+    if (existsSync(want)) return { executablePath: want, args };
+    console.warn(`harness: PW_CHROMIUM=${want} does not exist — falling back to discovery`);
+  }
+  const found = findChromium();
+  return found ? { executablePath: found, args } : { args };
 }
