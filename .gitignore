@@ -14,6 +14,9 @@ vendor/
 scratchpad/
 _site/
 .harness-scratch/
+# §53's synthetic /opt/pw-browsers tree. The section removes it itself; this covers the run
+# that dies mid-section, so a broken resolver never shows up as an untracked-file surprise.
+.harness-browsers/
 .equality-scratch/
 .dbg-scratch/
 

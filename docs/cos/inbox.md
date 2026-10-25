@@ -7,6 +7,14 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-25 · session BadgeBudget nightly · the test rig's three Playwright entrypoints each
+  pinned a browser path that no longer exists in this container, which kills the suite with a
+  **harness error** — the gate reads un-run rather than red — so the browser is discovered now
+  (`chromiumLaunch`, `tests/smoke.mjs` §53, nine breaks). Belongs to no live thread. Two groom
+  findings worth a seat: the **Queue is out of unblocked build items** (its one candidate blocked
+  by PR #191 for a sixth night), and **CABINET MISSED is at six nights with today being the
+  Sunday** · → outcome pending
+
 - 2026-10-24 · session BadgeBudget nightly · Invariant 6 (the `@scrubpay` .ics sentinel) had no
   round-trip test, as its own Verify trailer said — now pinned by `tests/smoke.mjs` §52, six breaks,
   two of my own assertions deleted as unfalsifiable. Belongs to no live thread; the groom finding

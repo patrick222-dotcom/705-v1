@@ -28,6 +28,106 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-25)
+- [x] ~~**The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**~~
+  — **SHIPPED 2026-10-25**, tonight's build (see Done log). The browser is now *discovered* rather
+  than pinned, in one place that all three Playwright entrypoints share, and the resolver is pinned
+  by `tests/smoke.mjs` §53 (9 assertions, nine deliberate breaks). Picked because it was the **one
+  unblocked item left in `## Queue`** after the 10-24 triage, and because the thing it fixes is the
+  first of the three ways the `harness` skill says this check lies: a missing binary takes the whole
+  suite out with Playwright's "just installed or updated" banner, which is a **harness error, not a
+  failed assertion** — the gate reads un-run rather than red, and stays that way until a human
+  notices and exports `PW_CHROMIUM` by hand. Tonight's run is the proof: the full suite ran with no
+  env override set, which was impossible last night.
+- [ ] **The Queue is empty of unblocked build items again, and tonight did NOT paper over it**
+  (P2 · housekeeping · the thing the next run should read first) — the 10-24 item said the queue
+  could not feed its own build step. Tonight it could: the Playwright-path P3 above was a queue
+  item, taken from the queue, and is now done. **That was the last one.** What remains is the same
+  three piles 10-24 named — groom notes that say *do not build on this evidence* (the crawler
+  cohort, `pdf.worker`, `PGRST303`, the DST item), items parked into `## Needs a dedicated session`
+  (the goal deadline, the device classifier), and the dated-rate telemetry item, which **PR #191 has
+  now blocked for a sixth night**. So tomorrow's run faces the 10-24 situation again and should
+  expect to promote from CLAUDE.md's invariant notes, or from the font/`opsz` question in the 10-23
+  band, rather than reach for a thin build.
+- [ ] **The dated-rate telemetry item is blocked by PR #191 for the SIXTH night — re-confirmed from
+  the PR head, not from last night's note** (P2 · source:groom · `harness:drivable`) — #191 is
+  still `claude/zealous-einstein-nkqn80` at head **`c41b8cc`, unchanged since it opened 2026-10-20
+  03:25**, so the overlap the 10-24 groom read off `git diff` (`@@ -1813,0`, `@@ -7001,0`,
+  `@@ -7052,0` — the *same three* regions the telemetry item needs) is unchanged too. Skipping it
+  stays correct and is not caution. It becomes buildable the run after #191 merges.
+- [ ] **A real device that went dormant for FOURTEEN days came back twice tonight and did nothing**
+  (P2 · source:groom · the figure most likely to be misread, and not buildable) — device
+  **`635d3ea5`**, `iPhone OS 18_7 … Version/27.0.1` (an internally consistent real Safari UA,
+  contrast Playwright's `iPhone OS 15_0` + `Version/18.0` pair). Its history is **18 rows across
+  exactly two days**: it activated on 2026-10-10 (`setup_completed {mode:'rough'}`, six
+  `shift_saved` in 50 seconds, `estimate_dismissed`, then `share_opened`), and then nothing for
+  fourteen days until **2026-10-24 21:55:47** and **22:31:51**.
+  **Both return loads fired `app_open {via:'qr'}` and `session_end` and nothing else** — `n:1`, so
+  exactly one `track()` row per load — at **121s** and **3s**, `setup:true`, `shifts:6`
+  **unchanged from 10-10**. No `shift_saved`, no sync, no onboarding, no share. So: an activated
+  user came back after two weeks, looked at a two-week-old estimate twice, and left.
+  **Three things not to over-read.** (1) Two loads and no complaint and no `client_error` is not a
+  defect report; there is nothing here to fix and **no mitigation to build**. (2) `fresh` is
+  **absent** on both return loads, so it read its own `anon_id` back after 14 days — this device's
+  storage is durable, which is the `app_open {fresh}` flag (2026-10-12) doing exactly its job and
+  is worth one line because it is the first *long-gap* confirmation of it. (3) `via:'qr'` is on the
+  **return** loads too, which means the QR URL is what is bookmarked or on the home screen, not
+  that it was re-scanned — do not read `via` as an acquisition channel per load.
+  Second real returning iPhone in two nights (`b67ce1b6` on 10-23, this one tonight) after the
+  10-22/10-23 crawler-only stretch.
+- [ ] **The desktop-Linux burst shape, sixth sighting — one second apart this time** (P3 ·
+  source:groom · `harness:unscoped`) — `f857b4f5` and `404f5b99` arrived at **2026-10-24 09:05:14
+  and 09:05:15**, both `X11; Linux x86_64` Chrome/**154**, each firing exactly
+  `app_open {fresh:true}` → `ob_view {landing}` → `ob_step {step:0}`. `f857b4f5` added
+  `session_end {secs:87, ob:0, shifts:0}`, which is longer than the 4–28s of the earlier bursts and
+  is the only thing in the pair that is not identical. The landing-only cohort goes **eighteen →
+  twenty**. Unchanged conclusion: **the device classifier is the fix and it is a dedicated-session
+  item**, so every landing-screen figure in this file stays an upper bound.
+- [ ] **Courtney still has not opened the app — FIVE days now — so both sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both are **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10. The first honest
+  reading is her next foreground return, and a **cold** load is still the likelier door (2 of her
+  last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now seven grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**,
+  and no new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**.
+  Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH and a human carries it for the second night running** (P3 ·
+  source:groom · no action) — `events` holds **1,726 rows** (up **11** from 1,715), newest
+  `2026-10-24 22:31:53`, **9.5h** old and inside the 48h window. Of those 11 rows, **4** are
+  `635d3ea5`'s two return loads and **7** are the crawler pair plus last night's tail. Quote the
+  verdict the same way either night: it means "telemetry is alive and something arrived recently",
+  never "a user came" — tonight it happens to be both.
+- [ ] **`deploy_watch` says LIVE and nothing is merged-but-unshipped going in** (housekeeping) —
+  `index.html` serving **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` at `f93c03e`,
+  `CNAME` serving badgebudget.com, and the deploy ref was fetched before the verdict was formed.
+  `11f500e` (#197, last night) touched **only `tests/smoke.mjs`**, which is not in the publish set,
+  so `LIVE` naming an older `index.html` commit is correct — the same reading the 10-19 note
+  established. Tonight's build is in the same position: **zero publish-set files change**, so
+  tomorrow's watch will still name `dfff8ce` and that is not a stall.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited SIX
+  nights** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head
+  **`c41b8cc`, unchanged since it opened**. Tonight's work touches `tests/`, `.gitignore` and the
+  docs and **zero lines of `index.html`**, so there is no `index.html` conflict to rule out at all.
+  Its own smoke hunk is an append after §49 in its base; tonight's §53 is an append at the top of
+  `run()` plus the three launch-object lines, so whoever drives #191 updates its branch after this
+  merge — the same housekeeping §50, §51 and §52 already created. It is the owner tier (it moves
+  dollar figures): `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more
+  review.**
+- [ ] **CABINET MISSED (sixth night) — and today IS the Sunday** (P2 · needs the weekly routine,
+  not the nightly) — `docs/cos/brief.md` was last written **2026-10-12** (12.8 days) and still
+  reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. The 10-24 note said the next Sunday was "tomorrow"; it is **today,
+  2026-10-25**. The nightly cannot clear this — writing the brief is the Sunday cabinet pass's job —
+  so this is the one item in tonight's groom that is a request of a **routine**, not of the loop.
+
 ### P1 (new, groom 2026-10-24)
 - [x] ~~**Invariant 6 had no round-trip test, and that is the one invariant whose blast radius is
   measured in duplicated wage hours**~~ — **SHIPPED 2026-10-24**, tonight's build (see Done log).
@@ -102,7 +202,9 @@ and the push P0 it pointed at was fixed the same day.
   carries **CABINET MISSED**. Exactly one Sunday has passed without a cabinet (2026-10-18); the
   next is **2026-10-25**, i.e. tomorrow. The nightly cannot clear this — writing the brief is the
   Sunday cabinet pass's job.
-- [ ] **The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**
+- [x] ~~**The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**~~
+  — **SHIPPED 2026-10-25** (see the 10-25 band above and the Done log). The last paragraph below is
+  what was built, including the globbing sketch, which turned out to be the right shape.
   (P3 · source:build · `harness:drivable` (script-level) · no action needed tonight) — the default
   is `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell` and this container
   ships **1243**, at `chrome-headless-shell-linux64/chrome-headless-shell`. The fallback then
@@ -3008,6 +3110,56 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-25 — **The test rig found its own browser instead of being told where it is, and the
+  break it fixes is the one that makes this gate look un-run rather than red.** Three Playwright
+  entrypoints — `tests/smoke.mjs`, `tests/wage_equality.mjs`, `tests/equality.mjs` — each carried
+  the same literal, `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`.
+  This container ships build **1243** at `chrome-headless-shell-linux64/chrome-headless-shell`:
+  a different build number **and** a different directory shape, so the literal missed, the
+  `existsSync` guard handed resolution to playwright-core, *its* expected build (1134) was absent
+  too, and the suite died with Playwright's "just installed or updated" banner.
+  **That is a harness error, not a failed assertion** — the first of the three ways the `harness`
+  skill says this check lies. Nothing fails and nothing passes: the gate reads un-run, and stays
+  un-run until a human notices and exports `PW_CHROMIUM` by hand, which is exactly what the 10-24
+  run had to do. One `PW_CHROMIUM` away from a nightly that "ran" and asserted nothing.
+  **What shipped:** `findChromium()` and `chromiumLaunch()` in `tests/harness.mjs`, the module all
+  three already import, so the constant exists in one place and the two equality scripts stop
+  drifting from the suite that is actually run. Resolution order, and every step of it is load-
+  bearing: `PW_CHROMIUM` when it points at something that exists → the **highest-numbered**
+  headless-shell build (what every recorded run of this suite used, and the lighter binary) →
+  `/opt/pw-browsers/chromium`, which this image maintains as a symlink to the full browser and is
+  the one path that survives a version bump → the highest-numbered full-browser build → **`null`,
+  meaning say nothing**. That last one is not a giving-up branch: on GitHub's runners the browser
+  comes from `npx playwright install chromium` and playwright-core resolves it itself, so an empty
+  launch object is the *correct* answer there, and a resolver that invented a path for CI would
+  break the one environment that was never broken.
+  **Pinned by `tests/smoke.mjs` §53, 9 assertions, and it runs BEFORE `chromium.launch` on
+  purpose.** A resolver that names a missing binary kills the process in the launch, so asserting
+  after it would produce the same silent harness error this work exists to end; asserting first
+  means the break prints a `FAIL` naming the bad path and only then throws. Demonstrated, not
+  assumed — break 9 below is the original bug reinstated, and it printed the FAIL first.
+  Every case drives the resolver against a **synthetic** `/opt/pw-browsers` tree of empty files in
+  `.harness-browsers/`, because the real one is whatever this container happens to ship and an
+  assertion about it would say nothing about the next container.
+  **Nine deliberate breaks, one per assertion, each on a copy and not the working tree.**
+  · drop `chrome-headless-shell` from the executable names → **2 FAIL**, correctly: the 1243 shape
+  becomes invisible *and* the highest-build check then picks 1194 · sort builds ascending → the
+  highest-build assertion alone FAILs · drop `headless_shell` → the old `chrome-linux/` shape
+  assertion alone FAILs, so the two directory shapes are told apart rather than lumped · check the
+  stable symlink *after* the versioned directory → the precedence assertion FAILs · delete the
+  versioned-full-browser fallback → that fallback's assertion FAILs · return a hardcoded path when
+  nothing is found → the **`null` on an empty root** assertion FAILs, which is the CI guard ·
+  ignore `PW_CHROMIUM` → the override assertion FAILs · trust `PW_CHROMIUM` without checking it
+  exists → the missing-override assertion FAILs · **and the original bug, hardcoding the 1194
+  literal unconditionally → `FAIL  53 browser: this run's launch object never names a path that
+  does not exist  /opt/pw-browsers/chromium_headless_shell-1194/…` followed by the launch error.**
+  Before tonight that same state produced the launch error and no FAIL at all.
+  **The live proof is the run itself:** the full suite ran green with **no `PW_CHROMIUM` set**,
+  which the 10-24 groom recorded as impossible in this container.
+  **Deliberately not done:** bumping the constant to 1243, which buys exactly one container.
+  **Zero publish-set files change** (`tests/`, `.gitignore`, `BACKLOG.md`, `CLAUDE.md`), so
+  badgebudget.com serves the same bytes after this merge as before it and tomorrow's
+  `deploy_watch` will still name `dfff8ce` for `index.html` — correctly, not as a stall.
 - 2026-10-24 — **Invariant 6 now has the round-trip test its own Verify trailer said it did not,
   and writing it deleted two of my own assertions for being unfalsifiable.** The invariant is the
   `@scrubpay` self-recognition sentinel: export stamps `scrubpay-<date>-<id>@scrubpay`, import drops
