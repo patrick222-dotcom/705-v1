@@ -15,6 +15,11 @@
  * deploy branch), 11 (protected branches), 12 (registrar settings) and 13 (the iCal feed URL as a
  * bearer credential). 7 and 13 were missing from that roll-call until 2026-09-13 — neither checked
  * nor declared, which is the silent omission this comment exists to forbid.
+ *
+ * 3 and 13 are PARTLY gated, and both say which part: 3's persona rule (2026-10-10), and 13's two
+ * mechanical clauses (2026-10-26) — the feed field staying out of the single serializer, and the
+ * proxy logging nothing. The clauses a machine cannot honestly check stay human-held, and the
+ * roll-call keeps naming them, because "13 is checked" would be a worse claim than "13 is not".
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +36,8 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const html = read('index.html');
 const ops = read('ops.html');
 const deploy = read('.github/workflows/deploy.yml');
+/* Invariant 13's second clause lives in the Edge Function, not in the app. */
+const proxy = read('supabase/functions/ical-proxy/index.ts');
 
 const results = [];
 const check = (invariant, label, fn) => {
@@ -252,6 +259,78 @@ check(3, 'Pay math never reads the persona', () => {
   return `${WAGE.length} wage definitions, none names a persona or a pay-event label`;
 });
 
+/* ---- Invariant 13: the iCal feed URL is a bearer credential -----------------------------
+   CLAUDE.md: "The iCal feed URL is a bearer credential. It lives only in `ical_subscriptions`
+   (owner-only RLS, no `anon` grants), is absent from `serializeState` so it never enters the
+   `user_data` blob (which is exported, mirrored to localStorage and echoed by the sync poll),
+   never goes into `events`, and is never logged by `ical-proxy`." Its Detect trailer is `none`,
+   and says why: a leak is silent by construction — nothing observable changes when a bearer
+   credential escapes, and the only revocation is the calendar provider reissuing the feed. So
+   until now the whole invariant was carried by whoever happened to read the diff.
+
+   Two of its clauses are mechanically checkable and both are gated here. Three are not — the
+   table's RLS and grants, the absence from `events`, and the parser keeping no titles — so 13
+   stays in the UNCHECKED roll-call below with that qualifier, the way 3 already does. A check
+   that let a reader believe the invariant was covered would be worse than no check at all. */
+check(13, 'iCal feed URL: out of the saved blob, out of the proxy log', () => {
+  /* (a) The blob. `serializeState` is the single serializer — the save effect, the .json export
+     and the unload flush all call it — so a feed field among its keys IS the leak: that object is
+     written to a downloadable file, mirrored into localStorage and echoed back by the 15s sync
+     poll. Read as an AST and asserted as a shape rather than grepped: a new field is fine, a feed
+     field is not, and a `serializeState` this check cannot find must FAIL rather than pass by
+     omission (check 3's rule, for the same reason).
+     `tests/smoke.mjs` §33 scans the outgoing keepalive body for the same pattern at runtime. That
+     covers one path with real bytes; this covers every path from the one place they share. */
+  const Babel = require('@babel/standalone');
+  const open = html.indexOf('<script type="text/babel" data-presets="react">');
+  const start = html.indexOf('>', open) + 1;
+  const src = html.slice(start, html.indexOf('</script>', start));
+  /* Deliberately blunt, and deliberately the same pattern §33 uses, plus `feed` because this side
+     reads field NAMES: `feedUrl` would hold the credential while matching none of the rest. The
+     bluntness is the point — index.html:~1527 records the same trade when `syncManualOnly` was
+     named to avoid tripping it. A future field whose name merely contains "ical" (a `medical*`
+     premium is the realistic one) trips this: rename the field, or narrow this on purpose with a
+     line saying why. Do not delete the guard to make a name read nicer. */
+  const CREDENTIAL = /ical|webcal|feed|basic\.ics/i;
+  let keys = null;
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      VariableDeclarator(p) {
+        if (!(p.node.id.type === 'Identifier' && p.node.id.name === 'serializeState')) return;
+        const found = [];
+        p.traverse({ ObjectProperty(q) {
+          const k = q.node.key && (q.node.key.name || q.node.key.value);
+          if (k) found.push(String(k));
+        } });
+        keys = found;
+      },
+    } })] });
+  must(keys && keys.length > 5,
+    'serializeState was not found as a variable holding an object literal — if the single ' +
+    'serializer moved or was renamed, this check is reading nothing and Invariant 13 just lost ' +
+    'its only mechanical guard');
+  const leaked = keys.filter((k) => CREDENTIAL.test(k));
+  must(!leaked.length,
+    `serializeState carries a feed field (${leaked.join(', ')}) — the user_data blob is exported ` +
+    'to a file, mirrored to localStorage and echoed by the sync poll, so this is the credential ' +
+    'leaving the one table it is allowed to live in');
+
+  /* (b) The proxy log. `ical-proxy` is handed the raw feed URL on every sync, and its own header
+     promises "It is NEVER logged" — assert that instead of trusting it. ANY logging call fails,
+     not just one that visibly formats the URL: the next edit to this file is the likeliest one to
+     add a log, because the first-call `422 not_a_calendar` fault is still unexplained
+     (BACKLOG.md → P2) and a debug line is the obvious way to reach for it. The function's edge
+     log is also the thing two separate grooms have had to read to diagnose a sync, so a URL
+     landing there is a credential sitting in a log somebody opens on purpose. */
+  const logs = proxy.match(/\bconsole\s*\.\s*[A-Za-z]+/g) || [];
+  must(!logs.length,
+    `ical-proxy logs (${logs.join(', ')}) — it is handed the feed URL on every sync and that URL ` +
+    'is a bearer credential: anyone holding it reads her whole calendar until the provider ' +
+    'reissues the feed');
+
+  return `${keys.length} blob fields, none a feed; proxy logs nothing`;
+});
+
 /* ---- operating-committee caps (docs/leadership.md) -------------------------------------- */
 check('cos', 'Operating-committee caps', () => {
   const v = cosViolations(ROOT);
@@ -265,7 +344,7 @@ console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL (blob + proxy log gated; RLS, events and titles are not)\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {

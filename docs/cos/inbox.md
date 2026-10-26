@@ -7,6 +7,16 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-26 · session BadgeBudget nightly · Invariant 13 ("the iCal feed URL is a bearer
+  credential") had no mechanical guard at all, against a failure mode its own Detect trailer calls
+  silent by construction — the gate now fails on a feed field entering `serializeState` and on any
+  `console.*` in `ical-proxy` (four breaks + a false-positive control), with the other three
+  clauses still declared human-held. Belongs to no live thread, though it is adjacent to T2
+  `legitimacy`. Two groom findings worth a seat: **`check_build.mjs` has no meta-test**, so
+  deleting any of its fifteen checks is invisible to everything in this repo (next run's build
+  item), and **CABINET MISSED is at seven nights** — the 10-25 Sunday passed without one, so two
+  Sundays have now gone by · → outcome pending
+
 - 2026-10-25 · session BadgeBudget nightly · the test rig's three Playwright entrypoints each
   pinned a browser path that no longer exists in this container, which kills the suite with a
   **harness error** — the gate reads un-run rather than red — so the browser is discovered now
