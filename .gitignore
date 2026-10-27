@@ -28,3 +28,4 @@ playwright-report/
 # OS / editor
 .DS_Store
 Thumbs.db
+.gate-scratch/
