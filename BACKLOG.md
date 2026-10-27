@@ -28,6 +28,89 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-27)
+- [ ] **`events` took ZERO new rows in the last 24 hours — the first flat night in this file, and
+  the next run is the one that may see `SILENT`** (P2 · source:groom · no action, but read this
+  before quoting `FRESH`) — `events` holds **1,727 rows**, which is *exactly* last night's figure,
+  and the newest row is still `5212f2aa`'s `app_open` at **2026-10-26 00:22:12** — **31.7h** old at
+  tonight's read. `silence_watch` says **FRESH**, and that verdict is correct and nearly spent: its
+  window is 48h, so unless something arrives by ~2026-10-28 00:22 UTC the next groom reads
+  `SILENT_BUT_HEALTHY` or `SILENT_AND_UNHEALTHY` depending on the health probe. **That is not yet a
+  defect and must not be built against.** Quote it the way the last three nights did — `FRESH` means
+  "telemetry is alive and something arrived recently", never "a user came" — except that tonight,
+  unlike the last three, **it is only the first half**: nothing arrived in this run's 24 hours.
+  **One thing NOT to over-read:** a flat night across a 7-device trickle is ordinary, and the
+  landing-only/crawler cohort has supplied most of the recent motion. A second flat night is still
+  not a telemetry fault; the thing that would say so is `silence_watch`'s health probe going
+  unhealthy, which is what the verdict word exists to separate.
+- [ ] **The unexplained `app_open` with no `session_end` did NOT recur, so it stays unexplained and
+  unbuilt** (P3 · source:groom · no action) — the 10-26 groom flagged `5212f2aa`'s 00:22:12 load as
+  the *inverse* of the crawler shape (the ordinary `track()` insert landed, the keepalive beacon did
+  not) and said to **read a second occurrence before guessing at it**. Zero rows arrived since, so
+  there is no second occurrence and the bar is still unmet. Hold it; one row is one row.
+- [ ] **`deploy_watch` says LIVE — and the publish-set commit name has now been mis-transcribed
+  three nights running, so here is the git answer that settles it** (housekeeping) — `index.html`
+  serving **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` serving **`41d2549`
+  (2026-10-05)**, `CNAME` serving badgebudget.com, deploy ref fetched before the verdict was formed.
+  The 10-25 note recorded those two files at `f93c03e` and the 10-26 note "corrected" it to
+  `328b031`; **both are wrong**. `git log -1 -- privacy.html` and `git log -1 -- ops.html` both
+  return **`41d2549`** (#149, "the unload save rides keepalive"), which is what the watch printed
+  tonight. The watch has been right every night; the *notes* drifted, twice, including one that
+  announced itself as a fix. Lesson worth more than the figure: **cross-check a publish-set commit
+  with `git log -1 -- <file>` before writing it down** — the watch names the commit whose blob
+  matches, and an unchanged file's blob matches at many commits, so the name is only stable if you
+  resolve it the same way twice. Nothing is merged-but-unshipped going in.
+  Tonight's build changes **zero publish-set files**, so tomorrow's watch will still name `dfff8ce`
+  and that is not a stall — the fourth night running in that position.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited EIGHT
+  nights — and tonight's overlap was cleared from the diff AND from a roster count** (housekeeping)
+  — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head **`c41b8cc`, unchanged
+  since it opened**, base `a103682` (now five commits behind). Tonight's item edits
+  `scripts/check_build.mjs`, which #191 edits too, so this needed a real read for the second night
+  running. Two things were checked, not one. (a) **Line overlap: none.** #191's hunks there are
+  `@@ -220,20` and `@@ -249,7`, both inside `check(3)`; tonight's are `@@ -121,9` (the `[6]` stamp
+  count) and `@@ -338,6` (the new roster check before the report) — ~90 lines clear on both sides,
+  so git merges it. (b) **New and specific to tonight: does #191 move the check COUNT?** It does
+  not — its diff only extends `check(3)`'s `WAGE` list (`sanitizePayItems`, `payItemOccursOn`,
+  `payItemOccurrences`, `payItemCents`) and adds no `check()` call and removes none, so the roster's
+  hard-asserted 16 survives its merge untouched. **Whoever drives #191 should still know the new
+  rule:** adding a check to the gate now requires adding its label to the roster in
+  `check_build.mjs` *and* in `scripts/test_check_build.mjs`, in the same commit, or the gate goes
+  red. That is the intended friction. #191 is the owner tier (it moves dollar figures):
+  `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **The new meta-test is NOT in CI, and that needs one line only the owner can add** (P2 ·
+  `harness:unscoped` · needs the owner) — `scripts/test_check_build.mjs` runs locally and in the
+  nightly, but `.github/workflows/ci.yml`'s `gate` job does not call it, and **editing a workflow
+  file is blocked for agent sessions in this sandbox** (the same block that made `f1aa7a6` an owner
+  commit). The line is one step after the existing `Deploy-watch classifier suite`:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~40s, no browser, no
+  network). **What is already covered without it:** the headline defect — a deleted `check()` —
+  turns CI red *today*, because the roster lives inside `check_build.mjs`, which the `gate` job
+  already runs. What the missing line costs is the teeth half: a gate whose `must()` was neutered
+  would still print "All 16 passed" and CI would not notice. That is a less likely edit than a
+  deletion, which is why this is P2 and not P1.
+- [ ] **Courtney still has not opened the app — SEVEN days — so both sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both stay **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10; `ics_sync_result` is at
+  **42**, also unchanged. The first honest reading is her next foreground return, and a **cold** load
+  is still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now NINE grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) — the
+  whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom classified as **Invariant 1
+  working**. `paystub_failed` has **still never fired for any reason**, and no new `pdf.worker` rows,
+  so the 10-13 item's "read a second device" bar is **still not met**. Do not build a worker
+  mitigation.
+- [ ] **CABINET MISSED (eighth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (14.8 days) and still reads *"No cabinet has
+  run yet. The first runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**.
+  Two Sundays have now passed un-run (2026-10-18 and 2026-10-25); the next is **2026-11-01**, five
+  days out. The nightly cannot clear this — writing the brief is the Sunday cabinet pass's job.
+
 ### P1 (new, groom 2026-10-26)
 - [x] ~~**Invariant 13 — the one invariant whose leak is silent *by construction* — had no
   mechanical guard at all**~~ — **SHIPPED 2026-10-26**, tonight's build (see Done log).
@@ -40,8 +123,11 @@ and the push P0 it pointed at was fixed the same day.
   purpose. `check(13, …)` now gates two of its five clauses — the feed field staying out of
   `serializeState`, and `ical-proxy` logging nothing — and the roll-call keeps naming the other
   three. Four deliberate breaks plus a false-positive control, all five measured.
-- [ ] **`check_build.mjs` has no meta-test, so deleting any of its fifteen checks is invisible to
-  everything in this repo** (P2 · source:build · `harness:drivable` (script-level) · the thing the
+- [x] ~~**`check_build.mjs` has no meta-test, so deleting any of its fifteen checks is invisible to
+  everything in this repo**~~ — **SHIPPED 2026-10-27**, tonight's build (see Done log). The gate now
+  holds its own roster (check 16 of 16) so a deleted check turns CI red today, and
+  `scripts/test_check_build.mjs` (23) proves that roster has teeth with one deliberate break per
+  check. (P2 · source:build · `harness:drivable` (script-level) · the thing the
   next run should read first) — found while adding check 13 and it generalises past it. The gate is
   one of two required status checks and the only one the pre-push hook runs, yet nothing asserts
   that it still contains the checks it claims: a deleted `check()` call makes the suite print
@@ -52,7 +138,13 @@ and the push P0 it pointed at was fixed the same day.
   numbers are all present and that the suite FAILs on a known-bad fixture. **Not built tonight**
   because it is the natural second half of tonight's item and shipping both in one push would make
   the negative test of each less legible, not more; it is a one-run build and should be next.
-- [ ] **The Invariant 6 gate check has a THIRD hole, and it is one CLAUDE.md does not record**
+- [x] ~~**The Invariant 6 gate check has a THIRD hole, and it is one CLAUDE.md does not record**~~
+  — **CLOSED 2026-10-27**, folded into tonight's `check_build.mjs` work exactly as this item asked
+  (*"worth folding into whatever run next touches `check_build.mjs`; do not spend a push on it
+  alone"*). `[6]` now counts the **two** export stamps exactly rather than requiring one match, so
+  breaking either stamp alone fails the gate; both breaks plus the import-side one are pinned in
+  `scripts/test_check_build.mjs`. The date-dropping hole is **deliberately still open** — the gate
+  never claimed it and `tests/smoke.mjs` §52 catches it off the real bytes. Original note:
   (P3 · source:build · no action needed — `tests/smoke.mjs` §52 already covers it behaviourally) —
   CLAUDE.md's Invariant 6 trailer records two measured holes in the gate's `[6]` check: it passes on
   a build whose export stamps `@badgebudget`, and on one whose UID drops its date. Re-measured
@@ -3226,6 +3318,47 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-27 — **The deploy gate had no gate: deleting any of its checks printed a smaller number
+  and exited 0.** `check_build.mjs` is one of two required status checks and the only one the
+  pre-push hook runs, so it is the last thing between a broken invariant and production — and
+  nothing was reading it. Remove a `check()` call and the suite printed *"All 14 mechanical checks
+  passed"* instead of 15, went green, and the invariant that check was holding was held by nobody.
+  **Invariant 4's shape aimed at the gate**: a break with no signal. Both sibling script suites had
+  a meta-test (`test_groom_seed.mjs` 33, `test_silence_watch.mjs` 39); the gate did not.
+  Two halves shipped, because measurement showed neither is sufficient alone.
+  (a) **The gate now holds its own roster** — check 16 of 16 declares the other fifteen by label and
+  asserts the `^check(` count matches, so a deleted or renamed check fails the gate **in CI today**,
+  with no workflow change. Adding a check now requires declaring it, in the same commit; that
+  friction is the point, since the count is precisely what was unwatched.
+  (b) **`scripts/test_check_build.mjs` (23 assertions)** proves that roster has teeth, which a
+  self-check cannot do for itself: it copies every file the gate reads into `.gate-scratch/`, runs
+  the gate as a subprocess once clean and then **once per deliberate break — sixteen of them, one
+  per check** — and requires each to exit non-zero *and* name the right invariant, so a break
+  credited to the wrong check is caught too. The tree is rebuilt per break, so none can leak into
+  the next, and patches are applied to the copy, never the working tree.
+  **The measurement that justified building both:** neuter `must()` to a no-op and the gate still
+  prints *"All 16 mechanical checks passed"* and exits 0 — the roster half passes it **completely**,
+  and so would any source- or count-based test. Only the breaks catch it: **16 of 23 fail.** The 7
+  that survive are exactly the checks that throw without `must()` (the JSX parse, via Babel, and the
+  `cos` caps) plus the roster — which is the result explained, not a figure to trust on sight.
+  Negative-tested on a `git archive` clone, never the working tree: deleting `check(9, …)` fails
+  **six** assertions and names the vanished check by label (`[9] Deploy branch still triggers a
+  deploy`) and the count drift (`source has 15, roster declares 16`).
+  **Folded in as its own note asked** (the 10-26 P3, *"do not spend a push on it alone"*):
+  **Invariant 6's third hole is closed.** `[6]` required ONE match of `/'UID:scrubpay-'\s*\+/` while
+  `index.html` has **two** export stamps (shifts ~4781, day events ~4802), so the time-off export
+  could stop being self-recognised with all fourteen checks green — a label that said "both halves"
+  guarding one. It now counts the two exactly, and breaking either stamp alone is a pinned break.
+  The date-dropping hole stays open deliberately: the gate never claimed it and `tests/smoke.mjs`
+  §52 catches it off the real bytes.
+  **Gate:** `check_build.mjs` 16/16, `test_check_build.mjs` 23/23, `test_groom_seed.mjs` 33/33,
+  `core.test.mjs` 135/135, `test_silence_watch.mjs` 39/39, `test_deploy_watch.mjs` 84/84,
+  `smoke.mjs` **869/869**. Zero publish-set files changed, so this ships no bytes to badgebudget.com
+  and `deploy_watch` will still name `dfff8ce`.
+  **One owner step left:** the new suite is not in CI — the `gate` job needs one line, and editing a
+  workflow file is blocked for agent sessions. The headline defect is covered in CI without it,
+  because the roster lives inside the script CI already runs; the missing line costs only the
+  neutered-`must()` case. See tonight's P2 for the exact two lines.
 - 2026-10-26 — **Invariant 13 — "the iCal feed URL is a bearer credential" — got its first
   mechanical guard, and it was the invariant whose own Detect trailer says a leak is silent by
   construction.** The gate declared six invariants UNCHECKED and 13 was the one with clauses a

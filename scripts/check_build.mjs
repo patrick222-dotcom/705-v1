@@ -121,9 +121,17 @@ check(5, 'Storage keys unrenamed', () => {
 
 /* ---- Invariant 6: the .ics self-recognition sentinel ----------------------------------- */
 check(6, '@scrubpay .ics sentinel, both halves', () => {
-  must(/'UID:scrubpay-'\s*\+/.test(html), 'export no longer stamps scrubpay- UIDs');
+  /* There are TWO export stamps — shifts (~index.html:4781) and day events (~4802) — and this
+     check needed only one match until 2026-10-27, so breaking the time-off export alone passed
+     all fourteen checks while the label said "both halves". Asserted as an exact count, the way
+     the publish set and the SRI count are: a third export site is a deliberate change, so it
+     should land here in the same commit rather than silently widen the hole. */
+  const stamps = (html.match(/'UID:scrubpay-'\s*\+/g) || []).length;
+  must(stamps === 2,
+    `expected 2 export sites stamping scrubpay- UIDs (shifts + day events), found ${stamps} — ` +
+    'an unstamped export is not self-recognised, so every event it writes re-imports as a duplicate');
   must(html.includes("indexOf('@scrubpay')"), 'import no longer drops its own UIDs — re-import will duplicate every event');
-  return 'export stamps + import drops';
+  return `${stamps} export stamps + import drops`;
 });
 
 /* ---- Invariant 8/9: the deploy path itself --------------------------------------------- */
@@ -336,6 +344,42 @@ check('cos', 'Operating-committee caps', () => {
   const v = cosViolations(ROOT);
   if (v.length) throw new Error(v.join('; '));
   return '≤3 threads, ≤3 decisions, ≤5 per seat queue, brief ≤40 lines';
+});
+
+/* ---- the gate's own roster ---------------------------------------------------------------
+   Everything above holds an invariant. Nothing held THIS FILE. Delete a `check()` call and the
+   suite prints "All 14 mechanical checks passed" instead of 15, exits 0, and the PR goes green:
+   the invariant that check was holding is now held by nobody and no signal anywhere says so.
+   That is Invariant 4's shape aimed at the gate, and it is why the count is declared here and
+   compared rather than merely printed.
+
+   Adding a check means adding its label to this list in the same commit. That is the intended
+   friction — the number was unwatched, so it may only move on purpose.
+
+   `scripts/test_check_build.mjs` holds the same roster and, unlike this check, proves the gate
+   actually FAILS on a broken tree (sixteen deliberate breaks, one per check). A self-check cannot
+   establish its own teeth; that suite is what does. */
+check('gate', 'Every check this gate claims is still here', () => {
+  const self = read('scripts/check_build.mjs');
+  const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on all 5 CDN scripts',
+    "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
+    '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
+    'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
+    'Unload telemetry intact', 'Harness cannot write to production',
+    'Extracted core in sync with index.html', 'Pay math never reads the persona',
+    'iCal feed URL: out of the saved blob, out of the proxy log', 'Operating-committee caps',
+    'Every check this gate claims is still here'];
+  const absent = LABELS.filter((l) => !self.includes(`, '${l}', () =>`) && !self.includes(`, "${l}", () =>`));
+  must(!absent.length,
+    `the gate no longer contains checks it claims: ${absent.join('; ')} — either a check was ` +
+    'deleted (the invariant it held is now unguarded) or renamed without updating this roster');
+  /* Counted from declarations at column 0, which is how every check in this file is written. */
+  const declared = (self.match(/^check\(/gm) || []).length;
+  must(declared === LABELS.length,
+    `this file declares ${declared} checks but the roster lists ${LABELS.length} — a check was ` +
+    'added or removed without updating the roster, so "All N passed" is no longer a number ' +
+    'anything compares');
+  return `${declared} checks, all declared`;
 });
 
 /* ---- report ---------------------------------------------------------------------------- */

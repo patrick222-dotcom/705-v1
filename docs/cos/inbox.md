@@ -7,6 +7,18 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-27 · session BadgeBudget nightly · the deploy gate had no gate: deleting any `check()`
+  call printed a smaller number and exited 0, so the invariant it held went unguarded with no
+  signal anywhere. `check_build.mjs` now holds its own roster (check 16 of 16, red in CI today) and
+  `scripts/test_check_build.mjs` (23) proves it has teeth with one deliberate break per check —
+  justified by the measurement that a gate with `must()` neutered still prints "All 16 passed" and
+  only the breaks catch it. Invariant 6's third hole closed in the same pass, as its note asked.
+  Belongs to no live thread. Three groom findings worth a seat: **`events` took zero new rows in
+  24h** — the first flat night in the file, and `FRESH` is 31.7h into its 48h window, so the next
+  run may read `SILENT`; **the new suite needs one line in `ci.yml`** that only Pat can add, since
+  editing a workflow is blocked for agent sessions; and **CABINET MISSED is at eight nights**, two
+  Sundays gone, next 2026-11-01 · → outcome pending
+
 - 2026-10-26 · session BadgeBudget nightly · Invariant 13 ("the iCal feed URL is a bearer
   credential") had no mechanical guard at all, against a failure mode its own Detect trailer calls
   silent by construction — the gate now fails on a feed field entering `serializeState` and on any
