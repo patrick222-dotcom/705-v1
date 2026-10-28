@@ -2849,6 +2849,31 @@ function redactMoney(v){
     .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
     .replace(/\b\d[\d,]*\.\d{2}\b/g, '#.##');
 }
+/* Invariant 13's third clause -- the iCal feed URL "never goes into `events`" -- held at exactly
+   ONE call site and nowhere else. `icalFailureDetail` is careful (§24 pins its whitelist from the
+   credential side), but the boot script mirrors EVERY `console.error` in the app into this same
+   ring buffer (~line 690), so the clause actually rested on every present and future console.error
+   formatting its arguments carefully. One debug line -- `console.error('sync', url)` -- would put a
+   bearer credential into a shared table permanently, and Invariant 13's Detect trailer is `none`:
+   nothing observable changes when it happens, and the only revocation is NurseGrid reissuing the
+   feed. So the guarantee belongs at the choke point every row passes through, beside redactMoney,
+   for the same reason `serializeState` carries the blob half -- one place, every path.
+   A URL keeps its scheme and host and loses its path, query and fragment. The host is the whole
+   diagnostic value of the failures this buffer exists to carry (a blocked CDN script is Invariant
+   2's only live signal, and "which host" is the answer there), and the path is where the secret
+   lives: `https://app.nursegrid.com/calendars/777/<uuid>`. Host-only is therefore not a compromise
+   between safety and diagnosis -- it is the whole of both.
+   Deliberately NOT applied to the ring buffer itself: `scrubpayErrors` is her own localStorage
+   (Invariant 5) holding a URL she typed into Settings, and the watchdog screen's "Copy error log"
+   hands her that buffer verbatim for a bug report. The leak this closes is the one that reaches a
+   table the admins read. */
+function redactUrlPaths(v){
+  return String(v==null?'':v).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>]+/gi, (u)=>{
+    const after = u.indexOf('://') + 3;
+    const cut = u.slice(after).search(/[/?#]/);
+    return cut < 0 ? u : u.slice(0, after + cut) + '/...';
+  });
+}
 /* `viaBeacon` is the unload path: same batch, same redaction, same read-and-clear discipline,
    but sent with keepalive so it survives the tab closing. Without it the buffer only ever
    flushed on the NEXT load, and no public device has ever had a next load. */
@@ -2859,7 +2884,7 @@ function flushClientErrors(userId, viaBeacon){
     if(!buf.length) return;
     const errors = buf.slice(-ERR_FLUSH_CAP).map(e=>({
       t: (e && e.t) || null,
-      msg: redactMoney(e && e.msg).slice(0,160),
+      msg: redactMoney(redactUrlPaths(e && e.msg)).slice(0,160),
       src: String((e && e.src) || '').split('/').pop().slice(0,80) || null,
       line: (e && e.line) || null
     }));

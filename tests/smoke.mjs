@@ -6794,6 +6794,143 @@ const run = async () => {
     await ctx.close();
   }
 
+  if (want(54)) {
+    /* Invariant 13's third clause -- the feed URL "never goes into `events`" -- was held at exactly
+       one call site. §24 pins `icalFailureDetail`'s whitelist thoroughly, but that helper guards
+       ONE `console.error`; the boot script mirrors EVERY console.error in the app into the same
+       ring buffer, and `flushClientErrors` ships that buffer to `events` as a `client_error` row
+       with only `redactMoney` applied. So the clause rested on every present and future
+       console.error formatting its arguments carefully, and Invariant 13's Detect trailer is
+       `none`: nothing observable changes when a bearer credential escapes.
+
+       Driven off the REAL row the app tries to insert, not off a helper's return value -- that is
+       §24's job and §24 does it. The buffer is seeded in localStorage before load because that is
+       the real mechanism: `flushClientErrors` ships LAST load's buffer on THIS load, by design (a
+       crash cannot report itself), so a seeded `scrubpayErrors` is what a device that crashed
+       last night actually presents. §52's lesson in a different shape: assert the bytes that leave.
+
+       The host-survives assertion is load-bearing, not decoration. A redaction that threw the
+       whole message away would pass every leak check here while destroying the only live signal
+       Invariant 2 has (a blocked CDN script surfaces as the watchdog screen, and "which host" is
+       the answer), so this section has to fail in BOTH directions. */
+    const SECRET = '6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    const FEED = 'https://app.nursegrid.com/calendars/777/' + SECRET;
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    await page.addInitScript(([key, blob, seededErrors]) => {
+      window.__ev = [];
+      try { localStorage.setItem('scrubpayErrors', JSON.stringify(seededErrors)); } catch (_) {}
+      try { localStorage.setItem(key, JSON.stringify(blob)); } catch (_) {}
+      /* Signed in, so the flush takes the ordinary track() path into events and the row carries a
+         user_id -- the shape an admin reads in the ops console. */
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'user_data') {
+                      return Promise.resolve({ data: { data: blob, updated_at: '2026-10-27T00:00:00.000Z' }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [STORAGE_KEY, SEEDED_STATE, [
+      /* (1) The realistic leak: a future debug line, or any console.error handed the URL. */
+      { t: Date.now(), msg: 'console.error: ical sync failed: ' + FEED, src: 'index.html', line: 5117, stack: null },
+      /* (2) webcal:, which is the scheme NurseGrid actually hands out. */
+      { t: Date.now(), msg: 'console.error: feed webcal://app.nursegrid.com/calendars/777/' + SECRET + '.ics rejected', src: 'index.html', line: 5041, stack: null },
+      /* (3) The secret in a query string rather than a path. */
+      { t: Date.now(), msg: 'console.error: GET https://app.nursegrid.com/feed.ics?token=' + SECRET + ' failed', src: 'index.html', line: 5041, stack: null },
+      /* (4) The diagnostic that must SURVIVE: a blocked CDN script, Invariant 2's only live
+         signal. Its host is the answer and must still be in the row. */
+      { t: Date.now(), msg: 'Failed to load https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js', src: 'index.html', line: 21, stack: null },
+      /* (5) Money redaction must still apply -- the two scrubs compose, they do not replace. */
+      { t: Date.now(), msg: 'Paystub parse failed: net pay $2,481.17 unreadable', src: 'index.html', line: 1, stack: null },
+    ]]);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    /* Fixed wait, never waitForFunction: the direction that costs us the guard is the client_error
+       row NEVER arriving, and a predicate that never comes true ABORTS the run instead of failing
+       an assertion (§50 and §51 were both bitten by this). */
+    await page.waitForTimeout(2500);
+
+    const rows54 = await page.evaluate(() => window.__ev || []);
+    const cerr = rows54.filter((r) => r && r.name === 'client_error');
+    ok('feed-credential: the seeded buffer did reach events as exactly one client_error row',
+      cerr.length === 1, JSON.stringify(rows54.map((r) => r && r.name)));
+
+    /* Everything below is read off the row the app handed the client, serialized whole -- props,
+       the nested errors array, every field -- so no path can hide a credential in a corner. */
+    const wire = JSON.stringify(cerr);
+    const all54 = JSON.stringify(rows54);
+
+    ok('feed-credential: the row carries no part of the feed secret',
+      !wire.includes(SECRET), wire.slice(0, 300));
+    ok('feed-credential: and NO event row of any name carries it',
+      !all54.includes(SECRET), all54.slice(0, 300));
+    ok('feed-credential: no feed path survives -- /calendars/ is gone from the row',
+      !/\/calendars\//.test(wire), wire.slice(0, 300));
+    ok('feed-credential: no token query survives',
+      !/token=/.test(wire), wire.slice(0, 300));
+    ok('feed-credential: and no .ics path survives',
+      !/\.ics/.test(wire), wire.slice(0, 300));
+
+    /* Falsifiable in the other direction: a redaction that nuked the message would pass all five
+       checks above and blind the only Invariant 2 signal there is. */
+    ok('feed-credential: the CDN host survives, because "which host" is the whole diagnostic',
+      wire.includes('cdn.jsdelivr.net'), wire.slice(0, 400));
+    ok('feed-credential: the nursegrid HOST survives too -- host-only is the rule, not silence',
+      wire.includes('app.nursegrid.com'), wire.slice(0, 400));
+    ok('feed-credential: the path is replaced rather than merely trimmed',
+      wire.includes('app.nursegrid.com/...'), wire.slice(0, 400));
+    ok('feed-credential: the non-URL half of a message is untouched',
+      /ical sync failed/.test(wire), wire.slice(0, 400));
+    ok('feed-credential: the webcal scheme is redacted, not skipped as unknown',
+      wire.includes('webcal://app.nursegrid.com/...'), wire.slice(0, 400));
+
+    /* The two scrubs compose. Reversing or dropping either is a silent regression. */
+    ok('feed-credential: money redaction still applies alongside it',
+      wire.includes('$#') && !wire.includes('2,481.17'), wire.slice(0, 400));
+
+    /* Read-and-clear is what stops a failed send resending the batch on every load forever. */
+    const read54 = await page.evaluate(() => { try { return localStorage.getItem('scrubpayErrors'); } catch (_) { return 'THREW'; } });
+    ok('feed-credential: and the buffer was read-and-cleared, so the batch is not resent forever',
+      read54 === null || read54 === '[]' || read54 === '', String(read54).slice(0, 120));
+
+    const real54 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('feed-credential: no page errors across section 54', real54.length === 0, real54[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

@@ -28,6 +28,105 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-28)
+- [ ] **PR #191 NO LONGER MERGES — eight nights of notes said it needs "a yes or a no", and that
+  was never the whole ask** (P1 · source:groom · needs the owner, and now needs a rebase first) —
+  `git merge-tree --write-tree origin/claude/migrate-to-github-deploy-3F5RD
+  origin/claude/zealous-einstein-nkqn80` exits **1** with **four** conflicts:
+  **`tests/smoke.mjs` (code)**, plus `BACKLOG.md`, `CLAUDE.md` and `docs/cos/now.md`. `index.html`,
+  `scripts/check_build.mjs`, `tests/equality.mjs`, `tests/core.test.mjs` and the core module all
+  auto-merge cleanly, so every prior night's *line-overlap* reading was correct as far as it went —
+  and that is exactly the trap. **Nobody ever ran the merge.** Five nights running checked hunk
+  line numbers inside the two files tonight's build happened to touch, concluded "git merges it",
+  and never asked the whole question, which is one command and answers all twelve files at once.
+  **Why `tests/smoke.mjs` conflicts, and why it was predictable:** #191 appends its section at base
+  line 6098, immediately before `await browser.close()`. That is the *same insertion point* §50
+  (10-21), §51 (10-22), §52 (10-24) and §53 (10-25) were all appended at, every one of them after
+  #191 opened on 10-20. Two sides inserting different text at one point is a textbook conflict, and
+  it has existed since 10-21 — seven nights, unnoticed, while the notes tracked only `index.html`
+  and `check_build.mjs`. **Tonight's build appends §54 at the same point**, which deepens that one
+  conflict by one hunk and creates no new class of problem: it is resolved the same way either way
+  (keep both insertions). The alternative — never adding an assertion while a PR sits — has been the
+  de facto rule for four nights and is worse.
+  **What the owner actually needs to do, corrected:** #191 is still the owner tier (it moves dollar
+  figures — `docs/leadership.md` → *Approval tiers*), so the yes/no still stands, but a yes now
+  requires the branch be brought up to base first. Head is **`c41b8cc`, unchanged since 2026-10-20
+  03:25**; base has moved from `a103682` to `960a3fd` (**six** commits). The three doc conflicts are
+  mechanical. **Standing rule this earns:** check mergeability with `git merge-tree --write-tree
+  <base-ref> <head-ref>` — not by reading `@@` hunk numbers in whichever files you were already
+  looking at. A clean per-file hunk read is not a clean merge, and the API's `mergeable_state` was
+  not returned for this PR when asked.
+- [ ] **The 10-27 note's "git answer that settles it" named a commit that is on NO REF — so the
+  publish-set name has now been wrong four nights running, including the correction** (housekeeping,
+  and the rule that actually settles it) — `deploy_watch` says **LIVE**: `index.html` serving
+  **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` serving **`a64348b` (2026-10-06)**,
+  `CNAME` serving badgebudget.com, deploy ref fetched before the verdict formed. The 10-25 note said
+  `f93c03e`, 10-26 "corrected" it to `328b031`, and 10-27 announced `41d2549` as the settled git
+  answer. **`41d2549` is an unreachable object**: `git cat-file -t` finds it, `git branch -a
+  --contains` returns **nothing**, and `git merge-base --is-ancestor 41d2549
+  origin/claude/migrate-to-github-deploy-3F5RD` **fails** — it is #149's pre-squash work-branch
+  commit, still in the object store from an old fetch and on no ref at all. `deploy_watch` *cannot*
+  print it, because `gitHistory()` runs `git log <DEPLOY_REF> -- <path>`, which lists only commits
+  that TOUCHED the path on that ref: for `privacy.html` that is exactly one commit, `a64348b`. So
+  **the watch has been right every night and deterministic all along** — the drift was never the
+  tool and never a transcription slip.
+  **The real rule, which the 10-27 note got half right:** `git log -1 -- <file>` resolves against
+  **HEAD**, and a nightly container's HEAD is whatever branch that run checked out, which is why the
+  same command produced three answers on three nights. Name the ref explicitly —
+  `git log -1 origin/claude/migrate-to-github-deploy-3F5RD -- privacy.html` — or just read
+  `deploy_watch`'s own line, which already did. Tonight both agree on `a64348b`. Nothing is
+  merged-but-unshipped going in. Tonight's build **does** change `index.html`, so tomorrow's watch
+  should name the new commit; if it still says `dfff8ce`, that is a stall and not a quiet night —
+  the first time in five nights this position is falsifiable.
+- [ ] **The flat night ended, and not one of the ten new rows is a person** (P2 · source:groom ·
+  no action) — `events` holds **1,737 rows**, up 10 from last night's 1,727, newest
+  **2026-10-27 12:01:08**; `silence_watch` says **FRESH** at 20.1h into its 48h window, so the
+  `SILENT` the 10-27 note braced for did not arrive. **But the +10 must not be read as recovery.**
+  All ten rows are two brand-new devices, `84ac63a5` and `8b033879`, both
+  `X11; Linux x86_64 … Chrome/154.0.0.0`, arriving **29 seconds apart**, both `app_open {fresh:true}`,
+  both landing-only (`ob_view {screen:'landing'}` → `ob_step {step:0}`, never past it), and
+  `8b033879`'s `session_end` reads `{secs:2, shifts:0, setup:false}`. That is the **desktop-Linux
+  burst shape, seventh sighting** (10-25's note has the prior six) — a crawler, not a visitor. The
+  honest summary of tonight: zero human loads, and `FRESH` is being carried entirely by bot traffic
+  for the fourth night in five. Do not build on it, and do not quote it as an activation signal —
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort
+  until the device classifier is fixed.
+- [ ] **Courtney has not opened the app in 7.6 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03** (21 `ics_sync_result` rows lifetime), which predates `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` is at **zero rows
+  from any device, ever**; `ics_autosync_off` at **zero**. Both remain **expected**, not evidence
+  either affordance is broken or unfindable — nobody has been shown either one. `ics_import_done` is
+  unchanged at **10 rows ever** (last 2026-10-10) and `ics_sync_result` at **42**. The first honest
+  reading is still her next foreground return, and a **cold** load is still the likelier door (2 of
+  her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — TENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole `feedback`
+  table including `contact` and `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30**.
+  `client_error` holds **28 rows**, newest still the `auth check timed out` row on device `daf590c4`
+  from **2026-10-15 16:45**, which the 10-16 groom classified as **Invariant 1 working**.
+  `paystub_failed` has **still never fired for any reason**, and no new `pdf.worker` rows, so the
+  10-13 item's "read a second device" bar is **still not met**. Do not build a worker mitigation.
+  Worth one line against tonight's build: ten grooms of an unchanged `client_error` is also ten
+  grooms in which the new URL redaction would have changed nothing, which is the point — it is a
+  regression guard, not a fix for an observed leak.
+- [ ] **CABINET MISSED (ninth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **16.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, four days out. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age,
+  and the dead-man's switch that does is the notify line, which nothing enforces in the repo.
+- [ ] **The gate meta-test is STILL not in CI, unchanged from 10-27** (P2 · `harness:unscoped` ·
+  needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox** (the same block that made `f1aa7a6` an owner commit). One line after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~40s, no browser, no network). Covered without it: a **deleted**
+  `check()` is red in CI today, because the roster lives inside `check_build.mjs`, which `gate`
+  already runs. Missing: the teeth half — a gate whose `must()` was neutered still prints "All 16
+  passed". P2 because a neutering is a less likely edit than a deletion.
+
 ### P1 (new, groom 2026-10-27)
 - [ ] **`events` took ZERO new rows in the last 24 hours — the first flat night in this file, and
   the next run is the one that may see `SILENT`** (P2 · source:groom · no action, but read this
@@ -3318,6 +3417,51 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-28 — **Invariant 13's "never goes into `events`" clause was held at exactly one call site,
+  and every `console.error` in the app could break it.** The feed URL is a bearer credential whose
+  Detect trailer is `none` — nothing observable changes when it escapes, and the only revocation is
+  NurseGrid reissuing the feed. `icalFailureDetail` guards the sync path's own log carefully (§24
+  pins its whitelist from the credential side, thoroughly), but the boot script mirrors **every**
+  `console.error` in the app into the error ring buffer (`index.html`:~700), and
+  `flushClientErrors` ships that buffer to `events` as a `client_error` row with only
+  `redactMoney` applied. So the clause rested on every present and future console.error formatting
+  its arguments carefully — one debug line, `console.error('sync', url)`, would have put a bearer
+  credential into a table the admins read, permanently and silently. The 160-char truncation is no
+  protection: a real NurseGrid feed URL is ~75 characters and fits whole.
+  **`redactUrlPaths` now sits beside `redactMoney` at that choke point** — one place, every path,
+  the same shape `serializeState` carries for the blob half (and the shape the 2026-10-26 gate
+  work chose for the same reason). **A URL keeps its scheme and host and loses its path, query and
+  fragment.** Host-only is not a compromise between safety and diagnosis: the host is the *whole*
+  diagnostic value of these rows — a blocked CDN script is Invariant 2's only live signal and
+  "which host" is the answer — and the path is where the secret lives
+  (`https://app.nursegrid.com/calendars/777/<uuid>`). Deliberately **not** applied to the ring
+  buffer itself: `scrubpayErrors` is her own localStorage (Invariant 5) holding a URL she typed
+  into Settings, and the watchdog's "Copy error log" hands her that buffer verbatim for a bug
+  report; the leak closed is the one that reaches a shared table.
+  **No live leak was found** — no `console.error` in the app formats the feed URL today, so this is
+  a regression guard on a silent-by-construction invariant, not a fix for an observed escape. Said
+  plainly because this file has been burned by confident claims: the honest value is that the
+  clause now has a mechanism instead of a convention.
+  **`tests/smoke.mjs` §54, 14 assertions** (869 → **883**), driven off the **real row the app hands
+  the client** — `window.__ev` captures the `events` insert — rather than a helper's return value,
+  which is §24's job and already done. The buffer is seeded in localStorage before load because
+  that is the real mechanism (`flushClientErrors` ships LAST load's buffer on THIS load, by design:
+  a crash cannot report itself), so the seed is what a device that crashed last night actually
+  presents. **Falsifiable in both directions, four breaks measured:** dropping the scrub → **7**
+  fails with the secret visible in the row; over-redacting so the host dies too → **4** fails, which
+  is the direction that would silently blind Invariant 2; dropping `redactMoney` from the compose →
+  **1**; and matching only `https?:` so `webcal:` slips through → **5** — the realistic break, since
+  `webcal://` is the scheme NurseGrid actually hands out and the 2026-09-29 outage was a `webcal:`
+  bug too. Gate green: 16 mechanical checks, 33 groom-seed, 135 core, 883 smoke / 0 failed.
+  **Groom findings this run, two of which outrank the build.** (a) **PR #191 no longer merges** —
+  four conflicts, `tests/smoke.mjs` among them, unnoticed for seven nights because five consecutive
+  grooms read `@@` hunk numbers in two files instead of running the merge; the standing rule is now
+  `git merge-tree --write-tree <base> <head>`. (b) **The publish-set commit name has been wrong four
+  nights running, the 10-27 "correction" included** — `41d2549` is on **no ref** (an unreachable
+  pre-squash object), `git log -1 -- <file>` resolves against whatever HEAD the container checked
+  out, and `deploy_watch` was right and deterministic every night; name the ref explicitly.
+  (c) The flat night ended at +10 rows, **all ten a two-device desktop-Linux crawler burst 29
+  seconds apart** — seventh sighting, zero human loads.
 - 2026-10-27 — **The deploy gate had no gate: deleting any of its checks printed a smaller number
   and exited 0.** `check_build.mjs` is one of two required status checks and the only one the
   pre-push hook runs, so it is the last thing between a broken invariant and production — and
