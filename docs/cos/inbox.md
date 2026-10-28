@@ -7,6 +7,21 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-28 · session BadgeBudget nightly · Invariant 13's "never goes into `events`" clause was
+  held at ONE call site: `icalFailureDetail` guards the sync log, but every `console.error` in the
+  app is mirrored into the ring buffer that `flushClientErrors` ships to `events`, and only money
+  was scrubbed. `redactUrlPaths` now sits beside `redactMoney` at that choke point — a URL keeps
+  its scheme and host, loses its path/query/fragment, so Invariant 2's "which host failed" signal
+  survives. No live leak found; this is a regression guard. `tests/smoke.mjs` §54 (14, 883 total),
+  falsifiable both ways, four measured breaks. Belongs to no live thread.
+  Three groom findings worth a seat, two of them outranking the build: **PR #191 no longer merges**
+  (four conflicts incl. `tests/smoke.mjs`, unnoticed seven nights because five grooms read hunk
+  numbers instead of running the merge — standing rule is now `git merge-tree --write-tree`);
+  **the publish-set commit name has been wrong four nights running including the 10-27
+  "correction"** (`41d2549` is on no ref; `git log -1 -- <file>` resolves against the container's
+  HEAD — name the ref, or trust `deploy_watch`, which was right every night); and **CABINET MISSED
+  is at nine nights**, brief 16.0 days old, next Sunday 2026-11-01 · → outcome pending
+
 - 2026-10-27 · session BadgeBudget nightly · the deploy gate had no gate: deleting any `check()`
   call printed a smaller number and exited 0, so the invariant it held went unguarded with no
   signal anywhere. `check_build.mjs` now holds its own roster (check 16 of 16, red in CI today) and
