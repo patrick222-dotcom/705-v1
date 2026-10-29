@@ -165,8 +165,8 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
-| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, (since 2026-10-12) the operating committee's caps, and (since 2026-10-26) two of Invariant 13's five clauses — no feed field in `serializeState`, no logging in `ical-proxy`, and (since 2026-10-27) **its own roster** — the sixteenth check declares the fifteen others by label and fails if the count moves, because "All N passed" was a number nothing compared. 16 checks |
-| `scripts/test_check_build.mjs` | the gate's own meta-test (23) — the roster, plus **sixteen deliberate breaks, one per check**, each run against a `.gate-scratch/` copy and required to exit non-zero AND name the right invariant. Why both halves: a gate whose `must()` is neutered to a no-op still prints "All 16 mechanical checks passed", and the roster half passes it completely — only the breaks catch it (measured 2026-10-27: 16 of 23 fail). **Not in CI yet** — the `gate` job needs one line, and editing a workflow file is blocked for agent sessions |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, (since 2026-10-12) the operating committee's caps, and (since 2026-10-26, a third since 2026-10-29) three of Invariant 13's five clauses — no feed field in `serializeState`, no logging in `ical-proxy`, no title kept by the .ics parser — and (since 2026-10-27) **its own roster** — the sixteenth check declares the fifteen others by label and fails if the count moves, because "All N passed" was a number nothing compared. 16 checks |
+| `scripts/test_check_build.mjs` | the gate's own meta-test (28 — 23 until the parser clause's five breaks 2026-10-29) — the roster, plus **23 deliberate breaks covering all sixteen checks**, each run against a `.gate-scratch/` copy and required to exit non-zero AND name the right invariant. A check holding several clauses gets one break per clause, because a group of `must()`s broken as a group only proves that *one* of them has teeth. Why both halves: a gate whose `must()` is neutered to a no-op still prints "All 16 mechanical checks passed", and the roster half passes it completely — only the breaks catch it (measured 2026-10-27: 16 of 23 fail). **Not in CI yet** — the `gate` job needs one line, and editing a workflow file is blocked for agent sessions |
 | `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (135 — 116 until effective-dated rates 2026-10-17, 111 until the manual-sync preference 2026-10-16, 83 until the pay events 2026-10-11, 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
 | `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **883 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "869" until §54's feed-credential redaction 2026-10-28, "860" until §53's browser resolver 2026-10-25, "852" until §52's .ics round trip 2026-10-24, "850" until §30's webfont-guarded wordmark fit 2026-10-23, "832" until the stepper sync opt-out 2026-10-22, "817" until the banner sync opt-out 2026-10-21, "802" until effective-dated rates 2026-10-20, "791" until the empty-day save 2026-10-18, "786" until the paystub empty-parse counter 2026-10-17, "772" until the manual-sync switch 2026-10-16, "765" until the planner-delete uid memory 2026-10-15, "757" until the paystub photo refusal 2026-10-14, "751" until the paystub-reader failure 2026-10-13, "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable. **The browser is discovered, never pinned** (2026-10-25): `chromiumLaunch()` in `harness.mjs` is the one resolver all three Playwright entrypoints share — newest headless shell, then `/opt/pw-browsers/chromium`, then the newest full build, then **`null`** so playwright-core resolves its own on CI. A pinned path that has moved kills the suite with Playwright's "just installed or updated" banner, which is a **harness error, not a failed assertion** — the gate reads un-run rather than red. Pinned by `tests/smoke.mjs` §53, which runs *before* `chromium.launch` so that break prints a FAIL instead of only an exception |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
@@ -195,8 +195,9 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 
 `scripts/check_build.mjs` gates **1, 2, 4, 5, 6, 8 and 9** on every PR. **7, 10, 11 and 12 are
 human-held** — no machine sees them. **3 and 13 are PARTLY gated and the gate says which part:** 3's
-persona rule only (2026-10-10), and 13's two mechanical clauses (2026-10-26) — the feed field
-staying out of `serializeState`, and `ical-proxy` logging nothing. Everything else in 3 and 13 is
+persona rule only (2026-10-10), and 13's three mechanical clauses — the feed field staying out
+of `serializeState` and `ical-proxy` logging nothing (2026-10-26), and the .ics parser keeping no
+titles (2026-10-29). Everything else in 3 and 13 is
 human-held, and the gate's roll-call keeps naming it: "13 is checked" would be a worse claim than
 "13 is not".
 
@@ -355,14 +356,28 @@ the 47-day outage it exists to catch.
     ↳ **Detect** none, and a leak is silent by construction — nothing observable changes when a bearer
     credential escapes. **Blast** anyone holding the URL reads the nurse's whole calendar
     indefinitely; the only revocation is the calendar provider reissuing it. **Verify** `check_build.mjs`'s
-    `[13]` check, since 2026-10-26, gates the first two clauses mechanically: it parses
+    `[13]` check gates three clauses mechanically. Since 2026-10-26 the first two: it parses
     `serializeState` as an AST and fails on any key matching `/ical|webcal|feed|basic\.ics/i` — and
     fails if it cannot *find* `serializeState`, so a renamed serializer can't turn it into a pass by
     omission — and it fails on any `console.*` in `ical-proxy`, because the next edit to that file
     is the likeliest one to add a debug log (the first-call `422` is still unexplained). Four
-    deliberate breaks plus a false-positive control, measured. The other three clauses stay
-    **UNCHECKED in the gate**: the table's owner-only RLS and absent `anon` grants, the absence from
-    `events`, and the parser keeping no titles. `tests/smoke.mjs` §33 covers the outgoing keepalive
+    deliberate breaks plus a false-positive control, measured. **Since 2026-10-29 the third:
+    the parser keeps no titles** — the clause whose promise was made twice in prose (here, and at
+    `index.html`:~1145, "read HERE and only here, reduced to this one boolean") and held by
+    nobody. Four assertions, because there are four separate ways it dies: the per-event object
+    pushed by `parseICSSchedule` may carry only `dateKey`/`start`/`hours`/`uid`/`offHint` (a new
+    key is intended friction, added on purpose); a text-bearing VEVENT property —
+    `SUMMARY`/`DESCRIPTION`/`LOCATION`/`COMMENT`/`CATEGORIES`/`CONTACT`/`ATTENDEE`/`ORGANIZER` —
+    may be read *only* inside an `icsLooksOff(…)` argument, so **hoisting it into a local fails
+    before anything stores it**, which is the shape the edit actually takes; `icsLooksOff` must
+    return a boolean-valued expression, because `offHint` IS stored and `return title` would ride
+    the whitelist unchanged; and both functions must be **found**, so a rename cannot make it a
+    pass by omission. Five deliberate breaks, one per assertion, each measured to fail `[13]` with
+    its own message. The blast path is (a)'s from the other end: a parsed event becomes a shift,
+    and a shift is in the blob that is exported, mirrored and polled. **The other two clauses stay
+    UNCHECKED in the gate**: the table's owner-only RLS and absent `anon` grants, and the absence
+    from `events` — which has the runtime redaction below rather than a gate.
+    `tests/smoke.mjs` §33 covers the outgoing keepalive
     body at runtime; the gate covers the one source every write path shares, including the `.json`
     export, which nothing scanned before.
     **The `events` clause got a mechanism on 2026-10-28, and it is a redaction rather than a
@@ -846,8 +861,9 @@ rule. It never blocks; a missing `docs/cos/now.md` prints nothing.
 
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
-`node scripts/check_build.mjs` (gate, 16 checks), `node scripts/test_check_build.mjs` (23, the
-gate's own meta-test — roster + one deliberate break per check; ~40s, not in CI yet),
+`node scripts/check_build.mjs` (gate, 16 checks), `node scripts/test_check_build.mjs` (28, the
+gate's own meta-test — roster + 23 deliberate breaks, one per check and one per clause where a
+check holds several; ~60s, not in CI yet),
 `node scripts/test_groom_seed.mjs` (33),
 `node tests/core.test.mjs` (135, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
 iPhone 13). `tests/equality.mjs` is the wage-core check against
