@@ -61,7 +61,7 @@ const ROSTER = [
   ['events', 'Harness cannot write to production'],
   ['core', 'Extracted core in sync with index.html'],
   [3, 'Pay math never reads the persona'],
-  [13, 'iCal feed URL: out of the saved blob, out of the proxy log'],
+  [13, 'iCal feed URL: out of the blob, the log and the parser'],
   ['cos', 'Operating-committee caps'],
   ['gate', 'Every check this gate claims is still here'],
 ];
@@ -198,6 +198,23 @@ const BREAKS = [
     (s) => s.replace('function hourlyRate(base, diff){', 'function hourlyRate(base, diff, persona){'), '3'],
   ['[13] ical-proxy logs', 'supabase/functions/ical-proxy/index.ts',
     (s) => s.replace('Deno.serve(', 'console.log("dbg");\nDeno.serve('), '13'],
+  /* Clause (c), added 2026-10-29: the .ics parser keeps no titles. One break per assertion,
+     because a group of musts negative-tested as a group only proves that ONE of them has teeth. */
+  ['[13] the parsed .ics event grows a field', 'index.html',
+    (s) => s.replace('      uid: uid || null,\n      offHint,', '      uid: uid || null,\n      offHint,\n      title: uidRaw,'), '13'],
+  /* The realistic shape: not storing the title, just hoisting it into a local on the way to
+     icsLooksOff. That is the edit a "show her what the feed called it" feature starts as. */
+  ['[13] a feed title is hoisted out of icsLooksOff', 'index.html',
+    (s) => s.replace('const offHint = icsLooksOff(props.SUMMARY && props.SUMMARY.value, dtstart.allDay, hours);',
+      'const rawTitle = props.SUMMARY && props.SUMMARY.value;\n    const offHint = icsLooksOff(rawTitle, dtstart.allDay, hours);'), '13'],
+  /* offHint IS stored, so this one leaks the title through a field the whitelist allows. */
+  ['[13] icsLooksOff returns the title instead of a boolean', 'index.html',
+    (s) => s.replace("return ICS_OFF_TITLE_RE.test(String(title||'').replace(/\\\\[,;nN]/g,' '));",
+      "return String(title||'');"), '13'],
+  ['[13] the .ics parser is renamed away', 'index.html',
+    (s) => s.split('parseICSSchedule').join('parseICSFeed'), '13'],
+  ['[13] icsLooksOff is renamed away', 'index.html',
+    (s) => s.split('icsLooksOff').join('icsOffGuess'), '13'],
   ['[cos] a fourth thread appears in now.md', 'docs/cos/now.md',
     (s) => s.replace(/^## Threads\s*$/m, '## Threads\n\n### T9 `extra` — a fourth thread\n'), 'cos'],
   /* The headline defect, stated as the backlog item found it: delete a whole check() call and the

@@ -16,10 +16,11 @@
  * bearer credential). 7 and 13 were missing from that roll-call until 2026-09-13 — neither checked
  * nor declared, which is the silent omission this comment exists to forbid.
  *
- * 3 and 13 are PARTLY gated, and both say which part: 3's persona rule (2026-10-10), and 13's two
- * mechanical clauses (2026-10-26) — the feed field staying out of the single serializer, and the
- * proxy logging nothing. The clauses a machine cannot honestly check stay human-held, and the
- * roll-call keeps naming them, because "13 is checked" would be a worse claim than "13 is not".
+ * 3 and 13 are PARTLY gated, and both say which part: 3's persona rule (2026-10-10), and 13's
+ * three mechanical clauses — the feed field staying out of the single serializer and the proxy
+ * logging nothing (2026-10-26), and the .ics parser keeping no titles (2026-10-29). The clauses a
+ * machine cannot honestly check stay human-held, and the roll-call keeps naming them, because
+ * "13 is checked" would be a worse claim than "13 is not".
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -276,11 +277,13 @@ check(3, 'Pay math never reads the persona', () => {
    credential escapes, and the only revocation is the calendar provider reissuing the feed. So
    until now the whole invariant was carried by whoever happened to read the diff.
 
-   Two of its clauses are mechanically checkable and both are gated here. Three are not — the
-   table's RLS and grants, the absence from `events`, and the parser keeping no titles — so 13
-   stays in the UNCHECKED roll-call below with that qualifier, the way 3 already does. A check
-   that let a reader believe the invariant was covered would be worse than no check at all. */
-check(13, 'iCal feed URL: out of the saved blob, out of the proxy log', () => {
+   Three of its clauses are mechanically checkable and all three are gated here. Two are not —
+   the table's RLS and grants, which live in Postgres, and the absence from `events`, which is
+   now carried at runtime by `redactUrlPaths` at the one choke point every row passes through
+   (2026-10-28) rather than by anything a machine reads here. So 13 stays in the UNCHECKED
+   roll-call below with that qualifier, the way 3 already does. A check that let a reader believe
+   the invariant was covered would be worse than no check at all. */
+check(13, 'iCal feed URL: out of the blob, the log and the parser', () => {
   /* (a) The blob. `serializeState` is the single serializer — the save effect, the .json export
      and the unload flush all call it — so a feed field among its keys IS the leak: that object is
      written to a downloadable file, mirrored into localStorage and echoed back by the 15s sync
@@ -336,7 +339,93 @@ check(13, 'iCal feed URL: out of the saved blob, out of the proxy log', () => {
     'is a bearer credential: anyone holding it reads her whole calendar until the provider ' +
     'reissues the feed');
 
-  return `${keys.length} blob fields, none a feed; proxy logs nothing`;
+  /* (c) The parser. Invariant 13's last sentence: "The parser stores dates, times, hours and
+     UIDs — never titles. It *reads* `SUMMARY` once, at parse time, to set the boolean
+     `offHint` (time off vs. shift), and keeps nothing else from it." index.html:~1145 makes the
+     same promise in prose — "The title is read HERE and only here, reduced to this one boolean,
+     and never stored or sent anywhere" — and nothing held it.
+     The blast path is the one (a) guards, reached from the other end: a parsed event becomes a
+     shift, a shift goes into the `user_data` blob, and the blob is exported to a file, mirrored
+     to localStorage and echoed by the 15s poll. A title is not the feed URL, but it is calendar
+     content from a credentialed fetch, and it is the field most likely to be added by accident —
+     a "show her what the feed called it" card is an obvious feature, and the parser is the file
+     sync work edits (the time-off title default landed 2026-10-03, the timezone conversion
+     2026-09-28). Four assertions, each a different way the clause dies. */
+  const TEXT_PROPS = /^(SUMMARY|DESCRIPTION|LOCATION|COMMENT|CATEGORIES|CONTACT|ATTENDEE|ORGANIZER)$/;
+  /* The per-event shape. A new key here is fine and must be added on purpose — the same intended
+     friction the roster check applies to the check count. */
+  const EVENT_KEYS = ['dateKey', 'start', 'hours', 'uid', 'offHint'];
+  let sawParser = false, sawOff = false;
+  const extraKeys = [], loose = [], returns = [];
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      FunctionDeclaration(p) {
+        const name = p.node.id && p.node.id.name;
+        if (name === 'parseICSSchedule') {
+          sawParser = true;
+          p.traverse({
+            /* Every object literal handed to a .push() inside the parser is a candidate event. */
+            CallExpression(q) {
+              const callee = q.node.callee;
+              if (!(callee.type === 'MemberExpression' && callee.property.name === 'push')) return;
+              const arg = q.node.arguments[0];
+              if (!arg || arg.type !== 'ObjectExpression') return;
+              for (const prop of arg.properties) {
+                const k = prop.key && (prop.key.name || prop.key.value);
+                if (k && !EVENT_KEYS.includes(String(k))) extraKeys.push(String(k));
+              }
+            },
+            /* A text-bearing VEVENT property may only be read as an argument to icsLooksOff.
+               Hoisting it into a local first — `const t = props.SUMMARY.value` — is exactly how
+               it starts being kept, so that shape must fail even before anything stores it. */
+            MemberExpression(q) {
+              const k = q.node.property && (q.node.property.name || q.node.property.value);
+              if (!k || !TEXT_PROPS.test(String(k))) return;
+              const inOff = q.findParent((a) => a.isCallExpression()
+                && a.node.callee.type === 'Identifier' && a.node.callee.name === 'icsLooksOff');
+              if (!inOff) loose.push(String(k));
+            },
+          });
+        }
+        if (name === 'icsLooksOff') {
+          sawOff = true;
+          /* `offHint` IS stored, so the one thing that keeps (b) honest is this function
+             returning a boolean. `return title` or `return props.SUMMARY.value` would put the
+             title into every parsed event while matching the key whitelist exactly. Allowed node
+             types are the boolean-valued ones; a future helper call (`isOffTitle(t)`) trips this
+             on purpose — widen it with a line saying why, do not delete it. */
+          p.traverse({ ReturnStatement(q) {
+            const a = q.node.argument;
+            if (!a) return;
+            const okType = a.type === 'BooleanLiteral' || a.type === 'UnaryExpression'
+              || a.type === 'LogicalExpression' || a.type === 'BinaryExpression'
+              || (a.type === 'CallExpression' && a.callee && a.callee.type === 'MemberExpression'
+                  && a.callee.property.name === 'test');
+            if (!okType) returns.push(a.type);
+          } });
+        }
+      },
+    } })] });
+  must(sawParser, 'parseICSSchedule was not found — the .ics parser is where a feed\'s titles ' +
+    'enter the app, so a renamed or moved parser turns this clause into a pass by omission ' +
+    '(check 3\'s rule, and (a)\'s)');
+  must(sawOff, 'icsLooksOff was not found — the title is read there and nowhere else, so this ' +
+    'clause is reading nothing');
+  must(!extraKeys.length,
+    `the parsed .ics event carries fields Invariant 13 does not allow (${[...new Set(extraKeys)].join(', ')}) — ` +
+    'a parsed event becomes a shift and a shift goes into the user_data blob, which is exported ' +
+    'to a file, mirrored to localStorage and echoed by the sync poll. Add the key to EVENT_KEYS ' +
+    'in this check if it is genuinely not calendar text');
+  must(!loose.length,
+    `a text-bearing VEVENT property (${[...new Set(loose)].join(', ')}) is read in the parser outside ` +
+    'icsLooksOff — the title may only ever be reduced to that one boolean, never hoisted into a ' +
+    'local, logged or stored');
+  must(!returns.length,
+    `icsLooksOff returns something that is not boolean-valued (${returns.join(', ')}) — offHint IS ` +
+    'stored on every parsed event, so a non-boolean return carries the feed\'s title into the ' +
+    'blob while passing the field whitelist above');
+
+  return `${keys.length} blob fields, none a feed; proxy logs nothing; parser keeps ${EVENT_KEYS.length} fields, no title`;
 });
 
 /* ---- operating-committee caps (docs/leadership.md) -------------------------------------- */
@@ -367,7 +456,7 @@ check('gate', 'Every check this gate claims is still here', () => {
     'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
     'Unload telemetry intact', 'Harness cannot write to production',
     'Extracted core in sync with index.html', 'Pay math never reads the persona',
-    'iCal feed URL: out of the saved blob, out of the proxy log', 'Operating-committee caps',
+    'iCal feed URL: out of the blob, the log and the parser', 'Operating-committee caps',
     'Every check this gate claims is still here'];
   const absent = LABELS.filter((l) => !self.includes(`, '${l}', () =>`) && !self.includes(`, "${l}", () =>`));
   must(!absent.length,
@@ -388,7 +477,7 @@ console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL (blob + proxy log gated; RLS, events and titles are not)\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL (blob + proxy log + parser titles gated; RLS and events are not)\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {

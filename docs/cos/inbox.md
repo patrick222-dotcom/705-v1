@@ -7,6 +7,24 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-29 · session BadgeBudget nightly · Invariant 13's parser clause — "stores dates, times,
+  hours and UIDs, never titles" — was promised twice in prose (CLAUDE.md and `index.html`:~1145)
+  and read by nothing. `check(13)` now gates it with four assertions: the pushed event's five-key
+  whitelist, a text-bearing VEVENT property readable only inside `icsLooksOff(…)` (so hoisting the
+  title into a local fails before anything stores it), `icsLooksOff` returning a boolean-valued
+  expression (because `offHint` IS stored), and both functions having to be FOUND. Five deliberate
+  breaks, one per assertion (meta-test 23 → 28), because a group of `must()`s broken as a group
+  proves only that one of them has teeth — `[6]`'s 10-24 lesson. No app code changed; still a
+  regression guard, not a fix. That leaves Invariant 13 with two unchecked clauses and **neither
+  has a gate-shaped answer**: RLS lives in production Postgres (`ops_gate_probe.sql`'s job), and
+  `events` has the 10-28 runtime redaction. Belongs to no live thread.
+  Three groom findings, two of them outranking the build: **a second consecutive flat night** —
+  `events` unchanged at 1,737 rows, newest 44.1h old, so `silence_watch`'s `FRESH` has 3.9h of
+  window left and the next run likely reads `SILENT`; **PR #191 still does not merge** (same four
+  conflicts, head unchanged 9 days, base now seven commits ahead — it needs a yes or a no plus a
+  rebase); and **CABINET MISSED at ten nights**, brief 17.0 days old, next Sunday 2026-11-01, three
+  days out · → outcome pending
+
 - 2026-10-28 · session BadgeBudget nightly · Invariant 13's "never goes into `events`" clause was
   held at ONE call site: `icalFailureDetail` guards the sync log, but every `console.error` in the
   app is mirrored into the ring buffer that `flushClientErrors` ships to `events`, and only money

@@ -28,6 +28,99 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-29)
+- [ ] **A SECOND consecutive flat night: `events` took zero new rows again, and the `FRESH` verdict
+  has 3.9 hours of window left** (P2 · source:groom · no action, but read this before quoting the
+  word) — `events` holds **1,737 rows**, byte-identical to the 10-28 groom's figure, and the newest
+  row is still `8b033879`'s `session_end` at **2026-10-27 12:01:08** — **44.1h** old at tonight's
+  read. `silence_watch` says **FRESH (window 48h)**, which is true and nearly spent: unless
+  something arrives by ~2026-10-29 12:01 UTC the next groom reads `SILENT_BUT_HEALTHY` or
+  `SILENT_AND_UNHEALTHY` depending on the health probe. **That is still not a defect.** The 10-27
+  note called the first flat night, the 10-28 note recorded the +10 that broke it as two crawlers
+  29 seconds apart, and tonight is the first time this file can say those *same two* rows are still
+  the newest in the table. Seven devices in seven days, and the last three plausible humans
+  (`5212f2aa` 10-26, `635d3ea5` 10-24, `b67ce1b6` 10-24) left nothing to build from. **What would
+  make the next `SILENT` reading mean something:** the health probe, not the row count — that is
+  the whole reason the verdict has four words instead of two.
+- [ ] **The 10-28 note's falsifiable prediction came true, which is the first time a deploy claim in
+  this file was tested rather than asserted** (housekeeping) — it said tomorrow's watch should name
+  a new commit for `index.html` and that *"if it still says `dfff8ce`, that is a stall and not a
+  quiet night."* `deploy_watch` now reads **LIVE** with `index.html` serving **`be6cec2`
+  (2026-10-28)** — last night's URL-redaction build, so #201 shipped and nothing is
+  merged-but-unshipped going in. `CNAME` serves badgebudget.com; deploy ref fetched before the
+  verdict formed. **The publish-set name drifted AGAIN and the 10-28 note already explains why:**
+  `privacy.html` and `ops.html` print **`bfbd944` (2026-10-06)** tonight against `a64348b`
+  (2026-10-06) last night. Both are correct — those two files have not changed since, so their blob
+  matches at many commits on the ref and `gitHistory()` names whichever one its `git log` walk
+  reaches first. **So stop recording that figure as though it were stable.** The stable facts are
+  the verdict word and `index.html`'s commit; an unchanged file's "serving" commit is an artefact
+  of the walk, not a fact about the deploy. Tonight's build changes **no publish-set file**, so
+  tomorrow's watch should still name `be6cec2` for `index.html` — and that is the falsifiable
+  position again: a different name tomorrow with no merge between means something shipped that
+  nobody recorded.
+- [ ] **PR #191 still does not merge, the four conflicts are unchanged, and tonight's build
+  deliberately avoided deepening them** (P1 · needs the owner, and a rebase first) —
+  `git merge-tree --write-tree origin/claude/migrate-to-github-deploy-3F5RD
+  origin/claude/zealous-einstein-nkqn80` exits **1** with the same four:
+  `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is **`c41b8cc`,
+  unchanged since 2026-10-20 03:25**; base has moved to `be6cec2` (**seven** commits). That command
+  is the standing rule the 10-28 note earned, and it was run before picking tonight's item rather
+  than after. **What tonight did with the answer:** the item picked pins its new assertions in
+  `scripts/test_check_build.mjs` — a file #191 does not touch — instead of appending a §55 to
+  `tests/smoke.mjs` at the same insertion point #191 already conflicts on. That was available only
+  because the change is gate-level and has no runtime behaviour to drive; it is **not** a new rule
+  that nightly builds avoid `tests/smoke.mjs` while a PR sits (the 10-28 note is right that never
+  adding an assertion is the worse habit). #191 remains the owner tier — it moves dollar figures
+  (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a yes now
+  needs the branch brought up to base first.
+- [ ] **Courtney has not opened the app in 8.6 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` is unchanged at **10 rows
+  ever** (last 2026-10-10), `ics_sync_result` at **42** and `ics_sync_done` at **27**, all three
+  identical to the last two grooms. The first honest reading is still her next foreground return,
+  and a **cold** load is still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — ELEVENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation.
+- [ ] **CABINET MISSED (tenth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **17.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, three days out. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's
+  age, and the dead-man's switch that does is the notify line, which nothing in the repo enforces.
+- [ ] **The gate meta-test is STILL not in CI — third night unchanged** (P2 · `harness:unscoped` ·
+  needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox** (the same block that made `f1aa7a6` an owner commit). One line after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~60s with tonight's five new breaks, no browser, no network).
+  Covered without it: a **deleted** `check()` is red in CI today, because the roster lives inside
+  `check_build.mjs`, which `gate` already runs. Missing: the teeth half — a gate whose `must()`
+  was neutered still prints "All 16 passed". P2 because a neutering is a less likely edit than a
+  deletion.
+- [ ] **Invariant 13's last two unchecked clauses are RLS and `events`, and neither has a
+  gate-shaped answer** (P2 · `harness:unscoped` · filed by tonight's build so the next run does not
+  reach for the obvious one) — with the parser clause gated tonight, what is left is (i)
+  `ical_subscriptions` being owner-only RLS with no `anon` grants and (ii) the URL never reaching
+  `events`. **(i) cannot be checked from this repo at all** — the policies live in production
+  Postgres, and `scripts/ops_gate_probe.sql` is the shape that would establish it (adversarial
+  probes, by hand, needs network), not a gate. **(ii) now has a runtime mechanism rather than a
+  gate** (`redactUrlPaths`, 2026-10-28, §54) and that is the right shape: the leak would arrive
+  through a `console.error` nobody has written yet, so a source scan would be chasing every future
+  line. **The trap to avoid:** adding a `check()` that greps `index.html` for a URL near a
+  `track(` call would look like coverage and establish nothing, and the gate's own header forbids
+  exactly that ("only what a machine can check honestly"). If anything is built here, build the
+  `anon`-grant probe into `ops_gate_probe.sql` and run it by hand.
+
 ### P1 (new, groom 2026-10-28)
 - [ ] **PR #191 NO LONGER MERGES — eight nights of notes said it needs "a yes or a no", and that
   was never the whole ask** (P1 · source:groom · needs the owner, and now needs a rebase first) —
@@ -3417,6 +3510,48 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-29 — **Invariant 13's parser clause — "stores dates, times, hours and UIDs, never titles"
+  — was promised twice in prose and held by nobody.** CLAUDE.md says it, and `index.html`:~1145 says
+  it again at the point it matters (*"The title is read HERE and only here, reduced to this one
+  boolean, and never stored or sent anywhere"*). Nothing read either sentence. With the blob and
+  proxy-log clauses gated 2026-10-26 and the `events` clause given a runtime redaction 2026-10-28,
+  this was the last clause of Invariant 13 with a **mechanical** home — and the one living in the
+  file sync work actually edits: the time-off title default landed there 2026-10-03, the timezone
+  conversion 2026-09-28.
+  **The blast path is clause (a)'s from the other end.** A parsed event becomes a shift; a shift
+  goes into the `user_data` blob; the blob is exported to a downloadable file, mirrored into
+  localStorage and echoed by the 15s poll. A title is not the feed URL, but it is calendar content
+  fetched with a bearer credential, and it is the field most likely to be added on purpose by
+  someone who has not read the invariant — "show her what the feed called it" is an obvious
+  feature request.
+  **Four assertions in `check(13)`, because there are four separate ways the clause dies:**
+  (1) the object `parseICSSchedule` pushes may carry only `dateKey`/`start`/`hours`/`uid`/`offHint`
+  — a new key is **intended friction**, added to `EVENT_KEYS` on purpose, the same stance the
+  roster check takes on the check count; (2) a text-bearing VEVENT property
+  (`SUMMARY`/`DESCRIPTION`/`LOCATION`/`COMMENT`/`CATEGORIES`/`CONTACT`/`ATTENDEE`/`ORGANIZER`) may
+  be read **only** inside an `icsLooksOff(…)` argument, so `const t = props.SUMMARY.value` fails
+  *before* anything stores it — which is the shape the edit actually takes, and the reason this
+  is not merely a field whitelist; (3) `icsLooksOff` must return a boolean-valued expression,
+  because `offHint` **is** stored on every parsed event and `return title` would ride the whitelist
+  completely unchanged; (4) both functions must be **found**, so a rename cannot turn the clause
+  into a pass by omission (check 3's rule, and (a)'s).
+  **Negative-tested one break per assertion, five in `scripts/test_check_build.mjs`** (23 → **28**),
+  each measured to exit non-zero AND print its own message on the `[13]` row: a `title: uidRaw`
+  field added to the pushed event (field whitelist), the title hoisted into a local on its way to
+  `icsLooksOff` (the realistic one), `icsLooksOff` returning `String(title||'')` (the one that
+  passes the whitelist), and each of the two functions renamed away. Five rather than one on
+  purpose: **a group of `must()`s broken as a group proves only that one of them has teeth**, which
+  is the same lesson 2026-10-24 learned when `[6]`'s "both halves" label turned out to guard one.
+  **No app code changed, and that was the one thing picked for tonight.** `index.html` is untouched,
+  so there is no runtime behaviour to drive and the pin belongs in the gate's meta-test rather than
+  a new `tests/smoke.mjs` section — which also kept the night from deepening #191's existing
+  `tests/smoke.mjs` conflict, a consideration, not a new rule. Gate label and both rosters moved in
+  the same commit (`iCal feed URL: out of the blob, the log and the parser`); the UNCHECKED
+  roll-call now reads *"blob + proxy log + parser titles gated; RLS and events are not"*, because
+  "13 is checked" would still be a worse claim than "13 is not". **Still a regression guard, not a
+  fix:** the parser keeps no title today, and the honest value is that the clause has a mechanism
+  instead of a convention. Gate 16/16, meta-test 28/28, groom-seed 33, core 135,
+  smoke **883/883** (unchanged — no new section).
 - 2026-10-28 — **Invariant 13's "never goes into `events`" clause was held at exactly one call site,
   and every `console.error` in the app could break it.** The feed URL is a bearer credential whose
   Detect trailer is `none` — nothing observable changes when it escapes, and the only revocation is
