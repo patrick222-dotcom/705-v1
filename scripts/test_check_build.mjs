@@ -51,6 +51,7 @@ const ROSTER = [
   ['build', 'JSX block parses'],
   [1, 'Boot hardening intact'],
   [2, 'SRI on all 5 CDN scripts'],
+  [2, 'CSP covers every host the pages load'],
   [4, "saveToSupabase upserts on {onConflict:'user_id'}"],
   [5, 'Storage keys unrenamed'],
   [6, '@scrubpay .ics sentinel, both halves'],
@@ -72,6 +73,7 @@ const ROSTER = [
 const NEEDED = [
   'index.html',
   'ops.html',
+  'privacy.html',
   '.github/workflows/deploy.yml',
   'supabase/functions/ical-proxy/index.ts',
   'supabase/functions/_shared/badgebudget-core.mjs',
@@ -152,9 +154,15 @@ ok('teeth: clean copy reports the declared count',
   base.out.includes(`All ${ROSTER.length} mechanical checks passed.`),
   (base.out.match(/All \d+ mechanical checks passed\./) || ['no "All N passed" line'])[0]);
 
-/* One deliberate break per check. `expect` is the invariant tag the gate must print on the
-   failing row, so a break that fails the WRONG check — or crashes before the report — is caught
-   rather than counted as a win. */
+/* One deliberate break per check, and one per clause where a check holds several. `expect` is the
+   invariant tag the gate must print on the failing row, so a break that fails the WRONG check — or
+   crashes before the report — is caught rather than counted as a win.
+
+   A fifth element pins the LABEL as well, and the six `[2]` breaks all carry it. Two checks now
+   share that tag (SRI, and the CSP clause added 2026-10-30), so the tag alone stopped being enough
+   to say which row went red: `✗ [2]` would credit a CSP break to the SRI check and vice versa.
+   Where a tag is unique the label is redundant and is left off. */
+const CSP = 'CSP covers every host the pages load';
 const BREAKS = [
   ['[build] JSX stops parsing', 'index.html', (s) => {
     const open = s.indexOf('<script type="text/babel" data-presets="react">');
@@ -168,7 +176,27 @@ const BREAKS = [
      passed a "break" that broke nothing. The no-op guard cannot see that one — only the
      expected-failure assertion did. */
   ['[2] one SRI hash dropped', 'index.html',
-    (s) => s.replace('integrity="sha384-', 'data-sri="sha384-'), '2'],
+    (s) => s.replace('integrity="sha384-', 'data-sri="sha384-'), '2', 'SRI on all 5 CDN scripts'],
+  /* The CSP clause, added 2026-10-30. Five breaks because there are five separate ways it dies,
+     and a group of musts negative-tested as a group only proves ONE of them has teeth. */
+  ['[2] a sixth script arrives from a host the CSP does not permit', 'index.html',
+    (s) => s.replace('<style>', '<script src="https://esm.sh/thing.js"></script>\n<style>'), '2', CSP],
+  /* The other direction, and the likelier edit: the tag is fine and the CSP is tightened under it.
+     This one blocks supabase-js, so cloud sync dies behind a boot error screen. */
+  ['[2] the CSP stops permitting a host a script still uses', 'index.html',
+    (s) => s.replace("'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+      "'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com"), '2', CSP],
+  /* Anti-omission: a page whose CSP is gone must FAIL, not pass for having no directives to
+     violate — the same rule check 13 takes for a renamed serializeState. */
+  ['[2] ops.html ships with no CSP at all', 'ops.html',
+    (s) => s.replace('<meta http-equiv="Content-Security-Policy" content="', '<meta name="was-csp" content="'), '2', CSP],
+  /* privacy.html has no CSP by design; the property that replaces one is that it fetches nothing. */
+  ['[2] privacy.html grows a third-party request', 'privacy.html',
+    (s) => s.replace('<link rel="icon"', '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X">\n<link rel="icon"'), '2', CSP],
+  /* No tag names a woff2, so this is the one derived assertion — and the one whose breakage is
+     invisible rather than fatal: the webfont falls back and the layout moves. */
+  ['[2] font-src stops permitting fonts.gstatic.com', 'index.html',
+    (s) => s.replace('font-src https://fonts.gstatic.com;', "font-src 'self';"), '2', CSP],
   ['[4] the user_data upsert loses onConflict', 'index.html',
     (s) => s.replace("{onConflict:'user_id'}", '{}'), '4'],
   ['[5] a storage key renamed', 'index.html',
@@ -226,7 +254,7 @@ const BREAKS = [
   }, 'gate'],
 ];
 
-for (const [name, file, fn, expect] of BREAKS) {
+for (const [name, file, fn, expect, label] of BREAKS) {
   buildScratch();
   let patched = true;
   try { patch(file, fn); } catch (e) { patched = false; ok(`teeth: ${name}`, false, e.message); }
@@ -236,10 +264,11 @@ for (const [name, file, fn, expect] of BREAKS) {
   /* The failing row carries the tag, so requiring it is what stops a break being credited to
      whichever check happened to fail instead. A parse break prints no report at all, so the
      [build] row is matched against the crash output too. */
-  const named = new RegExp(`\u2717 \\[${expect}\\]`).test(r.out);
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const named = new RegExp(`\u2717 \\[${expect}\\]\\s+${label ? esc(label) : ''}`).test(r.out);
   ok(`teeth: ${name}`, red && named,
     !red ? 'gate PASSED on a deliberately broken tree'
-         : named ? '' : `exited ${r.code} but did not fail [${expect}]: ${r.out.slice(-300)}`);
+         : named ? '' : `exited ${r.code} but did not fail [${expect}]${label ? ` ${label}` : ''}: ${r.out.slice(-300)}`);
 }
 
 rmSync(SCRATCH, { recursive: true, force: true });

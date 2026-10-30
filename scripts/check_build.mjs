@@ -104,6 +104,107 @@ check(2, 'SRI on all 5 CDN scripts', () => {
   return '5/5 pinned + hashed';
 });
 
+/* ---- Invariant 2's sibling: the CSP that decides whether those five scripts run at all --
+   SRI answers "is this the exact file we pinned?". The <meta> CSP answers the earlier question,
+   "may the browser fetch it from that host at all?", and nothing in this repo was reading it.
+   CLAUDE.md -> Architecture states the rule ("the <meta> CSP must cover every runtime host") and
+   it was held by nobody.
+
+   The break this catches is the worst shape in the file: swap a CDN host, or add a sixth script
+   from a new one, and leave the CSP alone. The browser blocks the script, React or Babel never
+   defines, and Invariant 1's watchdog replaces the app with the boot error screen for EVERY
+   visitor — and Invariant 1's own Detect trailer says that is invisible: a device that never
+   boots never fires app_open and never flushes its error buffer. Same silence as the 47-day
+   upsert outage, reached in one edit.
+
+   Only the honest direction is gated. Every host a TAG loads from must be permitted; a permitted
+   host nothing loads is NOT reported, because connect-src carries hosts no tag can reveal
+   (https://*.supabase.co, accounts.google.com) and img-src is a wildcard. A reverse check would
+   have to either whitelist those by name or flag them forever, and neither is a machine honestly
+   checking anything.
+
+   font-src gets the one derived assertion, because no tag names a font file: Google Fonts
+   stylesheets fetch their woff2 from fonts.gstatic.com, so a page that loads the css2 stylesheet
+   must permit that host or the webfont silently falls back to a system face. Silently is the
+   problem — the 2026-10-23 band measured the real Bricolage needing 96px of 109px of room on a
+   320pt screen, so a fallback is a layout change nothing would report.
+
+   privacy.html is checked from the other end. It ships to a public URL with NO CSP, and what
+   makes that safe is the property CLAUDE.md records as load-bearing: it is self-contained, so it
+   "can't break and makes no third-party requests". That is exactly one regex, and it is the
+   assertion that keeps the missing CSP honest rather than merely absent. */
+check(2, 'CSP covers every host the pages load', () => {
+  /* 'self' deliberately satisfies nothing here: these are remote hosts, and the page's own
+     origin is badgebudget.com. A bare scheme ('https:') and a wildcard host ('https://*.foo')
+     do satisfy, because the CSP spec says so and the app relies on the second for Supabase. */
+  const allows = (sources, host) => sources.some((s) => {
+    if (s === '*' || s === 'https:' || s === 'https://*') return true;
+    const m = /^https:\/\/(\*\.)?([^/:]+)/.exec(s);
+    if (!m) return false;
+    return m[1] ? host === m[2] || host.endsWith(`.${m[2]}`) : host === m[2];
+  });
+  const directives = (page, name) => {
+    const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(page);
+    must(meta, `${name} has no <meta http-equiv="Content-Security-Policy"> — a deleted CSP must ` +
+      'fail this check, not turn it into a pass by omission');
+    const out = {};
+    for (const part of meta[1].split(';')) {
+      const [dir, ...src] = part.trim().split(/\s+/);
+      if (dir) out[dir] = src;
+    }
+    return out;
+  };
+  const hostOf = (url) => { const m = /^https?:\/\/([^/:"]+)/.exec(url); return m && m[1]; };
+
+  let gated = 0;
+  for (const [name, page] of [['index.html', html], ['ops.html', ops]]) {
+    const dirs = directives(page, name);
+    const src = (d) => dirs[d] || dirs['default-src'] || [];
+
+    /* script-src: the five pinned CDN scripts, and anything a later edit adds beside them. */
+    for (const tag of page.match(/<script\b[^>]*>/g) || []) {
+      const url = /\bsrc="([^"]+)"/.exec(tag);
+      const host = url && hostOf(url[1]);
+      if (!host) continue;
+      must(allows(src('script-src'), host),
+        `${name} loads a script from ${host}, which its own CSP script-src does not permit ` +
+        `(${src('script-src').join(' ') || 'nothing'}) — the browser will block it and Invariant ` +
+        "1's watchdog will replace the app with the boot error screen, silently, for everyone");
+      gated++;
+    }
+
+    /* style-src: stylesheet <link>s only. preconnect and dns-prefetch are not fetches and no CSP
+       fetch directive governs them, so counting them here would invent a rule the browser does
+       not enforce. */
+    for (const tag of page.match(/<link\b[^>]*>/g) || []) {
+      if (!/\brel="stylesheet"/.test(tag)) continue;
+      const url = /\bhref="([^"]+)"/.exec(tag);
+      const host = url && hostOf(url[1]);
+      if (!host) continue;
+      must(allows(src('style-src'), host),
+        `${name} loads a stylesheet from ${host}, which its own CSP style-src does not permit ` +
+        `(${src('style-src').join(' ') || 'nothing'})`);
+      gated++;
+      if (host === 'fonts.googleapis.com') {
+        must(allows(src('font-src'), 'fonts.gstatic.com'),
+          `${name} loads a Google Fonts stylesheet but its CSP font-src does not permit ` +
+          'fonts.gstatic.com, where that stylesheet fetches every woff2 — the webfont would fall ' +
+          'back to a system face with nothing anywhere reporting it');
+        gated++;
+      }
+    }
+  }
+
+  /* privacy.html: no CSP by design, so the property that replaces one is that there is nothing
+     to constrain. Its favicon is a data: URI and its only links are a mailto: and "/". */
+  const remote = (read('privacy.html').match(/\b(?:src|href)="https?:\/\/[^"]+"/g) || []);
+  must(!remote.length,
+    `privacy.html is published with no CSP because it is self-contained, and it now references ` +
+    `${remote.length} remote URL(s): ${remote[0]} — either drop it or give that page a CSP`);
+
+  return `${gated} tag hosts permitted, privacy.html self-contained`;
+});
+
 /* ---- Invariant 4: the upsert that silently broke sync for 47 days ---------------------- */
 check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
   must(/\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/.test(html),
@@ -446,11 +547,13 @@ check('cos', 'Operating-committee caps', () => {
    friction — the number was unwatched, so it may only move on purpose.
 
    `scripts/test_check_build.mjs` holds the same roster and, unlike this check, proves the gate
-   actually FAILS on a broken tree (sixteen deliberate breaks, one per check). A self-check cannot
+   actually FAILS on a broken tree (one deliberate break per check, and one per clause where a
+   check holds several). A self-check cannot
    establish its own teeth; that suite is what does. */
 check('gate', 'Every check this gate claims is still here', () => {
   const self = read('scripts/check_build.mjs');
   const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on all 5 CDN scripts',
+    'CSP covers every host the pages load',
     "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
     'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',

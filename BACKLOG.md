@@ -28,6 +28,136 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-30)
+- [x] ~~**The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
+  nothing in this repo was reading it**~~ — **SHIPPED 2026-10-30**, tonight's build (see Done log).
+  (P1 · source:build · `harness:drivable` (script-level)) Picked because `## Queue` has held no
+  unblocked app-side build item since 10-24 and the 10-25 item named the source to promote from:
+  CLAUDE.md's own rules. This one is in **Architecture**, not the invariant list — *"the `<meta>`
+  CSP must cover every runtime host"* — and it was held by nobody. SRI answers "is this the exact
+  file we pinned?"; the CSP answers the earlier question, "may the browser fetch it from that host
+  at all?", and the gate checked only the first. `check(2, 'CSP covers every host the pages
+  load')` is the seventeenth check: every host a **tag** loads from must be permitted by the
+  matching directive, in `index.html` and `ops.html` both, with a missing CSP a FAILURE rather
+  than a pass by omission. Five deliberate breaks in `scripts/test_check_build.mjs` (28 → 33),
+  one per clause.
+  **Why it is worth a gate and not just prose.** Swap a CDN host, or add a sixth script beside the
+  five, and leave the CSP alone: the browser blocks it, React or Babel never defines, and
+  **Invariant 1's watchdog replaces the app with the boot error screen for every visitor** — and
+  Invariant 1's own `Detect` trailer says that is invisible, because a device that never boots
+  never fires `app_open` and never flushes its error buffer. Same silence as the 47-day upsert
+  outage, reached in one edit, and SRI cannot see it: a blocked script never gets as far as having
+  its hash compared.
+  **Only the honest direction is gated, and the check says so.** A permitted host that nothing
+  loads is **not** reported, because `connect-src` carries hosts no tag can reveal
+  (`https://*.supabase.co`, `accounts.google.com`) and `img-src` is a wildcard — a reverse check
+  would have to whitelist those by name or flag them forever, and neither is a machine checking
+  anything honestly. That is the same line the gate's header draws and the 10-29 item warned the
+  next run not to cross.
+  **Two clauses are not just a host list.** (i) `font-src` gets the one *derived* assertion,
+  because no tag names a woff2: a page loading the Google Fonts `css2` stylesheet must permit
+  `fonts.gstatic.com`, where that stylesheet fetches every file. Its break is the invisible kind
+  rather than the fatal kind — the webfont falls back to a system face and the layout moves, which
+  the 10-23 band measured as real: the shipped Bricolage needs **96px of 109px** of room on a
+  320pt screen, against 83px for the forced fallback. (ii) **`privacy.html` is checked from the
+  other end.** It ships to a public URL with **no CSP at all** — verified tonight, not assumed —
+  and what makes that safe is the property CLAUDE.md records as load-bearing: it is self-contained,
+  so it "can't break and makes no third-party requests". That is one regex (`(src|href)="https?://`
+  → zero matches), and it is what keeps the absent CSP honest rather than merely absent. Its
+  favicon is a `data:` URI, its only links a `mailto:` and `/`.
+  **One thing the negative test caught about itself.** With SRI and the CSP both tagged `[2]`, the
+  meta-test's `✗ [2]` regex would credit a CSP break to the SRI check and vice versa — a break
+  that fails the wrong row counted as a win, which is the exact defect the `expect` tag exists to
+  prevent. All six `[2]` breaks now pin the **label** too, and that pin was itself negative-tested:
+  pointing `CSP` at the SRI label turns all five red (28 passed / 5 failed, measured).
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last two nights.
+- [ ] **The 10-29 note's prediction held — `index.html` still serves `be6cec2`, and the publish-set
+  name drifted again exactly as predicted** (housekeeping) — `deploy_watch` reads **LIVE**:
+  `index.html` serving **`be6cec2` (2026-10-28)**, `CNAME` serving badgebudget.com, deploy ref
+  fetched before the verdict formed. Last night's build (#202) touched no publish-set file, and the
+  note staked out that *"a different name tomorrow with no merge between means something shipped
+  that nobody recorded"*. It is the same name, so nothing did. `privacy.html` and `ops.html` print
+  **`4caeb15` (2026-10-06)** tonight against `bfbd944` last night and `a64348b` the night before —
+  **third different name in three nights for two files that have not changed since 2026-09-24**,
+  and the 10-28 note's explanation is now confirmed three times over: `gitHistory()` walks
+  `git log <ref> -- <path>` and names whichever matching commit it reaches first, so for an
+  unchanged file that figure is an artefact of the walk. **Stop recording it.** The stable facts
+  are the verdict word and `index.html`'s commit.
+- [ ] **The flat streak ended at two nights, and all five new devices are bots — two of them
+  Googlebot, which is the first time this app has been crawled by the index it is written for**
+  (P2 · source:groom · no action, but one line is worth keeping) — `events` holds **1,752 rows**,
+  up **15** from two nights of 1,737, newest **2026-10-30 06:47:05** (1.3h old);
+  `silence_watch` says **FRESH** and the `SILENT` the last two notes braced for never arrived.
+  Five new devices, three rows each, every one landing-only (`app_open {fresh:true}` →
+  `ob_step {step:0}` → `ob_view {screen:'landing'}`), none past screen 0, **none with a
+  `session_end`**:
+  · `7524e31a` + `8b1c8728` — `X11; Linux x86_64 … Chrome/154.0.0.0`, **16 seconds apart**, the
+    desktop-Linux burst shape, **eighth sighting** (10-28's note has the prior seven).
+  · `9720d31c` + `18e5702c` — **self-identifying `Googlebot/2.1`**, desktop and the Nexus 5X mobile
+    crawler, both at `2026-10-30 01:14:45.050233`, the *same microsecond*.
+  · `19210bb4` — `Macintosh … Chrome/83.0.4103.97`, a 2020 build, scraper-shaped.
+  **Zero human loads for the third night running**, and `FRESH` is being carried entirely by bot
+  traffic — do not quote it as an activation signal (CLAUDE.md records every activation figure
+  since 2026-09-07 as inflated by exactly this cohort until the device classifier is fixed).
+  **The one new fact worth a line:** Googlebot reaching the landing screen means the
+  `<meta name="description">` and `<noscript>` copy the 2026-09-23 positioning fix rewrote is now
+  the copy that gets indexed. Both are pinned by `tests/smoke.mjs` §18 and need nothing; recorded
+  because the fix shipped five weeks before the crawler that reads it arrived.
+- [ ] **PR #191's base distance has been undercounted — it is ELEVEN commits behind, not seven**
+  (P1 · needs the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four conflicts: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`.
+  Head is **`c41b8cc`, unchanged since 2026-10-20 03:25** — ten days. Merge-base is `a103682`, and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **11**; at last
+  night's base `be6cec2` it was already **10**, so the 10-29 note's "seven" was wrong by three.
+  Quote the command, not the felt distance — this is the fourth figure in this file to drift from
+  being re-derived rather than re-measured (the publish-set commit was the other three).
+  **Tonight's build does not deepen the conflict:** it edits `scripts/check_build.mjs`, which #191
+  also edits, and `git merge-tree` lists that file as auto-merging — #191's hunks there are inside
+  `check(3, …)` at ~220 and ~249, and tonight's insertion is a new `check(2, …)` at ~106 plus the
+  roster at ~460. It adds nothing to `tests/smoke.mjs`, where the conflict actually is, because
+  the change is gate-level and has no runtime behaviour to drive. #191 is the owner tier (it moves
+  dollar figures — `docs/leadership.md` → *Approval tiers*), so it still needs **a yes or a no**,
+  and a yes needs the branch brought up to base first.
+- [ ] **Courtney has not opened the app in 9.3 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` unchanged at **10 rows ever**
+  (last 2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical
+  for four grooms. The first honest reading is her next foreground return, and a **cold** load is
+  still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — TWELFTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation. Worth one line against tonight's build: twelve grooms of a flat
+  `client_error` is also twelve grooms in which **no CSP violation has ever surfaced** — which is
+  not reassurance, because a CSP-blocked boot script produces the watchdog screen and no row at
+  all. That is the whole reason it needed a gate rather than a dashboard.
+- [ ] **CABINET MISSED (eleventh night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **18.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, **two days out**. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's
+  age, and the dead-man's switch that does is the notify line, which nothing in the repo enforces.
+- [ ] **The gate meta-test is STILL not in CI — fourth night unchanged, and it now costs more to
+  skip** (P2 · `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job
+  still does not call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for
+  agent sessions in this sandbox** (the same block that made `f1aa7a6` an owner commit). One line
+  after the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~70s with tonight's five new breaks, no browser, no network).
+  Covered without it: a **deleted** `check()` is red in CI today, because the roster lives inside
+  `check_build.mjs`, which `gate` already runs — and tonight's roster now declares **17**. Missing:
+  the teeth half — a gate whose `must()` was neutered still prints "All 17 passed", and the teeth
+  are the only half that proved tonight's label pin was broken.
+
 ### P1 (new, groom 2026-10-29)
 - [ ] **A SECOND consecutive flat night: `events` took zero new rows again, and the `FRESH` verdict
   has 3.9 hours of window left** (P2 · source:groom · no action, but read this before quoting the
@@ -3510,6 +3640,63 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-30 — **The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
+  nothing in this repo was reading it.** SRI answers *"is this the exact file we pinned?"*; the CSP
+  answers the earlier question, *"may the browser fetch it from that host at all?"* The gate checked
+  only the first. CLAUDE.md → Architecture has stated the rule since the file was written — *"the
+  `<meta>` CSP must cover every runtime host"* — and it was held by nobody, which makes it the same
+  shape as the 10-26 and 10-29 clauses: a load-bearing sentence with no machine behind it.
+  **The break it catches is a silent total outage.** Swap a CDN host, or add a sixth script beside
+  the five, and leave the CSP alone: the browser blocks the script, React or Babel never defines,
+  and **Invariant 1's watchdog replaces the app with the boot error screen for every visitor.**
+  Invariant 1's own `Detect` trailer says that is invisible — *a device that never boots never
+  fires `app_open` and never flushes the error buffer* — so this is the 47-day upsert outage's
+  signature reached in one edit. SRI cannot see it: a blocked script never gets as far as having
+  its hash compared, and `integrity="sha384-"` still counts 5.
+  **`check(2, 'CSP covers every host the pages load')` — the seventeenth check.** For
+  `index.html` and `ops.html` both: every host a `<script src>` loads from must be permitted by
+  `script-src`, every `rel="stylesheet"` `<link>` host by `style-src` (falling back to
+  `default-src`, as the spec does), and **a page with no CSP meta FAILS** rather than passing for
+  having no directives to violate — the anti-omission rule check 13 takes for a renamed
+  `serializeState`. `'self'` deliberately satisfies nothing here, because these are remote hosts;
+  a bare scheme and a wildcard host do, because the spec says so and the app relies on the second
+  for `https://*.supabase.co`. `preconnect` and `dns-prefetch` links are skipped on purpose: no
+  CSP fetch directive governs them, so counting them would invent a rule the browser does not
+  enforce. 8 tag hosts gated.
+  **Only the honest direction.** A permitted host nothing loads is **not** reported, because
+  `connect-src` carries hosts no tag can reveal (`https://*.supabase.co`,
+  `accounts.google.com` for OAuth) and `img-src` is `https:` wholesale. A reverse check would have
+  to whitelist those by name or flag them forever; neither is a machine checking anything honestly,
+  and the gate's own header forbids exactly that. The 10-29 item warned the next run not to cross
+  that line for Invariant 13's `events` clause — same line, held here.
+  **Two clauses are not a host list.** (i) **`font-src` gets the one derived assertion**, because
+  no tag names a woff2: a page loading the Google Fonts `css2` stylesheet must permit
+  `fonts.gstatic.com`, where that stylesheet fetches every file. Its breakage is the *invisible*
+  kind rather than the fatal kind — the webfont falls back to a system face and the layout moves,
+  which the 10-23 band measured as real rather than theoretical: the shipped Bricolage needs
+  **96px of 109px** of room on a 320pt screen against 83px for the forced fallback, so the
+  wordmark's margin is spent by a font swap nothing would report. (ii) **`privacy.html` is checked
+  from the other end.** It ships to a public URL with **no CSP at all** — read tonight, not
+  assumed — and what makes that safe is the property CLAUDE.md records as load-bearing: it is
+  self-contained, so it *"can't break and makes no third-party requests"*. One regex
+  (`(src|href)="https?://` → zero matches) is what keeps that absence honest instead of merely
+  absent; its favicon is a `data:` URI and its only links are a `mailto:` and `/`.
+  **Five deliberate breaks, one per clause** (`scripts/test_check_build.mjs`, 28 → 33), each
+  measured to exit non-zero and name `[2] CSP covers every host the pages load`: a sixth script
+  from `esm.sh`; the CSP tightened under a script that still uses `cdn.jsdelivr.net` (which kills
+  supabase-js, i.e. cloud sync, behind a boot error screen); `ops.html`'s CSP meta removed
+  entirely; `privacy.html` given a Google Fonts stylesheet; and `font-src` narrowed to `'self'`.
+  One per clause rather than one per check, because a group of `must()`s broken as a group proves
+  only that *one* of them has teeth — `[6]`'s 10-24 lesson.
+  **The negative test found a defect in itself, which is the part worth keeping.** With SRI and
+  the CSP both tagged `[2]`, the meta-test's `✗ \[${expect}\]` regex would credit a CSP break to
+  the SRI check and vice versa — a break failing the *wrong* row counted as a win, which is
+  precisely what the `expect` tag exists to prevent. All six `[2]` breaks now pin the **label** as
+  well, and that pin was itself negative-tested: pointing the `CSP` constant at the SRI label turns
+  all five new breaks red (**28 passed / 5 failed**, measured) while the SRI break stays green.
+  Where a tag is still unique the label is left off.
+  **No app code, no publish-set file, no wage core.** Gate: 17/17, groom-seed 33/33, core 135/135,
+  meta-test 33/33, smoke 883/0.
 - 2026-10-29 — **Invariant 13's parser clause — "stores dates, times, hours and UIDs, never titles"
   — was promised twice in prose and held by nobody.** CLAUDE.md says it, and `index.html`:~1145 says
   it again at the point it matters (*"The title is read HERE and only here, reduced to this one

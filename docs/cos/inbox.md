@@ -7,6 +7,27 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-30 · session BadgeBudget nightly · CLAUDE.md -> Architecture has always said "the
+  `<meta>` CSP must cover every runtime host" and nothing read it. SRI pins *which file*; the CSP
+  permits *which host*, and it fires first — a host missing from it means the script is never
+  fetched, its hash never compared, and `integrity="sha384-"` still counts 5 while Invariant 1's
+  watchdog shows the boot error screen to every visitor. Invariant 1's own `Detect` says that is
+  invisible. `check(2, 'CSP covers every host the pages load')` is the 17th check: tag hosts
+  against the matching directive in `index.html` and `ops.html`, a missing CSP is a FAILURE not a
+  pass by omission, a Google Fonts stylesheet implies `font-src fonts.gstatic.com`, and
+  `privacy.html` (which ships with no CSP) must reference no remote URL. Forward direction only —
+  an unused permission is not reported, because `connect-src` carries hosts no tag can reveal.
+  Five breaks, one per clause (meta-test 28 -> 33), and the suite's own `✗ [2]` regex turned out to
+  be ambiguous now that two checks share that tag, so breaks pin the label too. No app code, no
+  publish-set file. Belongs to no live thread.
+  Three groom findings: **the flat streak ended at two nights and all five new devices are bots** —
+  two of them self-identifying **Googlebot**, the first crawl by the index the landing copy is
+  written for, so the 2026-09-23 positioning rewrite of `<meta description>`/`<noscript>` is now
+  the copy being indexed; **PR #191's base distance has been undercounted** (11 commits, not the
+  seven recorded last night — same four conflicts, head unchanged ten days, still needs a yes or a
+  no plus a rebase); and **CABINET MISSED at eleven nights**, brief 18.0 days old, next Sunday
+  **2026-11-01, two days out** · → outcome pending
+
 - 2026-10-29 · session BadgeBudget nightly · Invariant 13's parser clause — "stores dates, times,
   hours and UIDs, never titles" — was promised twice in prose (CLAUDE.md and `index.html`:~1145)
   and read by nothing. `check(13)` now gates it with four assertions: the pushed event's five-key
