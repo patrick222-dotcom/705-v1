@@ -7,6 +7,29 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-10-31 · session BadgeBudget nightly · The app loads a **sixth** script and three
+  mechanisms each miss it for a different reason. `pdf.worker.min.js` is fetched at runtime by
+  pdf.js from this origin: SRI cannot cover it (a worker takes no `integrity` attribute, and it is
+  a string assigned to `workerSrc`, not a tag), last night's CSP check cannot see it (that check
+  walks tags), and Invariant 8 names the *file* — so a 1MB blob shipped to a public URL that
+  **nothing in this repo had ever read a byte of**. `check(2, 'pdf.js worker matches its pinned
+  library')` is the 18th check, eight assertions, eight breaks (meta-test 33 → 41), all
+  label-pinned because three checks share `[2]` now. Two clauses matter more than the version pin:
+  **`isEvalSupported:false` is the CVE-2024-4367 mitigation for pdf.js < 4.2.0** and the CSP
+  carries `'unsafe-eval'` for Babel, so that one token is the whole control over a PDF *she*
+  picks, in the origin holding `user_data`; and **`workerSrc` must stay same-origin and published**,
+  because the CSP has no `worker-src` — so "serve the worker from cdnjs", the obvious fix for the
+  10-13 iPhone worker failure, yields a worker the browser refuses while passing every other
+  check. No app code, no publish-set file. Belongs to no live thread.
+  Three groom findings: **a fourth consecutive night with zero human loads** — six new rows, two
+  new devices, both the `X11; Linux x86_64 … Chrome/154` burst shape 12 seconds apart (ninth
+  sighting), 13 devices in 7 days and not one a person, so `FRESH` is carried entirely by bots;
+  **PR #191 is now 12 commits behind** (same four conflicts, head unchanged eleven days, still
+  needs a yes or a no plus a rebase); and **CABINET MISSED at twelve nights**, brief 19.0 days
+  old, next Sunday **2026-11-01, one day out** — at twelve nights the dead-man's switch is itself
+  the finding, and whether `cos_check.mjs` should fail the gate on an over-age brief or the claim
+  should be retired is Pat's call · → outcome pending
+
 - 2026-10-30 · session BadgeBudget nightly · CLAUDE.md -> Architecture has always said "the
   `<meta>` CSP must cover every runtime host" and nothing read it. SRI pins *which file*; the CSP
   permits *which host*, and it fires first — a host missing from it means the script is never

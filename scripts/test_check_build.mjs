@@ -52,6 +52,7 @@ const ROSTER = [
   [1, 'Boot hardening intact'],
   [2, 'SRI on all 5 CDN scripts'],
   [2, 'CSP covers every host the pages load'],
+  [2, 'pdf.js worker matches its pinned library'],
   [4, "saveToSupabase upserts on {onConflict:'user_id'}"],
   [5, 'Storage keys unrenamed'],
   [6, '@scrubpay .ics sentinel, both halves'],
@@ -72,6 +73,10 @@ const ROSTER = [
    gate's `read()` throws at module load), which is the correct outcome — never a silent pass. */
 const NEEDED = [
   'index.html',
+  /* 1MB, and copied once per break. It is in this list because the gate reads it as of
+     2026-10-31: the worker-version check below is the first thing in this repo to look inside
+     the file at all. */
+  'pdf.worker.min.js',
   'ops.html',
   'privacy.html',
   '.github/workflows/deploy.yml',
@@ -158,11 +163,14 @@ ok('teeth: clean copy reports the declared count',
    invariant tag the gate must print on the failing row, so a break that fails the WRONG check — or
    crashes before the report — is caught rather than counted as a win.
 
-   A fifth element pins the LABEL as well, and the six `[2]` breaks all carry it. Two checks now
-   share that tag (SRI, and the CSP clause added 2026-10-30), so the tag alone stopped being enough
-   to say which row went red: `✗ [2]` would credit a CSP break to the SRI check and vice versa.
-   Where a tag is unique the label is redundant and is left off. */
+   A fifth element pins the LABEL as well, and the fourteen `[2]` breaks all carry it. THREE checks
+   now share that tag (SRI; the CSP clause added 2026-10-30; the same-origin pdf.js worker added
+   2026-10-31), so the tag alone stopped being enough to say which row went red: `✗ [2]` would
+   credit a CSP break to the SRI check and vice versa, and a break that fails the wrong row is
+   exactly the thing `expect` exists to catch. Where a tag is unique the label is redundant and is
+   left off. */
 const CSP = 'CSP covers every host the pages load';
+const PDFW = 'pdf.js worker matches its pinned library';
 const BREAKS = [
   ['[build] JSX stops parsing', 'index.html', (s) => {
     const open = s.indexOf('<script type="text/babel" data-presets="react">');
@@ -197,6 +205,38 @@ const BREAKS = [
      invisible rather than fatal: the webfont falls back and the layout moves. */
   ['[2] font-src stops permitting fonts.gstatic.com', 'index.html',
     (s) => s.replace('font-src https://fonts.gstatic.com;', "font-src 'self';"), '2', CSP],
+  /* The same-origin worker, added 2026-10-31. EIGHT breaks, one per `must()`, and all eight pin
+     the LABEL as well as the tag — three checks share `[2]` now, so `✗ [2]` alone would credit a
+     worker break to the SRI or the CSP row. The label pin is itself negative-tested: pointing
+     PDFW at the SRI label turns all eight red (measured 2026-10-31, 33 passed / 8 failed). */
+  /* Anti-omission 1: the pinned version is what everything below is compared against, so it has
+     to be established and not merely looked for. A second pdf.js tag leaves SRI's count at 5. */
+  ['[2] a second pdf.js pin makes the version ambiguous', 'index.html',
+    (s) => s.replace('<style>', '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>\n<style>'), '2', PDFW],
+  ['[2] the worker file stops being the pinned pdf.js build', 'pdf.worker.min.js',
+    (s) => s.replace('"3.11.174"', '"3.12.0"'), '2', PDFW],
+  /* The 1MB blob in the publish set, truncated. Nothing in this repo read a byte of it before. */
+  ['[2] pdf.worker.min.js is replaced by something that is not a worker', 'pdf.worker.min.js',
+    () => '/* not a pdf.js worker */\n', '2', PDFW],
+  /* The edit a "the worker would not load, let us serve it from the CDN" fix starts as. script-src
+     permits cdnjs, so it reads as safe; the CSP has no worker-src, so default-src 'self' blocks it. */
+  ['[2] workerSrc is pointed at a CDN', 'index.html',
+    (s) => s.replace("GlobalWorkerOptions.workerSrc='pdf.worker.min.js'",
+      "GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'"), '2', PDFW],
+  /* CVE-2024-4367. The CSP carries 'unsafe-eval' for Babel, so this flag is the whole mitigation. */
+  ['[2] getDocument drops isEvalSupported:false', 'index.html',
+    (s) => s.replace('getDocument({data:buf, isEvalSupported:false})', 'getDocument({data:buf})'), '2', PDFW],
+  /* Same-origin but not published: deploy.yml copies exactly five files, so this 404s in
+     production while working perfectly from a local directory listing. */
+  ['[2] workerSrc points at a file the deploy never copies', 'index.html',
+    (s) => s.replace("GlobalWorkerOptions.workerSrc='pdf.worker.min.js'",
+      "GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js'"), '2', PDFW],
+  /* Anti-omission 2 and 3, the rule check 13 takes for a renamed serializeState: a rewritten
+     paystub reader must fail this check rather than pass by having nothing left to look at. */
+  ['[2] the workerSrc assignment is renamed away', 'index.html',
+    (s) => s.split('GlobalWorkerOptions.workerSrc').join('GlobalWorkerOptions.wSrc'), '2', PDFW],
+  ['[2] the getDocument call is renamed away', 'index.html',
+    (s) => s.split('getDocument({data:buf').join('openDocument({data:buf'), '2', PDFW],
   ['[4] the user_data upsert loses onConflict', 'index.html',
     (s) => s.replace("{onConflict:'user_id'}", '{}'), '4'],
   ['[5] a storage key renamed', 'index.html',
