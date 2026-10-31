@@ -205,6 +205,89 @@ check(2, 'CSP covers every host the pages load', () => {
   return `${gated} tag hosts permitted, privacy.html self-contained`;
 });
 
+/* ---- Invariant 2's sixth script: the one the app loads from its OWN origin ---------------
+   Invariant 2 is "SRI on all 5 CDN scripts, exact pinned versions". The app loads a SIXTH
+   script, and none of the three mechanisms above can see it. `pdf.worker.min.js` is fetched at
+   runtime by pdf.js, from this origin, and:
+
+     - SRI does not reach it. A worker script takes no `integrity` attribute, and it is not a
+       `<script>` tag at all — it is a string assigned to `GlobalWorkerOptions.workerSrc`.
+     - The CSP check above does not reach it either, by construction: that check walks TAGS, and
+       this is a URL in JavaScript. (The CSP has no `worker-src`, so the browser falls back to
+       `default-src 'self'` — which is why pointing `workerSrc` at cdnjs to "fix" a worker that
+       would not load produces a worker the browser refuses, even though `script-src` permits
+       that host. The edit looks right, passes every check in this file, and kills the feature.)
+     - Invariant 8's publish-set check names the FILE. Nothing has ever read a byte inside it.
+
+   Four assertions, because there are four separate ways this dies:
+
+   (a) The pinned version is found at all. One pdf.js CDN script, version extractable.
+   (b) The worker is the matching build. pdf.js compares the two itself and throws
+       `The API version "X" does not match the Worker version "Y"` — the message is a literal in
+       the worker file, so this check requires both the guard (proof the 1MB blob really is a
+       pdf.js worker, and not truncated or replaced) and the pinned version inside it. Bumping
+       the CDN pin is a deliberate act because SRI forces a new hash; replacing the worker file
+       beside it is a SEPARATE act, and forgetting it breaks the paystub reader completely with
+       nothing in `events` to say so (`paystub_failed` has never fired for any reason).
+   (c) `workerSrc` stays a bare same-origin filename that is in the publish set. An absolute or
+       protocol-relative URL fails: see the CSP note above, and the in-source comment at the
+       assignment already promises this ("no third-party CDN in the paystub path").
+   (d) `isEvalSupported:false` is still passed to `getDocument`. This is the documented
+       CVE-2024-4367 mitigation for pdf.js < 4.2.0, and 3.11.174 is pinned. The app's CSP carries
+       `'unsafe-eval'` because Babel standalone needs it, so that flag is the ONLY thing standing
+       between a malicious PDF and arbitrary JS in this origin — where the whole `user_data` blob
+       and the auth session live. The input is a file she picks, which is the one input this app
+       takes from outside itself.
+
+   (a) and the "found" halves of (c) and (d) are anti-omission, the same rule check 13 takes for
+   a renamed `serializeState`: a renamed function or a deleted assignment must FAIL rather than
+   turn this into a pass by omission. */
+check(2, 'pdf.js worker matches its pinned library', () => {
+  const pins = html.match(/src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/([^/]+)\/pdf(?:\.min)?\.js"/g) || [];
+  must(pins.length === 1,
+    `expected exactly one pinned pdf.js CDN script in index.html, found ${pins.length} — the ` +
+    'version this check compares the same-origin worker against cannot be established');
+  const pinned = /pdf\.js\/([^/]+)\//.exec(pins[0])[1];
+
+  const worker = read('pdf.worker.min.js');
+  must(worker.includes('does not match the Worker version'),
+    'pdf.worker.min.js no longer contains pdf.js\'s own API/worker version guard — the file in ' +
+    'the publish set is not a pdf.js worker build (truncated, replaced, or empty), and nothing ' +
+    'else in this repo reads a byte of it');
+  must(worker.includes(`"${pinned}"`),
+    `index.html pins pdf.js ${pinned} but pdf.worker.min.js does not carry that version — ` +
+    'pdf.js will throw `The API version … does not match the Worker version …` on every ' +
+    'paystub, and paystub_failed has never fired for any reason, so nothing would report it');
+
+  const srcAssign = /GlobalWorkerOptions\.workerSrc\s*=\s*'([^']*)'/.exec(html);
+  must(srcAssign,
+    "could not find the GlobalWorkerOptions.workerSrc assignment — a renamed or deleted worker " +
+    'path must fail this check, not turn it into a pass by omission');
+  const workerSrc = srcAssign[1];
+  must(!/^(https?:)?\/\//.test(workerSrc),
+    `workerSrc is a remote URL (${workerSrc}) — the paystub worker must load from this origin. ` +
+    'The CSP declares no worker-src, so default-src \'self\' blocks it; SRI cannot cover a ' +
+    'worker; and nothing else in this file looks at a script URL that is not a tag');
+  /* Read from deploy.yml rather than restating the list check 8 holds: duplicating it here would
+     make the publish set true in two places, and the workflow is the one that decides. */
+  const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
+  must(copies.includes(workerSrc),
+    `workerSrc is '${workerSrc}', which deploy.yml never copies into _site — it publishes ` +
+    `[${copies.join(', ')}], so this 404s in production while working from a local directory`);
+
+  const getDoc = /getDocument\(\{([^}]*)\}\)/.exec(html);
+  must(getDoc,
+    'could not find the pdf.js getDocument({…}) call — same anti-omission rule: a rewritten ' +
+    'paystub reader must fail this check rather than silently drop the hardening below');
+  must(/isEvalSupported\s*:\s*false/.test(getDoc[1]),
+    'getDocument() no longer passes isEvalSupported:false — that is the CVE-2024-4367 mitigation ' +
+    `for pdf.js < 4.2.0 and ${pinned} is pinned. The CSP carries 'unsafe-eval' for Babel, so ` +
+    'this flag is the only thing between a malicious paystub PDF and arbitrary JS in the origin ' +
+    'holding user_data and the auth session');
+
+  return `${pinned} pinned, worker agrees, same-origin, isEvalSupported:false`;
+});
+
 /* ---- Invariant 4: the upsert that silently broke sync for 47 days ---------------------- */
 check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
   must(/\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/.test(html),
@@ -554,6 +637,7 @@ check('gate', 'Every check this gate claims is still here', () => {
   const self = read('scripts/check_build.mjs');
   const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on all 5 CDN scripts',
     'CSP covers every host the pages load',
+    'pdf.js worker matches its pinned library',
     "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
     'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',

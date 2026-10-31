@@ -28,6 +28,132 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-10-31)
+- [x] ~~**The app loads a SIXTH script and three separate mechanisms each miss it for a different
+  reason**~~ — **SHIPPED 2026-10-31**, tonight's build (see Done log). (P1 · source:build ·
+  `harness:drivable` (script-level)) Picked the same way the last three nights were picked, from
+  CLAUDE.md's own rules rather than from a queue that has held no unblocked app-side item since
+  10-24 — and the 10-29 note's warning was honoured: it filed Invariant 13's last two clauses as
+  the *obvious* reach and said not to take them, so this is a different invariant entirely.
+  `pdf.worker.min.js` is fetched at runtime by pdf.js from this origin, and **SRI cannot cover it**
+  (a worker takes no `integrity` attribute, and it is not a tag at all — it is a string assigned
+  to `GlobalWorkerOptions.workerSrc`), **last night's CSP check cannot see it** (that check walks
+  tags; this is a URL in JavaScript), and **Invariant 8's publish-set check names the file** —
+  nothing in this repo had ever read a byte inside the 1MB blob it ships to a public URL.
+  `check(2, 'pdf.js worker matches its pinned library')` is the eighteenth check: eight
+  assertions, eight deliberate breaks, label-pinned.
+  **The worst of the four is not the version pin.** `isEvalSupported:false` is the documented
+  CVE-2024-4367 mitigation for pdf.js < 4.2.0 and 3.11.174 is pinned; the app's CSP carries
+  `'unsafe-eval'` because Babel standalone needs it, so **that one token is the whole mitigation**
+  — and the input is a PDF *she picks*, the one input this app takes from outside itself, in an
+  origin holding `user_data` and the auth session. It was promised by a source comment
+  (`index.html`:~5200, "isEvalSupported:false is the documented CVE-2024-4367 hardening") and held
+  by nobody, which is the 10-29 parser clause's shape exactly.
+  **The second-worst is the one that looks like a fix.** The CSP declares no `worker-src`, so the
+  browser falls back to `default-src 'self'` — meaning "serve the worker from cdnjs instead", the
+  obvious response to a worker that would not load (which a real iPhone hit three times on
+  2026-10-13, cause still UNKNOWN), produces a worker the browser refuses **even though
+  `script-src` permits cdnjs**. That edit passes every other check in the gate and kills the
+  paystub reader. It is now one of the eight breaks.
+  **Why a gate rather than telemetry:** `paystub_failed` has **never fired for any reason**, 29
+  grooms in. A version mismatch makes pdf.js throw `The API version "X" does not match the Worker
+  version "Y"` on every paystub, and nothing anywhere would say so.
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last three nights, which has now held twice.
+- [ ] **The 10-30 prediction held for a SECOND night, so that staking-out habit is now 2-for-2**
+  (housekeeping) — `deploy_watch` reads **LIVE**: `index.html` serving **`be6cec2` (2026-10-28)`**,
+  `CNAME` serving badgebudget.com, deploy ref fetched before the verdict formed. #203 touched no
+  publish-set file and the note said the name should not move; it did not. **The publish-set figure
+  drifted a fourth time and is no longer being recorded as a fact** — `privacy.html` and `ops.html`
+  print `8ae7b4d` tonight against `4caeb15`, `bfbd944` and `a64348b` on the three nights before,
+  for two files unchanged since 2026-09-24. The 10-30 note said *stop recording it*; this line
+  exists only to close that loop. The stable facts are the verdict word and `index.html`'s commit.
+- [ ] **Six new rows, two new devices, both the desktop-Linux burst — ninth sighting, and the
+  fourth consecutive night with zero human loads** (P2 · source:groom · no action) — `events`
+  holds **1,758 rows**, up **6** from 1,752, newest **2026-10-31 03:04:15** (5.0h old);
+  `silence_watch` says **FRESH (window 48h)**. The two devices are `88f2483a` and `8196e24d`,
+  both `X11; Linux x86_64 … Chrome/154.0.0.0`, **12 seconds apart**, three rows each
+  (`app_open {fresh:true}` → `ob_step {step:0}` → `ob_view {screen:'landing'}`), neither past
+  screen 0, **neither with a `session_end`** — the identical shape the 10-28 and 10-30 notes
+  logged (16 seconds apart, and the seven before that). 13 distinct devices in 7 days and not one
+  of them a person. **Do not quote `FRESH` as an activation signal**: CLAUDE.md records every
+  activation figure since 2026-09-07 as inflated by exactly this cohort until the device
+  classifier is fixed, and four nights running it is the *only* cohort.
+- [ ] **Courtney has not opened the app in 10.2 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` unchanged at **10 rows ever**
+  (last 2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical
+  for five grooms now. The first honest reading is her next foreground return, and a **cold** load
+  is still the likelier door (2 of her last 3), which the stepper switch covers.
+  **Ten days is long enough to be worth naming as a question rather than a counter:** nothing in
+  `events` distinguishes "she is working nights and has not needed it" from "she stopped using
+  it", and the app has no signal that would. Not a build item — flagged so the fifth identical
+  housekeeping line does not read as monitoring something.
+- [ ] **`feedback` and `client_error` are both unchanged — THIRTEENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason** — which is
+  the fact tonight's build rests on, because a pdf.js worker/library version mismatch would be
+  invisible in exactly this table. No new `pdf.worker` rows either, so the 10-13 item's "read a
+  second device" bar is **still not met**. Do not build a worker mitigation.
+- [ ] **PR #191 is twelve commits behind now, not eleven, and the four conflicts are unchanged**
+  (P1 · needs the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is
+  **`c41b8cc`, unchanged since 2026-10-20 03:25** — eleven days. Merge-base is `a103682` and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **12**, one more
+  than last night, which is tonight's own merge. **Tonight's build does not deepen the conflict:**
+  it edits `scripts/check_build.mjs` (which #191 also edits, and `git merge-tree` auto-merges —
+  #191's hunks are inside `check(3, …)`, tonight's insertion is a new `check(2, …)` at ~206 plus
+  the roster) and `scripts/test_check_build.mjs` (which #191 does not touch). It adds nothing to
+  `tests/smoke.mjs`, where the conflict is, because the change is gate-level and has no runtime
+  behaviour to drive. #191 is the owner tier — it moves dollar figures
+  (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a yes needs
+  the branch brought up to base first.
+- [ ] **CABINET MISSED (twelfth night) — and the Sunday it has been counting down to is TOMORROW**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was last written
+  **2026-10-12** (`8d21e19`, **19.0 days**) and still reads *"No cabinet has run yet. The first
+  runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**. Two Sundays have
+  passed un-run (2026-10-18, 2026-10-25); the next is **2026-11-01**, **one day out**. The nightly
+  cannot clear this — writing the brief is the Sunday cabinet pass's job (`cos` skill → *cabinet*).
+  `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age, and the
+  dead-man's switch that does is the notify line, which nothing in the repo enforces. **Twelve
+  nights is the point at which the switch itself is the finding:** a dead-man's switch that fires
+  into a report nobody has acted on for twelve days is not a switch, and the honest options are to
+  make `cos_check.mjs` fail the gate on an over-age brief or to retire the claim. That decision is
+  Pat's, not the nightly's.
+- [ ] **A SECOND unwatched version pair, found while building tonight's check and deliberately not
+  built** (P2 · source:build · `harness:drivable` (script-level) · one build item per run) —
+  `tests/harness.mjs` holds the same figure twice: `PKGS` installs `pdfjs-dist@3.11.174`, and
+  `MAP` rewrites the literal `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js`
+  to `pdfjs-dist/build/pdf.min.js` in the scratch copy. Both must agree with `index.html`'s pin,
+  and **nothing checks either**. The failure is quiet in the way this repo keeps getting caught by:
+  bump `index.html` and leave `MAP` alone and the string no longer matches, so the scratch copy
+  keeps the **real CDN URL** — the suite still runs, still passes, and is silently (a) testing a
+  different pdf.js than production and (b) **reaching the public internet from a rig whose whole
+  design is that it cannot** (`check('events', 'Harness cannot write to production')` exists for
+  the sibling case). Bump `PKGS` and not `MAP` and the rewrite target is absent instead, which at
+  least fails loudly. The same shape applies to all five rows of `MAP`, not just pdf.js.
+  **Shape of the fix:** one check asserting every `MAP` source URL appears verbatim in
+  `index.html`, and every `PKGS` entry's version matches the URL that maps to it — forward
+  direction only, five breaks. Not taken tonight because it is a second build item, and the rule
+  is one per run.
+- [ ] **The gate meta-test is STILL not in CI — fifth night unchanged, and tonight added eight
+  breaks to the half CI cannot see** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox** (the same block that
+  made `f1aa7a6` an owner commit). One line after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~95s with tonight's
+  eight new breaks, no browser, no network). Covered without it: a **deleted** `check()` is red in
+  CI today, because the roster lives inside `check_build.mjs`, which `gate` already runs — and
+  tonight's roster declares **18**. Missing: the teeth half, which is the only half that can prove
+  the eight new breaks fail the *right* row — and which caught the label-pin defect on 10-30.
+
 ### P1 (new, groom 2026-10-30)
 - [x] ~~**The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
   nothing in this repo was reading it**~~ — **SHIPPED 2026-10-30**, tonight's build (see Done log).
@@ -3640,6 +3766,58 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-10-31 — **The app loads a SIXTH script, from its own origin, and three separate mechanisms
+  each miss it for a different reason.** Invariant 2 reads *"SRI on all 5 CDN scripts, exact
+  pinned versions"*. `pdf.worker.min.js` is the sixth: pdf.js fetches it at runtime from this
+  origin, and
+  **(a)** SRI cannot cover it — a worker script takes no `integrity` attribute, and it is not a
+  `<script>` tag at all, it is a string assigned to `GlobalWorkerOptions.workerSrc`;
+  **(b)** last night's CSP check cannot see it — that check walks *tags*, and this is a URL in
+  JavaScript; **(c)** Invariant 8's publish-set check names the *file*. So the gate shipped a 1MB
+  blob to a public URL that **nothing in this repo had ever read a byte of**, and the one property
+  that makes it work — that it is the same pdf.js build as the CDN pin — was written down nowhere
+  and checked by nothing.
+  **`check(2, 'pdf.js worker matches its pinned library')` — the eighteenth check**, eight
+  assertions, **one deliberate break per `must()`**:
+  · the pinned version is **established**, not merely looked for — exactly one pdf.js CDN script,
+    so a second tag makes the comparison ambiguous and fails (and leaves SRI's count at 5);
+  · the worker file still carries pdf.js's **own** API/worker version guard, which proves the blob
+    is a worker build and not truncated, empty or replaced;
+  · the version inside it **equals** the pinned one. pdf.js compares these itself and throws
+    `The API version "X" does not match the Worker version "Y"`, so a bumped CDN pin with the old
+    worker left beside it kills the paystub reader outright;
+  · `workerSrc` is **found** (anti-omission, the rule check 13 takes for a renamed
+    `serializeState`), is not a remote URL, and names a file **in the publish set**;
+  · `getDocument` is **found** and is still passed `isEvalSupported:false`.
+  **The two that matter most are not the version pin.**
+  **`isEvalSupported:false` is a security control held by a comment.** It is the documented
+  CVE-2024-4367 mitigation for pdf.js < 4.2.0 and **3.11.174 is pinned**. The app's `<meta>` CSP
+  carries `'unsafe-eval'` — Babel standalone requires it — so that one token is the *whole*
+  mitigation, in a path whose input is a PDF **she picks**: the only input this app takes from
+  outside itself, parsed in an origin holding `user_data` and the auth session. `index.html`:~5200
+  promised it in prose ("the documented CVE-2024-4367 hardening") and nothing enforced it, which is
+  the 10-29 parser clause's shape exactly — a load-bearing sentence with no machine behind it.
+  **And the `workerSrc` clause catches an edit that looks like a fix.** The CSP declares no
+  `worker-src`, so the browser falls back to `default-src 'self'`. A real iPhone failed to load
+  this worker three times across two loads on 2026-10-13 (device `b67ce1b6`, cause still UNKNOWN,
+  `tests/smoke.mjs` §43), and the obvious response — serve it from cdnjs, which `script-src`
+  already permits — produces a worker the browser **refuses**, passing every other check in the
+  gate while killing the feature. That is now one of the eight breaks, as is the quieter version
+  of it: a same-origin path like `vendor/pdf.worker.min.js`, which works from a local directory
+  and 404s in production because `deploy.yml` copies exactly five files.
+  **Why a gate and not telemetry.** `paystub_failed` has **never fired for any reason**, thirteen
+  grooms in. Every failure above is silent: a version mismatch throws inside pdf.js, a blocked or
+  404'd worker rejects `getDocument()`, and `isEvalSupported` has no failure mode at all until it
+  is exploited. This is Invariant 1's `Detect: none` shape in a second place.
+  **Negative-tested in both directions.** 33 → **41** in `scripts/test_check_build.mjs`: eight
+  breaks, each measured to exit non-zero and name `✗ [2] pdf.js worker matches its pinned
+  library`. **Three** checks share the `[2]` tag now, so all eight pin the LABEL as well — and
+  that pin was itself falsified: pointing `PDFW` at the SRI label turns all eight red
+  (**33 passed / 8 failed**, measured), the same control the CSP breaks got on 10-30.
+  `pdf.worker.min.js` joins the meta-test's `NEEDED` list, because the gate now reads it.
+  Gate **18/18**, meta-test **41/0**, groom-seed **33/0**, core **135/0**, smoke **883/0**. No
+  `index.html` change, no publish-set change, no runtime behaviour — so no `tests/smoke.mjs`
+  assertion, and #191's one code conflict is not deepened.
 - 2026-10-30 — **The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
   nothing in this repo was reading it.** SRI answers *"is this the exact file we pinned?"*; the CSP
   answers the earlier question, *"may the browser fetch it from that host at all?"* The gate checked
