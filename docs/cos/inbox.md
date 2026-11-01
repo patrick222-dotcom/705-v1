@@ -7,6 +7,19 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-01 · session BadgeBudget nightly · The **test rig** holds the five CDN pins a second
+  time, in `PKGS` and `MAP`, and nothing had compared the copies — `grep -rn PKGS` found one
+  reader, itself. A `MAP` target carries no version, so the url and the installed build can
+  disagree with **nothing observable changing**: all 883 smoke assertions pass against code the app
+  does not ship. `check('harness', 'Harness tests the pins the app ships')` is the 19th check, five
+  breaks (meta-test 41 → 46), falsifiable both ways (neutered → 41 passed / 5 failed). Two things
+  worth a seat's attention beyond the check: (a) **the 10-31 note's diagnosis was half wrong** —
+  `buildScratch` already threw on a stale `MAP`; what it did was **abort the suite**, which this
+  repo counts as un-run rather than red, so the real finding is §53's lesson one layer down;
+  (b) **three nights running the only buildable item has come from CLAUDE.md's own prose rather
+  than `## Queue`**, which has held no unblocked app-side item since 10-24. That is a queue
+  problem, not a gate problem. → no outcome yet
+
 - 2026-10-31 · session BadgeBudget nightly · The app loads a **sixth** script and three
   mechanisms each miss it for a different reason. `pdf.worker.min.js` is fetched at runtime by
   pdf.js from this origin: SRI cannot cover it (a worker takes no `integrity` attribute, and it is

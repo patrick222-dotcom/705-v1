@@ -387,6 +387,113 @@ check('events', 'Harness cannot write to production', () => {
   return 'scratch copies point at .invalid';
 });
 
+/* ---- the harness tests the code the app actually ships -----------------------------------
+   `tests/harness.mjs` holds the five CDN pins a SECOND time, in two tables that must agree with
+   each other and with `index.html`, and nothing had ever compared any of the three:
+
+     PKGS  — what `npm install` fetches into the scratch tree (`react@18.2.0`, `pdfjs-dist@3.11.174`…)
+     MAP   — CDN url -> path inside node_modules, used to rewrite the five <script> tags in the
+             scratch copy because the sandbox blocks unpkg/cdnjs/jsdelivr
+
+   The file's own header already states the rule — "Versions here are pinned to exactly what
+   index.html loads. If you bump a CDN pin, bump it here too or the harness stops testing the code
+   that ships" — and, like the parser-title promise check 13 took over on 2026-10-29 and the
+   `isEvalSupported` promise check 2 took over on 2026-10-31, it was a comment held by nobody.
+
+   Three of the four assertions below guard a failure that is SILENT, and the quietest is the one
+   the local paths create. A MAP target carries no version (`react/umd/react.production.min.js`,
+   `pdfjs-dist/build/pdf.min.js`) — what sits at that path is whatever PKGS installed. So bump the
+   url and not the package and the scratch copy serves a DIFFERENT BUILD than production ships,
+   every assertion in the 883-assertion suite still passes, and nothing anywhere says so. The suite
+   reads green while testing code the app does not run.
+
+   The fourth is the one that reaches the network. A sixth CDN <script> added to index.html and not
+   to MAP is left pointing at the real CDN in the scratch copy, with its `integrity` attribute
+   stripped by the blanket rewrite — on a GitHub Actions runner, where the network is open, that is
+   the rig fetching a third-party script at test time. `check('events', 'Harness cannot write to
+   production')` exists for the sibling case, and the 2026-09-16 incident it records (291 real
+   `app_open` rows inserted into production `events` by CI) is what a harness quietly reaching the
+   internet costs.
+
+   One claim the 2026-10-31 backlog note got WRONG, corrected here rather than built on: it said a
+   bumped pin leaves the scratch copy on the real CDN url. It does not — `buildScratch` throws
+   `CDN pin moved, harness is stale` when a MAP source is absent from index.html, which is the
+   forward direction already enforced. What it is enforced AS is the problem: a throw inside
+   `buildScratch` aborts the suite before `chromium.launch`, and this repo's own rule is that an
+   aborted run is not a failed assertion — the gate reads un-run rather than red, which is exactly
+   why `tests/smoke.mjs` §53 was added on 2026-10-25. Asserting it here makes it a red gate row on
+   a PR instead of a stack trace in a log nobody reads. */
+check('harness', 'Harness tests the pins the app ships', () => {
+  const h = read('tests/harness.mjs');
+
+  /* Anti-omission, the rule checks 2 and 13 both take: a renamed or deleted table must FAIL here,
+     never turn this into a pass by having nothing left to compare. */
+  const pkgsBlock = /export const PKGS = \[([\s\S]*?)\n\];/.exec(h);
+  must(pkgsBlock, 'could not find the PKGS table in tests/harness.mjs — the list of packages the '
+    + 'scratch tree installs is what every version assertion below is read against');
+  const pkgs = [...pkgsBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  must(pkgs.length >= 5, `PKGS lists only ${pkgs.length} packages — index.html loads five CDN `
+    + 'scripts plus the Playwright driver, so this table has lost entries');
+
+  const mapBlock = /\nconst MAP = \[([\s\S]*?)\n\];/.exec(h);
+  must(mapBlock, 'could not find the MAP table in tests/harness.mjs — the CDN-url-to-node_modules '
+    + 'rewrite is how the scratch copy loads the pinned libraries at all');
+  const map = [...mapBlock[1].matchAll(/\['(https:\/\/[^']+)',\s*'([^']+)'\]/g)]
+    .map((m) => ({ url: m[1], local: m[2] }));
+  must(map.length === 5, `MAP holds ${map.length} rows; index.html loads 5 remote scripts`);
+
+  /* PKGS pins by name@version, and a scoped name carries its own @ — split at the last one. */
+  const pinnedPkg = new Map(pkgs.map((p) => {
+    const at = p.lastIndexOf('@');
+    return [p.slice(0, at), p.slice(at + 1)];
+  }));
+
+  for (const { url, local } of map) {
+    /* (1) forward direction: the url the rewrite looks for is really in index.html. Enforced at
+       runtime today only as a throw that aborts the suite. */
+    must(html.includes(url),
+      `tests/harness.mjs rewrites '${url}', which index.html no longer loads — a CDN pin was `
+      + 'bumped without bumping the harness. buildScratch() throws on this, which ABORTS the '
+      + 'smoke suite rather than failing an assertion, so the gate reads un-run instead of red');
+
+    /* (2) the version in the url and the version PKGS installs are the same number. The local
+       path has no version in it, so a disagreement is invisible: the suite serves a different
+       build than production and passes. The package name comes from the LOCAL path because the
+       cdnjs url does not carry it (`pdf.js` is published to npm as `pdfjs-dist`). */
+    const ver = /(?:@|\/)(\d+\.\d+\.\d+[^/@]*)(?:\/|$)/.exec(url);
+    must(ver, `cannot read a version out of the pinned url '${url}', so the harness's copy of `
+      + 'that pin cannot be compared to it');
+    const pkg = local.startsWith('@') ? local.split('/').slice(0, 2).join('/') : local.split('/')[0];
+    must(pinnedPkg.has(pkg),
+      `MAP rewrites '${url}' to node_modules/${local}, but PKGS never installs '${pkg}' — the `
+      + 'scratch copy will 404 that script and every test will fail for the wrong reason');
+    must(pinnedPkg.get(pkg) === ver[1],
+      `index.html pins ${pkg} ${ver[1]} but the harness installs ${pkg}@${pinnedPkg.get(pkg)} — `
+      + 'the MAP target carries no version, so the scratch copy silently serves the installed '
+      + 'build. The whole smoke suite would pass while testing code the app does not ship');
+  }
+
+  /* (3) ops.html is the second page the harness builds, and buildOpsScratch finds its row by
+     substring, so the supabase-js pin has to be present there too. */
+  const supa = map.find((r) => r.url.includes('supabase-js'));
+  must(supa && ops.includes(supa.url),
+    'the supabase-js pin in tests/harness.mjs is not the one ops.html loads — buildOpsScratch '
+    + 'throws, and the ops-console gate assertions never run');
+
+  /* (4) no remote script escapes the rewrite. buildScratch counts how many rewrites it MADE
+     (`n < MAP.length`), which cannot see a sixth script that was never in MAP: that tag keeps its
+     real CDN url, loses its integrity attribute to the blanket strip, and is fetched from the
+     public internet on any runner whose network is open. */
+  const tags = [...html.matchAll(/<script[^>]+src="(https:\/\/[^"]+)"/g)].map((m) => m[1]);
+  const unmapped = tags.filter((u) => !map.some((r) => r.url === u));
+  must(!unmapped.length,
+    `index.html loads ${unmapped.length} remote script(s) the harness does not rewrite `
+    + `(${unmapped.join(', ')}) — the scratch copy keeps the real CDN url with its integrity `
+    + 'attribute stripped, so the test rig fetches a third-party script from the open internet');
+
+  return `${map.length} pins agree with index.html and PKGS`;
+});
+
 /* The MCP gateway imports the wage math from a module generated out of index.html's @core
    regions (scripts/extract_core.mjs). A stale copy would price shifts with old math while every
    in-browser probe stayed green, so the committed module must equal a fresh extraction, and the
@@ -642,6 +749,7 @@ check('gate', 'Every check this gate claims is still here', () => {
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
     'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
     'Unload telemetry intact', 'Harness cannot write to production',
+    'Harness tests the pins the app ships',
     'Extracted core in sync with index.html', 'Pay math never reads the persona',
     'iCal feed URL: out of the blob, the log and the parser', 'Operating-committee caps',
     'Every check this gate claims is still here'];
