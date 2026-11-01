@@ -61,6 +61,7 @@ const ROSTER = [
   [9, 'Deploy branch still triggers a deploy'],
   ['events', 'Unload telemetry intact'],
   ['events', 'Harness cannot write to production'],
+  ['harness', 'Harness tests the pins the app ships'],
   ['core', 'Extracted core in sync with index.html'],
   [3, 'Pay math never reads the persona'],
   [13, 'iCal feed URL: out of the blob, the log and the parser'],
@@ -260,6 +261,32 @@ const BREAKS = [
     (s) => s.split('keepalive: true').join('keepalive: false'), 'events'],
   ['[events] harness stops neutralising Supabase', 'tests/harness.mjs',
     (s) => s.split('NEUTRAL_SUPABASE_HOST').join('REAL_SUPABASE_HOST'), 'events'],
+  /* The harness-pin check, added 2026-11-01. FIVE breaks, one per `must()` group, because a group
+     of musts negative-tested as a group only proves that ONE of them has teeth. The tag is unique
+     so no label pin is needed — the convention the eight `[2]` worker breaks follow in reverse. */
+  /* (2) the quiet one: the url says one version, PKGS installs another, and the MAP target carries
+     no version at all, so the scratch copy serves the installed build and 883 assertions pass
+     against code the app does not ship. This is the break the whole check exists for. */
+  ['[harness] PKGS installs a different version than the pin it serves', 'tests/harness.mjs',
+    (s) => s.replace("'react@18.2.0',", "'react@18.3.1',"), 'harness'],
+  /* (1) forward direction: a bumped CDN pin with a stale MAP. buildScratch throws on this, which
+     ABORTS the suite — an aborted run is not a failed assertion, so the gate must say it. */
+  ['[harness] a MAP url is no longer the one index.html loads', 'tests/harness.mjs',
+    (s) => s.replace('https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js',
+      'https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js'), 'harness'],
+  /* (4) a sixth remote script that MAP never rewrites keeps its real CDN url, loses its integrity
+     attribute to the blanket strip, and is fetched from the open internet on any runner with a
+     network. buildScratch's `n < MAP.length` count cannot see it. */
+  ['[harness] a sixth CDN script escapes the rewrite', 'index.html',
+    (s) => s.replace('<style>', '<script src="https://unpkg.com/dayjs@1.11.13/dayjs.min.js"></script>\n<style>'), 'harness'],
+  /* (3) ops.html is the second page the harness builds and finds its row by substring. */
+  ['[harness] ops.html stops loading the supabase pin the harness rewrites', 'ops.html',
+    (s) => s.replace('@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
+      '@supabase/supabase-js@2.45.5/dist/umd/supabase.min.js'), 'harness'],
+  /* Anti-omission, the rule checks 2 and 13 both take: a renamed table must FAIL, not pass by
+     leaving nothing to compare. */
+  ['[harness] the MAP table is renamed away', 'tests/harness.mjs',
+    (s) => s.replace('\nconst MAP = [', '\nconst REWRITES = [').split('of MAP)').join('of REWRITES)'), 'harness'],
   ['[core] committed core module goes stale', 'supabase/functions/_shared/badgebudget-core.mjs',
     (s) => s + '\n/* drifted */\n', 'core'],
   ['[3] a wage definition reads the persona', 'index.html',

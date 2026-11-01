@@ -28,6 +28,130 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-11-01)
+- [x] ~~**The test rig holds the five CDN pins a SECOND time, and nothing compared the two
+  copies**~~ — **SHIPPED 2026-11-01**, tonight's build (see Done log). (P2 · source:build ·
+  `harness:drivable` (script-level)) Taken because it is the only unblocked, gate-safe item left
+  in `## Queue` with a scoped fix already written down — last night filed it itself and deferred
+  it only for the one-item-per-run rule. `check('harness', 'Harness tests the pins the app
+  ships')` is the nineteenth check: four assertion groups, five deliberate breaks, meta-test
+  41 → 46.
+  **Last night's note had the failure mode WRONG, and the correction is the useful part.** It said
+  a bumped `index.html` pin with a stale `MAP` leaves the scratch copy on the real CDN url. It
+  does not — `buildScratch` already throws `CDN pin moved, harness is stale`. What it is enforced
+  **as** is the defect: a throw inside `buildScratch` runs *before* `chromium.launch`, so the
+  883-assertion suite **aborts**, and this repo's own rule is that an aborted run is not a failed
+  assertion — the gate reads un-run rather than red. That is `tests/smoke.mjs` §53's lesson
+  (2026-10-25) arriving one layer down, and moving the assertion into the gate is what turns a
+  stack trace in a log into a red row on a PR.
+  **The genuinely silent hole is the one the note found by accident: `PKGS` vs `MAP`.** A `MAP`
+  target carries **no version** (`react/umd/react.production.min.js`,
+  `pdfjs-dist/build/pdf.min.js`) — what sits at that path is whatever `PKGS` installed. Bump the
+  url and not the package and the scratch copy serves a **different build than production ships**,
+  every one of the 883 assertions still passes, and nothing anywhere says so. Nothing in this repo
+  read `PKGS` at all before tonight (`grep -rn PKGS scripts/ tests/` → one file).
+  **And one assertion does guard the network claim, for a different edit than the note named:** a
+  **sixth** remote `<script>` added to `index.html` and not to `MAP` keeps its real CDN url in the
+  scratch copy and loses its `integrity` attribute to the blanket strip, so on a runner with an
+  open network the rig fetches a third-party script at test time. `buildScratch` counts rewrites
+  it *made* (`n < MAP.length`), which cannot see a tag that was never in the table. That is the
+  sibling of `check('events', 'Harness cannot write to production')`, whose 2026-09-16 incident —
+  291 real `app_open` rows inserted into production `events` by CI — is what this shape costs.
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last four nights, which has now held three
+  times.
+- [ ] **The staking-out habit is 3-for-3, and the publish-set figure drifted a FIFTH time exactly
+  as the 10-30 note said to stop recording** (housekeeping) — `deploy_watch` reads **LIVE**:
+  `index.html` serving **`be6cec2` (2026-10-28)**, `CNAME` serving badgebudget.com, deploy ref
+  fetched before the verdict formed. #204 touched no publish-set file and the note said the name
+  should not move; it did not. `privacy.html` and `ops.html` print **`568ddfa` (2026-10-07)**
+  tonight against `8ae7b4d`, `4caeb15`, `bfbd944` and `a64348b` on the four nights before, for two
+  files unchanged since 2026-09-24 — `gitHistory()` names whichever matching commit its walk
+  reaches first, so for an unchanged file the figure is an artefact. The stable facts are the
+  verdict word and `index.html`'s commit.
+- [ ] **ZERO new rows — a flat night, and the fifth consecutive one with no human load at all**
+  (P2 · source:groom · no action) — `events` holds **1,758 rows**, byte-identical to the 10-31
+  groom's figure, newest still **2026-10-31 03:04:15**, now **29.0h** old. `silence_watch` says
+  **FRESH (window 48h)**, with ~19 hours of window left, so a second flat night puts it at
+  `SILENT_BUT_HEALTHY` or `SILENT_AND_UNHEALTHY` — the 10-29 note braced for that twice and it has
+  not arrived yet. The newest two devices are still `88f2483a` and `8196e24d`, the desktop-Linux
+  burst 12 seconds apart, three rows each, neither past onboarding screen 0, neither with a
+  `session_end`. **Do not quote `FRESH` as an activation signal** — CLAUDE.md records every
+  activation figure since 2026-09-07 as inflated by exactly this cohort until the device
+  classifier is fixed, and for five nights it is the *only* cohort.
+- [ ] **Courtney has not opened the app in 11.4 days, and today is the DST change the Nov 1 item
+  was filed for** (P1 · housekeeping, and it closes a question by making it unanswerable tonight) —
+  her device `f184ffa5` last filed anything at **2026-10-20 23:02:03**, which predates `d438d58`
+  (the banner switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` is at
+  **zero rows from any device, ever**; `ics_autosync_off` at **zero**. Both stay **expected** —
+  nobody has been shown either affordance. `ics_import_done` unchanged at **10 rows ever** (last
+  2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical for six
+  grooms.
+  **The DST item above (P0 band, "Courtney's synced shift times may jump an hour at the Nov 1 DST
+  change") reaches its date today and cannot be read.** Its own 10-04 note already argued the
+  app's conversion is almost certainly not the suspect — `01:00/04:00 → 02:00/05:00` is how a fixed
+  Eastern wall clock behaves in UTC when DST ends, not a fault — and said the live question is
+  whose zone, which only the owner's side-by-side answers. With no load from her device in 11 days
+  there is no November shift to compare and nothing in `events` that would show one. Leave it
+  unverified, leave it out of the nightly (it is a pay figure, so `wage-core` protocol, dedicated
+  session), and **do not treat the arrival of the date as evidence either way**.
+- [ ] **`feedback` and `client_error` are both unchanged — FOURTEENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation. One line worth keeping against tonight's build: fourteen grooms of a
+  flat `client_error` is also fourteen grooms in which **no harness-vs-production pin drift could
+  ever have surfaced**, because the failure is in the test rig and produces no production row at
+  all — which is why it needed a gate and not a dashboard.
+- [ ] **PR #191 is thirteen commits behind now, and the four conflicts are unchanged** (P1 · needs
+  the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is
+  **`c41b8cc`, unchanged since 2026-10-20 03:25** — twelve days. Merge-base is `a103682` and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **13**, one more
+  than last night, which is tonight's own merge. **Tonight's build does not deepen the conflict:**
+  it edits `scripts/check_build.mjs` (which #191 also edits, and `git merge-tree` lists as
+  auto-merging — #191's hunks are inside `check(3, …)`, tonight's insertion is a new
+  `check('harness', …)` plus the roster) and `scripts/test_check_build.mjs` (which #191 does not
+  touch). It adds nothing to `tests/smoke.mjs`, where the conflict is, because the change is
+  gate-level and has no runtime behaviour to drive. #191 is the owner tier — it moves dollar
+  figures (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a
+  yes needs the branch brought up to base first.
+- [ ] **CABINET MISSED (thirteenth night) — and the Sunday it counted down to is TODAY**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was last written
+  **2026-10-12** (`8d21e19`, **20.0 days**) and still reads *"No cabinet has run yet. The first
+  runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**. Two Sundays have
+  passed un-run (2026-10-18, 2026-10-25) and **the third is today, 2026-11-01**. The nightly cannot
+  clear this — writing the brief is the Sunday cabinet pass's job (`cos` skill → *cabinet*).
+  `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age, and the
+  dead-man's switch that does is the notify line, which nothing in the repo enforces. **Thirteen
+  nights makes the switch itself the finding**, as the 10-31 note said: the honest options are to
+  make `cos_check.mjs` fail the gate on an over-age brief, or to retire the claim. That decision
+  is Pat's, not the nightly's — and today is the day it is cheapest to take.
+- [ ] **The gate meta-test is STILL not in CI — sixth night unchanged, and tonight added five more
+  breaks to the half CI cannot see** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox** (the same block that
+  made `f1aa7a6` an owner commit). One line after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~105s with tonight's
+  five new breaks, no browser, no network). Covered without it: a **deleted** `check()` is red in
+  CI today, because the roster lives inside `check_build.mjs`, which `gate` already runs — and
+  tonight's roster declares **19**. Missing: the teeth half, the only half that can prove a break
+  fails the *right* row, and the half that measured tonight's check falsifiable in both directions
+  (neutered → 41 passed / 5 failed).
+- [ ] **`MAP`'s rewrite TARGETS are still unchecked, and that is deliberate, not an oversight**
+  (P3 · source:build · `harness:drivable` (script-level)) — tonight's check asserts every `MAP`
+  *source* url is real, that its version matches `PKGS`, and that no remote script escapes the
+  table. It does **not** assert the local path on the right-hand side resolves to a file that
+  exists, because at gate time `node_modules` may legitimately be absent (CI's `gate` job installs
+  nothing; the pre-push hook needs only Babel). A wrong target is also the **loud** failure of the
+  pair — the scratch page 404s the script and §1 fails on the first assertion — so it is the one
+  case already covered by something. Filed so a later run does not read the gap as a hole and
+  "fix" it into a check that fails whenever dependencies are not installed.
+
 ### P1 (new, groom 2026-10-31)
 - [x] ~~**The app loads a SIXTH script and three separate mechanisms each miss it for a different
   reason**~~ — **SHIPPED 2026-10-31**, tonight's build (see Done log). (P1 · source:build ·
@@ -127,8 +251,13 @@ and the push P0 it pointed at was fixed the same day.
   into a report nobody has acted on for twelve days is not a switch, and the honest options are to
   make `cos_check.mjs` fail the gate on an over-age brief or to retire the claim. That decision is
   Pat's, not the nightly's.
-- [ ] **A SECOND unwatched version pair, found while building tonight's check and deliberately not
-  built** (P2 · source:build · `harness:drivable` (script-level) · one build item per run) —
+- [x] ~~**A SECOND unwatched version pair, found while building tonight's check and deliberately
+  not built**~~ — **TAKEN 2026-11-01** as that night's build (see the 11-01 band and the Done log).
+  Its diagnosis was half wrong and the correction is recorded there: `buildScratch` already throws
+  on a stale `MAP`, so the forward direction was enforced — as a **suite abort**, which this repo
+  counts as un-run rather than red. The silent half was real and is the one the check exists for:
+  `PKGS` vs the version in the url. Original note below. (P2 · source:build ·
+  `harness:drivable` (script-level) · one build item per run) —
   `tests/harness.mjs` holds the same figure twice: `PKGS` installs `pdfjs-dist@3.11.174`, and
   `MAP` rewrites the literal `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js`
   to `pdfjs-dist/build/pdf.min.js` in the scratch copy. Both must agree with `index.html`'s pin,
@@ -3766,6 +3895,54 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-01 — **The test rig holds the five CDN pins a second time, and nothing had ever compared
+  the two copies.** `tests/harness.mjs` carries `PKGS` (what `npm install` fetches into the scratch
+  tree) and `MAP` (CDN url → path inside `node_modules`, the rewrite that lets the scratch copy load
+  the pinned libraries at all, because the sandbox blocks unpkg/cdnjs/jsdelivr). Its own header
+  states the rule — *"Versions here are pinned to exactly what index.html loads. If you bump a CDN
+  pin, bump it here too or the harness stops testing the code that ships"* — and, like the
+  parser-title promise check 13 took over on 10-29 and the `isEvalSupported` promise check 2 took
+  over on 10-31, **it was a comment held by nobody**. Nothing in this repo read `PKGS` at all
+  (`grep -rn PKGS scripts/ tests/` → one file, itself).
+  **`check('harness', 'Harness tests the pins the app ships')` — the nineteenth check**, four
+  assertion groups, **five deliberate breaks**:
+  · **the quiet one, and the reason this is worth a gate.** A `MAP` target carries **no version**
+    (`react/umd/react.production.min.js`, `pdfjs-dist/build/pdf.min.js`) — what sits at that path
+    is whatever `PKGS` installed. So the version in the url and the version on disk can disagree
+    with **nothing observable changing**: the scratch copy serves a different build than production
+    ships and all **883** assertions pass against code the app does not run. The check reads the
+    package name off the **local** path (the cdnjs url does not carry it — `pdf.js` is published to
+    npm as `pdfjs-dist`) and the version off the **url**, and requires them equal.
+  · **the forward direction**, every `MAP` source url really present in `index.html`. Already
+    enforced at runtime, and **that is the defect, not the cover**: `buildScratch` throws `CDN pin
+    moved, harness is stale`, which runs before `chromium.launch`, so the suite **aborts** — and
+    an aborted run is not a failed assertion, so the gate reads **un-run rather than red**. That is
+    `tests/smoke.mjs` §53's lesson (2026-10-25, the pinned browser path) arriving one layer down.
+  · **`ops.html`'s supabase pin**, because `buildOpsScratch` finds its row by substring and throws
+    otherwise, which takes the whole ops-console gate assertion set with it.
+  · **no remote script escapes the rewrite** — and this is the one that reaches the network. A
+    **sixth** CDN `<script>` added to `index.html` and not to `MAP` keeps its real url in the
+    scratch copy and loses its `integrity` attribute to the blanket strip, so on any runner with an
+    open network the rig fetches a third-party script at test time. `buildScratch` counts the
+    rewrites it **made** (`n < MAP.length`), which cannot see a tag that was never in the table.
+    Sibling of `check('events', 'Harness cannot write to production')`, whose incident — **291**
+    real `app_open` rows inserted into production `events` by CI, first seen 2026-09-07 — is the
+    measured cost of a harness quietly reaching the internet.
+  · **anti-omission**, the rule checks 2 and 13 both take: a renamed or deleted `PKGS`/`MAP` must
+    **fail** rather than turn the check into a pass by leaving nothing to compare.
+  **One claim from the 10-31 note is corrected rather than built on.** It said a bumped pin leaves
+  the scratch copy on the real CDN url, silently testing a different pdf.js *and* reaching the
+  internet. The first half is wrong (`buildScratch` throws) and the second half is right about the
+  mechanism but wrong about which edit triggers it (a *new sixth* script, not a *bumped* one).
+  Written down because a gate built on a diagnosis nobody re-derived is how three doc claims died
+  in the 2026-09-13 council run.
+  **Falsifiable in both directions, measured.** The five breaks each fail `[harness]` on a
+  `.gate-scratch/` copy (**46 passed / 0 failed**); neutering the check to an early `return` turns
+  **all five red** (41 passed / 5 failed). The tag is unique, so unlike the fourteen `[2]` breaks
+  these carry no label pin — the 10-30 convention says the pin is for shared tags only.
+  Gate **19** checks, meta-test **41 → 46**. `scripts/check_build.mjs`,
+  `scripts/test_check_build.mjs`, CLAUDE.md. **No publish-set file touched**, so nothing new is
+  live and `deploy_watch` should still name `be6cec2` tomorrow.
 - 2026-10-31 — **The app loads a SIXTH script, from its own origin, and three separate mechanisms
   each miss it for a different reason.** Invariant 2 reads *"SRI on all 5 CDN scripts, exact
   pinned versions"*. `pdf.worker.min.js` is the sixth: pdf.js fetches it at runtime from this
