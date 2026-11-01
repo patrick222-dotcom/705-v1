@@ -694,5 +694,160 @@ ok('pay: a blank, negative or junk salary is no rate at all',
   ok('rates: makeJob without the field carries an empty list', JSON.stringify(C.makeJob({ baseRate: 48 }).rateChanges) === '[]');
 }
 
+/* ---- dated pay items (2026-10-20, docs/dated-pay-items-spec.md) ---------------------------
+   Money that lands in one particular check, as a list on the job. Figures worked by hand in the
+   comments, not read back from the code under test. */
+{
+  const nt = { ficaType: 'none', ficaPct: '', federalTaxRate: 0, stateTaxRate: 0, pretaxDeductions: 0, posttaxDeductions: 0, customWithholdings: [] };
+  const dz = { base: { type: 'dollar', amount: 0 }, night: { type: 'dollar', amount: 5 } };
+  const addD = (k, n) => { const d = new Date(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10) + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const keysFrom = (start, n = 14) => Array.from({ length: n }, (_, i) => addD(start, i));
+  const sh = (shiftType = 'base', hours = 12) => ({ id: Math.random(), shiftType, hours, bonusType: 'none', customBonus: 0, isOvertime: false });
+  const pp = (shifts, keys, payItems, opts = {}) => C.periodPaycheck({ shifts, dayEvents: opts.dayEvents || {}, dateKeys: keys,
+    baseRate: opts.base || 40, differentials: dz, taxInputs: opts.tax || nt,
+    job: C.makeJob({ id: 'job-1', baseRate: opts.base || 40, differentials: dz, rateChanges: opts.rateChanges, payItems, workPeriod: opts.wp || '40' }) });
+  const item = (o) => ({ id: 'i' + Math.random(), label: 'Item', withholding: 'regular', ...o });
+
+  /* 26 consecutive checks from Sun 2026-10-04 (ending Sat 2027-10-02), one 12 h shift at $40 in
+     each (480). An item's amount is added to exactly as many checks as it occurs in that year. */
+  const starts = Array.from({ length: 26 }, (_, i) => addD('2026-10-04', 14 * i));
+  const yearShifts = {}; starts.forEach((s) => { yearShifts[addD(s, 1)] = [sh()]; });
+  const year = (items) => starts.map((s) => pp(yearShifts, keysFrom(s), items).gross);
+  const hit = (items, amt) => { const g = year(items); return { n: g.filter((x) => x === 480 + amt).length, rest: g.filter((x) => x === 480).length, sum: g.reduce((a, b) => a + b, 0) }; };
+  const an = hit([item({ cadence: 'annual', date: '2026-12-10', amount: 1000 })], 1000);
+  ok('items: an annual item lands in exactly one of 26 checks (25 x 480 + 1480)', an.n === 1 && an.rest === 25 && an.sum === 26 * 480 + 1000, JSON.stringify(an));
+  ok('items: ...and it is the check whose 14 days hold its date (Nov 29 - Dec 12)',
+    pp(yearShifts, keysFrom('2026-11-29'), [item({ cadence: 'annual', date: '2026-12-10', amount: 1000 })]).gross === 1480);
+  const semi = hit([item({ cadence: 'semiannual', date: '2026-12-05', amount: 600 })], 600);
+  ok('items: a semi-annual item lands in two of 26 checks (Dec 5 and Jun 5)', semi.n === 2 && semi.rest === 24 && semi.sum === 26 * 480 + 1200, JSON.stringify(semi));
+  const mo = hit([item({ cadence: 'monthly', date: '2026-10-15', amount: 50 })], 50);
+  ok('items: a monthly item pays 12 times in the year (Oct 15 .. Sep 15)', mo.sum === 26 * 480 + 600 && mo.n === 12, JSON.stringify(mo));
+  const once = hit([item({ cadence: 'once', date: '2027-03-03', amount: 4510 })], 4510);
+  ok('items: a one-off lands once (a $4,510 ratification lump)', once.n === 1 && once.sum === 26 * 480 + 4510, JSON.stringify(once));
+  ok('items: a one-off outside the visible period moves nothing',
+    JSON.stringify(pp(yearShifts, keysFrom('2026-10-04'), [item({ cadence: 'once', date: '2026-12-01', amount: 900 })]))
+    === JSON.stringify(pp(yearShifts, keysFrom('2026-10-04'), undefined)));
+  ok('items: nothing before the first date — an annual item dated 2027 pays nothing in 2026',
+    pp(yearShifts, keysFrom('2026-11-29'), [item({ cadence: 'annual', date: '2027-12-10', amount: 1000 })]).gross === 480);
+
+  /* When an item occurs. */
+  const occ = (o, k) => C.payItemOccursOn(item(o), k);
+  ok('items occur: monthly on the 31st lands on Feb 28, then Mar 31',
+    occ({ cadence: 'monthly', date: '2027-01-31' }, '2027-02-28') && occ({ cadence: 'monthly', date: '2027-01-31' }, '2027-03-31')
+    && !occ({ cadence: 'monthly', date: '2027-01-31' }, '2027-02-27') && !occ({ cadence: 'monthly', date: '2027-01-31' }, '2027-03-28'));
+  ok('items occur: monthly on the 31st lands on Feb 29 in a leap year', occ({ cadence: 'monthly', date: '2028-01-31' }, '2028-02-29') && !occ({ cadence: 'monthly', date: '2028-01-31' }, '2028-02-28'));
+  ok('items occur: semi-annual is every 6 months, not every 3', occ({ cadence: 'semiannual', date: '2026-06-05' }, '2026-12-05')
+    && occ({ cadence: 'semiannual', date: '2026-06-05' }, '2027-06-05') && !occ({ cadence: 'semiannual', date: '2026-06-05' }, '2026-09-05'));
+  ok('items occur: annual Feb 29 pays Feb 28 in other years', occ({ cadence: 'annual', date: '2028-02-29' }, '2029-02-28') && !occ({ cadence: 'annual', date: '2028-02-29' }, '2029-03-01'));
+  ok('items occur: never before the first date, a one-off only on it', !occ({ cadence: 'monthly', date: '2026-10-15' }, '2026-09-15')
+    && occ({ cadence: 'once', date: '2026-10-15' }, '2026-10-15') && !occ({ cadence: 'once', date: '2026-10-15' }, '2027-10-15'));
+
+  /* Taxes (IRS Pub 15 s.7). One 12 h shift at $50 (600) + a $1,000 item = 1,600 of taxable wages,
+     federal 12%, FICA standard. Regular: fed 1600 x 12% = 192, FICA 122.40, net 1285.60.
+     Bonus (method 1a): fed 600 x 12% + 1000 x 22% = 72 + 220 = 292, net 1185.60 -- 100 less. */
+  const tx = { ...nt, ficaType: 'standard', federalTaxRate: 12 };
+  const one = { '2026-10-05': [sh()] }, wk = keysFrom('2026-10-04');
+  const reg = pp(one, wk, [item({ cadence: 'once', date: '2026-10-08', amount: 1000 })], { base: 50, tax: tx });
+  const bon = pp(one, wk, [item({ cadence: 'once', date: '2026-10-08', amount: 1000, withholding: 'bonus' })], { base: 50, tax: tx });
+  ok('items tax: taxed like regular pay — fed 192, FICA 122.40, net 1285.60', reg.gross === 1600 && reg.fed === 192 && reg.fica === 122.4 && reg.net === 1285.6, JSON.stringify([reg.fed, reg.fica, reg.net]));
+  ok('items tax: taxed as a bonus — 22% on the item, 12% on the rest (fed 292, net 1185.60)', bon.fed === 292 && bon.fica === 122.4 && bon.net === 1185.6 && bon.fedSupp === 220, JSON.stringify([bon.fed, bon.net, bon.fedSupp]));
+  ok('items tax: no flat rate when nothing is withheld from regular pay (fed 0 stays 0)',
+    pp(one, wk, [item({ cadence: 'once', date: '2026-10-08', amount: 1000, withholding: 'bonus' })], { base: 50, tax: { ...tx, federalTaxRate: 0 } }).fed === 0);
+  /* Retirement 1,500 leaves an income-tax base of 100: only that 100 can be the item's, at 22% = 22. */
+  const cap = pp(one, wk, [item({ cadence: 'once', date: '2026-10-08', amount: 1000, withholding: 'bonus' })], { base: 50, tax: { ...tx, pretaxDeductions: 1500 } });
+  ok('items tax: the 22% applies only to the income-tax base the item adds (fed 22)', cap.fed === 22, `fed=${cap.fed}`);
+  ok('items tax: an item is FICA wages (1600 x 7.65% = 122.40 either way)', reg.fica === bon.fica);
+  ok('items tax: with no item the result carries no fedSupp and no items key', !('fedSupp' in pp(one, wk, [], { base: 50, tax: tx })) && !('items' in pp(one, wk, [], { base: 50, tax: tx })));
+
+  /* The regular rate (29 CFR 778.209(a)). A 48 h week (4 x 12 nights at $45): premium 0.5 x 45 x 8 = 180.
+     A $1,000 non-discretionary item in the same week must not touch it: it is apportioned over the
+     weeks it was EARNED, not the one it lands in. Hours stay hours worked (778.218(a)). */
+  const w48 = { '2026-10-05': [sh('night')], '2026-10-06': [sh('night')], '2026-10-07': [sh('night')], '2026-10-08': [sh('night')] };
+  const k7 = keysFrom('2026-10-04', 7);
+  const no = pp(w48, k7, []), yes = pp(w48, k7, [item({ cadence: 'once', date: '2026-10-07', amount: 1000 }), item({ cadence: 'once', date: '2026-10-09', hours: 40 })]);
+  ok('items: never enter the overtime premium or the regular rate (premium 180, rr 45.00 with or without)',
+    no.ot.premiumCents === 18000 && yes.ot.premiumCents === 18000 && yes.ot.periods[0].regularRateCents === 4500 && yes.ot.otHours === 8,
+    `${no.ot.premiumCents} ${yes.ot.premiumCents} ${yes.ot.periods[0].regularRateCents}`);
+  ok('items: add no hours worked (48 either way), only gross (2340 + 1000 + 40 x 40 = 4940)', yes.hours === 48 && no.hours === 48 && yes.gross === 4940, `${yes.hours} ${yes.gross}`);
+
+  /* Rates (effective-dated). An hours item is paid at the rate on the day it occurs: 8 h before a
+     raise from Oct 11 is 8 x 48 = 384; after it 8 x 52 = 416. A dollar item ignores the raise. */
+  const rc = [{ from: '2026-10-11', rate: 52 }];
+  ok('items: an hours item before the raise pays the old rate (8 x 48 = 384)', pp({}, wk, [item({ cadence: 'once', date: '2026-10-06', hours: 8 })], { base: 48, rateChanges: rc }).gross === 384);
+  ok('items: an hours item after the raise pays the new rate (8 x 52 = 416), never the global baseRate',
+    pp({}, wk, [item({ cadence: 'once', date: '2026-10-12', hours: 8 })], { base: 48, rateChanges: rc }).gross === 416);
+  ok('items: a dollar item is its amount whatever the rate', pp({}, wk, [item({ cadence: 'once', date: '2026-10-12', amount: 250 })], { base: 48, rateChanges: rc }).gross === 250);
+  ok('items: an hours item rounds once as a payroll line (8 h x $67.034424 -> 6703c x 8 = 536.24)', C.payItemCents(item({ hours: 8 }), '2026-10-12', 67.034424, []) === 53624);
+
+  /* What the Breakdown reads: the item object (the math never reads its label), date, cents. */
+  const two = pp({}, wk, [item({ id: 'a', label: 'Longevity', cadence: 'once', date: '2026-10-12', amount: 600 }), item({ id: 'b', label: 'Holiday', cadence: 'once', date: '2026-10-06', hours: 8 })], { base: 48, rateChanges: rc });
+  ok('items: periodPaycheck lists each occurrence in date order with its cents, summing to itemCents',
+    JSON.stringify(two.items.map((o) => [o.item.id, o.date, o.cents])) === '[["b","2026-10-06",38400],["a","2026-10-12",60000]]' && two.itemCents === 98400 && two.gross === 984,
+    JSON.stringify(two.items.map((o) => [o.item.id, o.date, o.cents])));
+
+  /* Sanitizer bounds: dropped, never clamped. */
+  const base = { id: 'k', label: ' Longevity ', cadence: 'annual', date: '2026-06-05', amount: 600 };
+  const s1 = (o) => C.sanitizePayItems([{ ...base, ...o }]);
+  ok('items sanitize: keeps a valid item, trims the label, defaults withholding to bonus',
+    JSON.stringify(s1({})) === '[{"id":"k","label":"Longevity","cadence":"annual","date":"2026-06-05","amount":600,"withholding":"bonus"}]', JSON.stringify(s1({})));
+  ok('items sanitize: amount rounds to 2 dp; a numeric string is coerced', s1({ amount: '600.456' })[0].amount === 600.46);
+  ok('items sanitize: drops amount <= 0, > 25,000, or junk',
+    [0, -5, 25000.01, 'abc', NaN, Infinity].every((a) => s1({ amount: a }).length === 0) && s1({ amount: 25000 }).length === 1);
+  ok('items sanitize: drops hours <= 0, > 400, or junk; keeps 400', [0, -1, 400.5, 'x'].every((h) => s1({ amount: undefined, hours: h }).length === 0)
+    && s1({ amount: undefined, hours: 400 })[0].hours === 400 && !('amount' in s1({ amount: undefined, hours: 8 })[0]));
+  ok('items sanitize: exactly one of amount / hours — both, or neither, is dropped', s1({ hours: 8 }).length === 0 && s1({ amount: undefined }).length === 0);
+  ok('items sanitize: drops an unknown cadence, a bad date, an empty or over-long label, a bad withholding',
+    s1({ cadence: 'weekly' }).length === 0 && s1({ date: '2026-02-30' }).length === 0 && s1({ date: '06/05/2026' }).length === 0
+    && s1({ label: '   ' }).length === 0 && s1({ label: 'x'.repeat(81) }).length === 0 && s1({ withholding: '22' }).length === 0);
+  ok('items sanitize: keeps both withholding values', s1({ withholding: 'regular' })[0].withholding === 'regular' && s1({ withholding: 'bonus' })[0].withholding === 'bonus');
+  ok('items sanitize: a label over 40 is stored sliced', s1({ label: 'y'.repeat(60) })[0].label.length === 40);
+  ok('items sanitize: at most 12, first entered kept; a duplicate id drops the later one; a missing id gets pi-<index>',
+    C.sanitizePayItems(Array.from({ length: 15 }, (_, i) => ({ ...base, id: 'n' + i }))).length === 12
+    && C.sanitizePayItems([base, { ...base, amount: 5 }]).length === 1 && C.sanitizePayItems([{ ...base, id: undefined }])[0].id === 'pi-0');
+  ok('items sanitize: not an array -> empty', C.sanitizePayItems('x').length === 0 && C.sanitizePayItems(undefined).length === 0 && C.sanitizePayItems([null, 3, []]).length === 0);
+  const d0 = C.sanitizeData({ baseRate: 48 }), d1 = C.sanitizeData({ baseRate: 48, payItems: [] }), d2 = C.sanitizeData({ baseRate: 48, payItems: [base, { bad: 1 }] });
+  ok('items sanitize: a blob without the list, or with an empty one, gains no key', !('payItems' in d0) && !('payItems' in d1));
+  ok('items sanitize: a blob with it keeps the valid items and mirrors them onto the job',
+    (d2.payItems || []).length === 1 && JSON.stringify(d2.jobs[0].payItems) === JSON.stringify(d2.payItems));
+  ok('items: makeJob without the field carries an empty list', JSON.stringify(C.makeJob({ baseRate: 48 }).payItems) === '[]');
+
+  /* Identity against the DEPLOYED build. Literals captured on 2026-10-20 by running this fixture
+     against `git show origin/claude/migrate-to-github-deploy-3F5RD:supabase/functions/_shared/badgebudget-core.mjs`
+     (a103682, before this change): a fortnight with taxes, a health premium, percent and dollar
+     withholdings, PTO, a raise mid-period, a call-back minimum and a 2x shift, under all four work
+     periods. [gross, net, fed, fica, st, cw, hours, premiumCents]. No list, an empty one, and items
+     that occur outside the fortnight must reproduce them exactly. */
+  const idD = { base: { type: 'dollar', amount: 0 }, night: { type: 'dollar', amount: 5 }, pct: { type: 'percent', amount: 10 }, mult: { type: 'multiplier', amount: 1.25 } };
+  const idT = { ficaType: 'standard', ficaPct: '', federalTaxRate: 12, stateTaxRate: 3.07, pretaxDeductions: 120, pretaxHealth: 85.5, posttaxDeductions: 15,
+    customWithholdings: [{ name: 'LTD', amount: 1.1, type: 'percent' }, { name: 'Parking', amount: 20, type: 'dollar' }] };
+  const idK = keysFrom('2026-11-01');
+  const idS0 = [
+    { shiftType: 'night', hours: 12, bonusType: 'none', isOvertime: false },
+    { shiftType: 'pct', hours: 8.5, bonusType: 'charge', isOvertime: false },
+    { shiftType: 'mult', hours: 12, bonusType: 'custom', customBonus: '75', isOvertime: false, noMeal: true },
+    { shiftType: 'base', hours: 3, bonusType: 'none', minHours: 4, payEvent: 'callback' },
+    { shiftType: 'night', hours: 12.5, bonusType: 'oncall', isOvertime: true, otMult: 2 },
+  ];
+  const idSh = {}; idK.forEach((k, i) => { if (i !== 2) idSh[k] = [{ ...idS0[i % 5], id: i }]; });
+  const idDe = { '2026-11-03': [{ kind: 'pto', hours: 8 }] };
+  const WANT = { '40': [9231.14, 6831.55, 1083.08, 699.64, 277.09, 119.28, 128.5, 45616], '8-80': [9219.97, 6823.04, 1081.74, 698.79, 276.74, 119.16, 128.5, 44499],
+    flagged: [8774.98, 6484.05, 1028.34, 664.75, 263.08, 114.26, 128.5, 0], custom: [9047.72, 6691.82, 1061.07, 685.61, 271.46, 117.26, 128.5, 27274] };
+  const variants = { absent: undefined, empty: [], later: [item({ cadence: 'once', date: '2026-12-01', amount: 900, withholding: 'bonus' })],
+    earlier: [item({ cadence: 'once', date: '2026-10-30', hours: 8 })], 'not-yet': [item({ cadence: 'annual', date: '2027-11-05', amount: 700 })] };
+  const moved = [];
+  Object.entries(variants).forEach(([nm, pi]) => Object.keys(WANT).forEach((wp) => {
+    const j = C.makeJob({ baseRate: 47.13, differentials: idD, workPeriod: wp, otPeriodDays: 14, otPeriodHours: 86, mealBreakMins: 30,
+      rateChanges: [{ from: '2026-11-08', rate: 49.5 }], ...(pi === undefined ? {} : { payItems: pi }) });
+    const r = C.periodPaycheck({ shifts: idSh, dayEvents: idDe, dateKeys: idK, baseRate: 47.13, differentials: idD, taxInputs: idT, job: j });
+    if (JSON.stringify([r.gross, r.net, r.fed, r.fica, r.st, r.cw, r.hours, r.ot.premiumCents]) !== JSON.stringify(WANT[wp]) || 'items' in r || 'fedSupp' in r) moved.push(`${nm}/${wp}`);
+  }));
+  ok('items identity: no list, an empty one, or items outside the fortnight price exactly as the deployed build', moved.length === 0, moved.join(','));
+  /* computeNet's federal line with no supplemental is the deployed expression: a plain number and
+     a {taxable, nonTaxable:0} split with supplemental 0 give the same federal figure. */
+  ok('items identity: computeNet with a zero supplemental equals the plain call',
+    JSON.stringify(C.computeNet(1234.56, idT)) === JSON.stringify(C.computeNet({ taxable: 1234.56, nonTaxable: 0, supplemental: 0 }, idT)));
+}
+
 console.log(`\n==== core: ${pass} passed / ${fail} failed ====`);
 process.exit(fail ? 1 : 0);
