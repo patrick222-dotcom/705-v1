@@ -6,10 +6,12 @@ this over or buy it tomorrow. Charter: `docs/leadership.md`.
 
 ## Queue (max 5)
 
-1. First monthly page: current spend (Supabase free tier, domains, Claude usage), the next cost step
-   and its trigger, and the exit-readiness checklist from `docs/scaling-and-burn.md` → *The handoff
-   test*, each item marked met / not met with the check that proves it.
+1. Monthly page, 1st of each month: re-run `docs/finance/2026-11.md`'s tables; fill the two
+   unverified cost lines (Supabase plan tier, Claude usage) from the dashboards.
 
 ## Last report
 
-None yet.
+2026-11-01 (first monthly): `docs/finance/2026-11.md`. ~$4.34/mo (domains only, renew 2027-09-01).
+No trigger crossed — 14 MB of 300 MB, 4 of 50 accounts. Next step L3, Supabase Pro $25/mo, which the
+burn doc calls overdue for backups. Handoff test 5 of 10 met. All re-run except the two marked
+unverified.
