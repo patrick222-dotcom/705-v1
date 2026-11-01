@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-26 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-11-01 by the chief of staff (Sunday cabinet). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -8,7 +8,8 @@ Updated 2026-10-26 by the chief of staff (nightly pass). Charter: `docs/leadersh
 ### T1 `gateway` — the MCP gateway
 - **Seat:** CTO
 - **Where:** step 1 of 8 done (the pay math is an importable module, 2026-10-07, #156). Steps 2–8
-  not started; no MCP server exists. Plan: `docs/agent-gateway-scope.md` → *Revised sequence*.
+  not started; no MCP server exists (`ls supabase/functions/`, 11-01). Plan:
+  `docs/agent-gateway-scope.md` → *Revised sequence*.
 - **Next:** step 2 — read-only gateway + Supabase OAuth on production (approved 2026-10-12;
   the rehearsal project is required from step 4, the first write).
 - **Done when:** Pat's Claude connects and `get_paycheck` returns the same figure as the app's hero.
@@ -16,49 +17,35 @@ Updated 2026-10-26 by the chief of staff (nightly pass). Charter: `docs/leadersh
 
 ### T2 `legitimacy` — terms and data deletion
 - **Seat:** Risk & Compliance
-- **Where:** `privacy.html` is live. No terms page. No in-app way to delete an account and its data
-  (open since 2026-09-07, `BACKLOG.md` → *Transferability groundwork*).
-- **Next:** draft `terms.html` (lead term: an estimate, not tax or payroll advice) and a spec for the
-  in-app deletion path.
+- **Where:** `privacy.html` is live. No terms page, no deletion spec, on any branch (11-01). Stalled
+  20 days: the seat runs only when a merge touches its files, and drafting is not a trigger.
+  **New, verified 11-01:** "Clear all data" deletes `user_data` but leaves the `ical_subscriptions`
+  row (the feed URL) until the sign-in account is deleted — filed to `BACKLOG.md` → Queue as P1.
+- **Next:** the nightly drafts `terms.html` (lead term: an estimate, not tax or payroll advice)
+  and the deletion spec as PRs for Pat whenever `## Queue` has nothing unblocked (D4, approved
+  2026-11-01).
 - **Done when:** terms live and linked from Settings; deletion works end to end in the harness;
   `privacy.html` says how to delete.
-- **Waiting on:** the draft (Risk), then Pat's review — legal text never merges without him.
+- **Waiting on:** the nightly's first draft, then Pat's review — legal text never merges without him.
 
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
-- **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174).
-  Session 4 is **built and open as PR #191**, waiting on Pat since 2026-10-20 (it moves figures) —
-  **seven nights** as of tonight, head unchanged since it opened.
-- **Next:** Pat merges #191 (D3 below), then session 5 — the Law enforcement and Fire & EMS tiles.
+- **Where:** sessions 1–3 of 6 shipped. Session 4 is PR #191, head `c41b8cc` unchanged since
+  2026-10-20, now **4 conflicts and 14 commits behind** (`git merge-tree --write-tree`, 11-01) —
+  a yes cannot land as it stands.
+- **Next:** bring #191 up to date with the deploy branch, re-run its suites and the equality check
+  against badgebudget.com, merge (D3 approved 2026-11-01), then session 5 — the Law enforcement and
+  Fire & EMS tiles.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
-- **Waiting on:** a dedicated session.
+- **Waiting on:** the update-and-merge of #191 (in progress, 2026-11-01).
 
 ## Needs Pat
 
-**D3 — Merge PR #191, session 4 (dated pay items)? — opened 2026-10-20, no default.** It is the
-owner tier: it moves dollar figures, so the loop may not merge it. **Seven nights open**, more than
-twice as long as the raise PR (D2) waited — and in that window she deleted 42 of her own shifts.
-That is the cost of a slow read on this tier, not an argument to lower it. Nothing in the PR has
-changed since it opened; it needs a yes or a no, not more review. It is also now blocking a second
-thing: the dated-rate telemetry item has been skipped for seven nights because #191 edits the same
-three regions of `index.html` (`BACKLOG.md` → the 10-20 band).
-
-**CABINET MISSED (seventh night).** `docs/cos/brief.md` is **13.8 days** old and still reads *"No
-cabinet has run yet. The first runs Sunday 2026-10-18."* **Two** Sundays have now passed without a
-cabinet — 2026-10-18 and 2026-10-25, the second of which the 10-25 groom was explicitly waiting
-for — and the next is **2026-11-01**. (The 10-19 and 10-21 groom notes called 10-19 "the second
-Sunday"; 2026-10-19 was a Monday, so that count was wrong and is not carried forward.) The nightly
-cannot clear this — writing the brief is the Sunday cabinet pass's job — so the notify line carries
-it until a cabinet runs.
-
-**D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
-which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.
-It is reversible: say the word and T3 is swapped for something else. Nothing else was open.
-
-**D2 — Merge the raise PR (effective-dated rates)? — APPROVED by Pat on 2026-10-20** ("looks good,
-merge and push"); merged as #187. Session 4 (dated pay items) is next on T3.
+Nothing open. **D3 approved and D4 approved by Pat, 2026-11-01** ("go with your recommendations") —
+recorded in `docs/history.md`.
 
 ## Parked
 
-See `docs/cos/inbox.md`. Everything not above lives there or in `BACKLOG.md`.
+See `docs/cos/inbox.md`. Everything not above lives there or in `BACKLOG.md`. Resolved decisions
+(D1 defaulted 10-19, D2 approved 10-20, D3 and D4 approved 11-01) are in `docs/history.md`.

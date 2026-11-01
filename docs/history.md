@@ -4,6 +4,24 @@ Dated record of what happened and why, moved out of `CLAUDE.md` on 2026-09-02 so
 file stays short. Newest first. The nightly loop's per-build record is `BACKLOG.md` → Done (log);
 the swap board's own audit trail is `swap-board.md`.
 
+## 2026-11-01 — D3 and D4 approved
+
+Pat, on the cabinet brief: "Go with your recommendations." **D3:** merge PR #191 (session 4, dated
+pay items) — the owner-tier approval of the before → after card in its body; the branch is first
+brought up to date with the deploy branch and its suites and equality check re-run, and it merges
+only if the figures still match the card. **D4:** when `## Queue` holds nothing unblocked, the
+nightly drafts T2 — `terms.html`, then the deletion spec — as PRs that wait for Pat (legal text is
+always his tier). He also explained the quiet since 10-20: they have both been busy.
+
+## 2026-11-01 — first cabinet brief to ship; why the last two never did
+
+The weekly cabinet routine (`trig_017Zi2Xk3sBkAsxfZfKx5LFp`) did run on 2026-10-25 and wrote a
+brief, then got a 403 on push: this repository is not in that routine's sources. Its brief died
+with the container, so the nightly's CABINET MISSED alarm was correct for the wrong reason. Today's
+brief was run by hand from an interactive session. Also recorded: D2 (raise PR) approved by Pat
+2026-10-20 and merged as #187; D4 opened (the nightly may draft T2 when its queue is empty;
+default yes 2026-11-08). `docs/cos/brief.md`, `docs/finance/2026-11.md`.
+
 ## 2026-10-19 — D1 defaulted: `personas` is the third thread
 
 Opened 2026-10-12 with its own expiry rule ("Default: yes. Defaults on 2026-10-19"). Pat did not

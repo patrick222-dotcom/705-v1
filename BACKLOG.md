@@ -28,6 +28,30 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, cabinet 2026-11-01)
+- [ ] **"Clear all data" leaves the calendar-feed link in the database** (P1 · source:cabinet (Risk
+  seat, filed to the CTO queue) · `harness:drivable` · thread T2) — `clearAll` in `index.html`
+  (~5177) deletes the `user_data` row and signs out, but never touches `ical_subscriptions`, whose
+  row holds the feed URL — a bearer credential (Invariant 13). It goes only when the sign-in account
+  itself is deleted (`on delete cascade`, `002_ical_subscription.sql`:12). `privacy.html`:162 says
+  Clear all data "deletes your record from the database", and its line-166 list of what survives
+  does not name the link, so today the notice under-discloses. **Fix the code, not the text**: call
+  the existing `deleteIcalSub(uid)` (`index.html`:~2975)
+  inside `clearAll` before `signOutClient()`, guarded like the `user_data` delete so a failure never
+  blocks the sign-out and reload. That makes the notice true without touching legal text. A
+  tightening (removes exposure), so it merges on its own by tier. Assertion: drive Clear all data
+  signed-in with a stubbed client and assert a delete on `ical_subscriptions` for that `user_id` was
+  issued; negative-test by removing the call. Not wage core.
+- [ ] **Draft `terms.html` as a PR for Pat — never merge it** (P2 · source:pat, D4 approved 2026-11-01 ·
+  `harness:drivable` · thread T2) — take this only when nothing above it in `## Queue` is unblocked.
+  Lead term: BadgeBudget gives an **estimate**, not tax, payroll or legal advice; the employer's stub
+  is the record. Self-contained like `privacy.html` (no remote URL — `check_build.mjs` holds that for
+  privacy and should hold it for this), linked from Settings beside the privacy link. Adding it to
+  the publish set touches `deploy.yml` (Invariant 8), which agents cannot edit — so the PR says that
+  line is Pat's, and the gate's publish-set check will need the same one-line change. Open the PR
+  **ready, auto-merge OFF**: legal text is always Pat's tier (`docs/leadership.md`). Next after it,
+  same rule: the in-app deletion spec (`docs/cos/seats/risk.md` item 2), as a doc PR.
+
 ### P1 (new, groom 2026-11-01)
 - [x] ~~**The test rig holds the five CDN pins a SECOND time, and nothing compared the two
   copies**~~ — **SHIPPED 2026-11-01**, tonight's build (see Done log). (P2 · source:build ·
