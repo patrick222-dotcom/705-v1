@@ -11,19 +11,16 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY } from './harness.mjs';
+import { rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY, findChromium, chromiumLaunch } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = join(ROOT, '.harness-scratch');
-/* The remote sandbox ships a browser at a fixed path; GitHub's runners get one from
-   `npx playwright install chromium`, which playwright-core resolves on its own. Use the
-   explicit path only when it actually exists so the same file runs in both places. */
-const BROWSER = process.env.PW_CHROMIUM
-  || '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
-const LAUNCH = existsSync(BROWSER)
-  ? { executablePath: BROWSER, args: ['--no-sandbox'] }
-  : { args: ['--no-sandbox'] };
+/* The remote sandbox ships a browser under /opt/pw-browsers; GitHub's runners get one from
+   `npx playwright install chromium`, which playwright-core resolves on its own. `chromiumLaunch`
+   discovers the first and says nothing about the second, so the same file runs in both places —
+   see the resolver's own note in harness.mjs for why this is discovered and not pinned. */
+const LAUNCH = chromiumLaunch();
 
 /* SMOKE_ONLY=3,4 runs just those sections. This exists for negative testing: proving an assertion
    actually fails when its invariant is broken means one full run per break, and re-running all six
@@ -59,6 +56,82 @@ const newPage = async (browser, url, { seed = true } = {}) => {
 };
 
 const run = async () => {
+  /* ======================= 53: the browser is FOUND, not pinned ==========================
+   *
+   * This section runs BEFORE chromium.launch on purpose. A resolver that names a path which does
+   * not exist takes the whole suite out with Playwright's "just installed or updated" banner —
+   * a harness error, which the `harness` skill names as the first of the three ways this check
+   * lies: nothing fails, nothing passes, and the gate looks un-run rather than red. Asserting
+   * first means that break prints a FAIL line before the launch throws, so it is legible.
+   *
+   * Every case below drives the resolver against a SYNTHETIC tree, because the real one is
+   * whatever this container happens to ship and an assertion about it would say nothing about
+   * the container after. Each fake executable is an empty file: the resolver's job is to pick a
+   * path, and it is never asked to be a working browser. */
+  if (want(53)) {
+    const bRoot = join(ROOT, '.harness-browsers');
+    rmSync(bRoot, { recursive: true, force: true });
+    const fake = (rel) => {
+      const full = join(bRoot, rel);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, '');
+      return full;
+    };
+
+    /* The shape this container actually shipped on 2026-10-24, which the old literal missed:
+       a new build number AND a new directory name under it. */
+    const newShape = fake('chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell');
+    ok('53 browser: finds the headless shell under a directory shape it has never seen',
+      findChromium(bRoot) === newShape, String(findChromium(bRoot)));
+
+    /* The 1194 shape the literal was written for still has to resolve — a container that has
+       only the old one must keep working, so this is not merely backwards compatibility theatre. */
+    const oldShape = fake('chromium_headless_shell-1194/chrome-linux/headless_shell');
+    ok('53 browser: prefers the HIGHEST build when two shells are installed',
+      findChromium(bRoot) === newShape, String(findChromium(bRoot)));
+
+    rmSync(join(bRoot, 'chromium_headless_shell-1243'), { recursive: true, force: true });
+    ok('53 browser: still finds the old chrome-linux/headless_shell shape on its own',
+      findChromium(bRoot) === oldShape, String(findChromium(bRoot)));
+
+    /* With no shell at all, `/opt/pw-browsers/chromium` is the path that survives a version
+       bump — this image keeps it as a symlink to the full browser — so it must outrank a
+       versioned directory. */
+    rmSync(join(bRoot, 'chromium_headless_shell-1194'), { recursive: true, force: true });
+    const versionedFull = fake('chromium-1243/chrome-linux64/chrome');
+    const stable = fake('chromium');
+    ok('53 browser: falls back to the stable chromium entry point ahead of a versioned directory',
+      findChromium(bRoot) === stable, String(findChromium(bRoot)));
+
+    rmSync(stable, { force: true });
+    ok('53 browser: falls back to a versioned full browser when there is no shell and no symlink',
+      findChromium(bRoot) === versionedFull, String(findChromium(bRoot)));
+
+    /* The CI answer, and the one that must stay `null`. GitHub's runners install Chromium into
+       playwright-core's own cache, so inventing a path for them would break the one environment
+       that was never broken. */
+    rmSync(bRoot, { recursive: true, force: true });
+    mkdirSync(bRoot, { recursive: true });
+    ok('53 browser: says NOTHING when the root is empty, leaving playwright-core to resolve',
+      findChromium(bRoot) === null, String(findChromium(bRoot)));
+
+    /* PW_CHROMIUM is the operator override and wins outright when it exists; when it does not,
+       it must NOT become the executablePath — naming a missing binary is the original bug. */
+    const override = fake('my-own-build/headless_shell');
+    ok('53 browser: PW_CHROMIUM wins when it exists',
+      chromiumLaunch({ PW_CHROMIUM: override }).executablePath === override);
+    ok('53 browser: a PW_CHROMIUM that does not exist is never used as the executablePath',
+      chromiumLaunch({ PW_CHROMIUM: join(bRoot, 'nope/headless_shell') }).executablePath !== join(bRoot, 'nope/headless_shell'));
+
+    /* And the live property, which holds in both environments: the launch object this very run
+       is about to use either names a binary that exists, or names none at all. */
+    const live = chromiumLaunch();
+    ok('53 browser: this run\'s launch object never names a path that does not exist',
+      !live.executablePath || existsSync(live.executablePath), live.executablePath || '(playwright-core resolves)');
+
+    rmSync(bRoot, { recursive: true, force: true });
+  }
+
   rmSync(SCRATCH, { recursive: true, force: true });
   buildScratch(ROOT, SCRATCH);
   const { server, url } = await serve(ROOT, SCRATCH);
@@ -3309,8 +3382,12 @@ const run = async () => {
      the layout holds with a four-digit take-home on the narrowest phone Playwright ships (first-gen
      iPhone SE, 320pt) as well as the rig's default iPhone 13 — the stats column must never overlap the big
      number, push the "Projected take-home" label down, or overflow the card. The sandbox has no
-     fonts CDN, so this runs on the fallback face, which is wider than Bricolage: a pass here is
-     conservative for the real font.
+     fonts CDN, so this runs on the fallback face. That face is NARROWER than Bricolage, not wider
+     — measured 2026-10-20: the wordmark needs 87px here and more than 97.2px on the runner — so a
+     pass on a width-sensitive measurement here is NOT conservative for the real font. This comment
+     claimed the opposite until 2026-10-20 and that claim is what the three-instance wordmark flake
+     was built on; anything font-sensitive in this section is asserted against a font-independent
+     quantity instead (see the top-bar block below).
      EXTENDED 2026-10-11 — the top bar's own 320pt overflow. §3 measures the avatar at 360pt and
      nothing had ever measured the PAGE at 320, so a 31px sideways scroll of the whole planner sat
      in production unseen: .top-actions was 223px wide (two 40px .iconbtns, the 73px signed-out
@@ -3341,6 +3418,23 @@ const run = async () => {
       await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }, [STORAGE_KEY, seed]);
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('.hero .hero-stats', { timeout: 25000 });
+      /* SETTLE THE WEBFONT BEFORE MEASURING ANYTHING ABOUT THE WORDMARK (2026-10-23).
+         The ellipsis assertion that used to live below was a coin flip for three CI cycles
+         because it read the box in whichever face had resolved by then. Waiting for the font
+         set to finish loading removes that race outright.
+         Two things about HOW it waits are deliberate, and the first draft got both wrong:
+         · the bound is `waitForFunction`'s own timeout, enforced by the driver, not a
+           `setTimeout` inside the page. An in-page timer is subject to the page's own
+           scheduling, so it bounds the promise but not necessarily the wall clock.
+         · it reads `document.fonts.status` rather than awaiting `document.fonts.ready`.
+           `ready` resolves with the FontFaceSet itself, which `page.evaluate` would then have
+           to SERIALIZE -- a non-serializable return value on the hot path of a 52-section
+           suite. `status` is a string, and the predicate returns a boolean.
+         A font that never arrives therefore costs 6s and degrades to "measured in whatever
+         face we had"; it can never hang the suite. The face-resolution fields below record
+         which case this run actually got, so a skipped verdict is always diagnosable. */
+      await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 6000 })
+        .catch(() => {});
       const m = await page.evaluate(() => {
         const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
         const rr = (sel) => { const b = r(sel); return b && { left: Math.round(b.left), right: Math.round(b.right), top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; };
@@ -3369,7 +3463,35 @@ const run = async () => {
         const brandEl = document.querySelector('.brand');
         const bb = brandEl.getBoundingClientRect();
         const actsBox = document.querySelector('.top-actions').getBoundingClientRect();
+        /* WHICH FACE THIS RUN ACTUALLY LAID THE WORDMARK OUT IN. Read off the FontFaceSet,
+           because the two cheaper tests were BOTH negative-tested here and BOTH lie (2026-10-23):
+           · `document.fonts.check('800 12px "Bricolage Grotesque"')` returns TRUE on a page with
+             the webfont stylesheet deleted and no @font-face for the family at all — it answers
+             "can this text be rendered", which a fallback satisfies. Useless as a guard.
+           · "force sans-serif and see if the width moves" also fires with no webfont, because
+             an unresolvable family falls back to Chromium's DEFAULT font, which is not
+             `sans-serif` — so the two measurements differ (74px vs 83px at 320pt) and the
+             width-diff concludes a webfont rendered when none did.
+           What does distinguish them is the set of declared faces: with the stylesheet the set
+           holds Bricolage entries and the 800 weight reaches `status:'loaded'`; without it the
+           set holds none. The forced-fallback width is still measured, but only to PRINT
+           alongside — it is not part of the verdict. Restored immediately. */
+        const bricolage = [...document.fonts].filter((f) => /Bricolage/.test(f.family));
+        const loadedWeights = bricolage.filter((f) => f.status === 'loaded').map((f) => f.weight);
+        const probe = document.createElement('style');
+        probe.textContent = '.brand{font-family:sans-serif!important}';
+        document.head.appendChild(probe);
+        void brandEl.offsetWidth;
+        const brandWidthFallback = brandEl.scrollWidth;
+        probe.remove();
+        void brandEl.offsetWidth;
         return {
+          brandFamily: getComputedStyle(brandEl).fontFamily,
+          brandFaceRendered: /Bricolage/.test(getComputedStyle(brandEl).fontFamily)
+            && loadedWeights.includes('800'),
+          brandFacesDeclared: bricolage.length,
+          brandLoadedWeights: loadedWeights.join('/') || 'none',
+          brandWidthFallback,
           tiles: document.querySelectorAll('.stats, .stat').length,
           chip: [...document.querySelectorAll('.hero .chip')].some((c) => /hrs|shifts?/.test(c.textContent)),
           stats: [...document.querySelectorAll('.hero .hero-stats .hs')].map(txt),
@@ -3386,6 +3508,11 @@ const run = async () => {
           fabRight: (() => { const f = document.querySelector('.fab'); return f ? Math.round(f.getBoundingClientRect().right) : null; })(),
           brandClipped: brandEl.scrollWidth > brandEl.clientWidth,
           brandSpare: Math.round((actsBox.left - bb.right) * 10) / 10,
+          /* Font-independent: how much of the row is left for the wordmark once the controls,
+             the gaps and the container padding have taken theirs. */
+          brandRoom: Math.round((actsBox.left - bb.left) * 10) / 10,
+          brandNeed: brandEl.scrollWidth,
+          brandHave: brandEl.clientWidth,
         };
       });
       const tag = `[${dev}]`;
@@ -3430,12 +3557,83 @@ const run = async () => {
          once the bar fits. */
       ok(`top bar ${tag}: the add-shift button sits 16px inside the right edge`,
         m.fabRight === m.vw - 16, `fabRight=${m.fabRight} vw=${m.vw}`);
-      /* The clip below is the guarantee against a sideways scroll; this is the cosmetic half it
-         would otherwise hide. The brand must still READ as "badgebudget", not "badgebudge...".
-         `brandSpare` is the room between the wordmark and .top-actions, 10px of which is the flex
-         gap -- it is printed so the next change to this row can see how much it is spending. */
-      ok(`top bar ${tag}: the wordmark is not ellipsised at this width`,
-        !m.brandClipped, `clipped=${m.brandClipped} spare=${m.brandSpare}`);
+      /* WHAT THIS ROW MAY ASSERT, and the 2026-10-20 reading of it that was WRONG IN BOTH
+         DIRECTIONS. The history matters because the wrong reading had a P3 build queued behind
+         it that would have been a regression.
+         The ellipsis assertion here was non-deterministic for three CI cycles: it failed on the
+         GitHub runner and passed in this sandbox ON THE SAME COMMIT three times (2026-10-11
+         `e738670`, 2026-10-14 `0aa4ef4` -- a docs-only diff -- and 2026-10-16 `63ed891`), every
+         time reporting `clipped=true spare=10`, and every red run had a green twin. The race was
+         real: it measured whichever face had resolved by the time it read the box.
+         The CAUSE assigned to it was not. That note concluded "this sandbox has no route to
+         fonts.googleapis.com and lays the bar out in the fallback face; the runner gets real
+         Bricolage Grotesque", and therefore that `clipped=true` on the runner was the truth and
+         "the wordmark IS ellipsised on a real first-gen iPhone SE".
+         MEASURED 2026-10-23, with the face settled and its identity read off the FontFaceSet
+         (see the probe above for the two cheaper tests that were tried and proved to lie): this
+         sandbox reaches fonts.googleapis.com and fonts.gstatic.com fine -- 200 on the stylesheet
+         and on the Bricolage woff2 -- and lays the bar out in REAL Bricolage Grotesque 800. In
+         that face, at 320pt, the wordmark needs **87px** of **109.2px** of room: 22px spare, NOT
+         clipped. Pure `sans-serif` needs 83px and Plus Jakarta Sans 90px, so the number is
+         genuinely face-sensitive and 87px is the real face's.
+         So every figure in the old note is off: the "97.2px the row can give it" subtracted a
+         flex gap that is not the constraint, the fallback needs 83 not 87, and the real face
+         needs 87 -- not "more than 97.2". The wordmark is NOT ellipsised at 320pt in the face
+         this app actually ships, and the queued P3 ("drop .brand to 11px to buy back 10-12px")
+         would have shaved 7px off a row with 22px of slack.
+         Its 107.4px is reproducible, and that is the tell: 107.4 is what this row measures with
+         the webfont stylesheet DELETED (the "Sign in" pill is a couple of px narrower in the
+         fallback), against 109.2 with it. So the old note was measured without the webfont, in
+         the environment it believed it was in -- and then reasoned about a face it had not
+         loaded.
+         AND THE RUNNER'S NUMBERS ARE NOW IN, which killed the first guess made here too. These
+         fields were added partly to find out what CI's face was, and the guess written in this
+         comment was "the runner missed the webfont and fell back to something wider". Wrong.
+         Run 39925978022 (`ac922e2`, 852/0) printed, from the runner:
+           SE  family="Bricolage Grotesque" faces=12 loaded=700/800 rendered=true
+               real=96px forcedFallback=83px room=109 spare=13
+           13  real=109px forcedFallback=96px room=131 spare=22
+         So the runner DOES render the real webfont. What differs is the font FILE: the same
+         family at the same 12px/800 needs 96px there and 87px here, while `forcedFallback`
+         agrees at 83px in both. A gap that appears only in the webfont and not in the fallback
+         is a difference in the binary, not the stack -- Google Fonts serves per-user-agent
+         builds and Bricolage Grotesque is a VARIABLE font with an `opsz` axis. Which file each
+         environment gets is UNVERIFIED; diffing the two fonts.gstatic.com URLs would settle it.
+         Two things follow. The fit claim holds in BOTH environments (CI passed this assertion),
+         so the CSS is right and stays. But the real headroom at 320pt is the RUNNER's 13px, not
+         this sandbox's 22px, and `needs=96 has=96` there is exact -- so do not spend it.
+         The historical `clipped=true spare=10` at this same 12px is still not fully explained,
+         but it is no longer reachable: the runner now reports `clipped=false spare=13`, and the
+         likeliest remaining cause is the font-load race this section just removed, i.e. it was
+         measuring mid-load. Not worth chasing further.
+         STILL UNVERIFIED, and older than any of this: nobody has measured a real first-gen
+         iPhone SE. Not a reason to change the CSS -- both environments that render the shipped
+         face show the wordmark fitting.
+         So the verdict is restored, but GUARDED rather than ambient: settling the font set
+         kills the race, and the fit is asserted only on a run that
+         provably rendered the real face. A run without the webfont prints its numbers and skips
+         the verdict instead of guessing -- which is what makes this deterministic in both
+         environments rather than a coin flip in one. The font-independent floor below stays
+         exactly as it was: it guards a different thing (a fourth control squeezing the wordmark
+         to a stub, ~46px) and it reads the same whatever the face did. */
+      const roomFloor = dev === 'iPhone SE' ? 96 : 120;
+      ok(`top bar ${tag}: the wordmark keeps its share of the row`, m.brandRoom >= roomFloor,
+        `room=${m.brandRoom} floor=${roomFloor} needs=${m.brandNeed} has=${m.brandHave} `
+        + `clipped=${m.brandClipped} spare=${m.brandSpare}`);
+      const faceDetail = `family=${m.brandFamily} faces=${m.brandFacesDeclared} `
+        + `loaded=${m.brandLoadedWeights} rendered=${m.brandFaceRendered} `
+        + `real=${m.brandNeed}px forcedFallback=${m.brandWidthFallback}px `
+        + `room=${m.brandRoom} spare=${m.brandSpare}`;
+      if (m.brandFaceRendered) {
+        /* The claim the 10-20 note believed was false. It is the shipped face, at the width where
+           the row is tightest, so a CSS change that genuinely over-tightens the bar FAILs here. */
+        ok(`top bar ${tag}: the wordmark fits unclipped in the real Bricolage face`,
+          !m.brandClipped && m.brandNeed <= m.brandHave, faceDetail);
+      } else {
+        /* Not a pass and not a failure: the run had no webfont, so it has nothing to say about
+           one. Printed so a red CI run is diagnosable instead of mysterious. */
+        console.log(`    – top bar ${tag}: webfont did not render; fit verdict skipped (${faceDetail})`);
+      }
       /* THE FONT-PROOF CHECK, and the one this section was missing.
          The first version of the ≤360px fix summed to exactly 0 overflow here and was still 5px
          over on the GitHub runner, because this sandbox has no route to fonts.googleapis.com and
@@ -6098,8 +6296,643 @@ const run = async () => {
     await ctx.close();
   }
 
-  /* ---- 50. extra pay on a set date (dated pay items, session 4, 2026-10-20) --------------- */
+  /* == 50. The manual-sync switch is offered on the re-sync banner (2026-10-21) =================
+     Courtney asked for the switch twice (2026-10-14 08:55, 2026-10-15 12:30) and it shipped
+     2026-10-16 into Settings, under the iCal section. The 10-21 groom read her first three loads
+     since: 2026-10-20 20:15, 22:26 and 23:02 UTC, each one `ics_sync_result {changes}` with
+     `ics_sync_done {events:125}`, zero `ics_import_done` (last fired 2026-10-10), and
+     `ics_autosync_pref` with ZERO rows from any device ever. She never found it. So the switch is
+     now offered on the banner itself -- the surface that is asking.
+
+     Driven against the real handler with §37B's stub, because the only assertion that proves the
+     tap did anything is `window.__invokes`: a button that flipped a local flag and left the
+     automatic sync running would pass every DOM check here. §46 already pins what the preference
+     DOES once set (cold load, foreground, Settings copy, "Sync now" still working); this section
+     pins only the new door into it. */
   if (want(50)) {
+    const FEED_URL = 'https://app.nursegrid.com/calendars/777/6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+    const FEED = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', 'UID:ng-opt-a', `DTSTART:${dayOut(5)}T190000Z`, `DTEND:${dayOut(5)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT',
+      'END:VCALENDAR'].join('\r\n');
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.addInitScript(([feed, feedUrl]) => {
+      window.__ev = []; window.__invokes = 0; window.__skew = 0;
+      const realNow = Date.now;
+      Date.now = () => realNow() + window.__skew;
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* `functions` is a prototype getter in supabase-js 2.45.4 -- shadow it with an own
+                   property or the stub never takes (§27's lesson; __invokes is the proof). */
+                const fx = { invoke: async () => { window.__invokes++; return { data: window.__feed || feed, error: null }; } };
+                Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [FEED, FEED_URL]);
+
+    const ev = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+    const row = (n) => page.evaluate((name) => (window.__ev || []).filter((r) => r && r.name === name).pop() || null, n);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'), null, { timeout: 15000 });
+    ok('banner opt-out: the stub reached the proxy, so the drive is real', (await page.evaluate(() => window.__invokes)) === 1,
+      String(await page.evaluate(() => window.__invokes)));
+
+    /* The cold-load sync opens the stepper. Close it without confirming -- what the real device
+       did, and what leaves a live plan for the foreground re-sync to rebuild into the banner. */
+    await page.waitForSelector('.sheet', { timeout: 8000 });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('.sheet', { state: 'detached', timeout: 6000 }).catch(() => {});
+
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForFunction(() => window.__invokes > 1, null, { timeout: 15000 });
+    await page.waitForTimeout(600);
+    ok('banner opt-out: coming back to the app raises the quiet banner', await page.locator('.sync-banner').isVisible(), (await ev()).join(','));
+
+    /* The copy is asserted off the rendered DOM and must MATCH the Settings label, because the
+       whole point is that she recognises the same setting in both places (§26's rule for the
+       NurseGrid walkthrough labels, same reason). */
+    const opt = page.locator('.sync-banner button.opt');
+    const optCount = await opt.count();
+    ok('banner opt-out: the banner carries a third affordance', optCount === 1, String(optCount));
+    /* Read the copy only if it is there. An absent button is the regression this section exists to
+       catch, and reading from a locator that matches nothing aborts the whole run on a 30s timeout
+       instead of failing the assertions below it -- the first of the three ways the harness skill
+       says a negative test lies. Found by negative-testing this very section. */
+    const optText = optCount ? (await opt.innerText()).replace(/\u201c|\u201d/g, '"') : '';
+    ok('banner opt-out: and its words are the Settings switch\'s words, not new copy',
+      /Only sync when I tap "Sync now"/.test(optText), JSON.stringify(optText));
+    /* It must not have displaced "Not now": "not this plan" and "stop asking" are different
+       answers and the common one stays the easy one. */
+    ok('banner opt-out: "Review" and "Not now" are both still there',
+      (await page.locator('.sync-banner .row button').count()) === 2
+      && /Not now/.test(await page.locator('.sync-banner .row button.ghost').innerText()), (await ev()).join(','));
+    /* §30's rule: every control keeps a 44pt tap target. */
+    const optBox = optCount ? await opt.boundingBox() : null;
+    ok('banner opt-out: it keeps a 44pt tap target', optBox && optBox.height >= 44, JSON.stringify(optBox));
+
+    const dismissedBefore = (await ev()).filter((n) => n === 'ics_resync_dismissed').length;
+    if (optCount) await opt.click();
+    /* Same reason as the copy read: with the button gone this wait must not abort the run. The
+       assertion below still reads the DOM, so the catch weakens nothing -- a banner that stayed up
+       fails here either way. */
+    await page.waitForSelector('.sync-banner', { state: 'detached', timeout: 6000 }).catch(() => {});
+    ok('banner opt-out: tapping it puts the banner away', !(await page.locator('.sync-banner').count()));
+
+    const pref = await row('ics_autosync_pref');
+    ok('banner opt-out: one ics_autosync_pref row, and it says the preference is ON',
+      !!pref && pref.props && pref.props.manual === true, JSON.stringify(pref && pref.props));
+    ok('banner opt-out: tagged src:banner, so Settings taps stay distinguishable from these',
+      !!pref && pref.props && pref.props.src === 'banner', JSON.stringify(pref && pref.props));
+    ok('banner opt-out: exactly one pref row, not one per render',
+      (await ev()).filter((n) => n === 'ics_autosync_pref').length === 1, (await ev()).join(','));
+    /* ics_resync_dismissed is the complaint proxy (she dismissed at 08:54:05 on 2026-10-14 and
+       filed "it keeps asking me to approve" 81 seconds later). A tap meaning "thank you, stop"
+       must not land in it, or the metric that found this work stops meaning anything. */
+    ok('banner opt-out: it does NOT fire ics_resync_dismissed -- that row means "ask me again"',
+      (await ev()).filter((n) => n === 'ics_resync_dismissed').length === dismissedBefore, (await ev()).join(','));
+
+    /* The assertion the whole section exists for: the preference is LIVE, not recorded. A button
+       that tracked an event and set nothing would pass every check above. */
+    const invokesBefore = await page.evaluate(() => window.__invokes);
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(1800);   // fixed wait: a predicate that never comes true aborts the run (§46)
+    ok('banner opt-out: the next foreground return does not reach the feed at all',
+      (await page.evaluate(() => window.__invokes)) === invokesBefore,
+      `${invokesBefore} -> ${await page.evaluate(() => window.__invokes)}`);
+    ok('banner opt-out: and no banner comes back', !(await page.locator('.sync-banner').count()));
+
+    /* And it set the same field the Settings switch reads, not a second flag beside it. */
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 10000 });
+    await page.waitForSelector('button[role="switch"][aria-label="Only sync when I tap Sync now"]', { timeout: 12000 });
+    ok('banner opt-out: Settings now shows that very switch ON',
+      (await page.locator('button[role="switch"][aria-label="Only sync when I tap Sync now"]').getAttribute('aria-checked')) === 'true');
+
+    const real50 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('banner opt-out: no page errors across section 50', real50.length === 0, real50[0] || '');
+    await ctx.close();
+  }
+
+  /* == 51. The same opt-out on the import stepper's confirm card (2026-10-22) ==================
+     50 put the switch on the quiet re-sync banner. The banner fired on exactly ONE of Courtney's
+     three 2026-10-20 loads -- the other two were cold loads, and a cold load opens the import
+     stepper by design (CLAUDE.md -> Calendar sync), so on two thirds of her visits she still met a
+     125-event confirm sheet with no way to say "stop asking me". This is that door.
+
+     Two design decisions this section exists to pin, both of which a DOM-only test would miss:
+       (a) it is on the FINAL card only -- on the classify cards it would render once per group,
+           which at her 125 events is 125 copies of a setting;
+       (b) tapping it does NOT dismiss the sheet. The banner's copy does, because the banner's job
+           is "ask me later"; this sheet's plan may hold changes she wants, so throwing it away on
+           a tap meaning "stop the asking" would cost her the shifts too. The Confirm-still-imports
+           assertion below is the one that would catch a regression into the banner's behaviour.
+     Same stub as 50, for the same reason: `window.__invokes` is the only thing that can tell a
+     live preference from a recorded one. 46 pins what the preference DOES once set. */
+  if (want(51)) {
+    const FEED_URL = 'https://app.nursegrid.com/calendars/778/6f1c8e2a-0000-4a11-9c33-abcdef012346';
+    const dayOut = (n) => { const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+    const FEED = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      'BEGIN:VEVENT', 'UID:ng-step-a', `DTSTART:${dayOut(6)}T190000Z`, `DTEND:${dayOut(6)}T233000Z`, 'SUMMARY:ICU', 'END:VEVENT',
+      'END:VCALENDAR'].join('\r\n');
+
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.addInitScript(([feed, feedUrl]) => {
+      window.__ev = []; window.__invokes = 0; window.__skew = 0;
+      const realNow = Date.now;
+      Date.now = () => realNow() + window.__skew;
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* `functions` is a prototype getter in supabase-js 2.45.4 -- shadow it with an own
+                   property or the stub never takes (27's lesson; __invokes is the proof). */
+                const fx = { invoke: async () => { window.__invokes++; return { data: window.__feed || feed, error: null }; } };
+                Object.defineProperty(c, 'functions', { value: fx, configurable: true });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [FEED, FEED_URL]);
+
+    const ev = () => page.evaluate(() => (window.__ev || []).map((r) => r && r.name));
+    const row = (n) => page.evaluate((name) => (window.__ev || []).filter((r) => r && r.name === name).pop() || null, n);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_result'), null, { timeout: 15000 });
+    ok('stepper opt-out: the stub reached the proxy, so the drive is real', (await page.evaluate(() => window.__invokes)) === 1,
+      String(await page.evaluate(() => window.__invokes)));
+
+    /* The cold-load sync opens the stepper on its first classify card -- the door the banner
+       cannot reach, and 2 of her 3 loads on 2026-10-20. */
+    await page.waitForSelector('.sheet', { timeout: 10000 });
+    ok('stepper opt-out: the cold load opened the import stepper, not the banner',
+      (await page.locator('.sheet[aria-label="Classify imported shift"]').count()) === 1
+      && !(await page.locator('.sync-banner').count()), (await ev()).join(','));
+
+    /* (a) Not on the classify cards. At 125 events this would be 125 copies of one setting. */
+    ok('stepper opt-out: the classify card does NOT carry it',
+      (await page.locator('.sheet button.opt').count()) === 0);
+
+    await page.locator('.chips-grid button.chip-sel').first().click();
+    await page.locator('.sheet .btn-primary').click();
+    await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { timeout: 8000 });
+
+    const opt = page.locator('.sheet button.opt');
+    const optCount = await opt.count();
+    ok('stepper opt-out: the confirm card carries it', optCount === 1, String(optCount));
+    /* Read copy only if present. An absent button is the regression this section exists to catch,
+       and reading a locator that matches nothing aborts the whole run on a 30s timeout instead of
+       failing -- the first of the three ways the harness skill says a negative test lies. It is
+       exactly how 50's own first draft was wrong. */
+    const optText = optCount ? (await opt.innerText()).replace(/“|”/g, '"') : '';
+    ok('stepper opt-out: worded as the Settings switch and the banner, not new copy',
+      /Only sync when I tap "Sync now"/.test(optText), JSON.stringify(optText));
+
+    /* The mis-tap rule: this sheet confirms wage-affecting changes, so the control that turns
+       syncing off must sit BELOW the primary row and must not be its full-width peer. */
+    const optBox = optCount ? await opt.boundingBox() : null;
+    const confirmBox = await page.locator('.sheet .btn-primary').boundingBox();
+    ok('stepper opt-out: it keeps a 44pt tap target', optBox && optBox.height >= 44, JSON.stringify(optBox));
+    ok('stepper opt-out: it sits BELOW Confirm, so it is not the button she reaches for',
+      optBox && confirmBox && optBox.y > confirmBox.y, JSON.stringify([optBox && optBox.y, confirmBox && confirmBox.y]));
+    ok('stepper opt-out: and it is narrower than Confirm, not a full-width peer',
+      optBox && confirmBox && optBox.width < confirmBox.width, JSON.stringify([optBox && optBox.width, confirmBox && confirmBox.width]));
+
+    const dismissedBefore = (await ev()).filter((n) => n === 'ics_resync_dismissed').length;
+    if (optCount) await opt.click();
+    await page.waitForTimeout(400);
+
+    /* (b) The decision that separates this from the banner's copy. Everything below reads the
+       sheet, so whether it is still there is captured ONCE and used to guard those reads: a
+       regression into the banner's dismiss-on-tap behaviour must FAIL these assertions, not abort
+       the run by timing out against a detached locator. Negative-testing that exact break is what
+       found this -- it printed one failure and then died, which reads like one caught regression
+       and is really an unknown number of unproven assertions. */
+    const sheetOpen = (await page.locator('.sheet[aria-label="Confirm schedule import"]').count()) === 1;
+    ok('stepper opt-out: tapping it leaves the sheet OPEN -- the plan is not thrown away', sheetOpen);
+    ok('stepper opt-out: and acknowledges the tap, so she does not tap again',
+      sheetOpen
+      && (await page.locator('.sheet .opt-done').count()) === 1
+      && (await page.locator('.sheet button.opt').count()) === 0,
+      sheetOpen ? await page.locator('.sheet').innerText() : 'sheet was dismissed');
+
+    const pref = await row('ics_autosync_pref');
+    ok('stepper opt-out: one ics_autosync_pref row, and it says the preference is ON',
+      !!pref && pref.props && pref.props.manual === true, JSON.stringify(pref && pref.props));
+    ok('stepper opt-out: tagged src:stepper, so banner and Settings taps stay distinguishable',
+      !!pref && pref.props && pref.props.src === 'stepper', JSON.stringify(pref && pref.props));
+    ok('stepper opt-out: exactly one pref row, not one per render',
+      (await ev()).filter((n) => n === 'ics_autosync_pref').length === 1, (await ev()).join(','));
+    /* ics_resync_dismissed is the complaint proxy (she dismissed at 08:54:05 on 2026-10-14 and
+       filed "it keeps asking me to approve" 81 seconds later). A tap meaning "thank you, stop"
+       must not land in it, or the metric that found this work stops meaning anything. */
+    ok('stepper opt-out: it does NOT fire ics_resync_dismissed -- that row means "ask me again"',
+      (await ev()).filter((n) => n === 'ics_resync_dismissed').length === dismissedBefore, (await ev()).join(','));
+
+    /* The plan survived the tap in substance, not just on screen: Confirm still imports. Guarded
+       for the same reason -- with the sheet gone there is nothing to click, and the assertion
+       below must report that rather than hang. */
+    if (sheetOpen) {
+      await page.locator('.sheet .btn-primary').click();
+      await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_import_done'), null, { timeout: 10000 })
+        .catch(() => {});
+    }
+    const done = await row('ics_import_done');
+    ok('stepper opt-out: Confirm still imports after opting out', !!done, (await ev()).join(','));
+
+    /* The assertion the section exists for: the preference is LIVE, not recorded. A button that
+       tracked an event and set nothing would pass every check above. */
+    const invokesBefore = await page.evaluate(() => window.__invokes);
+    await page.evaluate(() => { window.__skew += 11 * 60 * 1000; document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(1800);   // fixed wait: a predicate that never comes true aborts the run (46)
+    ok('stepper opt-out: the next foreground return does not reach the feed at all',
+      (await page.evaluate(() => window.__invokes)) === invokesBefore,
+      `${invokesBefore} -> ${await page.evaluate(() => window.__invokes)}`);
+
+    /* And it set the same field the Settings switch reads, not a second flag beside it. */
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 10000 });
+    await page.waitForSelector('button[role="switch"][aria-label="Only sync when I tap Sync now"]', { timeout: 12000 });
+    ok('stepper opt-out: Settings now shows that very switch ON',
+      (await page.locator('button[role="switch"][aria-label="Only sync when I tap Sync now"]').getAttribute('aria-checked')) === 'true');
+
+    const real51 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('stepper opt-out: no page errors across section 51', real51.length === 0, real51[0] || '');
+    await ctx.close();
+  }
+
+  /* == 52. Invariant 6 round trip: our own export re-imports as NOTHING (2026-10-24) ===========
+     Invariant 6 is the `@scrubpay` self-recognition sentinel: export stamps every UID as
+     `scrubpay-<date>-<id>@scrubpay`, and import drops any UID containing `@scrubpay`. CLAUDE.md's
+     Verify trailer for it ends "there is no round-trip test — a known gap", and that gap is the
+     whole invariant: `check_build.mjs` asserts the two string literals are PRESENT, which a change
+     to the UID *shape* leaves untouched, and §26 only greps the source for the two controls. So
+     until tonight nothing in this repo had ever exported a file and fed it back.
+
+     Its blast radius is why that matters: every previously exported shift re-imports as a
+     duplicate, which inflates hours and therefore every wage figure downstream of them, and its
+     Detect is `none` — the symptom is duplicate shifts the nurse sees and reports nowhere.
+
+     Driven anonymously on purpose. Both halves live in localStorage-only paths (`exportICS` builds
+     the blob, `onImportICS` reads the file), so no auth stub is needed and the drive is the one a
+     signed-out nurse actually gets. */
+  if (want(52)) {
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayKey = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+    const compact = (k) => k.replace(/-/g, '');
+    /* Dates a few days out: comfortably inside the import window (-60d .. +365d), because an
+       event dropped for being OUTSIDE that window would make the "nothing to import" assertions
+       below pass for entirely the wrong reason -- see the deleted assertion further down, which
+       tried to rule that out directly and could not. */
+    const kTimed = dayKey(3), kAllDay = dayKey(4), kPto = dayKey(5);
+    /* Three entries covering both UID-stamping branches in exportICS: a timed shift
+       (DTSTART + DURATION), an all-day shift (VALUE=DATE), and a day event. */
+    const seed = { ...SEEDED_STATE, payPeriodStart: dayKey(0),
+      shifts: {
+        [kTimed]: [{ id: 'rt-timed', shiftType: 'night', hours: 12, bonusType: 'none', customBonus: 0, start: '19:00' }],
+        [kAllDay]: [{ id: 'rt-allday', shiftType: 'base', hours: 8, bonusType: 'none', customBonus: 0 }],
+      },
+      dayEvents: { [kPto]: [{ id: 'rt-pto', kind: 'pto', hours: 8 }] } };
+
+    const { ctx, page, errors } = await newPage(browser, url, { seed });
+    /* Capture what exportICS actually WRITES. The blob is the export, so reading it is the only
+       way to assert the UID stamp off real output instead of off the source. Filtered on the
+       calendar MIME type so a blob from any other path (the JSON export, pdf.js's fake worker)
+       cannot land in this slot and be asserted as the calendar. */
+    await page.addInitScript(() => {
+      window.__ics = null;
+      const realCreate = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = (b) => {
+        try { if (b && /text\/calendar/.test(b.type || '')) b.text().then((t) => { window.__ics = t; }); } catch (_) {}
+        return realCreate(b);
+      };
+    });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.takehome', { state: 'attached', timeout: 25000 });
+
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.sheet-h .t:text-is("Settings")', { timeout: 12000 });
+    await page.locator('button:has-text("Add to calendar")').click();
+    await page.waitForFunction(() => typeof window.__ics === 'string' && window.__ics.length > 0,
+      null, { timeout: 10000 }).catch(() => {});
+    const icsText = await page.evaluate(() => window.__ics);
+    ok('round trip: tapping "Add to calendar (.ics)" produced a calendar file',
+      typeof icsText === 'string' && /BEGIN:VCALENDAR/.test(icsText) && /END:VCALENDAR/.test(icsText),
+      String(icsText).slice(0, 60));
+
+    /* Invariant 6, export half — asserted on the real bytes, and it is the half nothing else
+       guards. Measured against a patched copy of index.html rather than assumed: the gate's own
+       `[6] @scrubpay .ics sentinel, both halves` check prints OK, and all 14 checks pass, both on
+       a build whose export stamps `@badgebudget` and on one whose UID drops its date. It fails
+       only when the IMPORT-side drop is removed. So `check_build.mjs` covers one half of a
+       two-half invariant, and this assertion is the only thing standing under the other. */
+    const uidLines = String(icsText || '').split(/\r?\n/).filter((l) => l.startsWith('UID:'));
+    ok('round trip: all three exported UIDs are stamped scrubpay-<date>-<id>@scrubpay',
+      uidLines.length === 3
+      && uidLines.every((l) => /^UID:scrubpay-\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+@scrubpay$/.test(l)),
+      uidLines.join(' | '));
+
+    /* The round trip itself: hand that very file back to the import picker in the same panel. */
+    const picker = page.locator('input[type=file][accept=".ics,text/calendar"]');
+    await picker.setInputFiles({ name: 'badgebudget-calendar.ics', mimeType: 'text/calendar',
+      buffer: Buffer.from(String(icsText || ''), 'utf8') });
+    await page.waitForSelector('.toaster .toast', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    const toasts = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.toaster .toast')).map((n) => n.innerText));
+    ok('round trip: re-importing our own export reports nothing to import',
+      toasts.some((t) => /No shifts found to import/i.test(t)), JSON.stringify(toasts));
+    /* Nothing to confirm means no sheet: a stepper that opened here would be offering her the
+       shifts she already has. Both cards are checked because either one opening is the defect. */
+    const classifyOpen = await page.locator('.sheet[aria-label="Classify imported shift"]').count();
+    const confirmOpen = await page.locator('.sheet[aria-label="Confirm schedule import"]').count();
+    ok('round trip: the import stepper never opens, so there is nothing to confirm',
+      classifyOpen === 0 && confirmOpen === 0, `classify=${classifyOpen} confirm=${confirmOpen}`);
+    /* A second assertion was written here and DELETED: "nothing was skipped for window, cap or
+       recurrence", on the absence of a `Skipped:` toast, meant to rule out the reading that these
+       events were dropped for being outside the import window rather than by the sentinel. It is
+       unfalsifiable. `parseICSSchedule` tests the `@scrubpay` guard BEFORE the window, so on a file
+       of our own UIDs droppedWindow is 0 no matter how narrow the window is — negative-tested by
+       shrinking ICS_IMPORT_PAST_DAYS/FUTURE_DAYS to 1, where it passed. The window confound is
+       ruled out by the selectivity drive below instead, which that same break DID fail: a foreign
+       event out of window is dropped too, so "still offered" is the check that needs the dates to
+       be inside it.
+
+       A mid-drive "the blob still holds two shifts" assertion was written here first and DELETED,
+       because it passed on every break this section was negative-tested against: a build with the
+       sentinel broken OFFERS the duplicates through the stepper and writes nothing until she
+       confirms, so the count is still 2 at this point either way. What is at stake is which shifts
+       exist, so the honest place to read the blob is after a confirm — which is what the last
+       assertion in this section does. (§33 deleted an unfalsifiable assertion for the same reason.)
+
+       Selectivity next, and it is what stops every assertion above from passing on a build whose
+       import is simply broken. Same file, same dates, plus ONE event with a foreign UID: that one
+       must still be offered. A build whose import dropped EVERYTHING would pass every assertion
+       above and fail here, which is what stops them being vacuous. */
+    const foreign = ['BEGIN:VEVENT', 'UID:ng-round-trip-1', `DTSTART:${compact(dayKey(6))}T190000`,
+      'DURATION:PT12H', 'SUMMARY:ICU', 'END:VEVENT'].join('\r\n');
+    const hybrid = String(icsText || '').replace('END:VCALENDAR', `${foreign}\r\nEND:VCALENDAR`);
+    await picker.setInputFiles({ name: 'mixed.ics', mimeType: 'text/calendar',
+      buffer: Buffer.from(hybrid, 'utf8') });
+    const classify = page.locator('.sheet[aria-label="Classify imported shift"]');
+    /* waitFor, then assert on the count: reading from a locator that matches nothing aborts the
+       run on a 30s timeout instead of failing the assertion, which is the first of the three ways
+       the harness skill says a negative test lies (§50 and §51 were both bitten by it). */
+    await classify.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    const classifyNow = await classify.count();
+    ok('round trip: a FOREIGN uid in the same file is still offered, so the drop is selective',
+      classifyNow === 1, String(classifyNow));
+    if (classifyNow === 1) {
+      await classify.locator('.btn-primary').click();
+      await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { timeout: 12000 }).catch(() => {});
+    }
+    const confirmText = (await page.locator('.sheet[aria-label="Confirm schedule import"]').count())
+      ? await page.locator('.sheet[aria-label="Confirm schedule import"]').innerText() : '(no confirm card)';
+    ok('round trip: and exactly ONE shift is offered — our own three were all dropped',
+      /Add 1 shift\?/.test(confirmText), JSON.stringify(confirmText.slice(0, 160)));
+
+    /* Confirm it, then read the PERSISTED blob: this is the only assertion here that sees what a
+       re-import actually WRITES, and the one the invariant's blast radius is about. Exactly three
+       shifts — the two seeded plus the foreign one — so a build that re-offered our own export
+       lands 6 here, not 3, whether it duplicated them silently or through a stepper she confirmed. */
+    if (/Add 1 shift\?/.test(confirmText)) {
+      await page.locator('.sheet[aria-label="Confirm schedule import"] .btn-primary').click();
+      await page.waitForSelector('.sheet[aria-label="Confirm schedule import"]', { state: 'detached', timeout: 10000 }).catch(() => {});
+    }
+    /* Settled with a fixed wait, not waitForFunction: a predicate that never comes true aborts the
+       run instead of failing the assertion (the harness skill's second way a negative test lies). */
+    await page.waitForTimeout(900);
+    const written = await page.evaluate((k) => {
+      const b = JSON.parse(localStorage.getItem(k) || '{}');
+      return Object.entries(b.shifts || {}).flatMap(([d, a]) => (a || []).map((s) => `${d}:${s.icsUid || 'typed'}`)).sort();
+    }, STORAGE_KEY);
+    ok('round trip: confirming writes exactly ONE new shift — our own two were never duplicated',
+      written.length === 3 && written.filter((s) => /:ng-round-trip-1$/.test(s)).length === 1,
+      JSON.stringify(written));
+
+    const real52 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('round trip: no page errors across section 52', real52.length === 0, real52[0] || '');
+    await ctx.close();
+  }
+
+  if (want(54)) {
+    /* Invariant 13's third clause -- the feed URL "never goes into `events`" -- was held at exactly
+       one call site. §24 pins `icalFailureDetail`'s whitelist thoroughly, but that helper guards
+       ONE `console.error`; the boot script mirrors EVERY console.error in the app into the same
+       ring buffer, and `flushClientErrors` ships that buffer to `events` as a `client_error` row
+       with only `redactMoney` applied. So the clause rested on every present and future
+       console.error formatting its arguments carefully, and Invariant 13's Detect trailer is
+       `none`: nothing observable changes when a bearer credential escapes.
+
+       Driven off the REAL row the app tries to insert, not off a helper's return value -- that is
+       §24's job and §24 does it. The buffer is seeded in localStorage before load because that is
+       the real mechanism: `flushClientErrors` ships LAST load's buffer on THIS load, by design (a
+       crash cannot report itself), so a seeded `scrubpayErrors` is what a device that crashed
+       last night actually presents. §52's lesson in a different shape: assert the bytes that leave.
+
+       The host-survives assertion is load-bearing, not decoration. A redaction that threw the
+       whole message away would pass every leak check here while destroying the only live signal
+       Invariant 2 has (a blocked CDN script surfaces as the watchdog screen, and "which host" is
+       the answer), so this section has to fail in BOTH directions. */
+    const SECRET = '6f1c8e2a-0000-4a11-9c33-abcdef012345';
+    const FEED = 'https://app.nursegrid.com/calendars/777/' + SECRET;
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    await page.addInitScript(([key, blob, seededErrors]) => {
+      window.__ev = [];
+      try { localStorage.setItem('scrubpayErrors', JSON.stringify(seededErrors)); } catch (_) {}
+      try { localStorage.setItem(key, JSON.stringify(blob)); } catch (_) {}
+      /* Signed in, so the flush takes the ordinary track() path into events and the row carries a
+         user_id -- the shape an admin reads in the ops console. */
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'user_data') {
+                      return Promise.resolve({ data: { data: blob, updated_at: '2026-10-27T00:00:00.000Z' }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [STORAGE_KEY, SEEDED_STATE, [
+      /* (1) The realistic leak: a future debug line, or any console.error handed the URL. */
+      { t: Date.now(), msg: 'console.error: ical sync failed: ' + FEED, src: 'index.html', line: 5117, stack: null },
+      /* (2) webcal:, which is the scheme NurseGrid actually hands out. */
+      { t: Date.now(), msg: 'console.error: feed webcal://app.nursegrid.com/calendars/777/' + SECRET + '.ics rejected', src: 'index.html', line: 5041, stack: null },
+      /* (3) The secret in a query string rather than a path. */
+      { t: Date.now(), msg: 'console.error: GET https://app.nursegrid.com/feed.ics?token=' + SECRET + ' failed', src: 'index.html', line: 5041, stack: null },
+      /* (4) The diagnostic that must SURVIVE: a blocked CDN script, Invariant 2's only live
+         signal. Its host is the answer and must still be in the row. */
+      { t: Date.now(), msg: 'Failed to load https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js', src: 'index.html', line: 21, stack: null },
+      /* (5) Money redaction must still apply -- the two scrubs compose, they do not replace. */
+      { t: Date.now(), msg: 'Paystub parse failed: net pay $2,481.17 unreadable', src: 'index.html', line: 1, stack: null },
+    ]]);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    /* Fixed wait, never waitForFunction: the direction that costs us the guard is the client_error
+       row NEVER arriving, and a predicate that never comes true ABORTS the run instead of failing
+       an assertion (§50 and §51 were both bitten by this). */
+    await page.waitForTimeout(2500);
+
+    const rows54 = await page.evaluate(() => window.__ev || []);
+    const cerr = rows54.filter((r) => r && r.name === 'client_error');
+    ok('feed-credential: the seeded buffer did reach events as exactly one client_error row',
+      cerr.length === 1, JSON.stringify(rows54.map((r) => r && r.name)));
+
+    /* Everything below is read off the row the app handed the client, serialized whole -- props,
+       the nested errors array, every field -- so no path can hide a credential in a corner. */
+    const wire = JSON.stringify(cerr);
+    const all54 = JSON.stringify(rows54);
+
+    ok('feed-credential: the row carries no part of the feed secret',
+      !wire.includes(SECRET), wire.slice(0, 300));
+    ok('feed-credential: and NO event row of any name carries it',
+      !all54.includes(SECRET), all54.slice(0, 300));
+    ok('feed-credential: no feed path survives -- /calendars/ is gone from the row',
+      !/\/calendars\//.test(wire), wire.slice(0, 300));
+    ok('feed-credential: no token query survives',
+      !/token=/.test(wire), wire.slice(0, 300));
+    ok('feed-credential: and no .ics path survives',
+      !/\.ics/.test(wire), wire.slice(0, 300));
+
+    /* Falsifiable in the other direction: a redaction that nuked the message would pass all five
+       checks above and blind the only Invariant 2 signal there is. */
+    ok('feed-credential: the CDN host survives, because "which host" is the whole diagnostic',
+      wire.includes('cdn.jsdelivr.net'), wire.slice(0, 400));
+    ok('feed-credential: the nursegrid HOST survives too -- host-only is the rule, not silence',
+      wire.includes('app.nursegrid.com'), wire.slice(0, 400));
+    ok('feed-credential: the path is replaced rather than merely trimmed',
+      wire.includes('app.nursegrid.com/...'), wire.slice(0, 400));
+    ok('feed-credential: the non-URL half of a message is untouched',
+      /ical sync failed/.test(wire), wire.slice(0, 400));
+    ok('feed-credential: the webcal scheme is redacted, not skipped as unknown',
+      wire.includes('webcal://app.nursegrid.com/...'), wire.slice(0, 400));
+
+    /* The two scrubs compose. Reversing or dropping either is a silent regression. */
+    ok('feed-credential: money redaction still applies alongside it',
+      wire.includes('$#') && !wire.includes('2,481.17'), wire.slice(0, 400));
+
+    /* Read-and-clear is what stops a failed send resending the batch on every load forever. */
+    const read54 = await page.evaluate(() => { try { return localStorage.getItem('scrubpayErrors'); } catch (_) { return 'THREW'; } });
+    ok('feed-credential: and the buffer was read-and-cleared, so the batch is not resent forever',
+      read54 === null || read54 === '[]' || read54 === '', String(read54).slice(0, 120));
+
+    const real54 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('feed-credential: no page errors across section 54', real54.length === 0, real54[0] || '');
+    await ctx.close();
+  }
+
+  /* ---- 55. extra pay on a set date (dated pay items, session 4, 2026-10-20) --------------- */
+  if (want(55)) {
     /* docs/dated-pay-items-spec.md. A payment that lands in one particular check -- longevity,
        holiday cash, a ratification lump -- entered in Settings, read back off the hero, the
        Breakdown and the year view on the iPhone 13 profile. One 12 h shift at $48 (576) in a
@@ -6227,7 +7060,7 @@ const run = async () => {
     const bd2 = await breakdown();
     ok('items: removed, the hero and Breakdown are back to the shift alone ($463, gross $576, no note)',
       (await hero()) === 463 && money(bd2, 'Gross pay') === 576 && !/paid on a set date/.test(bd2), `${await hero()} ${money(bd2, 'Gross pay')}`);
-    ok('items: no page errors across section 50', errors.filter((e) => !isExpectedNetwork(e)).length === 0, errors.filter((e) => !isExpectedNetwork(e))[0] || '');
+    ok('items: no page errors across section 55', errors.filter((e) => !isExpectedNetwork(e)).length === 0, errors.filter((e) => !isExpectedNetwork(e))[0] || '');
     await ctx.close();
   }
 

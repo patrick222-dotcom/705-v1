@@ -28,6 +28,1315 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-11-01)
+- [x] ~~**The test rig holds the five CDN pins a SECOND time, and nothing compared the two
+  copies**~~ — **SHIPPED 2026-11-01**, tonight's build (see Done log). (P2 · source:build ·
+  `harness:drivable` (script-level)) Taken because it is the only unblocked, gate-safe item left
+  in `## Queue` with a scoped fix already written down — last night filed it itself and deferred
+  it only for the one-item-per-run rule. `check('harness', 'Harness tests the pins the app
+  ships')` is the nineteenth check: four assertion groups, five deliberate breaks, meta-test
+  41 → 46.
+  **Last night's note had the failure mode WRONG, and the correction is the useful part.** It said
+  a bumped `index.html` pin with a stale `MAP` leaves the scratch copy on the real CDN url. It
+  does not — `buildScratch` already throws `CDN pin moved, harness is stale`. What it is enforced
+  **as** is the defect: a throw inside `buildScratch` runs *before* `chromium.launch`, so the
+  883-assertion suite **aborts**, and this repo's own rule is that an aborted run is not a failed
+  assertion — the gate reads un-run rather than red. That is `tests/smoke.mjs` §53's lesson
+  (2026-10-25) arriving one layer down, and moving the assertion into the gate is what turns a
+  stack trace in a log into a red row on a PR.
+  **The genuinely silent hole is the one the note found by accident: `PKGS` vs `MAP`.** A `MAP`
+  target carries **no version** (`react/umd/react.production.min.js`,
+  `pdfjs-dist/build/pdf.min.js`) — what sits at that path is whatever `PKGS` installed. Bump the
+  url and not the package and the scratch copy serves a **different build than production ships**,
+  every one of the 883 assertions still passes, and nothing anywhere says so. Nothing in this repo
+  read `PKGS` at all before tonight (`grep -rn PKGS scripts/ tests/` → one file).
+  **And one assertion does guard the network claim, for a different edit than the note named:** a
+  **sixth** remote `<script>` added to `index.html` and not to `MAP` keeps its real CDN url in the
+  scratch copy and loses its `integrity` attribute to the blanket strip, so on a runner with an
+  open network the rig fetches a third-party script at test time. `buildScratch` counts rewrites
+  it *made* (`n < MAP.length`), which cannot see a tag that was never in the table. That is the
+  sibling of `check('events', 'Harness cannot write to production')`, whose 2026-09-16 incident —
+  291 real `app_open` rows inserted into production `events` by CI — is what this shape costs.
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last four nights, which has now held three
+  times.
+- [ ] **The staking-out habit is 3-for-3, and the publish-set figure drifted a FIFTH time exactly
+  as the 10-30 note said to stop recording** (housekeeping) — `deploy_watch` reads **LIVE**:
+  `index.html` serving **`be6cec2` (2026-10-28)**, `CNAME` serving badgebudget.com, deploy ref
+  fetched before the verdict formed. #204 touched no publish-set file and the note said the name
+  should not move; it did not. `privacy.html` and `ops.html` print **`568ddfa` (2026-10-07)**
+  tonight against `8ae7b4d`, `4caeb15`, `bfbd944` and `a64348b` on the four nights before, for two
+  files unchanged since 2026-09-24 — `gitHistory()` names whichever matching commit its walk
+  reaches first, so for an unchanged file the figure is an artefact. The stable facts are the
+  verdict word and `index.html`'s commit.
+- [ ] **ZERO new rows — a flat night, and the fifth consecutive one with no human load at all**
+  (P2 · source:groom · no action) — `events` holds **1,758 rows**, byte-identical to the 10-31
+  groom's figure, newest still **2026-10-31 03:04:15**, now **29.0h** old. `silence_watch` says
+  **FRESH (window 48h)**, with ~19 hours of window left, so a second flat night puts it at
+  `SILENT_BUT_HEALTHY` or `SILENT_AND_UNHEALTHY` — the 10-29 note braced for that twice and it has
+  not arrived yet. The newest two devices are still `88f2483a` and `8196e24d`, the desktop-Linux
+  burst 12 seconds apart, three rows each, neither past onboarding screen 0, neither with a
+  `session_end`. **Do not quote `FRESH` as an activation signal** — CLAUDE.md records every
+  activation figure since 2026-09-07 as inflated by exactly this cohort until the device
+  classifier is fixed, and for five nights it is the *only* cohort.
+- [ ] **Courtney has not opened the app in 11.4 days, and today is the DST change the Nov 1 item
+  was filed for** (P1 · housekeeping, and it closes a question by making it unanswerable tonight) —
+  her device `f184ffa5` last filed anything at **2026-10-20 23:02:03**, which predates `d438d58`
+  (the banner switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` is at
+  **zero rows from any device, ever**; `ics_autosync_off` at **zero**. Both stay **expected** —
+  nobody has been shown either affordance. `ics_import_done` unchanged at **10 rows ever** (last
+  2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical for six
+  grooms.
+  **The DST item above (P0 band, "Courtney's synced shift times may jump an hour at the Nov 1 DST
+  change") reaches its date today and cannot be read.** Its own 10-04 note already argued the
+  app's conversion is almost certainly not the suspect — `01:00/04:00 → 02:00/05:00` is how a fixed
+  Eastern wall clock behaves in UTC when DST ends, not a fault — and said the live question is
+  whose zone, which only the owner's side-by-side answers. With no load from her device in 11 days
+  there is no November shift to compare and nothing in `events` that would show one. Leave it
+  unverified, leave it out of the nightly (it is a pay figure, so `wage-core` protocol, dedicated
+  session), and **do not treat the arrival of the date as evidence either way**.
+- [ ] **`feedback` and `client_error` are both unchanged — FOURTEENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation. One line worth keeping against tonight's build: fourteen grooms of a
+  flat `client_error` is also fourteen grooms in which **no harness-vs-production pin drift could
+  ever have surfaced**, because the failure is in the test rig and produces no production row at
+  all — which is why it needed a gate and not a dashboard.
+- [ ] **PR #191 is thirteen commits behind now, and the four conflicts are unchanged** (P1 · needs
+  the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is
+  **`c41b8cc`, unchanged since 2026-10-20 03:25** — twelve days. Merge-base is `a103682` and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **13**, one more
+  than last night, which is tonight's own merge. **Tonight's build does not deepen the conflict:**
+  it edits `scripts/check_build.mjs` (which #191 also edits, and `git merge-tree` lists as
+  auto-merging — #191's hunks are inside `check(3, …)`, tonight's insertion is a new
+  `check('harness', …)` plus the roster) and `scripts/test_check_build.mjs` (which #191 does not
+  touch). It adds nothing to `tests/smoke.mjs`, where the conflict is, because the change is
+  gate-level and has no runtime behaviour to drive. #191 is the owner tier — it moves dollar
+  figures (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a
+  yes needs the branch brought up to base first.
+- [ ] **CABINET MISSED (thirteenth night) — and the Sunday it counted down to is TODAY**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was last written
+  **2026-10-12** (`8d21e19`, **20.0 days**) and still reads *"No cabinet has run yet. The first
+  runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**. Two Sundays have
+  passed un-run (2026-10-18, 2026-10-25) and **the third is today, 2026-11-01**. The nightly cannot
+  clear this — writing the brief is the Sunday cabinet pass's job (`cos` skill → *cabinet*).
+  `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age, and the
+  dead-man's switch that does is the notify line, which nothing in the repo enforces. **Thirteen
+  nights makes the switch itself the finding**, as the 10-31 note said: the honest options are to
+  make `cos_check.mjs` fail the gate on an over-age brief, or to retire the claim. That decision
+  is Pat's, not the nightly's — and today is the day it is cheapest to take.
+- [ ] **The gate meta-test is STILL not in CI — sixth night unchanged, and tonight added five more
+  breaks to the half CI cannot see** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox** (the same block that
+  made `f1aa7a6` an owner commit). One line after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~105s with tonight's
+  five new breaks, no browser, no network). Covered without it: a **deleted** `check()` is red in
+  CI today, because the roster lives inside `check_build.mjs`, which `gate` already runs — and
+  tonight's roster declares **19**. Missing: the teeth half, the only half that can prove a break
+  fails the *right* row, and the half that measured tonight's check falsifiable in both directions
+  (neutered → 41 passed / 5 failed).
+- [ ] **`MAP`'s rewrite TARGETS are still unchecked, and that is deliberate, not an oversight**
+  (P3 · source:build · `harness:drivable` (script-level)) — tonight's check asserts every `MAP`
+  *source* url is real, that its version matches `PKGS`, and that no remote script escapes the
+  table. It does **not** assert the local path on the right-hand side resolves to a file that
+  exists, because at gate time `node_modules` may legitimately be absent (CI's `gate` job installs
+  nothing; the pre-push hook needs only Babel). A wrong target is also the **loud** failure of the
+  pair — the scratch page 404s the script and §1 fails on the first assertion — so it is the one
+  case already covered by something. Filed so a later run does not read the gap as a hole and
+  "fix" it into a check that fails whenever dependencies are not installed.
+
+### P1 (new, groom 2026-10-31)
+- [x] ~~**The app loads a SIXTH script and three separate mechanisms each miss it for a different
+  reason**~~ — **SHIPPED 2026-10-31**, tonight's build (see Done log). (P1 · source:build ·
+  `harness:drivable` (script-level)) Picked the same way the last three nights were picked, from
+  CLAUDE.md's own rules rather than from a queue that has held no unblocked app-side item since
+  10-24 — and the 10-29 note's warning was honoured: it filed Invariant 13's last two clauses as
+  the *obvious* reach and said not to take them, so this is a different invariant entirely.
+  `pdf.worker.min.js` is fetched at runtime by pdf.js from this origin, and **SRI cannot cover it**
+  (a worker takes no `integrity` attribute, and it is not a tag at all — it is a string assigned
+  to `GlobalWorkerOptions.workerSrc`), **last night's CSP check cannot see it** (that check walks
+  tags; this is a URL in JavaScript), and **Invariant 8's publish-set check names the file** —
+  nothing in this repo had ever read a byte inside the 1MB blob it ships to a public URL.
+  `check(2, 'pdf.js worker matches its pinned library')` is the eighteenth check: eight
+  assertions, eight deliberate breaks, label-pinned.
+  **The worst of the four is not the version pin.** `isEvalSupported:false` is the documented
+  CVE-2024-4367 mitigation for pdf.js < 4.2.0 and 3.11.174 is pinned; the app's CSP carries
+  `'unsafe-eval'` because Babel standalone needs it, so **that one token is the whole mitigation**
+  — and the input is a PDF *she picks*, the one input this app takes from outside itself, in an
+  origin holding `user_data` and the auth session. It was promised by a source comment
+  (`index.html`:~5200, "isEvalSupported:false is the documented CVE-2024-4367 hardening") and held
+  by nobody, which is the 10-29 parser clause's shape exactly.
+  **The second-worst is the one that looks like a fix.** The CSP declares no `worker-src`, so the
+  browser falls back to `default-src 'self'` — meaning "serve the worker from cdnjs instead", the
+  obvious response to a worker that would not load (which a real iPhone hit three times on
+  2026-10-13, cause still UNKNOWN), produces a worker the browser refuses **even though
+  `script-src` permits cdnjs**. That edit passes every other check in the gate and kills the
+  paystub reader. It is now one of the eight breaks.
+  **Why a gate rather than telemetry:** `paystub_failed` has **never fired for any reason**, 29
+  grooms in. A version mismatch makes pdf.js throw `The API version "X" does not match the Worker
+  version "Y"` on every paystub, and nothing anywhere would say so.
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last three nights, which has now held twice.
+- [ ] **The 10-30 prediction held for a SECOND night, so that staking-out habit is now 2-for-2**
+  (housekeeping) — `deploy_watch` reads **LIVE**: `index.html` serving **`be6cec2` (2026-10-28)`**,
+  `CNAME` serving badgebudget.com, deploy ref fetched before the verdict formed. #203 touched no
+  publish-set file and the note said the name should not move; it did not. **The publish-set figure
+  drifted a fourth time and is no longer being recorded as a fact** — `privacy.html` and `ops.html`
+  print `8ae7b4d` tonight against `4caeb15`, `bfbd944` and `a64348b` on the three nights before,
+  for two files unchanged since 2026-09-24. The 10-30 note said *stop recording it*; this line
+  exists only to close that loop. The stable facts are the verdict word and `index.html`'s commit.
+- [ ] **Six new rows, two new devices, both the desktop-Linux burst — ninth sighting, and the
+  fourth consecutive night with zero human loads** (P2 · source:groom · no action) — `events`
+  holds **1,758 rows**, up **6** from 1,752, newest **2026-10-31 03:04:15** (5.0h old);
+  `silence_watch` says **FRESH (window 48h)**. The two devices are `88f2483a` and `8196e24d`,
+  both `X11; Linux x86_64 … Chrome/154.0.0.0`, **12 seconds apart**, three rows each
+  (`app_open {fresh:true}` → `ob_step {step:0}` → `ob_view {screen:'landing'}`), neither past
+  screen 0, **neither with a `session_end`** — the identical shape the 10-28 and 10-30 notes
+  logged (16 seconds apart, and the seven before that). 13 distinct devices in 7 days and not one
+  of them a person. **Do not quote `FRESH` as an activation signal**: CLAUDE.md records every
+  activation figure since 2026-09-07 as inflated by exactly this cohort until the device
+  classifier is fixed, and four nights running it is the *only* cohort.
+- [ ] **Courtney has not opened the app in 10.2 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` unchanged at **10 rows ever**
+  (last 2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical
+  for five grooms now. The first honest reading is her next foreground return, and a **cold** load
+  is still the likelier door (2 of her last 3), which the stepper switch covers.
+  **Ten days is long enough to be worth naming as a question rather than a counter:** nothing in
+  `events` distinguishes "she is working nights and has not needed it" from "she stopped using
+  it", and the app has no signal that would. Not a build item — flagged so the fifth identical
+  housekeeping line does not read as monitoring something.
+- [ ] **`feedback` and `client_error` are both unchanged — THIRTEENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason** — which is
+  the fact tonight's build rests on, because a pdf.js worker/library version mismatch would be
+  invisible in exactly this table. No new `pdf.worker` rows either, so the 10-13 item's "read a
+  second device" bar is **still not met**. Do not build a worker mitigation.
+- [ ] **PR #191 is twelve commits behind now, not eleven, and the four conflicts are unchanged**
+  (P1 · needs the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is
+  **`c41b8cc`, unchanged since 2026-10-20 03:25** — eleven days. Merge-base is `a103682` and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **12**, one more
+  than last night, which is tonight's own merge. **Tonight's build does not deepen the conflict:**
+  it edits `scripts/check_build.mjs` (which #191 also edits, and `git merge-tree` auto-merges —
+  #191's hunks are inside `check(3, …)`, tonight's insertion is a new `check(2, …)` at ~206 plus
+  the roster) and `scripts/test_check_build.mjs` (which #191 does not touch). It adds nothing to
+  `tests/smoke.mjs`, where the conflict is, because the change is gate-level and has no runtime
+  behaviour to drive. #191 is the owner tier — it moves dollar figures
+  (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a yes needs
+  the branch brought up to base first.
+- [ ] **CABINET MISSED (twelfth night) — and the Sunday it has been counting down to is TOMORROW**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was last written
+  **2026-10-12** (`8d21e19`, **19.0 days**) and still reads *"No cabinet has run yet. The first
+  runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**. Two Sundays have
+  passed un-run (2026-10-18, 2026-10-25); the next is **2026-11-01**, **one day out**. The nightly
+  cannot clear this — writing the brief is the Sunday cabinet pass's job (`cos` skill → *cabinet*).
+  `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age, and the
+  dead-man's switch that does is the notify line, which nothing in the repo enforces. **Twelve
+  nights is the point at which the switch itself is the finding:** a dead-man's switch that fires
+  into a report nobody has acted on for twelve days is not a switch, and the honest options are to
+  make `cos_check.mjs` fail the gate on an over-age brief or to retire the claim. That decision is
+  Pat's, not the nightly's.
+- [x] ~~**A SECOND unwatched version pair, found while building tonight's check and deliberately
+  not built**~~ — **TAKEN 2026-11-01** as that night's build (see the 11-01 band and the Done log).
+  Its diagnosis was half wrong and the correction is recorded there: `buildScratch` already throws
+  on a stale `MAP`, so the forward direction was enforced — as a **suite abort**, which this repo
+  counts as un-run rather than red. The silent half was real and is the one the check exists for:
+  `PKGS` vs the version in the url. Original note below. (P2 · source:build ·
+  `harness:drivable` (script-level) · one build item per run) —
+  `tests/harness.mjs` holds the same figure twice: `PKGS` installs `pdfjs-dist@3.11.174`, and
+  `MAP` rewrites the literal `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js`
+  to `pdfjs-dist/build/pdf.min.js` in the scratch copy. Both must agree with `index.html`'s pin,
+  and **nothing checks either**. The failure is quiet in the way this repo keeps getting caught by:
+  bump `index.html` and leave `MAP` alone and the string no longer matches, so the scratch copy
+  keeps the **real CDN URL** — the suite still runs, still passes, and is silently (a) testing a
+  different pdf.js than production and (b) **reaching the public internet from a rig whose whole
+  design is that it cannot** (`check('events', 'Harness cannot write to production')` exists for
+  the sibling case). Bump `PKGS` and not `MAP` and the rewrite target is absent instead, which at
+  least fails loudly. The same shape applies to all five rows of `MAP`, not just pdf.js.
+  **Shape of the fix:** one check asserting every `MAP` source URL appears verbatim in
+  `index.html`, and every `PKGS` entry's version matches the URL that maps to it — forward
+  direction only, five breaks. Not taken tonight because it is a second build item, and the rule
+  is one per run.
+- [ ] **The gate meta-test is STILL not in CI — fifth night unchanged, and tonight added eight
+  breaks to the half CI cannot see** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox** (the same block that
+  made `f1aa7a6` an owner commit). One line after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~95s with tonight's
+  eight new breaks, no browser, no network). Covered without it: a **deleted** `check()` is red in
+  CI today, because the roster lives inside `check_build.mjs`, which `gate` already runs — and
+  tonight's roster declares **18**. Missing: the teeth half, which is the only half that can prove
+  the eight new breaks fail the *right* row — and which caught the label-pin defect on 10-30.
+
+### P1 (new, groom 2026-10-30)
+- [x] ~~**The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
+  nothing in this repo was reading it**~~ — **SHIPPED 2026-10-30**, tonight's build (see Done log).
+  (P1 · source:build · `harness:drivable` (script-level)) Picked because `## Queue` has held no
+  unblocked app-side build item since 10-24 and the 10-25 item named the source to promote from:
+  CLAUDE.md's own rules. This one is in **Architecture**, not the invariant list — *"the `<meta>`
+  CSP must cover every runtime host"* — and it was held by nobody. SRI answers "is this the exact
+  file we pinned?"; the CSP answers the earlier question, "may the browser fetch it from that host
+  at all?", and the gate checked only the first. `check(2, 'CSP covers every host the pages
+  load')` is the seventeenth check: every host a **tag** loads from must be permitted by the
+  matching directive, in `index.html` and `ops.html` both, with a missing CSP a FAILURE rather
+  than a pass by omission. Five deliberate breaks in `scripts/test_check_build.mjs` (28 → 33),
+  one per clause.
+  **Why it is worth a gate and not just prose.** Swap a CDN host, or add a sixth script beside the
+  five, and leave the CSP alone: the browser blocks it, React or Babel never defines, and
+  **Invariant 1's watchdog replaces the app with the boot error screen for every visitor** — and
+  Invariant 1's own `Detect` trailer says that is invisible, because a device that never boots
+  never fires `app_open` and never flushes its error buffer. Same silence as the 47-day upsert
+  outage, reached in one edit, and SRI cannot see it: a blocked script never gets as far as having
+  its hash compared.
+  **Only the honest direction is gated, and the check says so.** A permitted host that nothing
+  loads is **not** reported, because `connect-src` carries hosts no tag can reveal
+  (`https://*.supabase.co`, `accounts.google.com`) and `img-src` is a wildcard — a reverse check
+  would have to whitelist those by name or flag them forever, and neither is a machine checking
+  anything honestly. That is the same line the gate's header draws and the 10-29 item warned the
+  next run not to cross.
+  **Two clauses are not just a host list.** (i) `font-src` gets the one *derived* assertion,
+  because no tag names a woff2: a page loading the Google Fonts `css2` stylesheet must permit
+  `fonts.gstatic.com`, where that stylesheet fetches every file. Its break is the invisible kind
+  rather than the fatal kind — the webfont falls back to a system face and the layout moves, which
+  the 10-23 band measured as real: the shipped Bricolage needs **96px of 109px** of room on a
+  320pt screen, against 83px for the forced fallback. (ii) **`privacy.html` is checked from the
+  other end.** It ships to a public URL with **no CSP at all** — verified tonight, not assumed —
+  and what makes that safe is the property CLAUDE.md records as load-bearing: it is self-contained,
+  so it "can't break and makes no third-party requests". That is one regex (`(src|href)="https?://`
+  → zero matches), and it is what keeps the absent CSP honest rather than merely absent. Its
+  favicon is a `data:` URI, its only links a `mailto:` and `/`.
+  **One thing the negative test caught about itself.** With SRI and the CSP both tagged `[2]`, the
+  meta-test's `✗ [2]` regex would credit a CSP break to the SRI check and vice versa — a break
+  that fails the wrong row counted as a win, which is the exact defect the `expect` tag exists to
+  prevent. All six `[2]` breaks now pin the **label** too, and that pin was itself negative-tested:
+  pointing `CSP` at the SRI label turns all five red (28 passed / 5 failed, measured).
+  **No publish-set file changes**, so tomorrow's `deploy_watch` should still name `be6cec2` for
+  `index.html` — the same falsifiable position as the last two nights.
+- [ ] **The 10-29 note's prediction held — `index.html` still serves `be6cec2`, and the publish-set
+  name drifted again exactly as predicted** (housekeeping) — `deploy_watch` reads **LIVE**:
+  `index.html` serving **`be6cec2` (2026-10-28)**, `CNAME` serving badgebudget.com, deploy ref
+  fetched before the verdict formed. Last night's build (#202) touched no publish-set file, and the
+  note staked out that *"a different name tomorrow with no merge between means something shipped
+  that nobody recorded"*. It is the same name, so nothing did. `privacy.html` and `ops.html` print
+  **`4caeb15` (2026-10-06)** tonight against `bfbd944` last night and `a64348b` the night before —
+  **third different name in three nights for two files that have not changed since 2026-09-24**,
+  and the 10-28 note's explanation is now confirmed three times over: `gitHistory()` walks
+  `git log <ref> -- <path>` and names whichever matching commit it reaches first, so for an
+  unchanged file that figure is an artefact of the walk. **Stop recording it.** The stable facts
+  are the verdict word and `index.html`'s commit.
+- [ ] **The flat streak ended at two nights, and all five new devices are bots — two of them
+  Googlebot, which is the first time this app has been crawled by the index it is written for**
+  (P2 · source:groom · no action, but one line is worth keeping) — `events` holds **1,752 rows**,
+  up **15** from two nights of 1,737, newest **2026-10-30 06:47:05** (1.3h old);
+  `silence_watch` says **FRESH** and the `SILENT` the last two notes braced for never arrived.
+  Five new devices, three rows each, every one landing-only (`app_open {fresh:true}` →
+  `ob_step {step:0}` → `ob_view {screen:'landing'}`), none past screen 0, **none with a
+  `session_end`**:
+  · `7524e31a` + `8b1c8728` — `X11; Linux x86_64 … Chrome/154.0.0.0`, **16 seconds apart**, the
+    desktop-Linux burst shape, **eighth sighting** (10-28's note has the prior seven).
+  · `9720d31c` + `18e5702c` — **self-identifying `Googlebot/2.1`**, desktop and the Nexus 5X mobile
+    crawler, both at `2026-10-30 01:14:45.050233`, the *same microsecond*.
+  · `19210bb4` — `Macintosh … Chrome/83.0.4103.97`, a 2020 build, scraper-shaped.
+  **Zero human loads for the third night running**, and `FRESH` is being carried entirely by bot
+  traffic — do not quote it as an activation signal (CLAUDE.md records every activation figure
+  since 2026-09-07 as inflated by exactly this cohort until the device classifier is fixed).
+  **The one new fact worth a line:** Googlebot reaching the landing screen means the
+  `<meta name="description">` and `<noscript>` copy the 2026-09-23 positioning fix rewrote is now
+  the copy that gets indexed. Both are pinned by `tests/smoke.mjs` §18 and need nothing; recorded
+  because the fix shipped five weeks before the crawler that reads it arrived.
+- [ ] **PR #191's base distance has been undercounted — it is ELEVEN commits behind, not seven**
+  (P1 · needs the owner, and a rebase first) — `git merge-tree --write-tree
+  origin/claude/migrate-to-github-deploy-3F5RD origin/claude/zealous-einstein-nkqn80` exits **1**
+  with the same four conflicts: `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`.
+  Head is **`c41b8cc`, unchanged since 2026-10-20 03:25** — ten days. Merge-base is `a103682`, and
+  `git rev-list --count a103682..origin/claude/migrate-to-github-deploy-3F5RD` is **11**; at last
+  night's base `be6cec2` it was already **10**, so the 10-29 note's "seven" was wrong by three.
+  Quote the command, not the felt distance — this is the fourth figure in this file to drift from
+  being re-derived rather than re-measured (the publish-set commit was the other three).
+  **Tonight's build does not deepen the conflict:** it edits `scripts/check_build.mjs`, which #191
+  also edits, and `git merge-tree` lists that file as auto-merging — #191's hunks there are inside
+  `check(3, …)` at ~220 and ~249, and tonight's insertion is a new `check(2, …)` at ~106 plus the
+  roster at ~460. It adds nothing to `tests/smoke.mjs`, where the conflict actually is, because
+  the change is gate-level and has no runtime behaviour to drive. #191 is the owner tier (it moves
+  dollar figures — `docs/leadership.md` → *Approval tiers*), so it still needs **a yes or a no**,
+  and a yes needs the branch brought up to base first.
+- [ ] **Courtney has not opened the app in 9.3 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` unchanged at **10 rows ever**
+  (last 2026-10-10), `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical
+  for four grooms. The first honest reading is her next foreground return, and a **cold** load is
+  still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — TWELFTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation. Worth one line against tonight's build: twelve grooms of a flat
+  `client_error` is also twelve grooms in which **no CSP violation has ever surfaced** — which is
+  not reassurance, because a CSP-blocked boot script produces the watchdog screen and no row at
+  all. That is the whole reason it needed a gate rather than a dashboard.
+- [ ] **CABINET MISSED (eleventh night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **18.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, **two days out**. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's
+  age, and the dead-man's switch that does is the notify line, which nothing in the repo enforces.
+- [ ] **The gate meta-test is STILL not in CI — fourth night unchanged, and it now costs more to
+  skip** (P2 · `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job
+  still does not call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for
+  agent sessions in this sandbox** (the same block that made `f1aa7a6` an owner commit). One line
+  after the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~70s with tonight's five new breaks, no browser, no network).
+  Covered without it: a **deleted** `check()` is red in CI today, because the roster lives inside
+  `check_build.mjs`, which `gate` already runs — and tonight's roster now declares **17**. Missing:
+  the teeth half — a gate whose `must()` was neutered still prints "All 17 passed", and the teeth
+  are the only half that proved tonight's label pin was broken.
+
+### P1 (new, groom 2026-10-29)
+- [ ] **A SECOND consecutive flat night: `events` took zero new rows again, and the `FRESH` verdict
+  has 3.9 hours of window left** (P2 · source:groom · no action, but read this before quoting the
+  word) — `events` holds **1,737 rows**, byte-identical to the 10-28 groom's figure, and the newest
+  row is still `8b033879`'s `session_end` at **2026-10-27 12:01:08** — **44.1h** old at tonight's
+  read. `silence_watch` says **FRESH (window 48h)**, which is true and nearly spent: unless
+  something arrives by ~2026-10-29 12:01 UTC the next groom reads `SILENT_BUT_HEALTHY` or
+  `SILENT_AND_UNHEALTHY` depending on the health probe. **That is still not a defect.** The 10-27
+  note called the first flat night, the 10-28 note recorded the +10 that broke it as two crawlers
+  29 seconds apart, and tonight is the first time this file can say those *same two* rows are still
+  the newest in the table. Seven devices in seven days, and the last three plausible humans
+  (`5212f2aa` 10-26, `635d3ea5` 10-24, `b67ce1b6` 10-24) left nothing to build from. **What would
+  make the next `SILENT` reading mean something:** the health probe, not the row count — that is
+  the whole reason the verdict has four words instead of two.
+- [ ] **The 10-28 note's falsifiable prediction came true, which is the first time a deploy claim in
+  this file was tested rather than asserted** (housekeeping) — it said tomorrow's watch should name
+  a new commit for `index.html` and that *"if it still says `dfff8ce`, that is a stall and not a
+  quiet night."* `deploy_watch` now reads **LIVE** with `index.html` serving **`be6cec2`
+  (2026-10-28)** — last night's URL-redaction build, so #201 shipped and nothing is
+  merged-but-unshipped going in. `CNAME` serves badgebudget.com; deploy ref fetched before the
+  verdict formed. **The publish-set name drifted AGAIN and the 10-28 note already explains why:**
+  `privacy.html` and `ops.html` print **`bfbd944` (2026-10-06)** tonight against `a64348b`
+  (2026-10-06) last night. Both are correct — those two files have not changed since, so their blob
+  matches at many commits on the ref and `gitHistory()` names whichever one its `git log` walk
+  reaches first. **So stop recording that figure as though it were stable.** The stable facts are
+  the verdict word and `index.html`'s commit; an unchanged file's "serving" commit is an artefact
+  of the walk, not a fact about the deploy. Tonight's build changes **no publish-set file**, so
+  tomorrow's watch should still name `be6cec2` for `index.html` — and that is the falsifiable
+  position again: a different name tomorrow with no merge between means something shipped that
+  nobody recorded.
+- [ ] **PR #191 still does not merge, the four conflicts are unchanged, and tonight's build
+  deliberately avoided deepening them** (P1 · needs the owner, and a rebase first) —
+  `git merge-tree --write-tree origin/claude/migrate-to-github-deploy-3F5RD
+  origin/claude/zealous-einstein-nkqn80` exits **1** with the same four:
+  `tests/smoke.mjs`, `BACKLOG.md`, `CLAUDE.md`, `docs/cos/now.md`. Head is **`c41b8cc`,
+  unchanged since 2026-10-20 03:25**; base has moved to `be6cec2` (**seven** commits). That command
+  is the standing rule the 10-28 note earned, and it was run before picking tonight's item rather
+  than after. **What tonight did with the answer:** the item picked pins its new assertions in
+  `scripts/test_check_build.mjs` — a file #191 does not touch — instead of appending a §55 to
+  `tests/smoke.mjs` at the same insertion point #191 already conflicts on. That was available only
+  because the change is gate-level and has no runtime behaviour to drive; it is **not** a new rule
+  that nightly builds avoid `tests/smoke.mjs` while a PR sits (the 10-28 note is right that never
+  adding an assertion is the worse habit). #191 remains the owner tier — it moves dollar figures
+  (`docs/leadership.md` → *Approval tiers*) — so it still needs **a yes or a no**, and a yes now
+  needs the branch brought up to base first.
+- [ ] **Courtney has not opened the app in 8.6 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392` (the
+  stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected**, not evidence either affordance is broken
+  or unfindable — nobody has been shown either one. `ics_import_done` is unchanged at **10 rows
+  ever** (last 2026-10-10), `ics_sync_result` at **42** and `ics_sync_done` at **27**, all three
+  identical to the last two grooms. The first honest reading is still her next foreground return,
+  and a **cold** load is still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — ELEVENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation.
+- [ ] **CABINET MISSED (tenth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **17.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, three days out. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's
+  age, and the dead-man's switch that does is the notify line, which nothing in the repo enforces.
+- [ ] **The gate meta-test is STILL not in CI — third night unchanged** (P2 · `harness:unscoped` ·
+  needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox** (the same block that made `f1aa7a6` an owner commit). One line after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~60s with tonight's five new breaks, no browser, no network).
+  Covered without it: a **deleted** `check()` is red in CI today, because the roster lives inside
+  `check_build.mjs`, which `gate` already runs. Missing: the teeth half — a gate whose `must()`
+  was neutered still prints "All 16 passed". P2 because a neutering is a less likely edit than a
+  deletion.
+- [ ] **Invariant 13's last two unchecked clauses are RLS and `events`, and neither has a
+  gate-shaped answer** (P2 · `harness:unscoped` · filed by tonight's build so the next run does not
+  reach for the obvious one) — with the parser clause gated tonight, what is left is (i)
+  `ical_subscriptions` being owner-only RLS with no `anon` grants and (ii) the URL never reaching
+  `events`. **(i) cannot be checked from this repo at all** — the policies live in production
+  Postgres, and `scripts/ops_gate_probe.sql` is the shape that would establish it (adversarial
+  probes, by hand, needs network), not a gate. **(ii) now has a runtime mechanism rather than a
+  gate** (`redactUrlPaths`, 2026-10-28, §54) and that is the right shape: the leak would arrive
+  through a `console.error` nobody has written yet, so a source scan would be chasing every future
+  line. **The trap to avoid:** adding a `check()` that greps `index.html` for a URL near a
+  `track(` call would look like coverage and establish nothing, and the gate's own header forbids
+  exactly that ("only what a machine can check honestly"). If anything is built here, build the
+  `anon`-grant probe into `ops_gate_probe.sql` and run it by hand.
+
+### P1 (new, groom 2026-10-28)
+- [ ] **PR #191 NO LONGER MERGES — eight nights of notes said it needs "a yes or a no", and that
+  was never the whole ask** (P1 · source:groom · needs the owner, and now needs a rebase first) —
+  `git merge-tree --write-tree origin/claude/migrate-to-github-deploy-3F5RD
+  origin/claude/zealous-einstein-nkqn80` exits **1** with **four** conflicts:
+  **`tests/smoke.mjs` (code)**, plus `BACKLOG.md`, `CLAUDE.md` and `docs/cos/now.md`. `index.html`,
+  `scripts/check_build.mjs`, `tests/equality.mjs`, `tests/core.test.mjs` and the core module all
+  auto-merge cleanly, so every prior night's *line-overlap* reading was correct as far as it went —
+  and that is exactly the trap. **Nobody ever ran the merge.** Five nights running checked hunk
+  line numbers inside the two files tonight's build happened to touch, concluded "git merges it",
+  and never asked the whole question, which is one command and answers all twelve files at once.
+  **Why `tests/smoke.mjs` conflicts, and why it was predictable:** #191 appends its section at base
+  line 6098, immediately before `await browser.close()`. That is the *same insertion point* §50
+  (10-21), §51 (10-22), §52 (10-24) and §53 (10-25) were all appended at, every one of them after
+  #191 opened on 10-20. Two sides inserting different text at one point is a textbook conflict, and
+  it has existed since 10-21 — seven nights, unnoticed, while the notes tracked only `index.html`
+  and `check_build.mjs`. **Tonight's build appends §54 at the same point**, which deepens that one
+  conflict by one hunk and creates no new class of problem: it is resolved the same way either way
+  (keep both insertions). The alternative — never adding an assertion while a PR sits — has been the
+  de facto rule for four nights and is worse.
+  **What the owner actually needs to do, corrected:** #191 is still the owner tier (it moves dollar
+  figures — `docs/leadership.md` → *Approval tiers*), so the yes/no still stands, but a yes now
+  requires the branch be brought up to base first. Head is **`c41b8cc`, unchanged since 2026-10-20
+  03:25**; base has moved from `a103682` to `960a3fd` (**six** commits). The three doc conflicts are
+  mechanical. **Standing rule this earns:** check mergeability with `git merge-tree --write-tree
+  <base-ref> <head-ref>` — not by reading `@@` hunk numbers in whichever files you were already
+  looking at. A clean per-file hunk read is not a clean merge, and the API's `mergeable_state` was
+  not returned for this PR when asked.
+- [ ] **The 10-27 note's "git answer that settles it" named a commit that is on NO REF — so the
+  publish-set name has now been wrong four nights running, including the correction** (housekeeping,
+  and the rule that actually settles it) — `deploy_watch` says **LIVE**: `index.html` serving
+  **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` serving **`a64348b` (2026-10-06)**,
+  `CNAME` serving badgebudget.com, deploy ref fetched before the verdict formed. The 10-25 note said
+  `f93c03e`, 10-26 "corrected" it to `328b031`, and 10-27 announced `41d2549` as the settled git
+  answer. **`41d2549` is an unreachable object**: `git cat-file -t` finds it, `git branch -a
+  --contains` returns **nothing**, and `git merge-base --is-ancestor 41d2549
+  origin/claude/migrate-to-github-deploy-3F5RD` **fails** — it is #149's pre-squash work-branch
+  commit, still in the object store from an old fetch and on no ref at all. `deploy_watch` *cannot*
+  print it, because `gitHistory()` runs `git log <DEPLOY_REF> -- <path>`, which lists only commits
+  that TOUCHED the path on that ref: for `privacy.html` that is exactly one commit, `a64348b`. So
+  **the watch has been right every night and deterministic all along** — the drift was never the
+  tool and never a transcription slip.
+  **The real rule, which the 10-27 note got half right:** `git log -1 -- <file>` resolves against
+  **HEAD**, and a nightly container's HEAD is whatever branch that run checked out, which is why the
+  same command produced three answers on three nights. Name the ref explicitly —
+  `git log -1 origin/claude/migrate-to-github-deploy-3F5RD -- privacy.html` — or just read
+  `deploy_watch`'s own line, which already did. Tonight both agree on `a64348b`. Nothing is
+  merged-but-unshipped going in. Tonight's build **does** change `index.html`, so tomorrow's watch
+  should name the new commit; if it still says `dfff8ce`, that is a stall and not a quiet night —
+  the first time in five nights this position is falsifiable.
+- [ ] **The flat night ended, and not one of the ten new rows is a person** (P2 · source:groom ·
+  no action) — `events` holds **1,737 rows**, up 10 from last night's 1,727, newest
+  **2026-10-27 12:01:08**; `silence_watch` says **FRESH** at 20.1h into its 48h window, so the
+  `SILENT` the 10-27 note braced for did not arrive. **But the +10 must not be read as recovery.**
+  All ten rows are two brand-new devices, `84ac63a5` and `8b033879`, both
+  `X11; Linux x86_64 … Chrome/154.0.0.0`, arriving **29 seconds apart**, both `app_open {fresh:true}`,
+  both landing-only (`ob_view {screen:'landing'}` → `ob_step {step:0}`, never past it), and
+  `8b033879`'s `session_end` reads `{secs:2, shifts:0, setup:false}`. That is the **desktop-Linux
+  burst shape, seventh sighting** (10-25's note has the prior six) — a crawler, not a visitor. The
+  honest summary of tonight: zero human loads, and `FRESH` is being carried entirely by bot traffic
+  for the fourth night in five. Do not build on it, and do not quote it as an activation signal —
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort
+  until the device classifier is fixed.
+- [ ] **Courtney has not opened the app in 7.6 days, so both sync opt-outs are still
+  field-unverified** (P2 · housekeeping) — her device `f184ffa5` last filed anything at
+  **2026-10-20 23:02:03** (21 `ics_sync_result` rows lifetime), which predates `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` is at **zero rows
+  from any device, ever**; `ics_autosync_off` at **zero**. Both remain **expected**, not evidence
+  either affordance is broken or unfindable — nobody has been shown either one. `ics_import_done` is
+  unchanged at **10 rows ever** (last 2026-10-10) and `ics_sync_result` at **42**. The first honest
+  reading is still her next foreground return, and a **cold** load is still the likelier door (2 of
+  her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged — TENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole `feedback`
+  table including `contact` and `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30**.
+  `client_error` holds **28 rows**, newest still the `auth check timed out` row on device `daf590c4`
+  from **2026-10-15 16:45**, which the 10-16 groom classified as **Invariant 1 working**.
+  `paystub_failed` has **still never fired for any reason**, and no new `pdf.worker` rows, so the
+  10-13 item's "read a second device" bar is **still not met**. Do not build a worker mitigation.
+  Worth one line against tonight's build: ten grooms of an unchanged `client_error` is also ten
+  grooms in which the new URL redaction would have changed nothing, which is the point — it is a
+  regression guard, not a fix for an observed leak.
+- [ ] **CABINET MISSED (ninth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (`8d21e19`, **16.0 days**) and still reads
+  *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. Two Sundays have passed un-run (2026-10-18, 2026-10-25); the next is
+  **2026-11-01**, four days out. The nightly cannot clear this — writing the brief is the Sunday
+  cabinet pass's job. `scripts/cos_check.mjs` passes (caps hold); it does not check the brief's age,
+  and the dead-man's switch that does is the notify line, which nothing enforces in the repo.
+- [ ] **The gate meta-test is STILL not in CI, unchanged from 10-27** (P2 · `harness:unscoped` ·
+  needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox** (the same block that made `f1aa7a6` an owner commit). One line after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~40s, no browser, no network). Covered without it: a **deleted**
+  `check()` is red in CI today, because the roster lives inside `check_build.mjs`, which `gate`
+  already runs. Missing: the teeth half — a gate whose `must()` was neutered still prints "All 16
+  passed". P2 because a neutering is a less likely edit than a deletion.
+
+### P1 (new, groom 2026-10-27)
+- [ ] **`events` took ZERO new rows in the last 24 hours — the first flat night in this file, and
+  the next run is the one that may see `SILENT`** (P2 · source:groom · no action, but read this
+  before quoting `FRESH`) — `events` holds **1,727 rows**, which is *exactly* last night's figure,
+  and the newest row is still `5212f2aa`'s `app_open` at **2026-10-26 00:22:12** — **31.7h** old at
+  tonight's read. `silence_watch` says **FRESH**, and that verdict is correct and nearly spent: its
+  window is 48h, so unless something arrives by ~2026-10-28 00:22 UTC the next groom reads
+  `SILENT_BUT_HEALTHY` or `SILENT_AND_UNHEALTHY` depending on the health probe. **That is not yet a
+  defect and must not be built against.** Quote it the way the last three nights did — `FRESH` means
+  "telemetry is alive and something arrived recently", never "a user came" — except that tonight,
+  unlike the last three, **it is only the first half**: nothing arrived in this run's 24 hours.
+  **One thing NOT to over-read:** a flat night across a 7-device trickle is ordinary, and the
+  landing-only/crawler cohort has supplied most of the recent motion. A second flat night is still
+  not a telemetry fault; the thing that would say so is `silence_watch`'s health probe going
+  unhealthy, which is what the verdict word exists to separate.
+- [ ] **The unexplained `app_open` with no `session_end` did NOT recur, so it stays unexplained and
+  unbuilt** (P3 · source:groom · no action) — the 10-26 groom flagged `5212f2aa`'s 00:22:12 load as
+  the *inverse* of the crawler shape (the ordinary `track()` insert landed, the keepalive beacon did
+  not) and said to **read a second occurrence before guessing at it**. Zero rows arrived since, so
+  there is no second occurrence and the bar is still unmet. Hold it; one row is one row.
+- [ ] **`deploy_watch` says LIVE — and the publish-set commit name has now been mis-transcribed
+  three nights running, so here is the git answer that settles it** (housekeeping) — `index.html`
+  serving **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` serving **`41d2549`
+  (2026-10-05)**, `CNAME` serving badgebudget.com, deploy ref fetched before the verdict was formed.
+  The 10-25 note recorded those two files at `f93c03e` and the 10-26 note "corrected" it to
+  `328b031`; **both are wrong**. `git log -1 -- privacy.html` and `git log -1 -- ops.html` both
+  return **`41d2549`** (#149, "the unload save rides keepalive"), which is what the watch printed
+  tonight. The watch has been right every night; the *notes* drifted, twice, including one that
+  announced itself as a fix. Lesson worth more than the figure: **cross-check a publish-set commit
+  with `git log -1 -- <file>` before writing it down** — the watch names the commit whose blob
+  matches, and an unchanged file's blob matches at many commits, so the name is only stable if you
+  resolve it the same way twice. Nothing is merged-but-unshipped going in.
+  Tonight's build changes **zero publish-set files**, so tomorrow's watch will still name `dfff8ce`
+  and that is not a stall — the fourth night running in that position.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited EIGHT
+  nights — and tonight's overlap was cleared from the diff AND from a roster count** (housekeeping)
+  — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head **`c41b8cc`, unchanged
+  since it opened**, base `a103682` (now five commits behind). Tonight's item edits
+  `scripts/check_build.mjs`, which #191 edits too, so this needed a real read for the second night
+  running. Two things were checked, not one. (a) **Line overlap: none.** #191's hunks there are
+  `@@ -220,20` and `@@ -249,7`, both inside `check(3)`; tonight's are `@@ -121,9` (the `[6]` stamp
+  count) and `@@ -338,6` (the new roster check before the report) — ~90 lines clear on both sides,
+  so git merges it. (b) **New and specific to tonight: does #191 move the check COUNT?** It does
+  not — its diff only extends `check(3)`'s `WAGE` list (`sanitizePayItems`, `payItemOccursOn`,
+  `payItemOccurrences`, `payItemCents`) and adds no `check()` call and removes none, so the roster's
+  hard-asserted 16 survives its merge untouched. **Whoever drives #191 should still know the new
+  rule:** adding a check to the gate now requires adding its label to the roster in
+  `check_build.mjs` *and* in `scripts/test_check_build.mjs`, in the same commit, or the gate goes
+  red. That is the intended friction. #191 is the owner tier (it moves dollar figures):
+  `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **The new meta-test is NOT in CI, and that needs one line only the owner can add** (P2 ·
+  `harness:unscoped` · needs the owner) — `scripts/test_check_build.mjs` runs locally and in the
+  nightly, but `.github/workflows/ci.yml`'s `gate` job does not call it, and **editing a workflow
+  file is blocked for agent sessions in this sandbox** (the same block that made `f1aa7a6` an owner
+  commit). The line is one step after the existing `Deploy-watch classifier suite`:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (~40s, no browser, no
+  network). **What is already covered without it:** the headline defect — a deleted `check()` —
+  turns CI red *today*, because the roster lives inside `check_build.mjs`, which the `gate` job
+  already runs. What the missing line costs is the teeth half: a gate whose `must()` was neutered
+  would still print "All 16 passed" and CI would not notice. That is a less likely edit than a
+  deletion, which is why this is P2 and not P1.
+- [ ] **Courtney still has not opened the app — SEVEN days — so both sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both stay **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10; `ics_sync_result` is at
+  **42**, also unchanged. The first honest reading is her next foreground return, and a **cold** load
+  is still the likelier door (2 of her last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now NINE grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) — the
+  whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom classified as **Invariant 1
+  working**. `paystub_failed` has **still never fired for any reason**, and no new `pdf.worker` rows,
+  so the 10-13 item's "read a second device" bar is **still not met**. Do not build a worker
+  mitigation.
+- [ ] **CABINET MISSED (eighth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (14.8 days) and still reads *"No cabinet has
+  run yet. The first runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**.
+  Two Sundays have now passed un-run (2026-10-18 and 2026-10-25); the next is **2026-11-01**, five
+  days out. The nightly cannot clear this — writing the brief is the Sunday cabinet pass's job.
+
+### P1 (new, groom 2026-10-26)
+- [x] ~~**Invariant 13 — the one invariant whose leak is silent *by construction* — had no
+  mechanical guard at all**~~ — **SHIPPED 2026-10-26**, tonight's build (see Done log).
+  (P1 · source:build · `harness:drivable` (script-level)) Picked because the Queue has held no
+  unblocked build item for three nights running (10-24, 10-25, tonight) and the 10-25 item named
+  exactly this source: *"expect to promote from CLAUDE.md's invariant notes."* Of the six invariants
+  the gate declares UNCHECKED, 13 is the one with machine-checkable clauses that nothing anywhere
+  was reading: 7 is blind by construction (the salt lives in deployed SQL), 10 is already enforced
+  by the pre-push hook, 11 and 12 are not mechanizable from inside the repo, and 3 is human-held on
+  purpose. `check(13, …)` now gates two of its five clauses — the feed field staying out of
+  `serializeState`, and `ical-proxy` logging nothing — and the roll-call keeps naming the other
+  three. Four deliberate breaks plus a false-positive control, all five measured.
+- [x] ~~**`check_build.mjs` has no meta-test, so deleting any of its fifteen checks is invisible to
+  everything in this repo**~~ — **SHIPPED 2026-10-27**, tonight's build (see Done log). The gate now
+  holds its own roster (check 16 of 16) so a deleted check turns CI red today, and
+  `scripts/test_check_build.mjs` (23) proves that roster has teeth with one deliberate break per
+  check. (P2 · source:build · `harness:drivable` (script-level) · the thing the
+  next run should read first) — found while adding check 13 and it generalises past it. The gate is
+  one of two required status checks and the only one the pre-push hook runs, yet nothing asserts
+  that it still contains the checks it claims: a deleted `check()` call makes the suite print
+  "All 14 mechanical checks passed" instead of 15 and nothing anywhere compares those numbers. Both
+  of the other script-level suites have one (`test_groom_seed.mjs` 33, `test_silence_watch.mjs` 39);
+  the gate itself does not. **This is Invariant 4's shape aimed at the gate** — a break with no
+  signal. Cheap version: a `scripts/test_check_build.mjs` that asserts the expected invariant
+  numbers are all present and that the suite FAILs on a known-bad fixture. **Not built tonight**
+  because it is the natural second half of tonight's item and shipping both in one push would make
+  the negative test of each less legible, not more; it is a one-run build and should be next.
+- [x] ~~**The Invariant 6 gate check has a THIRD hole, and it is one CLAUDE.md does not record**~~
+  — **CLOSED 2026-10-27**, folded into tonight's `check_build.mjs` work exactly as this item asked
+  (*"worth folding into whatever run next touches `check_build.mjs`; do not spend a push on it
+  alone"*). `[6]` now counts the **two** export stamps exactly rather than requiring one match, so
+  breaking either stamp alone fails the gate; both breaks plus the import-side one are pinned in
+  `scripts/test_check_build.mjs`. The date-dropping hole is **deliberately still open** — the gate
+  never claimed it and `tests/smoke.mjs` §52 catches it off the real bytes. Original note:
+  (P3 · source:build · no action needed — `tests/smoke.mjs` §52 already covers it behaviourally) —
+  CLAUDE.md's Invariant 6 trailer records two measured holes in the gate's `[6]` check: it passes on
+  a build whose export stamps `@badgebudget`, and on one whose UID drops its date. Re-measured
+  tonight against patched copies, both still hold — and so does a third: **breaking only ONE of the
+  two export sites passes all fourteen checks.** The regex `/'UID:scrubpay-'\s*\+/` needs one match,
+  and `index.html` has two stamps (4781 shifts, 4802 day events), so the time-off export could stop
+  being self-recognised and the gate would stay green. **Not a live exposure**: §52 (2026-10-24)
+  asserts all three exported UIDs off the real bytes against
+  `/^UID:scrubpay-\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+@scrubpay$/`, and its seed covers both stamping
+  branches, so CI catches all three breaks in the `smoke` job. What is left is the gate's label —
+  it says "both halves" and guards one — and defence in depth for the 12-second check a developer
+  actually runs. Worth folding into whatever run next touches `check_build.mjs`; do not spend a push
+  on it alone.
+- [ ] **A SECOND device returned after two dormant weeks, and this one has never saved a shift in
+  its life** (P2 · source:groom · the figure most likely to be misread, and not buildable) — device
+  **`5212f2aa`**, `iPhone OS 18_7 … Version/27.2` (an internally consistent real Safari UA; contrast
+  Playwright's `iPhone OS 15_0` + `Version/18.0` pair). **29 rows across three days.** It activated
+  on **2026-10-11 03:11** and went all the way through the seven-screen funnel in 39 seconds —
+  `ob_answer` persona `healthcare`, shift `12`, status `pt`, union `no`, pay `hourly`, then
+  `setup_completed {mode:'rough'}`, `sample_cleared`, `pattern_lab_opened`. It came back once on
+  10-12, then nothing for **13.6 days** until **2026-10-26 00:22:12**.
+  **The number that matters: `shifts:0` on every `session_end` it has ever filed.** A completed
+  onboarding, a cleared sample, the pattern lab opened — and not one `shift_saved`, ever. That is a
+  different shape from `635d3ea5`'s return on 10-24 (6 shifts, logged on day one, unchanged) and
+  from the landing-only cohort (which never reaches screen 1). It is the first device in this file
+  to **finish setup and then never use the app**, which is the funnel step no `ob_*` event covers.
+  **Three things not to over-read.** (1) One device is one sample and there is **no mitigation to
+  build** — "finished onboarding, logged nothing" could be a nurse who bounced or a developer
+  poking the funnel, and the device classifier is still the thing that would tell them apart.
+  (2) `fresh` is **absent** on the 10-26 load, so it read its own `anon_id` back after 13.6 days —
+  the second long-gap confirmation of `app_open {fresh}` (2026-10-12) in three nights. (3) Its
+  10-11 loads also carry `props: null` on `app_open` **because the flag did not exist yet** — it
+  shipped 2026-10-12. Do not read those nulls as the flag failing.
+  **One row shape worth recording, unexplained, one occurrence:** the 10-26 load fired `app_open`
+  and **no `session_end`**, 7.8h ago. That is the *inverse* of the crawler shape the 10-21 and
+  10-23 grooms named (lost every row but its beacon): here the ordinary `track()` insert landed and
+  the keepalive beacon did not. Not buildable on one row; read a second before guessing at it.
+- [ ] **Courtney still has not opened the app — SIX days — so both sync opt-outs remain
+  field-unverified, and that is the whole reason tonight had no app-side item** (P2 · housekeeping)
+  — her last event of any kind is still `ics_sync_result` at **2026-10-20 23:02:03**, which predates
+  `d438d58` (the banner switch) and `cd77392` (the stepper switch). `ics_autosync_pref` is at **zero
+  rows from any device, ever** and `ics_autosync_off` at **zero**, and both stay **expected**, not
+  evidence either affordance is broken or unfindable. `ics_import_done` is unchanged at **10 rows
+  ever**, last fired 2026-10-10; `ics_sync_result` is at 42. The first honest reading is her next
+  foreground return, and a **cold** load is still the likelier door (2 of her last 3), which the
+  stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now EIGHT grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**,
+  and no new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**.
+  Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH and a human carries it for the third night running** (P3 ·
+  source:groom · no action) — `events` holds **1,727 rows** (up **1** from 1,726), newest
+  `2026-10-26 00:22:12`, **7.8h** old and inside the 48h window. That one row is `5212f2aa`'s
+  return. Quote the verdict the same way either night: it means "telemetry is alive and something
+  arrived recently", never "a user came" — tonight it happens to be both.
+- [ ] **`deploy_watch` says LIVE — and last night's note named the wrong commit for two of the
+  three files** (housekeeping, so a future groom does not read tonight's figure as a deploy) —
+  `index.html` serving **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` serving
+  **`328b031` (2026-10-04)**, `CNAME` serving badgebudget.com, deploy ref fetched before the verdict
+  was formed. The 10-25 note recorded those two at `f93c03e`; checked tonight, **`f93c03e` (#147,
+  the palette pass) touches only `index.html` and `tests/smoke.mjs`** and has never touched
+  `privacy.html`, whose last-touching commit is `328b031` (#148). So the watch is correct and was
+  correct last night; the note was a transcription slip. Nothing is merged-but-unshipped going in.
+  Tonight's build is in the same position as the last two: **zero publish-set files change**, so
+  tomorrow's watch will still name `dfff8ce` and that is not a stall.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited SEVEN
+  nights — and tonight's build touches a file it also touches, so the overlap was read from the
+  diff** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head
+  **`c41b8cc`, unchanged since it opened**, base `a103682` (now four commits behind). Tonight's item
+  edits `scripts/check_build.mjs`, which **#191 edits too** — so unlike the last three nights this
+  needed a real check rather than a structural impossibility. Its two hunks there are
+  `@@ -220,20` and `@@ -249,7`, both inside `check(3, …)`; tonight's change is a new `check(13, …)`
+  block spliced in before the `cos` check (~line 256 in the base), one line after the `deploy` read
+  at ~33, and the header and roll-call comments at ~13 and ~268. Adjacent but not the same lines, so
+  git will merge it — whoever drives #191 updates its branch after this merge, as §50, §51, §52 and
+  §53 already required. The dated-rate telemetry item is blocked by #191 for a **seventh** night;
+  its three regions (`index.html`:~1813, ~7001, ~7052) are unchanged in #191's diff, so skipping it
+  stays correct and is not caution. #191 is the owner tier (it moves dollar figures):
+  `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **CABINET MISSED (seventh night) — and the Sunday the 10-25 groom was waiting for has now
+  passed without one** (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` was
+  last written **2026-10-12** (13.8 days) and still reads *"No cabinet has run yet. The first runs
+  Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**. The 10-25 note said
+  *"today IS the Sunday"*; it was, and no cabinet ran, so **two** Sundays have now passed
+  (2026-10-18 and 2026-10-25) and the next is **2026-11-01**. The nightly cannot clear this —
+  writing the brief is the Sunday cabinet pass's job.
+
+### P1 (new, groom 2026-10-25)
+- [x] ~~**The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**~~
+  — **SHIPPED 2026-10-25**, tonight's build (see Done log). The browser is now *discovered* rather
+  than pinned, in one place that all three Playwright entrypoints share, and the resolver is pinned
+  by `tests/smoke.mjs` §53 (9 assertions, nine deliberate breaks). Picked because it was the **one
+  unblocked item left in `## Queue`** after the 10-24 triage, and because the thing it fixes is the
+  first of the three ways the `harness` skill says this check lies: a missing binary takes the whole
+  suite out with Playwright's "just installed or updated" banner, which is a **harness error, not a
+  failed assertion** — the gate reads un-run rather than red, and stays that way until a human
+  notices and exports `PW_CHROMIUM` by hand. Tonight's run is the proof: the full suite ran with no
+  env override set, which was impossible last night.
+- [ ] **The Queue is empty of unblocked build items again, and tonight did NOT paper over it**
+  (P2 · housekeeping · the thing the next run should read first) — the 10-24 item said the queue
+  could not feed its own build step. Tonight it could: the Playwright-path P3 above was a queue
+  item, taken from the queue, and is now done. **That was the last one.** What remains is the same
+  three piles 10-24 named — groom notes that say *do not build on this evidence* (the crawler
+  cohort, `pdf.worker`, `PGRST303`, the DST item), items parked into `## Needs a dedicated session`
+  (the goal deadline, the device classifier), and the dated-rate telemetry item, which **PR #191 has
+  now blocked for a sixth night**. So tomorrow's run faces the 10-24 situation again and should
+  expect to promote from CLAUDE.md's invariant notes, or from the font/`opsz` question in the 10-23
+  band, rather than reach for a thin build.
+- [ ] **The dated-rate telemetry item is blocked by PR #191 for the SIXTH night — re-confirmed from
+  the PR head, not from last night's note** (P2 · source:groom · `harness:drivable`) — #191 is
+  still `claude/zealous-einstein-nkqn80` at head **`c41b8cc`, unchanged since it opened 2026-10-20
+  03:25**, so the overlap the 10-24 groom read off `git diff` (`@@ -1813,0`, `@@ -7001,0`,
+  `@@ -7052,0` — the *same three* regions the telemetry item needs) is unchanged too. Skipping it
+  stays correct and is not caution. It becomes buildable the run after #191 merges.
+- [ ] **A real device that went dormant for FOURTEEN days came back twice tonight and did nothing**
+  (P2 · source:groom · the figure most likely to be misread, and not buildable) — device
+  **`635d3ea5`**, `iPhone OS 18_7 … Version/27.0.1` (an internally consistent real Safari UA,
+  contrast Playwright's `iPhone OS 15_0` + `Version/18.0` pair). Its history is **18 rows across
+  exactly two days**: it activated on 2026-10-10 (`setup_completed {mode:'rough'}`, six
+  `shift_saved` in 50 seconds, `estimate_dismissed`, then `share_opened`), and then nothing for
+  fourteen days until **2026-10-24 21:55:47** and **22:31:51**.
+  **Both return loads fired `app_open {via:'qr'}` and `session_end` and nothing else** — `n:1`, so
+  exactly one `track()` row per load — at **121s** and **3s**, `setup:true`, `shifts:6`
+  **unchanged from 10-10**. No `shift_saved`, no sync, no onboarding, no share. So: an activated
+  user came back after two weeks, looked at a two-week-old estimate twice, and left.
+  **Three things not to over-read.** (1) Two loads and no complaint and no `client_error` is not a
+  defect report; there is nothing here to fix and **no mitigation to build**. (2) `fresh` is
+  **absent** on both return loads, so it read its own `anon_id` back after 14 days — this device's
+  storage is durable, which is the `app_open {fresh}` flag (2026-10-12) doing exactly its job and
+  is worth one line because it is the first *long-gap* confirmation of it. (3) `via:'qr'` is on the
+  **return** loads too, which means the QR URL is what is bookmarked or on the home screen, not
+  that it was re-scanned — do not read `via` as an acquisition channel per load.
+  Second real returning iPhone in two nights (`b67ce1b6` on 10-23, this one tonight) after the
+  10-22/10-23 crawler-only stretch.
+- [ ] **The desktop-Linux burst shape, sixth sighting — one second apart this time** (P3 ·
+  source:groom · `harness:unscoped`) — `f857b4f5` and `404f5b99` arrived at **2026-10-24 09:05:14
+  and 09:05:15**, both `X11; Linux x86_64` Chrome/**154**, each firing exactly
+  `app_open {fresh:true}` → `ob_view {landing}` → `ob_step {step:0}`. `f857b4f5` added
+  `session_end {secs:87, ob:0, shifts:0}`, which is longer than the 4–28s of the earlier bursts and
+  is the only thing in the pair that is not identical. The landing-only cohort goes **eighteen →
+  twenty**. Unchanged conclusion: **the device classifier is the fix and it is a dedicated-session
+  item**, so every landing-screen figure in this file stays an upper bound.
+- [ ] **Courtney still has not opened the app — FIVE days now — so both sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both are **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10. The first honest
+  reading is her next foreground return, and a **cold** load is still the likelier door (2 of her
+  last 3), which the stepper switch covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now seven grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**,
+  and no new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**.
+  Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH and a human carries it for the second night running** (P3 ·
+  source:groom · no action) — `events` holds **1,726 rows** (up **11** from 1,715), newest
+  `2026-10-24 22:31:53`, **9.5h** old and inside the 48h window. Of those 11 rows, **4** are
+  `635d3ea5`'s two return loads and **7** are the crawler pair plus last night's tail. Quote the
+  verdict the same way either night: it means "telemetry is alive and something arrived recently",
+  never "a user came" — tonight it happens to be both.
+- [ ] **`deploy_watch` says LIVE and nothing is merged-but-unshipped going in** (housekeeping) —
+  `index.html` serving **`dfff8ce` (2026-10-23)**, `privacy.html` and `ops.html` at `f93c03e`,
+  `CNAME` serving badgebudget.com, and the deploy ref was fetched before the verdict was formed.
+  `11f500e` (#197, last night) touched **only `tests/smoke.mjs`**, which is not in the publish set,
+  so `LIVE` naming an older `index.html` commit is correct — the same reading the 10-19 note
+  established. Tonight's build is in the same position: **zero publish-set files change**, so
+  tomorrow's watch will still name `dfff8ce` and that is not a stall.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited SIX
+  nights** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head
+  **`c41b8cc`, unchanged since it opened**. Tonight's work touches `tests/`, `.gitignore` and the
+  docs and **zero lines of `index.html`**, so there is no `index.html` conflict to rule out at all.
+  Its own smoke hunk is an append after §49 in its base; tonight's §53 is an append at the top of
+  `run()` plus the three launch-object lines, so whoever drives #191 updates its branch after this
+  merge — the same housekeeping §50, §51 and §52 already created. It is the owner tier (it moves
+  dollar figures): `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more
+  review.**
+- [ ] **CABINET MISSED (sixth night) — and today IS the Sunday** (P2 · needs the weekly routine,
+  not the nightly) — `docs/cos/brief.md` was last written **2026-10-12** (12.8 days) and still
+  reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line carries
+  **CABINET MISSED**. The 10-24 note said the next Sunday was "tomorrow"; it is **today,
+  2026-10-25**. The nightly cannot clear this — writing the brief is the Sunday cabinet pass's job —
+  so this is the one item in tonight's groom that is a request of a **routine**, not of the loop.
+
+### P1 (new, groom 2026-10-24)
+- [x] ~~**Invariant 6 had no round-trip test, and that is the one invariant whose blast radius is
+  measured in duplicated wage hours**~~ — **SHIPPED 2026-10-24**, tonight's build (see Done log).
+  (P1 · source:build · `harness:drivable`) Picked because **the Queue held no unblocked build item
+  at all** — see the next item — and because CLAUDE.md names this gap in Invariant 6's own Verify
+  trailer: *"`check_build.mjs` asserts both halves; there is no round-trip test — a known gap."*
+  The gap is the invariant: the gate asserts the two string **literals are present**, which a change
+  to the UID *shape* leaves untouched, and §26 only greps the source for the two controls. Nothing
+  in this repo had ever exported an .ics and fed it back. `tests/smoke.mjs` §52, 8 assertions, six
+  deliberate breaks.
+- [ ] **The Queue has no unblocked build item left, and that is a finding rather than a quiet
+  night** (P2 · housekeeping · the thing the next run should read first) — every `- [ ]` in
+  `## Queue` was triaged tonight and they fall into three piles: groom notes that say *do not build
+  on this evidence* (the crawler cohort, `pdf.worker`, `PGRST303`, the DST item), items parked into
+  `## Needs a dedicated session` (the goal deadline, the device classifier), and **one** real
+  candidate — the dated-rate telemetry below — which #191 has now blocked for five nights. So
+  tonight's item was promoted from CLAUDE.md's own invariant notes instead of from the queue. That
+  is a legitimate source and the loop should keep using it, but a queue that cannot feed its own
+  build step is worth saying out loud rather than papering over with a thin build.
+- [ ] **The dated-rate telemetry item is blocked by PR #191 for the FIFTH night, and the overlap was
+  re-read from the diff rather than trusted** (P2 · source:groom · `harness:drivable`) — the 10-20
+  item wants a `track()` on the add/edit/remove path for an effective-dated rate, because the fix
+  for the most wrong-money complaint in this file shipped 10-19 with **no telemetry at all**. Its
+  two regions are `index.html`:~1813 (the rate code) and ~7001–7052 (the Settings save path).
+  #191's `index.html` hunks, read tonight off `git diff` against the merge base: `@@ -1813,0`,
+  `@@ -7001,0` and `@@ -7052,0` — *the same three*, not merely nearby. Structurally confirmed, so
+  skipping it is correct and is not caution. It becomes buildable the run after #191 merges.
+- [ ] **A real returning iPhone came back tonight, which breaks a two-night run of nothing-but-
+  crawlers** (P2 · source:groom · the figure most likely to be misread) — `events` holds **1,715
+  rows** (up 4 from 1,711), newest `2026-10-24 02:51:31`. All four new rows are device
+  **`b67ce1b6`**, and it is not a bot: `Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 …) Version/26.6.1`
+  is an internally consistent real Safari UA (contrast Playwright's `iPhone OS 15_0` + `Version/18.0`
+  pair), it has **41 rows since 2026-10-10**, and tonight it filed `app_open {via:'qr'}` →
+  `share_opened {topbar}` → `share_sent {topbar}` → `session_end {secs:38, setup:true, shifts:14}`.
+  So: an activated non-Courtney user with 14 shifts logged, who came back and **shared the app**.
+  **Two things not to over-read.** (1) 38 seconds and no `shift_saved` — she opened it to share it,
+  not to use it. (2) This is the same device as the two `pdf.worker.min.js` failures on 10-13, and
+  it filed **no** new `client_error` and no `paystub_failed` tonight, so the 10-13 item's
+  "read a second device" bar is **still not met** and the worker remains unexplained. Do not build
+  a worker mitigation.
+- [ ] **Courtney still has not opened the app — four days now — so BOTH sync opt-outs remain
+  field-unverified** (P2 · housekeeping) — her last event of any kind is still `ics_sync_result` at
+  **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch) and `cd77392` (the stepper
+  switch). `ics_autosync_pref` is at **zero rows from any device, ever** and `ics_autosync_off` at
+  **zero**, and both are **expected**, not evidence either affordance is broken or unfindable.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10. The first honest
+  reading is her next foreground return, and a **cold** load is still the likelier door (2 of her
+  last 3), which the stepper switch now covers.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now six grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**.
+- [ ] **`silence_watch` says FRESH, and tonight — unlike the last two nights — a human is what
+  makes it true** (P3 · source:groom · no action) — newest event **5.4h** old, inside the 48h
+  window. The 10-22 and 10-23 grooms both had to note that `FRESH` was being carried entirely by
+  `360Spider`; tonight it is carried by `b67ce1b6`, a real returning iPhone. The verdict word did
+  not change, so quote it the same way either night: it means "telemetry is alive and something
+  arrived recently", never "a user came". What changed is what is underneath it.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited FIVE
+  nights** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head
+  `c41b8cc`, **unchanged since it opened**. Tonight's work is a pure append to `tests/smoke.mjs`
+  and **zero lines of `index.html`**, so there is no `index.html` conflict to rule out at all;
+  #191's own smoke hunk is an append at the same spot (after §49 in its base), which is the same
+  overlap §50 and §51 already created on 10-21 and 10-22 — whoever drives #191 updates its branch
+  after tonight's merge. It is the owner tier (it moves dollar figures): `docs/leadership.md` →
+  *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **CABINET MISSED (fifth night) — but the next Sunday is TOMORROW** (P2 · needs the weekly
+  routine, not the nightly) — `docs/cos/brief.md` was last written **2026-10-12** (11.8 days) and
+  still reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* This run's notify line
+  carries **CABINET MISSED**. Exactly one Sunday has passed without a cabinet (2026-10-18); the
+  next is **2026-10-25**, i.e. tomorrow. The nightly cannot clear this — writing the brief is the
+  Sunday cabinet pass's job.
+- [x] ~~**The hardcoded Playwright path in `tests/smoke.mjs` no longer exists in this container**~~
+  — **SHIPPED 2026-10-25** (see the 10-25 band above and the Done log). The last paragraph below is
+  what was built, including the globbing sketch, which turned out to be the right shape.
+  (P3 · source:build · `harness:drivable` (script-level) · no action needed tonight) — the default
+  is `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell` and this container
+  ships **1243**, at `chrome-headless-shell-linux64/chrome-headless-shell`. The fallback then
+  resolves playwright-core's own expected path (`chromium-1134`), which is absent too, so the suite
+  dies with Playwright's "just installed or updated" banner — a **harness error, not a failed
+  assertion**, which is the first of the three ways the harness skill says this check lies. Worked
+  around with the env override the suite already supports: `PW_CHROMIUM=…/chrome-headless-shell`.
+  **Deliberately not "fixed" by bumping the constant** — the next container will move again, and CI
+  is unaffected (GitHub's runners get their browser from `npx playwright install chromium`, which
+  playwright-core resolves itself). What would actually fix it is globbing
+  `/opt/pw-browsers/chromium*{,_headless_shell}*/**/{chrome,headless_shell,chrome-headless-shell}`
+  and taking the first hit; one run, drivable, but it changes the file every section depends on, so
+  it is a queue item rather than a thing to slip into a build about something else.
+
+### P1 (new, groom 2026-10-23)
+- [x] **LIVE CONFIRMED — `dfff8ce` is what badgebudget.com serves.** PR #195 squash-merged after
+  both required checks went green on head `54863f4` (gate 12s; smoke **09:03:01 → 09:12:10**, 9m09s,
+  which is squarely the normal 8–10 min band), and `node scripts/deploy_watch.mjs` then reported
+  **LIVE** with `index.html` at `dfff8ce (2026-10-23)`, `privacy.html`/`ops.html` current and
+  `CNAME` serving badgebudget.com. Nothing is merged-but-unshipped going into tomorrow.
+  **One process note worth keeping, because it is a reading error a future run can repeat.** Mid-run
+  this session twice concluded CI was "stuck ~30 minutes" and amended on that basis. It was not:
+  the elapsed time had been inferred from background `sleep`s that were launched and then polled
+  *past* without ever waiting for them, so almost no wall clock had actually passed. CI was healthy
+  throughout and the first commit (`ac922e2`) passed smoke 852/0 on its own. The amend it triggered
+  was independently correct (see the Done log — awaiting `document.fonts.ready` inside
+  `page.evaluate` returns a non-serializable `FontFaceSet`), so nothing bad shipped, but the
+  inference was wrong. **Read a job's own `started_at`/`completed_at`, never a felt duration**, and
+  note that the check-runs endpoint lags the jobs endpoint by minutes.
+- [x] ~~**The P3 wordmark-clipping item is NOT A DEFECT — every figure behind it was measured
+  without the webfont, and the fix it proposed would have been a regression**~~ — **CORRECTED
+  2026-10-23**, tonight's build. The 10-20 item said the wordmark is ellipsised on a first-gen
+  iPhone SE and proposed dropping `.brand` from 12px to 11px to buy back "10–12px". Measured
+  tonight with the real face settled and its identity read off the FontFaceSet: at 320pt the
+  wordmark needs **87px** of **109.2px** of room — **22px spare, not clipped.**
+  **The blocker the item rested on is false.** It said "this sandbox has no route to
+  fonts.googleapis.com and so cannot verify a CSS fix against the face that actually clips".
+  Probed directly: `fonts.googleapis.com` returns **200** on the stylesheet, `fonts.gstatic.com`
+  **200** on the Bricolage woff2, and in-browser `.brand` computes to `"Bricolage Grotesque"` with
+  the 700 and 800 weights at `status:'loaded'`. The sandbox renders the shipped face.
+  **So the figures invert.** The real face needs **87px**, not "more than 97.2"; pure
+  `sans-serif` needs **83px**, not 87; Plus Jakarta Sans needs 90px. The "97.2px the row can give
+  it" subtracted a flex gap that is not the constraint. And the item's own **107.4px** is
+  reproducible — it is what this row measures with the webfont stylesheet **deleted** (109.2 with
+  it), so the old note was measured in a no-webfont page and then reasoned about a face it had
+  never loaded. Dropping to 11px would have shaved 7px off a row with 22px of slack.
+- [ ] **The runner DOES get the webfont — its Bricolage is just 9px wider than ours, and that
+  killed my own hypothesis within the hour** (P2 · source:build · `harness:unscoped`) — the
+  10-20 note said the runner got real Bricolage and this sandbox did not; my first draft of this
+  item said the opposite, that the runner's red came from **missing** the webfont and falling
+  back to a wider system face (DejaVu Sans). **Read off CI and it is neither.** Run
+  `39925978022` on `ac922e2` (smoke 08:38:18→08:47:28, 852/0) printed the new face-resolution
+  fields from the runner itself:
+  · iPhone SE — `family="Bricolage Grotesque" faces=12 loaded=700/800 rendered=true real=96px
+    forcedFallback=83px room=109 spare=13`
+  · iPhone 13 — `real=109px forcedFallback=96px room=131 spare=22`
+  So the runner renders the **real webfont**, exactly as the 10-20 note said, and my
+  wider-system-face reading is **disproved**. What actually differs is the **file**: the same
+  family at the same 12px/800 needs **96px on the runner and 87px here**, while
+  `forcedFallback` agrees across both environments at **83px**. A difference that shows up only
+  in the webfont and not in the fallback is a difference in the font *binary*, not the stack —
+  Google Fonts serves per-user-agent builds and Bricolage Grotesque is a **variable** font with
+  an `opsz` axis, so the two environments plausibly get different advance widths. **Which file
+  each gets is unverified** and would be settled by diffing the two `fonts.gstatic.com` URLs.
+  **Two consequences, and the first is the one that matters.** (1) The P3 withdrawal above
+  **stands on both environments** — CI passed the new fit assertion, so the wordmark is unclipped
+  in the real face on the runner too, and the 11px change remains unnecessary. (2) But the
+  runner's margin is **13px, not 22px**, so quote 13 as the real headroom at 320pt and do not
+  let anyone spend it. `needs=96 has=96` there is exact.
+  **Still not fully explained:** the historical `clipped=true spare=10` at this same 12px. The
+  runner now reports `clipped=false spare=13`, so whatever produced the red is **no longer
+  reachable** — the most likely remaining cause is the font-load race itself, i.e. it measured
+  mid-load. Not worth chasing now that the race is gone; recorded so nobody re-derives it.
+  **The older open question is unchanged:** nobody has measured a real first-gen iPhone SE.
+- [ ] **One new event since the last groom, and it is a self-identifying crawler — the
+  landing-only cohort goes seventeen → eighteen** (P3 · source:groom · `harness:unscoped`) —
+  `events` holds **1,711 rows** (up **1** from 1,710), newest `2026-10-23 00:07:45`. That one row
+  is device `ea32d8b0`, a `session_end {n:3, secs:4, shifts:0, last:'ob_view'}` carrying
+  **`360Spider`** at the end of a Windows/Edge agent string — the fourth sighting of that
+  self-declared crawler. It is also the **second** instance of the shape the 10-21 groom named
+  ("lost every row but its beacon"): `n:3` says three events fired, and **only the keepalive
+  beacon landed** — the `track()` inserts are ordinary supabase-js calls and a tab that closes in
+  4 seconds cancels them, which is the same browsing-context-discarded failure the unload save was
+  moved to `keepalive` for on 2026-10-05. **Not worth building for**: the devices losing rows this
+  way are crawlers, and `scrubpay_events_pending` already re-sends deferred events on the next
+  load — which a crawler never makes.
+- [ ] **Courtney still has not opened the app, so BOTH sync opt-outs remain field-unverified —
+  and the 10-22 item predicted exactly this** (P2 · housekeeping, and the figure most likely to be
+  misread) — her last event of any kind is still `ics_sync_result` at **2026-10-20 23:02:03**,
+  which predates `d438d58` (the banner switch) and `cd77392` (the stepper switch). So
+  `ics_autosync_pref` at **zero rows from any device, ever** and `ics_autosync_off` at **zero** are
+  **expected**, not evidence either affordance is broken or unfindable. Three days of zero now.
+  The first honest reading is her next foreground return, and a **cold** load is still the more
+  likely door (2 of her last 3), which is the one the stepper switch now covers.
+  `ics_import_done` is unchanged at **10 rows ever**, last fired 2026-10-10.
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now five grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still
+  Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH, and for the second night running the word is carried entirely
+  by a crawler** (P3 · source:groom · no action) — newest event **8.3h** old, comfortably inside
+  the 48h window, so the script reports **FRESH** and that is exactly what it claims: telemetry is
+  alive and something arrived recently. What arrived was `360Spider`. **No human has loaded the
+  app in ~57 hours.** Quote the verdict, but never as "a user came".
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited
+  FOUR nights — checked before tonight's item was picked** (housekeeping) —
+  `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head `c41b8cc`, **unchanged
+  since it opened**. Its hunks were read from the actual diff again rather than trusted: its one
+  `tests/smoke.mjs` hunk is a pure append at **`@@ -6098,6 +6098,139 @@`**, and its 20
+  `index.html` hunks start at **1473**. Tonight's work is §30 at ~3340–3530 in `tests/smoke.mjs`
+  and a comment-only edit at `index.html`:588, so both conflicts are ruled out **structurally**,
+  not by proximity. It overlaps in `BACKLOG.md` as every nightly does — whoever drives #191 should
+  update its branch after tonight's merge. It is the owner tier (it moves dollar figures):
+  `docs/leadership.md` → *Approval tiers*, and **it needs a yes or a no, not more review.**
+- [ ] **CABINET MISSED (fourth night)** (P2 · needs the weekly routine, not the nightly) —
+  `docs/cos/brief.md` was last written **2026-10-12** (10.8 days) and still reads *"No cabinet has
+  run yet. The first runs Sunday 2026-10-18."* This run's notify line carries **CABINET MISSED**.
+  The 10-22 correction stands and is worth not re-breaking: exactly **one** Sunday has passed
+  without a cabinet (2026-10-18), and the next is **2026-10-25** — two days out. The nightly
+  cannot clear this; writing the brief is the Sunday cabinet pass's job.
+
+### P1 (new, groom 2026-10-22)
+- [x] ~~**The import stepper does not carry the manual-sync opt-out**~~ — **SHIPPED 2026-10-22**,
+  tonight's build. See the Done log and the 10-21 band below for the evidence that ordered it.
+  What is **still unverified** is the same thing the 10-21 band left unverified, and tonight's data
+  could not move it one inch: **whether she taps either copy of it.** The rows to look for are
+  `ics_autosync_pref {manual:true, src:'banner'}` and `{src:'stepper'}`, and the count is still
+  **zero from any device, ever**.
+- [ ] **Courtney has not opened the app since the banner switch shipped, so last night's build has
+  had no load to run on — do NOT read its zero as a failure** (P2 · source:groom · the one figure
+  most likely to be misread tomorrow) — her last event of any kind is still
+  `ics_sync_result` at **2026-10-20 23:02:03**, which is *before* `d438d58` (the 10-21 banner
+  switch) went live. So `ics_autosync_pref` at zero rows tonight is **expected**, not evidence the
+  banner affordance is broken or unfindable: nobody has seen it yet. Tonight's stepper build is in
+  the same position from tomorrow. The first honest reading of both is her next foreground return,
+  and a *cold* load is now the more likely door of the two (2 of her last 3). Whoever grooms next:
+  if the count is still zero and she *has* loaded, that is a real finding; if she has not loaded,
+  it is not a finding at all.
+- [ ] **Three more landing-only devices, all three crawler-shaped, and one says so in its own
+  user-agent** (P3 · source:groom · `harness:unscoped`) — the cohort goes **fourteen →
+  seventeen**, and tonight's three are the least ambiguous batch yet. `e5651376` (2026-10-21
+  18:03:54) carries **`360Spider`** at the end of a Windows/Edge agent string and filed a single
+  `ob_view {screen:'landing'}` — the same self-identifying crawler the 10-19 and 10-20 notes
+  already matched on. `50ef1e92` and `ac700bdc` arrived **13 seconds apart** (22:04:01 and
+  22:04:14), both desktop `X11; Linux x86_64` Chrome/**154**, each firing exactly
+  `app_open {fresh:true}` → `ob_view {landing}` → `ob_step {step:0}` and nothing after. That
+  burst-of-two-on-desktop-Linux shape is now the fourth sighting (10-18 trio, 10-20 pair, tonight's
+  pair). **Still not buildable** — the device classifier is the fix and it is a dedicated-session
+  item — but it is worth stating that of the 17-device landing-only cohort, the majority now carry
+  a positive crawler signal rather than merely an absent one, so the cohort is better read as
+  "bots found the domain" than as "humans bounced off the landing screen".
+- [ ] **`feedback` and `client_error` are both unchanged, and that is now four grooms running**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) —
+  the whole `feedback` table was selected including `contact` and `user_id`: **18 rows**, newest
+  still Courtney's **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the
+  `auth check timed out` row on device `daf590c4` from 2026-10-15 16:45 that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Do not build a worker mitigation.
+- [ ] **`silence_watch` says FRESH, and this time that word is doing less work than it looks**
+  (P3 · source:groom · no action) — `events` holds **1,710 rows** (up **7** from 1,703), newest
+  `2026-10-21 22:04:14`, **10.0h** old and comfortably inside the 48h window, so the script reports
+  **FRESH**. Quote the verdict, but read what is under it: **all 7 of those rows are the three
+  crawler-shaped devices above.** No human has loaded the app in ~33 hours. `FRESH` means
+  "telemetry is alive and something arrived recently", which is true and is all it claims — it has
+  never meant "a user came", and tonight is the cleanest example yet of the gap between the two.
+- [ ] **PR #191 is still the only open PR, is session 4 (dated pay items), and has now waited
+  THREE nights — checked before tonight's item was picked** (housekeeping) —
+  `claude/zealous-einstein-nkqn80`, opened 2026-10-20 03:25, ready, head `c41b8cc`, unchanged since
+  it opened. Its `index.html` hunks were read from the actual diff rather than trusted from the
+  10-21 note: the relevant pair are `@@ -5667,6` (covering old lines 5667–5672) and `@@ -6079,7`,
+  so **lines 5673–6078 are untouched by it**. Tonight's build is the mount at **5732** and
+  `IcsImportSheet` at **5887–6015**, both inside that clean span, plus CSS at ~187 which #191 does
+  not reach (its first hunk is 1473). So the conflict was ruled out structurally, not by proximity.
+  It overlaps in `BACKLOG.md` as every nightly does — whoever drives #191 should update its branch
+  after tonight's merge. It is the owner tier (it moves dollar figures): `docs/leadership.md` →
+  *Approval tiers*, and **it needs a yes or a no, not more review**.
+- [ ] **CABINET MISSED (third night) — and the Sunday count in the last two grooms was wrong**
+  (P2 · needs the weekly routine, not the nightly) — `docs/cos/brief.md` is **10.0 days** old
+  (last written 2026-10-12) and still reads *"No cabinet has run yet. The first runs Sunday
+  2026-10-18."* This run's notify line carries **CABINET MISSED** again. **The correction:** the
+  10-19 and 10-21 notes both call 2026-10-19 "the second Sunday to pass without one", but
+  **2026-10-19 was a Monday**. Exactly **one** Sunday has passed without a cabinet — 2026-10-18 —
+  and the next is **2026-10-25**. Fixed in `docs/cos/now.md` rather than left to compound; the
+  dead-man's switch itself (8 days) is unaffected and correctly fired. The nightly cannot clear
+  this — writing the brief is the Sunday cabinet pass's job.
+
+### P1 (new, groom 2026-10-21)
+- [x] ~~**Courtney came back after five days, synced three more times, imported nothing — and the
+  switch she asked for TWICE has never been turned on by anyone**~~ — **SHIPPED 2026-10-21** (see
+  Done log): the switch is now offered on the re-sync banner in the Settings switch's own words,
+  pinned by `tests/smoke.mjs` §50. (P1 · source:groom+feedback · `harness:drivable`) The evidence,
+  which is the first new field data in this file since 10-15: device `f184ffa5` filed **three loads
+  on 2026-10-20** — 20:15:30, 22:26:01 and 23:02:03 UTC — and every one is
+  `ics_sync_result {changes, nursegrid}` with `ics_sync_done {events:125}`. **Zero
+  `ics_import_done`**, which still last fired 2026-10-10 and still has **10 rows ever**. Her shift
+  count went 71 → 69 across the evening (she deleted two; two `shift_saved` and two `note_saved` at
+  20:18). The 23:02 load raised the quiet banner (`ics_resync_found`, 8 rows now).
+  **And the number that made this tonight's build: `ics_autosync_pref` has ZERO rows and
+  `ics_autosync_off` has ZERO rows.** The manual-sync switch went live 2026-10-16 in direct answer
+  to two written requests; she has now had three loads with it available and has never touched it.
+  The 10-17 note correctly said the first real reading would be her next load — this is that
+  reading, and it is **not** "the toggle is broken", it is **"she cannot find it"**. It sits at the
+  bottom of Settings inside the iCal section; the thing she is complaining about meets her on the
+  home screen. So the banner carries the setting now.
+  **What is still unverified:** whether she taps it. The first reading is her next foreground
+  return, and the row to look for is `ics_autosync_pref {manual:true, src:'banner'}`.
+- [x] ~~**The import stepper — the cold-load door, and 2 of her 3 loads last night — does NOT carry
+  the opt-out**~~ — **SHIPPED 2026-10-22** (see Done log): the confirm card carries the same
+  opt-out in the same words, `src:'stepper'`, and deliberately does **not** dismiss the sheet.
+  Pinned by `tests/smoke.mjs` §51. (P1 · source:groom · `harness:drivable`) — the 10-21 build put the switch on the
+  quiet re-sync banner, which fired on exactly **one** of her three 10-20 loads. The other two were
+  cold loads, and a cold load opens the import stepper by design (CLAUDE.md → Calendar sync), so on
+  two thirds of her visits she still meets a 125-event confirm sheet with no way to say "stop asking
+  me". Deliberately not built in the same push: `IcsImportSheet` is a separate component and the
+  switch would have to be threaded through its props, and a mis-tap on a sheet whose job is
+  confirming wage-affecting changes turns her sync off. It wants its own run and its own negative
+  tests. Region check for whoever takes it: the sheet is ~5853–6100 in `index.html`, which PR #191
+  does not touch.
+- [ ] **PR #191 is open, is session 4 (dated pay items), and waits for Pat — checked before
+  tonight's item was picked** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened 2026-10-20
+  03:25, ready, unchanged since. It touches `index.html` in 20 hunks: `sanitizeData` (1475–1693),
+  the `rateOn` region (1813), `App` (3715/3844/3863/3912/4170/4352/4354/4498/5669), `Breakdown`
+  (6125) and `Settings` (6983/7001/7052), plus the wage core. Tonight's build is at **5413** —
+  between #191's 4498 and 5669 hunks, with no overlap — and the CSS at 184. It is the owner tier
+  (it moves dollar figures): `docs/leadership.md` → *Approval tiers*. **It has now waited two
+  nights**; the raise PR waited three and cost her 42 deleted shifts in the meantime.
+- [ ] **CABINET MISSED (second night) — `docs/cos/brief.md` is 9.0 days old** (P2 · needs the
+  weekly routine, not the nightly) — last written 2026-10-12, still reads *"No cabinet has run yet.
+  The first runs Sunday 2026-10-18."* The switch crossed on 10-20 and this run's notify line carries
+  **CABINET MISSED** again. The nightly cannot clear it: writing the brief is the Sunday cabinet
+  pass's job. Yesterday (2026-10-19) was the second Sunday to pass without one.
+- [ ] **`silence_watch` is back to FRESH and that is because a real person came, not because the
+  script changed its mind** (P3 · source:groom · no action) — `events` holds **1,703 rows** (up 22
+  from three nights of 1,681), newest `2026-10-20 23:02:03`, **9.1h** old and inside the 48h window.
+  Last night's `SILENT_BUT_HEALTHY` was the same script reporting a 53.9h gap honestly; tonight's
+  `FRESH` is Courtney's three loads. `deploy_watch.mjs` says **LIVE**, `index.html` serving
+  `a103682` (2026-10-19) with `privacy.html`, `ops.html` and `CNAME` all `ok` — nothing is
+  merged-but-unshipped going in. Note `e8daa40` (#192, 2026-10-20) touches no publish-set file, so
+  `LIVE` naming an older `index.html` commit is correct, per the 10-19 note.
+- [ ] **Three more landing-only devices, and one of them lost every row but its beacon** (P2 ·
+  source:groom · `harness:unscoped`) — the cohort goes **eleven → fourteen**. `01340852` and
+  `4ba96588` arrived 22 seconds apart on 2026-10-20 11:37:45 and 11:38:07, both desktop
+  `X11; Linux x86_64` Chrome, both `app_open {fresh:true}` → `ob_view {screen:'landing'}` →
+  `ob_step {step:0}` and nothing after — the same burst shape as the 10-18 trio, which is still the
+  least human pattern in the table. The third, `aab30e25` (2026-10-20 22:52, **Windows**), is
+  stranger and worth its own line: **its only row is `session_end {n:4, ob:0, secs:6, shifts:0}`**.
+  `n:4` says the load fired four events; three of them never arrived. `session_end` rides
+  `beaconInsert()` (keepalive) while `track()` does not, so the shape is consistent with a load
+  discarded before its ordinary inserts flushed — which is exactly what `scrubpay_events_pending`
+  exists for, and it only replays on a **next** load that never came. **Not buildable on one row**;
+  recorded because it means a `track()`-only funnel undercounts short visits, which makes every
+  landing-screen figure in this file an upper bound for a *second* reason on top of the classifier.
+- [ ] **`feedback` is unchanged at Courtney's 2026-10-15 12:30 row, and `client_error` at her
+  2026-10-15 16:45 row — re-read at the END of the run with every column** (housekeeping, as the
+  10-14 item requires) — the whole `feedback` table was selected including `contact` and `user_id`:
+  six rows from her on 10-14, one on 10-15, nothing after. `client_error` holds **28 rows**, newest
+  still the `auth check timed out` row on `daf590c4` that the 10-16 groom classified as **Invariant
+  1 working**. So three loads last night produced **no new errors at all** — the first positive
+  reading of the 10-19/10-20 code on a real phone. No new `pdf.worker` rows, so the 10-13 item's
+  "read a second device" bar is **still not met**, and `paystub_failed` has **still never fired for
+  any reason**. Do not build a worker mitigation.
+- [ ] **The effective-dated-rate fix went live on 10-19 and nothing in `events` can tell you
+  whether she used it** (P2 · source:groom · `harness:drivable`) — she had three loads on the new
+  build and the table holds no row for adding, editing or removing a dated rate: the feature ships
+  with **no telemetry**, so "did the fix for the most wrong-money complaint in this file actually
+  get used" is unanswerable from here. This is the same shape as the `ics_sync_result` gap (10-02)
+  and the `paystub_failed {reason:'empty'}` gap (10-17): a branch that renders and counts nothing.
+  **Deliberately not built tonight** — the save path is in `Settings` at ~7001–7052 and the rate
+  code at ~1813, both of which PR #191 edits, so a `track()` call there is exactly the conflict the
+  loop is told to skip. Take it the run after #191 merges. A `track()` beside a wage-core caller is
+  not wage core (it moves no figure), but it must stay **outside** any `@core:begin` region — the
+  extractor refuses a region that references anything the core cannot see.
+
+### P2 (new, groom 2026-10-20)
+- [ ] **The raise is SHIPPED and LIVE — `a103682` is what badgebudget.com serves tonight**
+  (housekeeping, and the close of the P1 that has led this file since 2026-10-14) — Pat approved
+  the effective-dated-rates PR (#187) and it merged; `node scripts/deploy_watch.mjs` places
+  `index.html` at **`a103682` (2026-10-19)** with `privacy.html`, `ops.html` and `CNAME` all `ok`,
+  so nothing is merged-but-unshipped going into tonight. Decision **D2** in `docs/cos/now.md`
+  records the approval in his words. **What is NOT verified is the only thing that matters next:**
+  Courtney has not opened the app since 2026-10-15 12:30, so the fix for the complaint she filed on
+  10-14 has had no load to run on. Its first real reading is her next sync — and the figure to
+  watch is her shift count, which fell 109 → 67 when deleting was her only workaround.
+- [ ] **CABINET MISSED — `docs/cos/brief.md` is 8.0 days old and the dead-man's switch fired
+  tonight** (P2 · needs the weekly routine, not the nightly) — the brief was last written
+  2026-10-12 and still reads *"No cabinet has run yet. The first runs Sunday 2026-10-18."* The
+  10-18 and 10-19 grooms both predicted the switch would cross on **2026-10-20**; it has. Per
+  CLAUDE.md → *Autonomous nightly loop* step 1 this run's notify line carries **CABINET MISSED**,
+  and every nightly from here does until a cabinet runs. The nightly cannot clear it — writing the
+  brief is the Sunday cabinet pass's job, not this loop's.
+- [ ] **Three consecutive grooms have now read a byte-identical `events` table, and tonight the
+  verdict word CHANGED without anything breaking** (P3 · source:groom · no action, and the one
+  figure not to misread) — `events` holds **1,681 rows**, newest `2026-10-18 02:09:42`, identical
+  to the 10-18 and 10-19 grooms. `node scripts/silence_watch.mjs` now says **SILENT_BUT_HEALTHY**
+  rather than the `FRESH` of the last two nights: the newest event is **53.9h** old and has fallen
+  out of its 48h window, so the script can no longer say "someone came recently" — but it still
+  establishes the other side (the site serves 553,205 characters with 5 SRI scripts and the
+  `events` insert policy is intact). **That is the script working, not a regression**: the quiet is
+  "nobody came", and `SILENT_BUT_HEALTHY` exits zero by design. The landing-only cohort is
+  unchanged at **eleven** — the last 96h hold only the 13 crawler-shaped rows the 10-18 note
+  already named (`d712f5d0`, `6325f4ae`, `829e98f1` in a 52-second burst on desktop Linux Chrome,
+  and `279640eb` with `360Spider` in its agent).
+- [ ] **`feedback` is unchanged at Courtney's 2026-10-15 12:30 row, and `client_error` at her
+  2026-10-15 16:45 row** (housekeeping, re-read at the END of the run with every column as the
+  10-14 item requires) — six reports from her on 10-14 and one on 10-15, nothing after. The newest
+  `client_error` is still the `auth check timed out` row on `daf590c4` that the 10-16 groom
+  classified as **Invariant 1 working**. No new `pdf.worker` rows, so the 10-13 item's "read a
+  second device" bar is **still not met**, and `paystub_failed` has **still never fired for any
+  reason**. Nothing new broke; do not build a worker mitigation.
+- [x] ~~**The wordmark is ellipsised on a real first-gen iPhone SE, and tonight's test fix
+  deliberately did NOT change the CSS to hide that**~~ — **WITHDRAWN 2026-10-23: the premise is
+  false and so is every figure in it.** Measured with the webfont settled, the wordmark needs 87px
+  of 109.2px at 320pt — 22px spare, not clipped — and this item's own 107.4px turns out to be the
+  **no-webfont** measurement of the same row. The "figures are measured rather than guessed" claim
+  below is the part that did not hold: they were measured on a page that had not loaded the face
+  they were reasoning about. See the 10-23 band at the top of this file for the probe, the
+  corrected numbers, and the one question that survives (what CI's face actually was). **Do not
+  build the 11px fix** — it would shave 7px off a row with 22px of slack. Original note follows,
+  struck but unedited, because the lesson is the reasoning and not the numbers.
+  (P3 · source:groom · `harness:drivable`, and
+  the figures are measured rather than guessed) — the 320pt row gives the wordmark **107.4px**, of
+  which **97.2px** can hold content once the 10px flex gap is paid; the fallback face needs
+  **87px** and the real Bricolage face needs **more than 97.2px**. So it clips on the device by
+  about **10–12px**. Two honest ways to buy that back, neither taken tonight because this sandbox
+  has no route to fonts.googleapis.com and so **cannot verify a CSS fix against the face that
+  actually clips**: drop `.brand` from 12px to 11px inside the `≤360px` block (~7px), or spend
+  some of the 10px container padding. Whoever takes it should hold §30's other pins — the avatar
+  stays 36px, every control keeps a 44pt tap target, the page does not scroll sideways — and must
+  be able to render the real face, or the fix is the same blind guess the old assertion was.
+  **It is cosmetic**: the brand clipping *is* the backstop that keeps the page from scrolling
+  sideways (§30's 2.2x check), so nothing is broken, only abbreviated.
+- [ ] **PR #191 is open, is session 4 (dated pay items), and waits for Pat — checked before
+  tonight's item was picked** (housekeeping) — `claude/zealous-einstein-nkqn80`, opened
+  2026-10-20 03:25, ready. It changes `index.html` in **20 scattered hunks** from ~line 1473 to
+  ~7050 plus the wage core, `tests/core.test.mjs`, `tests/equality.mjs` and `scripts/check_build.mjs`,
+  so it is the owner tier (it moves dollar figures). Tonight's build touched **no `index.html`
+  region at all** — `tests/smoke.mjs` only — and its one smoke hunk is at ~line 6098 while §30 sits
+  at ~3300, so the code conflict is structurally impossible. **It does overlap in `BACKLOG.md`,
+  which every nightly must write**: whoever drives #191 should expect to update its branch after
+  tonight's merge. That is the cheap half of the overlap and the reason the index.html half was
+  checked first.
+
 ### P2 (new, groom 2026-10-19)
 - [ ] **Tonight's live confirmation, and why `index.html: serving 6000f72` is NOT `BEHIND`**
   (housekeeping, so a future groom does not read it as a stall) — #189 squash-merged as **`f9a368a`**
@@ -679,7 +1988,15 @@ positioning (sync, paycheck) are failing her in them.
   abandoned** so the work can be rebuilt on a fresh branch. Until one of those happens the loop has no
   P1 to take, and a nightly with no P1 ships polish.
   Original scoping kept below:
-- [ ] **Quiet the swap-board CTAs (positioning, 2026-09-19)** — `harness:drivable` — the board becomes
+- [x] ~~**Quiet the swap-board CTAs (positioning, 2026-09-19)**~~ — **SHIPPED 2026-09-27 in PR
+  #118** (commit `6ea400e`); this checkbox was simply never ticked, and it has been read as open
+  work by five grooms since. Verified in the tree 2026-10-23 rather than taken on trust: the
+  dashboard `.whatif mob-only` card is **gone** (the comment at `index.html`:5561 records why and
+  notes the board stays reachable from Settings), the Settings card survives as the durable route
+  in, and the word "anonymously" is absent from both subtitles — `index.html`:5657 now reads
+  *"Trade shifts with your unit"*, with the comment at 5654 citing `security-00` as the reason the
+  claim may not come back. `swapPendingCount` and its badge are untouched at every remaining site,
+  as the note required. Original note follows. — `harness:drivable` — the board becomes
   an Easter egg: fully functional for anyone holding an invite link, absent from the surfaces that
   compete with sync + paycheck. Four entry points, copy/JSX only, no wage-core, no invariant:
   (1) the dashboard `.whatif mob-only` card at ~index.html:4077-4080 — **remove it**, it sits on the
@@ -1184,8 +2501,28 @@ positioning (sync, paycheck) are failing her in them.
   is that the verdict word is what gets read.
   Drivable at script level: its 55-assertion classifier suite already stubs the git side, so a
   case for "local clone behind origin" is an addition to that suite, not a live probe.
-- [ ] **`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
-  and cost this run one CI cycle** — `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
+- [x] ~~**`tests/smoke.mjs` §30's wordmark-clip assertion is non-deterministic on the GitHub runner
+  and cost this run one CI cycle**~~ — **SHIPPED 2026-10-20** (see Done log), as fix (b): the
+  cosmetic claim is gone and a font-independent one took its place. **The three red runs were
+  RIGHT and the green twins were the lie** — measured tonight in the sandbox, the wordmark needs
+  **87px** of the **97.2px** the 320pt row can give it (11.7% of face-width headroom) and the
+  runner's real Bricolage face needs more than 97.2px, which is exactly what `spare=10`
+  (= the flex gap, i.e. the brand maxed out and still overflowing) was reporting. So the wordmark
+  **is** ellipsised on a real first-gen iPhone SE and the assertion pinned a falsehood;
+  `document.fonts.ready` (fix (a)) would have turned a flake into a steady red, which is why the
+  note below says it is not enough. What replaced it is `the wordmark keeps its share of the row`
+  — the room between the brand's left edge and `.top-actions` (107.4px at 320pt, 131.2px at 390pt),
+  which is set by the controls, the gaps and the padding and **not by the face**, so it reads the
+  same in both environments and still catches what the old assertion was really guarding: a fourth
+  control squeezing the wordmark to a stub (~46px, four times the floor's margin). `clipped` and
+  `spare` are still printed, so the ambient face stays on the record with no verdict resting on it.
+  Negative-tested by a 20px `padding-left` on `.top-actions` in a `git archive` copy: both new
+  assertions FAIL (40 passed / 2 failed, nothing aborted) and the SE row reproduced the runner's
+  exact `clipped=true spare=10` signature. Assertion count unchanged at **817** — two in, two out.
+  §30's own header claim that "the fallback face is wider than Bricolage, so a pass here is
+  conservative" was **false in that direction** and is corrected in the file. Original note
+  follows.
+  `harness:drivable`. `top bar [iPhone SE]: the wordmark is not
   ellipsised at this width` failed once and passed once **on the same commit** (`e738670`, runs
   38224339630 and 38224378362), reporting `clipped=true spare=10`.
   **Second instance, 2026-10-14, and it is cleaner evidence than the first.** PR #181 (a
@@ -2544,6 +3881,17 @@ here so the loop's queue contains only work it can actually finish; pick these u
   progress, and the check-run API can report `in_progress` for a while after a job has really
   finished, so neither is evidence of a hang on its own.
 
+- **The hardcoded Playwright binary path in `tests/smoke.mjs` drifts with the container
+  (seen 2026-10-24).** The default is `chromium_headless_shell-1194/chrome-linux/headless_shell`;
+  that night's container shipped **1243**, at `chrome-headless-shell-linux64/chrome-headless-shell`.
+  The fallback then resolves playwright-core's own expected path (`chromium-1134`), which is absent
+  too, so the suite dies with Playwright's *"just installed or updated"* banner — a **harness
+  error, not a failed assertion**, so a run that hits it has proved nothing. Do not `npx playwright
+  install`; the browser is already there. Find it and pass it:
+  `PW_CHROMIUM=$(ls -d /opt/pw-browsers/chromium*headless_shell*/*/chrome-headless-shell 2>/dev/null | head -1)`
+  (or `.../headless_shell` on older layouts), which is an override the suite already supports. CI is
+  unaffected — GitHub's runners get their browser from `npx playwright install chromium`.
+
 <!-- GROOM_SEED:BEGIN (managed by scripts/groom_seed.mjs — do not edit by hand) -->
 ### Reddit-seeded candidates (auto — review before building)
 _Generated by `scripts/groom_seed.mjs` from `docs/reddit_seed.json`. Deduped against CLAUDE.md + BACKLOG.md. Promote an item into the priority queues above (and delete it here) once a human/groom confirms it; these still pass the normal safety gate before any deploy._
@@ -2569,6 +3917,582 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-01 — **The test rig holds the five CDN pins a second time, and nothing had ever compared
+  the two copies.** `tests/harness.mjs` carries `PKGS` (what `npm install` fetches into the scratch
+  tree) and `MAP` (CDN url → path inside `node_modules`, the rewrite that lets the scratch copy load
+  the pinned libraries at all, because the sandbox blocks unpkg/cdnjs/jsdelivr). Its own header
+  states the rule — *"Versions here are pinned to exactly what index.html loads. If you bump a CDN
+  pin, bump it here too or the harness stops testing the code that ships"* — and, like the
+  parser-title promise check 13 took over on 10-29 and the `isEvalSupported` promise check 2 took
+  over on 10-31, **it was a comment held by nobody**. Nothing in this repo read `PKGS` at all
+  (`grep -rn PKGS scripts/ tests/` → one file, itself).
+  **`check('harness', 'Harness tests the pins the app ships')` — the nineteenth check**, four
+  assertion groups, **five deliberate breaks**:
+  · **the quiet one, and the reason this is worth a gate.** A `MAP` target carries **no version**
+    (`react/umd/react.production.min.js`, `pdfjs-dist/build/pdf.min.js`) — what sits at that path
+    is whatever `PKGS` installed. So the version in the url and the version on disk can disagree
+    with **nothing observable changing**: the scratch copy serves a different build than production
+    ships and all **883** assertions pass against code the app does not run. The check reads the
+    package name off the **local** path (the cdnjs url does not carry it — `pdf.js` is published to
+    npm as `pdfjs-dist`) and the version off the **url**, and requires them equal.
+  · **the forward direction**, every `MAP` source url really present in `index.html`. Already
+    enforced at runtime, and **that is the defect, not the cover**: `buildScratch` throws `CDN pin
+    moved, harness is stale`, which runs before `chromium.launch`, so the suite **aborts** — and
+    an aborted run is not a failed assertion, so the gate reads **un-run rather than red**. That is
+    `tests/smoke.mjs` §53's lesson (2026-10-25, the pinned browser path) arriving one layer down.
+  · **`ops.html`'s supabase pin**, because `buildOpsScratch` finds its row by substring and throws
+    otherwise, which takes the whole ops-console gate assertion set with it.
+  · **no remote script escapes the rewrite** — and this is the one that reaches the network. A
+    **sixth** CDN `<script>` added to `index.html` and not to `MAP` keeps its real url in the
+    scratch copy and loses its `integrity` attribute to the blanket strip, so on any runner with an
+    open network the rig fetches a third-party script at test time. `buildScratch` counts the
+    rewrites it **made** (`n < MAP.length`), which cannot see a tag that was never in the table.
+    Sibling of `check('events', 'Harness cannot write to production')`, whose incident — **291**
+    real `app_open` rows inserted into production `events` by CI, first seen 2026-09-07 — is the
+    measured cost of a harness quietly reaching the internet.
+  · **anti-omission**, the rule checks 2 and 13 both take: a renamed or deleted `PKGS`/`MAP` must
+    **fail** rather than turn the check into a pass by leaving nothing to compare.
+  **One claim from the 10-31 note is corrected rather than built on.** It said a bumped pin leaves
+  the scratch copy on the real CDN url, silently testing a different pdf.js *and* reaching the
+  internet. The first half is wrong (`buildScratch` throws) and the second half is right about the
+  mechanism but wrong about which edit triggers it (a *new sixth* script, not a *bumped* one).
+  Written down because a gate built on a diagnosis nobody re-derived is how three doc claims died
+  in the 2026-09-13 council run.
+  **Falsifiable in both directions, measured.** The five breaks each fail `[harness]` on a
+  `.gate-scratch/` copy (**46 passed / 0 failed**); neutering the check to an early `return` turns
+  **all five red** (41 passed / 5 failed). The tag is unique, so unlike the fourteen `[2]` breaks
+  these carry no label pin — the 10-30 convention says the pin is for shared tags only.
+  Gate **19** checks, meta-test **41 → 46**. `scripts/check_build.mjs`,
+  `scripts/test_check_build.mjs`, CLAUDE.md. **No publish-set file touched**, so nothing new is
+  live and `deploy_watch` should still name `be6cec2` tomorrow.
+- 2026-10-31 — **The app loads a SIXTH script, from its own origin, and three separate mechanisms
+  each miss it for a different reason.** Invariant 2 reads *"SRI on all 5 CDN scripts, exact
+  pinned versions"*. `pdf.worker.min.js` is the sixth: pdf.js fetches it at runtime from this
+  origin, and
+  **(a)** SRI cannot cover it — a worker script takes no `integrity` attribute, and it is not a
+  `<script>` tag at all, it is a string assigned to `GlobalWorkerOptions.workerSrc`;
+  **(b)** last night's CSP check cannot see it — that check walks *tags*, and this is a URL in
+  JavaScript; **(c)** Invariant 8's publish-set check names the *file*. So the gate shipped a 1MB
+  blob to a public URL that **nothing in this repo had ever read a byte of**, and the one property
+  that makes it work — that it is the same pdf.js build as the CDN pin — was written down nowhere
+  and checked by nothing.
+  **`check(2, 'pdf.js worker matches its pinned library')` — the eighteenth check**, eight
+  assertions, **one deliberate break per `must()`**:
+  · the pinned version is **established**, not merely looked for — exactly one pdf.js CDN script,
+    so a second tag makes the comparison ambiguous and fails (and leaves SRI's count at 5);
+  · the worker file still carries pdf.js's **own** API/worker version guard, which proves the blob
+    is a worker build and not truncated, empty or replaced;
+  · the version inside it **equals** the pinned one. pdf.js compares these itself and throws
+    `The API version "X" does not match the Worker version "Y"`, so a bumped CDN pin with the old
+    worker left beside it kills the paystub reader outright;
+  · `workerSrc` is **found** (anti-omission, the rule check 13 takes for a renamed
+    `serializeState`), is not a remote URL, and names a file **in the publish set**;
+  · `getDocument` is **found** and is still passed `isEvalSupported:false`.
+  **The two that matter most are not the version pin.**
+  **`isEvalSupported:false` is a security control held by a comment.** It is the documented
+  CVE-2024-4367 mitigation for pdf.js < 4.2.0 and **3.11.174 is pinned**. The app's `<meta>` CSP
+  carries `'unsafe-eval'` — Babel standalone requires it — so that one token is the *whole*
+  mitigation, in a path whose input is a PDF **she picks**: the only input this app takes from
+  outside itself, parsed in an origin holding `user_data` and the auth session. `index.html`:~5200
+  promised it in prose ("the documented CVE-2024-4367 hardening") and nothing enforced it, which is
+  the 10-29 parser clause's shape exactly — a load-bearing sentence with no machine behind it.
+  **And the `workerSrc` clause catches an edit that looks like a fix.** The CSP declares no
+  `worker-src`, so the browser falls back to `default-src 'self'`. A real iPhone failed to load
+  this worker three times across two loads on 2026-10-13 (device `b67ce1b6`, cause still UNKNOWN,
+  `tests/smoke.mjs` §43), and the obvious response — serve it from cdnjs, which `script-src`
+  already permits — produces a worker the browser **refuses**, passing every other check in the
+  gate while killing the feature. That is now one of the eight breaks, as is the quieter version
+  of it: a same-origin path like `vendor/pdf.worker.min.js`, which works from a local directory
+  and 404s in production because `deploy.yml` copies exactly five files.
+  **Why a gate and not telemetry.** `paystub_failed` has **never fired for any reason**, thirteen
+  grooms in. Every failure above is silent: a version mismatch throws inside pdf.js, a blocked or
+  404'd worker rejects `getDocument()`, and `isEvalSupported` has no failure mode at all until it
+  is exploited. This is Invariant 1's `Detect: none` shape in a second place.
+  **Negative-tested in both directions.** 33 → **41** in `scripts/test_check_build.mjs`: eight
+  breaks, each measured to exit non-zero and name `✗ [2] pdf.js worker matches its pinned
+  library`. **Three** checks share the `[2]` tag now, so all eight pin the LABEL as well — and
+  that pin was itself falsified: pointing `PDFW` at the SRI label turns all eight red
+  (**33 passed / 8 failed**, measured), the same control the CSP breaks got on 10-30.
+  `pdf.worker.min.js` joins the meta-test's `NEEDED` list, because the gate now reads it.
+  Gate **18/18**, meta-test **41/0**, groom-seed **33/0**, core **135/0**, smoke **883/0**. No
+  `index.html` change, no publish-set change, no runtime behaviour — so no `tests/smoke.mjs`
+  assertion, and #191's one code conflict is not deepened.
+- 2026-10-30 — **The `<meta>` CSP decides whether Invariant 2's five pinned scripts run at all, and
+  nothing in this repo was reading it.** SRI answers *"is this the exact file we pinned?"*; the CSP
+  answers the earlier question, *"may the browser fetch it from that host at all?"* The gate checked
+  only the first. CLAUDE.md → Architecture has stated the rule since the file was written — *"the
+  `<meta>` CSP must cover every runtime host"* — and it was held by nobody, which makes it the same
+  shape as the 10-26 and 10-29 clauses: a load-bearing sentence with no machine behind it.
+  **The break it catches is a silent total outage.** Swap a CDN host, or add a sixth script beside
+  the five, and leave the CSP alone: the browser blocks the script, React or Babel never defines,
+  and **Invariant 1's watchdog replaces the app with the boot error screen for every visitor.**
+  Invariant 1's own `Detect` trailer says that is invisible — *a device that never boots never
+  fires `app_open` and never flushes the error buffer* — so this is the 47-day upsert outage's
+  signature reached in one edit. SRI cannot see it: a blocked script never gets as far as having
+  its hash compared, and `integrity="sha384-"` still counts 5.
+  **`check(2, 'CSP covers every host the pages load')` — the seventeenth check.** For
+  `index.html` and `ops.html` both: every host a `<script src>` loads from must be permitted by
+  `script-src`, every `rel="stylesheet"` `<link>` host by `style-src` (falling back to
+  `default-src`, as the spec does), and **a page with no CSP meta FAILS** rather than passing for
+  having no directives to violate — the anti-omission rule check 13 takes for a renamed
+  `serializeState`. `'self'` deliberately satisfies nothing here, because these are remote hosts;
+  a bare scheme and a wildcard host do, because the spec says so and the app relies on the second
+  for `https://*.supabase.co`. `preconnect` and `dns-prefetch` links are skipped on purpose: no
+  CSP fetch directive governs them, so counting them would invent a rule the browser does not
+  enforce. 8 tag hosts gated.
+  **Only the honest direction.** A permitted host nothing loads is **not** reported, because
+  `connect-src` carries hosts no tag can reveal (`https://*.supabase.co`,
+  `accounts.google.com` for OAuth) and `img-src` is `https:` wholesale. A reverse check would have
+  to whitelist those by name or flag them forever; neither is a machine checking anything honestly,
+  and the gate's own header forbids exactly that. The 10-29 item warned the next run not to cross
+  that line for Invariant 13's `events` clause — same line, held here.
+  **Two clauses are not a host list.** (i) **`font-src` gets the one derived assertion**, because
+  no tag names a woff2: a page loading the Google Fonts `css2` stylesheet must permit
+  `fonts.gstatic.com`, where that stylesheet fetches every file. Its breakage is the *invisible*
+  kind rather than the fatal kind — the webfont falls back to a system face and the layout moves,
+  which the 10-23 band measured as real rather than theoretical: the shipped Bricolage needs
+  **96px of 109px** of room on a 320pt screen against 83px for the forced fallback, so the
+  wordmark's margin is spent by a font swap nothing would report. (ii) **`privacy.html` is checked
+  from the other end.** It ships to a public URL with **no CSP at all** — read tonight, not
+  assumed — and what makes that safe is the property CLAUDE.md records as load-bearing: it is
+  self-contained, so it *"can't break and makes no third-party requests"*. One regex
+  (`(src|href)="https?://` → zero matches) is what keeps that absence honest instead of merely
+  absent; its favicon is a `data:` URI and its only links are a `mailto:` and `/`.
+  **Five deliberate breaks, one per clause** (`scripts/test_check_build.mjs`, 28 → 33), each
+  measured to exit non-zero and name `[2] CSP covers every host the pages load`: a sixth script
+  from `esm.sh`; the CSP tightened under a script that still uses `cdn.jsdelivr.net` (which kills
+  supabase-js, i.e. cloud sync, behind a boot error screen); `ops.html`'s CSP meta removed
+  entirely; `privacy.html` given a Google Fonts stylesheet; and `font-src` narrowed to `'self'`.
+  One per clause rather than one per check, because a group of `must()`s broken as a group proves
+  only that *one* of them has teeth — `[6]`'s 10-24 lesson.
+  **The negative test found a defect in itself, which is the part worth keeping.** With SRI and
+  the CSP both tagged `[2]`, the meta-test's `✗ \[${expect}\]` regex would credit a CSP break to
+  the SRI check and vice versa — a break failing the *wrong* row counted as a win, which is
+  precisely what the `expect` tag exists to prevent. All six `[2]` breaks now pin the **label** as
+  well, and that pin was itself negative-tested: pointing the `CSP` constant at the SRI label turns
+  all five new breaks red (**28 passed / 5 failed**, measured) while the SRI break stays green.
+  Where a tag is still unique the label is left off.
+  **No app code, no publish-set file, no wage core.** Gate: 17/17, groom-seed 33/33, core 135/135,
+  meta-test 33/33, smoke 883/0.
+- 2026-10-29 — **Invariant 13's parser clause — "stores dates, times, hours and UIDs, never titles"
+  — was promised twice in prose and held by nobody.** CLAUDE.md says it, and `index.html`:~1145 says
+  it again at the point it matters (*"The title is read HERE and only here, reduced to this one
+  boolean, and never stored or sent anywhere"*). Nothing read either sentence. With the blob and
+  proxy-log clauses gated 2026-10-26 and the `events` clause given a runtime redaction 2026-10-28,
+  this was the last clause of Invariant 13 with a **mechanical** home — and the one living in the
+  file sync work actually edits: the time-off title default landed there 2026-10-03, the timezone
+  conversion 2026-09-28.
+  **The blast path is clause (a)'s from the other end.** A parsed event becomes a shift; a shift
+  goes into the `user_data` blob; the blob is exported to a downloadable file, mirrored into
+  localStorage and echoed by the 15s poll. A title is not the feed URL, but it is calendar content
+  fetched with a bearer credential, and it is the field most likely to be added on purpose by
+  someone who has not read the invariant — "show her what the feed called it" is an obvious
+  feature request.
+  **Four assertions in `check(13)`, because there are four separate ways the clause dies:**
+  (1) the object `parseICSSchedule` pushes may carry only `dateKey`/`start`/`hours`/`uid`/`offHint`
+  — a new key is **intended friction**, added to `EVENT_KEYS` on purpose, the same stance the
+  roster check takes on the check count; (2) a text-bearing VEVENT property
+  (`SUMMARY`/`DESCRIPTION`/`LOCATION`/`COMMENT`/`CATEGORIES`/`CONTACT`/`ATTENDEE`/`ORGANIZER`) may
+  be read **only** inside an `icsLooksOff(…)` argument, so `const t = props.SUMMARY.value` fails
+  *before* anything stores it — which is the shape the edit actually takes, and the reason this
+  is not merely a field whitelist; (3) `icsLooksOff` must return a boolean-valued expression,
+  because `offHint` **is** stored on every parsed event and `return title` would ride the whitelist
+  completely unchanged; (4) both functions must be **found**, so a rename cannot turn the clause
+  into a pass by omission (check 3's rule, and (a)'s).
+  **Negative-tested one break per assertion, five in `scripts/test_check_build.mjs`** (23 → **28**),
+  each measured to exit non-zero AND print its own message on the `[13]` row: a `title: uidRaw`
+  field added to the pushed event (field whitelist), the title hoisted into a local on its way to
+  `icsLooksOff` (the realistic one), `icsLooksOff` returning `String(title||'')` (the one that
+  passes the whitelist), and each of the two functions renamed away. Five rather than one on
+  purpose: **a group of `must()`s broken as a group proves only that one of them has teeth**, which
+  is the same lesson 2026-10-24 learned when `[6]`'s "both halves" label turned out to guard one.
+  **No app code changed, and that was the one thing picked for tonight.** `index.html` is untouched,
+  so there is no runtime behaviour to drive and the pin belongs in the gate's meta-test rather than
+  a new `tests/smoke.mjs` section — which also kept the night from deepening #191's existing
+  `tests/smoke.mjs` conflict, a consideration, not a new rule. Gate label and both rosters moved in
+  the same commit (`iCal feed URL: out of the blob, the log and the parser`); the UNCHECKED
+  roll-call now reads *"blob + proxy log + parser titles gated; RLS and events are not"*, because
+  "13 is checked" would still be a worse claim than "13 is not". **Still a regression guard, not a
+  fix:** the parser keeps no title today, and the honest value is that the clause has a mechanism
+  instead of a convention. Gate 16/16, meta-test 28/28, groom-seed 33, core 135,
+  smoke **883/883** (unchanged — no new section).
+- 2026-10-28 — **Invariant 13's "never goes into `events`" clause was held at exactly one call site,
+  and every `console.error` in the app could break it.** The feed URL is a bearer credential whose
+  Detect trailer is `none` — nothing observable changes when it escapes, and the only revocation is
+  NurseGrid reissuing the feed. `icalFailureDetail` guards the sync path's own log carefully (§24
+  pins its whitelist from the credential side, thoroughly), but the boot script mirrors **every**
+  `console.error` in the app into the error ring buffer (`index.html`:~700), and
+  `flushClientErrors` ships that buffer to `events` as a `client_error` row with only
+  `redactMoney` applied. So the clause rested on every present and future console.error formatting
+  its arguments carefully — one debug line, `console.error('sync', url)`, would have put a bearer
+  credential into a table the admins read, permanently and silently. The 160-char truncation is no
+  protection: a real NurseGrid feed URL is ~75 characters and fits whole.
+  **`redactUrlPaths` now sits beside `redactMoney` at that choke point** — one place, every path,
+  the same shape `serializeState` carries for the blob half (and the shape the 2026-10-26 gate
+  work chose for the same reason). **A URL keeps its scheme and host and loses its path, query and
+  fragment.** Host-only is not a compromise between safety and diagnosis: the host is the *whole*
+  diagnostic value of these rows — a blocked CDN script is Invariant 2's only live signal and
+  "which host" is the answer — and the path is where the secret lives
+  (`https://app.nursegrid.com/calendars/777/<uuid>`). Deliberately **not** applied to the ring
+  buffer itself: `scrubpayErrors` is her own localStorage (Invariant 5) holding a URL she typed
+  into Settings, and the watchdog's "Copy error log" hands her that buffer verbatim for a bug
+  report; the leak closed is the one that reaches a shared table.
+  **No live leak was found** — no `console.error` in the app formats the feed URL today, so this is
+  a regression guard on a silent-by-construction invariant, not a fix for an observed escape. Said
+  plainly because this file has been burned by confident claims: the honest value is that the
+  clause now has a mechanism instead of a convention.
+  **`tests/smoke.mjs` §54, 14 assertions** (869 → **883**), driven off the **real row the app hands
+  the client** — `window.__ev` captures the `events` insert — rather than a helper's return value,
+  which is §24's job and already done. The buffer is seeded in localStorage before load because
+  that is the real mechanism (`flushClientErrors` ships LAST load's buffer on THIS load, by design:
+  a crash cannot report itself), so the seed is what a device that crashed last night actually
+  presents. **Falsifiable in both directions, four breaks measured:** dropping the scrub → **7**
+  fails with the secret visible in the row; over-redacting so the host dies too → **4** fails, which
+  is the direction that would silently blind Invariant 2; dropping `redactMoney` from the compose →
+  **1**; and matching only `https?:` so `webcal:` slips through → **5** — the realistic break, since
+  `webcal://` is the scheme NurseGrid actually hands out and the 2026-09-29 outage was a `webcal:`
+  bug too. Gate green: 16 mechanical checks, 33 groom-seed, 135 core, 883 smoke / 0 failed.
+  **Groom findings this run, two of which outrank the build.** (a) **PR #191 no longer merges** —
+  four conflicts, `tests/smoke.mjs` among them, unnoticed for seven nights because five consecutive
+  grooms read `@@` hunk numbers in two files instead of running the merge; the standing rule is now
+  `git merge-tree --write-tree <base> <head>`. (b) **The publish-set commit name has been wrong four
+  nights running, the 10-27 "correction" included** — `41d2549` is on **no ref** (an unreachable
+  pre-squash object), `git log -1 -- <file>` resolves against whatever HEAD the container checked
+  out, and `deploy_watch` was right and deterministic every night; name the ref explicitly.
+  (c) The flat night ended at +10 rows, **all ten a two-device desktop-Linux crawler burst 29
+  seconds apart** — seventh sighting, zero human loads.
+- 2026-10-27 — **The deploy gate had no gate: deleting any of its checks printed a smaller number
+  and exited 0.** `check_build.mjs` is one of two required status checks and the only one the
+  pre-push hook runs, so it is the last thing between a broken invariant and production — and
+  nothing was reading it. Remove a `check()` call and the suite printed *"All 14 mechanical checks
+  passed"* instead of 15, went green, and the invariant that check was holding was held by nobody.
+  **Invariant 4's shape aimed at the gate**: a break with no signal. Both sibling script suites had
+  a meta-test (`test_groom_seed.mjs` 33, `test_silence_watch.mjs` 39); the gate did not.
+  Two halves shipped, because measurement showed neither is sufficient alone.
+  (a) **The gate now holds its own roster** — check 16 of 16 declares the other fifteen by label and
+  asserts the `^check(` count matches, so a deleted or renamed check fails the gate **in CI today**,
+  with no workflow change. Adding a check now requires declaring it, in the same commit; that
+  friction is the point, since the count is precisely what was unwatched.
+  (b) **`scripts/test_check_build.mjs` (23 assertions)** proves that roster has teeth, which a
+  self-check cannot do for itself: it copies every file the gate reads into `.gate-scratch/`, runs
+  the gate as a subprocess once clean and then **once per deliberate break — sixteen of them, one
+  per check** — and requires each to exit non-zero *and* name the right invariant, so a break
+  credited to the wrong check is caught too. The tree is rebuilt per break, so none can leak into
+  the next, and patches are applied to the copy, never the working tree.
+  **The measurement that justified building both:** neuter `must()` to a no-op and the gate still
+  prints *"All 16 mechanical checks passed"* and exits 0 — the roster half passes it **completely**,
+  and so would any source- or count-based test. Only the breaks catch it: **16 of 23 fail.** The 7
+  that survive are exactly the checks that throw without `must()` (the JSX parse, via Babel, and the
+  `cos` caps) plus the roster — which is the result explained, not a figure to trust on sight.
+  Negative-tested on a `git archive` clone, never the working tree: deleting `check(9, …)` fails
+  **six** assertions and names the vanished check by label (`[9] Deploy branch still triggers a
+  deploy`) and the count drift (`source has 15, roster declares 16`).
+  **Folded in as its own note asked** (the 10-26 P3, *"do not spend a push on it alone"*):
+  **Invariant 6's third hole is closed.** `[6]` required ONE match of `/'UID:scrubpay-'\s*\+/` while
+  `index.html` has **two** export stamps (shifts ~4781, day events ~4802), so the time-off export
+  could stop being self-recognised with all fourteen checks green — a label that said "both halves"
+  guarding one. It now counts the two exactly, and breaking either stamp alone is a pinned break.
+  The date-dropping hole stays open deliberately: the gate never claimed it and `tests/smoke.mjs`
+  §52 catches it off the real bytes.
+  **Gate:** `check_build.mjs` 16/16, `test_check_build.mjs` 23/23, `test_groom_seed.mjs` 33/33,
+  `core.test.mjs` 135/135, `test_silence_watch.mjs` 39/39, `test_deploy_watch.mjs` 84/84,
+  `smoke.mjs` **869/869**. Zero publish-set files changed, so this ships no bytes to badgebudget.com
+  and `deploy_watch` will still name `dfff8ce`.
+  **One owner step left:** the new suite is not in CI — the `gate` job needs one line, and editing a
+  workflow file is blocked for agent sessions. The headline defect is covered in CI without it,
+  because the roster lives inside the script CI already runs; the missing line costs only the
+  neutered-`must()` case. See tonight's P2 for the exact two lines.
+- 2026-10-26 — **Invariant 13 — "the iCal feed URL is a bearer credential" — got its first
+  mechanical guard, and it was the invariant whose own Detect trailer says a leak is silent by
+  construction.** The gate declared six invariants UNCHECKED and 13 was the one with clauses a
+  machine can honestly read that nothing anywhere was reading: 7 is blind by construction (the salt
+  lives in a deployed Postgres function this repo cannot see), 10 is already enforced by the
+  pre-push hook, 11 and 12 are registrar and branch state outside every check here, and 3 is
+  human-held on purpose. So the whole of 13 was carried by whoever happened to read the diff —
+  against a failure mode where **nothing observable changes when the credential escapes**, and the
+  only revocation is the calendar provider reissuing the feed.
+  **`check(13, …)` gates two of its five clauses, and says so.**
+  · **The blob.** `serializeState` is the single serializer — the debounced save, the `.json`
+  export and the unload flush all call it — so a feed field among its keys *is* the leak: that
+  object is written to a downloadable file, mirrored into localStorage and echoed back by the 15s
+  sync poll. Parsed as an AST and asserted as a shape, not grepped: a new field is fine, a field
+  whose name matches `/ical|webcal|feed|basic\.ics/i` is not, and a `serializeState` the check
+  cannot find **fails** rather than passing by omission (check 3's rule, for check 3's reason).
+  · **The proxy log.** `ical-proxy` is handed the raw URL on every sync and its own header promises
+  "It is NEVER logged" — so assert it instead of trusting it, and fail on **any** `console.*`, not
+  just one that visibly formats the URL. That bluntness is aimed at a specific, likely next edit:
+  the first-call `422 not_a_calendar` fault is still unexplained (`BACKLOG.md` → P2), a debug line
+  is the obvious way someone reaches for it, and the function's edge log is a thing two separate
+  grooms have opened on purpose to diagnose a sync.
+  **The pattern is deliberately the blunt one `tests/smoke.mjs` §33 already uses**, plus `feed`,
+  because this side reads field *names*: `feedUrl` would hold the credential while matching none of
+  the rest. `index.html`:~1527 records the same trade being made once already — `syncManualOnly` is
+  named to avoid tripping §33's scan rather than the scan being narrowed to suit the name. A future
+  field whose name merely contains "ical" (a `medical*` premium is the realistic one) trips this:
+  rename the field, or narrow the guard on purpose with a line saying why.
+  **It does not pretend to cover the invariant.** Three clauses stay human-held — the table's RLS
+  and grants, the absence from `events`, and the parser keeping no titles — and 13 stays in the
+  UNCHECKED roll-call reading "blob + proxy log gated; RLS, events and titles are not", the way 3
+  already reads "only its persona rule is gated". The file's own header comment forbids the silent
+  omission; a check that let a reader believe 13 was covered would be the same failure wearing a
+  green tick.
+  **Where it does NOT overlap what exists.** §33 scans the outgoing **keepalive body** at runtime —
+  one path, real bytes. This reads the one source every write path shares, so it also covers the
+  `.json` export, which nothing scanned. Neither is a substitute for the other.
+  **Four deliberate breaks and a false-positive control, each on a scratch copy of the repo and not
+  the working tree, and all five measured rather than reasoned about.** · add `icalUrl` to
+  `serializeState` → `[13]` alone FAILs, naming the field · add `feedUrl` instead, the name §33's
+  own pattern would miss → `[13]` alone FAILs · rename the single serializer to `buildBlob` so the
+  check reads nothing → `[13]` alone FAILs on the not-found branch, which is the assertion that
+  stops this becoming a pass by omission · add `console.log("ical-proxy target", target.toString())`
+  to the proxy above the `https_only` guard → `[13]` alone FAILs · and the control: add an ordinary
+  new blob field (`shiftDifferentialNote`) → **15/15 pass**, 34 fields instead of 33, so the guard
+  does not fire on growth. Every break printed `1 of 15 checks FAILED — do not deploy.`
+  **No `tests/smoke.mjs` section, on purpose, and that is worth stating rather than hiding.** The
+  change moves no app behaviour — not one line of `index.html` — and driving a browser to assert a
+  static-analysis property would put the check at the wrong layer. The gate check *is* the
+  assertion; the four breaks above are its negative test. What that leaves open is recorded as
+  tonight's second groom item: **`check_build.mjs` has no meta-test at all**, so deleting any of its
+  fifteen checks is invisible to everything in this repo, which is Invariant 4's shape aimed at the
+  gate itself. That is the next run's build item, not a thing to bolt onto this one.
+  Gate: 15/15 mechanical checks, `test_groom_seed` 33/0, `core` 135/0, `smoke` 869/0 on an iPhone 13
+  profile — the full suite run with **no `PW_CHROMIUM` override**, which is last night's browser
+  resolver (§53) doing its job on the first container it has met.
+- 2026-10-25 — **The test rig found its own browser instead of being told where it is, and the
+  break it fixes is the one that makes this gate look un-run rather than red.** Three Playwright
+  entrypoints — `tests/smoke.mjs`, `tests/wage_equality.mjs`, `tests/equality.mjs` — each carried
+  the same literal, `/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell`.
+  This container ships build **1243** at `chrome-headless-shell-linux64/chrome-headless-shell`:
+  a different build number **and** a different directory shape, so the literal missed, the
+  `existsSync` guard handed resolution to playwright-core, *its* expected build (1134) was absent
+  too, and the suite died with Playwright's "just installed or updated" banner.
+  **That is a harness error, not a failed assertion** — the first of the three ways the `harness`
+  skill says this check lies. Nothing fails and nothing passes: the gate reads un-run, and stays
+  un-run until a human notices and exports `PW_CHROMIUM` by hand, which is exactly what the 10-24
+  run had to do. One `PW_CHROMIUM` away from a nightly that "ran" and asserted nothing.
+  **What shipped:** `findChromium()` and `chromiumLaunch()` in `tests/harness.mjs`, the module all
+  three already import, so the constant exists in one place and the two equality scripts stop
+  drifting from the suite that is actually run. Resolution order, and every step of it is load-
+  bearing: `PW_CHROMIUM` when it points at something that exists → the **highest-numbered**
+  headless-shell build (what every recorded run of this suite used, and the lighter binary) →
+  `/opt/pw-browsers/chromium`, which this image maintains as a symlink to the full browser and is
+  the one path that survives a version bump → the highest-numbered full-browser build → **`null`,
+  meaning say nothing**. That last one is not a giving-up branch: on GitHub's runners the browser
+  comes from `npx playwright install chromium` and playwright-core resolves it itself, so an empty
+  launch object is the *correct* answer there, and a resolver that invented a path for CI would
+  break the one environment that was never broken.
+  **Pinned by `tests/smoke.mjs` §53, 9 assertions, and it runs BEFORE `chromium.launch` on
+  purpose.** A resolver that names a missing binary kills the process in the launch, so asserting
+  after it would produce the same silent harness error this work exists to end; asserting first
+  means the break prints a `FAIL` naming the bad path and only then throws. Demonstrated, not
+  assumed — break 9 below is the original bug reinstated, and it printed the FAIL first.
+  Every case drives the resolver against a **synthetic** `/opt/pw-browsers` tree of empty files in
+  `.harness-browsers/`, because the real one is whatever this container happens to ship and an
+  assertion about it would say nothing about the next container.
+  **Nine deliberate breaks, one per assertion, each on a copy and not the working tree.**
+  · drop `chrome-headless-shell` from the executable names → **2 FAIL**, correctly: the 1243 shape
+  becomes invisible *and* the highest-build check then picks 1194 · sort builds ascending → the
+  highest-build assertion alone FAILs · drop `headless_shell` → the old `chrome-linux/` shape
+  assertion alone FAILs, so the two directory shapes are told apart rather than lumped · check the
+  stable symlink *after* the versioned directory → the precedence assertion FAILs · delete the
+  versioned-full-browser fallback → that fallback's assertion FAILs · return a hardcoded path when
+  nothing is found → the **`null` on an empty root** assertion FAILs, which is the CI guard ·
+  ignore `PW_CHROMIUM` → the override assertion FAILs · trust `PW_CHROMIUM` without checking it
+  exists → the missing-override assertion FAILs · **and the original bug, hardcoding the 1194
+  literal unconditionally → `FAIL  53 browser: this run's launch object never names a path that
+  does not exist  /opt/pw-browsers/chromium_headless_shell-1194/…` followed by the launch error.**
+  Before tonight that same state produced the launch error and no FAIL at all.
+  **The live proof is the run itself:** the full suite ran green with **no `PW_CHROMIUM` set**,
+  which the 10-24 groom recorded as impossible in this container.
+  **Deliberately not done:** bumping the constant to 1243, which buys exactly one container.
+  **Zero publish-set files change** (`tests/`, `.gitignore`, `BACKLOG.md`, `CLAUDE.md`), so
+  badgebudget.com serves the same bytes after this merge as before it and tomorrow's
+  `deploy_watch` will still name `dfff8ce` for `index.html` — correctly, not as a stall.
+- 2026-10-24 — **Invariant 6 now has the round-trip test its own Verify trailer said it did not,
+  and writing it deleted two of my own assertions for being unfalsifiable.** The invariant is the
+  `@scrubpay` self-recognition sentinel: export stamps `scrubpay-<date>-<id>@scrubpay`, import drops
+  any UID containing `@scrubpay`, and if either half moves **every previously exported shift
+  re-imports as a duplicate** — which inflates hours and therefore every wage figure downstream of
+  them. Its `Detect` is `none`; the symptom is duplicate shifts the nurse sees and reports nowhere.
+  What guarded it until tonight was `check_build.mjs` asserting the two string **literals are
+  present** and §26 grepping the source for the two controls. **Nothing had ever exported a file and
+  fed it back.** `tests/smoke.mjs` §52 does: it seeds two shifts and a day event, taps *Add to
+  calendar (.ics)*, captures the real blob, asserts all three UIDs off those bytes, hands that very
+  file to the `.ics` picker, and checks the import reports nothing, opens no stepper, and writes
+  nothing. 8 assertions, driven anonymously (both halves are localStorage-only paths, so no auth
+  stub and it is the drive a signed-out nurse gets).
+  **Six deliberate breaks, and three of them did more than confirm a FAIL.**
+  · export stamps `@badgebudget` → 5 FAIL · import's guard removed → 4 FAIL, and the UID-shape
+  assertion **passes**, so the two halves are told apart rather than lumped · import drops *every*
+  event → only the 3 selectivity assertions FAIL, which is the proof the "nothing to import"
+  assertions are not vacuous · the UID loses its date but keeps both literals → **exactly 1 FAIL**,
+  which is the case `check_build.mjs` is structurally blind to and the reason the shape is asserted
+  at all · the blob's MIME is `text/plain` → the capture guard FAILs rather than silently asserting
+  an empty string · the import window shrunk to 1 day → see below.
+  **Two assertions I wrote were deleted, both found by the negative tests rather than by review.**
+  (1) *"the blob still holds exactly the two seeded shifts, not four"*, read mid-drive, **passed on
+  every break** — a build with the sentinel broken *offers* the duplicates through the stepper and
+  writes nothing until she confirms, so the count is 2 either way at that point. Replaced by a read
+  **after a confirm** on the selectivity file: exactly three shifts, one carrying the foreign uid,
+  which is 6 on a broken build and is the only assertion here that sees what a re-import actually
+  writes. (2) *"nothing was skipped for window, cap or recurrence"*, meant to rule out the reading
+  that these events were dropped for being out of window — `parseICSSchedule` tests the sentinel
+  **before** the window, so `droppedWindow` is 0 on a file of our own UIDs however narrow the window
+  is, and shrinking it to one day left the assertion green. The window confound is ruled out by the
+  selectivity drive instead, which that same break **did** fail. Both deletions are recorded at the
+  source, §33's rule.
+  **And the gate covers LESS of this invariant than its own label says — measured, not assumed.**
+  `check_build.mjs`'s check prints `[6] @scrubpay .ics sentinel, both halves`, and run against a
+  *patched copy* (the script resolves its root from its own path, so running it from a scratch
+  directory silently reads the real `index.html` — a first attempt at this measurement proved
+  nothing and was thrown away) it reports **all 14 checks passed** on a build whose export stamps
+  `@badgebudget`, and again on one whose UID drops its date. It fails, correctly, only when the
+  **import**-side drop is removed. So the export half of a two-half invariant was unguarded for its
+  entire life, and §52's UID-shape assertion is now the only thing under it. The control that makes
+  this measurement trustworthy is in the log: deleting the import guard in the same copy printed
+  `✗ [6] … import no longer drops its own UIDs` and `1 of 14 checks FAILED`.
+  **Why this was tonight's item at all:** the Queue had no unblocked build item. Its one real
+  candidate (dated-rate telemetry) is blocked by PR #191 for the fifth night — the overlap was
+  re-read off `git diff` and #191 touches the *same three* hunks, `@@ -1813,0`, `@@ -7001,0`,
+  `@@ -7052,0`, not merely nearby lines. Tonight's work touches **zero lines of `index.html`**, so
+  it cannot conflict with #191 at all.
+- 2026-10-23 — **A queued P3 was a regression waiting to happen: the wordmark is not clipped, and
+  the only environment anyone had measured was one without the webfont.** Tonight's item was the
+  10-20 P3 *"the wordmark is ellipsised on a real first-gen iPhone SE"*, which proposed dropping
+  `.brand` from 12px to 11px at ≤360px. It was blocked on its own stated impossibility — *"this
+  sandbox has no route to fonts.googleapis.com and so cannot verify a CSS fix against the face
+  that actually clips"*. **That blocker is false.** `fonts.googleapis.com` returns 200 on the
+  stylesheet and `fonts.gstatic.com` 200 on the Bricolage woff2; in-browser, `.brand` computes to
+  `"Bricolage Grotesque"` with the 700 and 800 weights at `status:'loaded'`. So the fix was
+  checkable, and checking it killed it: **87px needed of 109.2px available at 320pt — 22px spare,
+  not clipped.** Pure `sans-serif` needs 83px, Plus Jakarta Sans 90px, so the number is genuinely
+  face-sensitive and 87 is the shipped face's. Every figure in the old note was off in the same
+  direction, and its 107.4px is reproducible as the **webfont-deleted** measurement of that row.
+  **What shipped is therefore not the CSS change — it is the verdict the 10-20 note believed was
+  unobtainable.** The ellipsis assertion had been removed as a coin flip (three CI cycles, red on
+  the runner and green here on the same commit, including a docs-only diff). It is restored, with
+  the two things that made it a coin flip fixed: §30 now awaits `document.fonts.ready` (raced
+  against a 6s timeout, so a hung font request degrades instead of hanging the suite), and the fit
+  is asserted **only on a run that provably rendered the real face**, printing its numbers and
+  abstaining otherwise. Deterministic in both environments rather than lucky in one.
+  **The guard's first draft was wrong and the negative tests are what caught it** — worth
+  recording, because both discarded tests look convincing: (1) `document.fonts.check('800 12px
+  "Bricolage Grotesque"')` returns **true** on a page with the stylesheet deleted and no
+  `@font-face` for the family at all, because it answers "can this text be rendered" and a
+  fallback satisfies that; (2) "force `sans-serif` and see if the width moves" **also** fires with
+  no webfont, because an unresolvable family falls back to Chromium's *default* font, which is not
+  `sans-serif` (74px vs 83px at 320pt). The first draft used both and certified a face that was
+  not there. The guard now reads the `FontFaceSet` directly — Bricolage entries present **and**
+  the 800 weight `loaded` **and** `.brand` still computing to it.
+  **Three deliberate breaks, each one rule:** reverting `.brand` to 14px FAILs the fit assertion
+  on the SE (and reproduces CI's historical signature exactly — `needs=100 has=99 clipped=true
+  spare=10`, which is the corroboration behind tonight's P3 about what the runner's face really
+  was); deleting the webfont stylesheet gives `faces=0 loaded=none rendered=false` and the verdict
+  correctly **abstains** rather than passing vacuously; and pointing `.brand` at Plus Jakarta
+  while the webfont still loads gives `faces=12 loaded=700/800` but `rendered=false`, so both
+  halves of the conjunction are load-bearing and neither is dead code.
+  `tests/smoke.mjs` **850 → 852**. The false "this sandbox cannot load the face the choice is
+  about" sentence in `index.html`'s own ≤360px comment is corrected in place, so 12px is now
+  asserted rather than merely recorded. **No `index.html` behaviour changed** — the diff there is
+  comment-only, which is also why it could not conflict with PR #191.
+  Also bookkeeping, both verified in the tree rather than assumed: the 2026-09-19 *"Quiet the
+  swap-board CTAs"* item has been shipped since PR #118 on 09-27 and was ticked (five grooms had
+  been reading it as open), and the 10-20 wordmark item is struck with the correction.
+- 2026-10-22 — **The opt-out now sits on the door she actually walks through: the import stepper's
+  confirm card.** Last night put *Only sync when I tap "Sync now"* on the quiet re-sync banner,
+  which was right and reached one third of the problem. The banner fires on a **foreground
+  return**; it raised on exactly **one** of Courtney's three 2026-10-20 loads. The other two were
+  **cold loads**, and a cold load opens the import stepper by design (CLAUDE.md → Calendar sync),
+  so on two thirds of her visits she still met a 125-event confirm sheet with no way to say "stop
+  asking me". The stepper now carries the same affordance, worded **identically** to the Settings
+  switch and the banner so she meets one setting and not three, setting the same `syncManualOnly`
+  and firing the same `ics_autosync_pref` with **`src:'stepper'`** (banner rows say `'banner'`; a
+  row with no `src` came from Settings).
+  **Two design decisions are load-bearing, and both are pinned rather than left to a reader's
+  judgment.** (1) It renders on the **confirm card only** — on the classify cards it would be one
+  copy per group, which for her feed is 125 copies of a single setting. (2) **It does not dismiss
+  the sheet**, which is where it deliberately diverges from the banner's copy: the banner's whole
+  job is "ask me later", but this sheet's plan may hold changes she wants, so a tap meaning "stop
+  the asking" must never also throw the plan away. It sets the preference, acknowledges itself in
+  place (*"Automatic syncing is off. Tap 'Sync now' in Settings when you want to check for
+  changes."*), and leaves Confirm working — the §51 assertion that Confirm still imports
+  afterwards is what would catch a regression into the banner's behaviour.
+  The 10-21 note flagged the real risk here — *"a mis-tap on a sheet whose job is confirming
+  wage-affecting changes turns her sync off"* — so the control is answered against it structurally:
+  it sits **below** the primary row and is **narrower** than it (188px vs 292px, measured), keeps a
+  44pt tap target (§30's rule), and is offered only when a feed subscription exists, because a file
+  import has nothing to stop. Both geometry facts are assertions, not intentions.
+  **Pinned by `tests/smoke.mjs` §51** — 18 new assertions, suite **832 → 850**. Negative-tested
+  three ways in three scratch copies, never the working tree: the affordance removed (11 fail), the
+  handler tracking the event but setting nothing — the "recorded, not live" break (2 fail: the next
+  foreground return still reaches the feed, and the Settings switch stays off), and the handler
+  dismissing the sheet like the banner's copy (3 fail). **That third break initially ABORTED the
+  run** after one failure — a detached-locator read timing out at 30s, which is §50's own first-draft
+  mistake one layer down and reads like one caught regression while leaving an unknown number of
+  assertions unproven. Fixed by capturing the sheet-open state once and guarding every read after
+  it; the break then fails honestly. Gate: 14/14 mechanical, groom-seed 33/33, core 135/135, smoke
+  850/0. No `index.html` region shared with open PR #191 (its hunks stop at old line 5672 and
+  resume at 6079; this build is at 5732 and 5887–6015), verified against the actual diff rather
+  than the previous night's note. `Thread: none` — filed in `docs/cos/inbox.md`.
+- 2026-10-21 — **The manual-sync switch she asked for twice is now offered on the banner that is
+  asking, because three loads proved she never found it in Settings.** `syncManualOnly` shipped
+  2026-10-16 in direct answer to two written requests (2026-10-14 08:55, 2026-10-15 12:30) and
+  landed at the bottom of Settings, inside the iCal section. Tonight's groom read her first three
+  loads since: **2026-10-20 20:15:30, 22:26:01 and 23:02:03 UTC**, each one
+  `ics_sync_result {changes, nursegrid}` with `ics_sync_done {events:125}`, **zero
+  `ics_import_done`** (last fired 2026-10-10, 10 rows ever), shift count 71 → 69 — and
+  **`ics_autosync_pref` and `ics_autosync_off` both at zero rows from any device, ever**. That is
+  not a broken toggle, it is an unreachable one. The quiet re-sync banner now carries a third,
+  lower-weight affordance under "Review" / "Not now", worded **identically to the Settings switch**
+  (`Only sync when I tap "Sync now"`) so she meets one setting and not two: it sets the same
+  `syncManualOnly`, fires the same `ics_autosync_pref` with `src:'banner'` (a row with no `src`
+  came from Settings), and remembers the plan's fingerprint exactly as "Not now" does.
+  Three deliberate non-decisions, all load-bearing: it **does not replace "Not now"** ("not this
+  plan" is the common answer and stays the easy one); it **does not fire `ics_resync_dismissed`**,
+  because that row is the complaint proxy this whole thread was read off — she dismissed at
+  08:54:05 on 10-14 and filed *"it keeps asking me to approve"* **81 seconds** later — and a tap
+  meaning "thank you, stop" would corrupt the one metric that found the work; and it does **not**
+  go on the import stepper, the cold-load door that met 2 of her 3 loads, which is filed as P1 for
+  its own run (a mis-tap on a sheet confirming wage-affecting changes must not turn her sync off).
+  No wage core: no dollar figure moves, the feed link stays saved, and "Sync now" is untouched.
+  Pinned by `tests/smoke.mjs` §50, 15 assertions, **five deliberate breaks** — the preference not
+  actually set (the only assertion that proves the tap did anything is `window.__invokes`: the next
+  foreground return must not reach the feed), the dismissal row fired too, the copy rewritten into
+  friendlier words, the affordance removed outright, and "Not now" removed instead of joined. The
+  fourth break found a defect in the section itself: a locator matching nothing aborted the run on
+  a 30s timeout instead of failing, which is the first of the three ways the `harness` skill says a
+  negative test lies, so the copy, tap-target and click reads are now guarded and the same break
+  reports **nine clean failures**. Suites: 14 mechanical checks, 33 groom-seed, 135 core,
+  **832 smoke** (817 → 832).
+- 2026-10-20 — **§30's wordmark assertion was measuring the font, not the layout — it is now
+  font-independent, and the three CI failures it caused were the truthful readings.** The
+  assertion `top bar [iPhone SE]: the wordmark is not ellipsised at this width` failed on the
+  GitHub runner and passed in this sandbox **on the same commit** three times (`e738670` 10-11,
+  `0aa4ef4` 10-14 — a docs-only diff that cannot clip a wordmark — and `63ed891` 10-16), every
+  time reporting `clipped=true spare=10`, every red run with a green twin: three CI cycles and
+  three groom sessions. Measured tonight: the 320pt row gives the wordmark 107.4px, of which
+  97.2px holds content; the fallback face this sandbox falls back to needs **87px** and the
+  runner's real Bricolage Grotesque needs **more than 97.2px** — `spare=10` is exactly the flex
+  gap, i.e. the brand maxed out and still overflowing. So the wordmark **is** ellipsised on a real
+  first-gen iPhone SE, the assertion pinned a falsehood, and the green runs were a font-load race;
+  fix (a) (`document.fonts.ready`) would have converted the flake into a steady red. Shipped fix
+  (b): the cosmetic pass/fail is gone at both widths and `the wordmark keeps its share of the row`
+  replaces it — the room between the brand's left edge and `.top-actions`, floored at 96px (SE) and
+  120px (iPhone 13) against 107.4 and 131.2 measured. That quantity is set by the controls, the
+  gaps and the container padding, **not by the face**, so it reads the same in CI and here, and it
+  still catches the regression the old assertion was guarding: a fourth control costs ~46px, four
+  times the floor's margin. `clipped`, `spare`, `needs` and `has` are all still printed, so the
+  ambient face stays on the record with nothing resting on it; the guarantees that matter at 320pt
+  (no sideways scroll, the brand gives first, the avatar stays on screen) were already asserted and
+  are untouched. §30's header claim that "the fallback face is wider than Bricolage, so a pass here
+  is conservative for the real font" was **false in that direction** and is corrected in place —
+  that claim is what the flake was built on. Negative-tested in a `git archive` copy with a 20px
+  `padding-left` on `.top-actions`: both new assertions FAIL (40 passed / 2 failed, nothing
+  aborted) and the SE row reproduced the runner's exact `clipped=true spare=10`. Gate: 817 smoke
+  (count unchanged — two in, two out), 14/14 mechanical, 33 groom-seed, 135 core. No `index.html`
+  change, so the publish set is byte-identical and `deploy_watch` stays `LIVE` on `a103682`. The
+  real-device clipping is filed as a P3 with the exact pixel figures rather than fixed blind, because
+  this sandbox cannot render the face that clips. Thread: none (tooling).
 - 2026-10-20 — **Money that lands in one particular check finally has a home: dated pay items.**
   Session 4 of the multi-persona plan; dedicated wage-core session, **not merged by the agent** —
   it moves figures for anyone who adds an item, so the PR waits for the owner with a before → after
@@ -2577,7 +4501,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   semi-annual / annual; dollars or hours; taxed as a bonus at 22% or like regular pay), landing in
   the pay period whose dates hold its date, never in that period's overtime (29 CFR 778.209(a)).
   Settings *Extra pay on a set date*, a Breakdown note, the year view by month. Core 135 → 175,
-  smoke 817 → 836 (§50, 19), 18 core + 17 smoke mutants all caught, a 4,800-case sweep against the
+  smoke 817 → 836 (§50 on its branch, renumbered §55 when merged 2026-11-01; 19), 18 core + 17 smoke mutants all caught, a 4,800-case sweep against the
   deployed core with 0 differences, and `tests/equality.mjs` vs badgebudget.com **34 identical /
   0 unintended / 5 of 5 named**.
 - 2026-10-19 — **The deploy watch fetches before it judges, so `LIVE` can no longer mean a stale

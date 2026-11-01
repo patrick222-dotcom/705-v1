@@ -7,6 +7,132 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-01 · session BadgeBudget nightly · The **test rig** holds the five CDN pins a second
+  time, in `PKGS` and `MAP`, and nothing had compared the copies — `grep -rn PKGS` found one
+  reader, itself. A `MAP` target carries no version, so the url and the installed build can
+  disagree with **nothing observable changing**: all 883 smoke assertions pass against code the app
+  does not ship. `check('harness', 'Harness tests the pins the app ships')` is the 19th check, five
+  breaks (meta-test 41 → 46), falsifiable both ways (neutered → 41 passed / 5 failed). Two things
+  worth a seat's attention beyond the check: (a) **the 10-31 note's diagnosis was half wrong** —
+  `buildScratch` already threw on a stale `MAP`; what it did was **abort the suite**, which this
+  repo counts as un-run rather than red, so the real finding is §53's lesson one layer down;
+  (b) **three nights running the only buildable item has come from CLAUDE.md's own prose rather
+  than `## Queue`**, which has held no unblocked app-side item since 10-24. That is a queue
+  problem, not a gate problem. → no outcome yet
+
+- 2026-10-31 · session BadgeBudget nightly · The app loads a **sixth** script and three
+  mechanisms each miss it for a different reason. `pdf.worker.min.js` is fetched at runtime by
+  pdf.js from this origin: SRI cannot cover it (a worker takes no `integrity` attribute, and it is
+  a string assigned to `workerSrc`, not a tag), last night's CSP check cannot see it (that check
+  walks tags), and Invariant 8 names the *file* — so a 1MB blob shipped to a public URL that
+  **nothing in this repo had ever read a byte of**. `check(2, 'pdf.js worker matches its pinned
+  library')` is the 18th check, eight assertions, eight breaks (meta-test 33 → 41), all
+  label-pinned because three checks share `[2]` now. Two clauses matter more than the version pin:
+  **`isEvalSupported:false` is the CVE-2024-4367 mitigation for pdf.js < 4.2.0** and the CSP
+  carries `'unsafe-eval'` for Babel, so that one token is the whole control over a PDF *she*
+  picks, in the origin holding `user_data`; and **`workerSrc` must stay same-origin and published**,
+  because the CSP has no `worker-src` — so "serve the worker from cdnjs", the obvious fix for the
+  10-13 iPhone worker failure, yields a worker the browser refuses while passing every other
+  check. No app code, no publish-set file. Belongs to no live thread.
+  Three groom findings: **a fourth consecutive night with zero human loads** — six new rows, two
+  new devices, both the `X11; Linux x86_64 … Chrome/154` burst shape 12 seconds apart (ninth
+  sighting), 13 devices in 7 days and not one a person, so `FRESH` is carried entirely by bots;
+  **PR #191 is now 12 commits behind** (same four conflicts, head unchanged eleven days, still
+  needs a yes or a no plus a rebase); and **CABINET MISSED at twelve nights**, brief 19.0 days
+  old, next Sunday **2026-11-01, one day out** — at twelve nights the dead-man's switch is itself
+  the finding, and whether `cos_check.mjs` should fail the gate on an over-age brief or the claim
+  should be retired is Pat's call · → outcome pending
+
+- 2026-10-30 · session BadgeBudget nightly · CLAUDE.md -> Architecture has always said "the
+  `<meta>` CSP must cover every runtime host" and nothing read it. SRI pins *which file*; the CSP
+  permits *which host*, and it fires first — a host missing from it means the script is never
+  fetched, its hash never compared, and `integrity="sha384-"` still counts 5 while Invariant 1's
+  watchdog shows the boot error screen to every visitor. Invariant 1's own `Detect` says that is
+  invisible. `check(2, 'CSP covers every host the pages load')` is the 17th check: tag hosts
+  against the matching directive in `index.html` and `ops.html`, a missing CSP is a FAILURE not a
+  pass by omission, a Google Fonts stylesheet implies `font-src fonts.gstatic.com`, and
+  `privacy.html` (which ships with no CSP) must reference no remote URL. Forward direction only —
+  an unused permission is not reported, because `connect-src` carries hosts no tag can reveal.
+  Five breaks, one per clause (meta-test 28 -> 33), and the suite's own `✗ [2]` regex turned out to
+  be ambiguous now that two checks share that tag, so breaks pin the label too. No app code, no
+  publish-set file. Belongs to no live thread.
+  Three groom findings: **the flat streak ended at two nights and all five new devices are bots** —
+  two of them self-identifying **Googlebot**, the first crawl by the index the landing copy is
+  written for, so the 2026-09-23 positioning rewrite of `<meta description>`/`<noscript>` is now
+  the copy being indexed; **PR #191's base distance has been undercounted** (11 commits, not the
+  seven recorded last night — same four conflicts, head unchanged ten days, still needs a yes or a
+  no plus a rebase); and **CABINET MISSED at eleven nights**, brief 18.0 days old, next Sunday
+  **2026-11-01, two days out** · → outcome pending
+
+- 2026-10-29 · session BadgeBudget nightly · Invariant 13's parser clause — "stores dates, times,
+  hours and UIDs, never titles" — was promised twice in prose (CLAUDE.md and `index.html`:~1145)
+  and read by nothing. `check(13)` now gates it with four assertions: the pushed event's five-key
+  whitelist, a text-bearing VEVENT property readable only inside `icsLooksOff(…)` (so hoisting the
+  title into a local fails before anything stores it), `icsLooksOff` returning a boolean-valued
+  expression (because `offHint` IS stored), and both functions having to be FOUND. Five deliberate
+  breaks, one per assertion (meta-test 23 → 28), because a group of `must()`s broken as a group
+  proves only that one of them has teeth — `[6]`'s 10-24 lesson. No app code changed; still a
+  regression guard, not a fix. That leaves Invariant 13 with two unchecked clauses and **neither
+  has a gate-shaped answer**: RLS lives in production Postgres (`ops_gate_probe.sql`'s job), and
+  `events` has the 10-28 runtime redaction. Belongs to no live thread.
+  Three groom findings, two of them outranking the build: **a second consecutive flat night** —
+  `events` unchanged at 1,737 rows, newest 44.1h old, so `silence_watch`'s `FRESH` has 3.9h of
+  window left and the next run likely reads `SILENT`; **PR #191 still does not merge** (same four
+  conflicts, head unchanged 9 days, base now seven commits ahead — it needs a yes or a no plus a
+  rebase); and **CABINET MISSED at ten nights**, brief 17.0 days old, next Sunday 2026-11-01, three
+  days out · → outcome pending
+
+- 2026-10-28 · session BadgeBudget nightly · Invariant 13's "never goes into `events`" clause was
+  held at ONE call site: `icalFailureDetail` guards the sync log, but every `console.error` in the
+  app is mirrored into the ring buffer that `flushClientErrors` ships to `events`, and only money
+  was scrubbed. `redactUrlPaths` now sits beside `redactMoney` at that choke point — a URL keeps
+  its scheme and host, loses its path/query/fragment, so Invariant 2's "which host failed" signal
+  survives. No live leak found; this is a regression guard. `tests/smoke.mjs` §54 (14, 883 total),
+  falsifiable both ways, four measured breaks. Belongs to no live thread.
+  Three groom findings worth a seat, two of them outranking the build: **PR #191 no longer merges**
+  (four conflicts incl. `tests/smoke.mjs`, unnoticed seven nights because five grooms read hunk
+  numbers instead of running the merge — standing rule is now `git merge-tree --write-tree`);
+  **the publish-set commit name has been wrong four nights running including the 10-27
+  "correction"** (`41d2549` is on no ref; `git log -1 -- <file>` resolves against the container's
+  HEAD — name the ref, or trust `deploy_watch`, which was right every night); and **CABINET MISSED
+  is at nine nights**, brief 16.0 days old, next Sunday 2026-11-01 · → outcome pending
+
+- 2026-10-27 · session BadgeBudget nightly · the deploy gate had no gate: deleting any `check()`
+  call printed a smaller number and exited 0, so the invariant it held went unguarded with no
+  signal anywhere. `check_build.mjs` now holds its own roster (check 16 of 16, red in CI today) and
+  `scripts/test_check_build.mjs` (23) proves it has teeth with one deliberate break per check —
+  justified by the measurement that a gate with `must()` neutered still prints "All 16 passed" and
+  only the breaks catch it. Invariant 6's third hole closed in the same pass, as its note asked.
+  Belongs to no live thread. Three groom findings worth a seat: **`events` took zero new rows in
+  24h** — the first flat night in the file, and `FRESH` is 31.7h into its 48h window, so the next
+  run may read `SILENT`; **the new suite needs one line in `ci.yml`** that only Pat can add, since
+  editing a workflow is blocked for agent sessions; and **CABINET MISSED is at eight nights**, two
+  Sundays gone, next 2026-11-01 · → outcome pending
+
+- 2026-10-26 · session BadgeBudget nightly · Invariant 13 ("the iCal feed URL is a bearer
+  credential") had no mechanical guard at all, against a failure mode its own Detect trailer calls
+  silent by construction — the gate now fails on a feed field entering `serializeState` and on any
+  `console.*` in `ical-proxy` (four breaks + a false-positive control), with the other three
+  clauses still declared human-held. Belongs to no live thread, though it is adjacent to T2
+  `legitimacy`. Two groom findings worth a seat: **`check_build.mjs` has no meta-test**, so
+  deleting any of its fifteen checks is invisible to everything in this repo (next run's build
+  item), and **CABINET MISSED is at seven nights** — the 10-25 Sunday passed without one, so two
+  Sundays have now gone by · → outcome pending
+
+- 2026-10-25 · session BadgeBudget nightly · the test rig's three Playwright entrypoints each
+  pinned a browser path that no longer exists in this container, which kills the suite with a
+  **harness error** — the gate reads un-run rather than red — so the browser is discovered now
+  (`chromiumLaunch`, `tests/smoke.mjs` §53, nine breaks). Belongs to no live thread. Two groom
+  findings worth a seat: the **Queue is out of unblocked build items** (its one candidate blocked
+  by PR #191 for a sixth night), and **CABINET MISSED is at six nights with today being the
+  Sunday** · → outcome pending
+
+- 2026-10-24 · session BadgeBudget nightly · Invariant 6 (the `@scrubpay` .ics sentinel) had no
+  round-trip test, as its own Verify trailer said — now pinned by `tests/smoke.mjs` §52, six breaks,
+  two of my own assertions deleted as unfalsifiable. Belongs to no live thread; the groom finding
+  worth a seat's attention is that the **Queue had no unblocked build item**, its one candidate
+  blocked by PR #191 for a fifth night · → outcome pending
+
 - 2026-10-13 · session BadgeBudget nightly · paystub import failed 3x on a real phone — the pdf.js
   worker would not load; message + tracking fixed, the worker's own failure is still unexplained ·
   → outcome pending
@@ -42,6 +168,29 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   Tooling, under no thread. Groom: zero new events and zero new feedback since 10-18, no iPhone in
   four days, `silence_watch` FRESH, `deploy_watch` LIVE · → outcome pending
 
+- 2026-10-20 · session BadgeBudget nightly · §30's "the wordmark is not ellipsised" assertion was
+  measuring whichever font had resolved — three CI cycles on a coin flip, and the red runs were the
+  truthful ones: the wordmark really does clip at 320pt with the real face. Replaced with a
+  font-independent floor on the row the wordmark is given; the cosmetic CSS fix is filed as P3 with
+  measured pixels, unbuilt because this sandbox cannot render the face that clips. Tooling, under no
+  thread. Groom: third consecutive byte-identical `events` table, `silence_watch` SILENT_BUT_HEALTHY
+  (53.9h, out of its 48h window — quiet, not broken), `deploy_watch` LIVE on `a103682`, and
+  **CABINET MISSED** — `brief.md` turned 8.0 days old tonight · → outcome pending
+
+- 2026-10-21 · session BadgeBudget nightly · the manual-sync switch Courtney asked for twice, and
+  which shipped 10-16 into Settings, has **never been turned on by anyone** — her first three loads
+  since (2026-10-20) were three more 125-event `changes` syncs with zero imports. Not a broken
+  toggle, an unreachable one: it is now offered on the re-sync banner in the Settings switch's own
+  words, §50. The import stepper half is filed P1. Groom: `silence_watch` FRESH (9.1h, a real
+  person came), `deploy_watch` LIVE on `a103682`, no new feedback, no new `client_error` from three
+  real loads, landing-only cohort 11 → 14, and **CABINET MISSED** (brief 9.0 days old, second
+  night) · → outcome pending
+
+- 2026-10-22 · session BadgeBudget nightly · the manual-sync opt-out now sits on the import stepper's
+  confirm card too — the cold-load door, which was 2 of Courtney's 3 loads on 10-20, where the
+  10-21 banner could never reach her. Same wording, same field, `src:'stepper'`. It deliberately
+  does NOT dismiss the sheet (the banner's copy does), so a tap meaning "stop asking" never costs
+  her the plan · → outcome pending
 
 ## Parked
 
@@ -54,3 +203,9 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
   rate from [date]"), plus a Settings fix: a rate typed and closed without a blur was discarded.
   BACKLOG's "a shift stores its own rate" was false; the 109 → 67 drop is better explained by her
   deleting mis-coded synced shifts. PR waits for Pat (moves figures) · → outcome pending
+
+- 2026-10-23 · session BadgeBudget nightly · a queued P3 ("the wordmark is clipped on a 320pt
+  phone") was withdrawn, not built: its blocker — "this sandbox can't load the real font" — is
+  false, and with the font loaded the wordmark has 22px of slack, so the proposed 11px fix was a
+  regression. The removed ellipsis assertion is restored, now webfont-guarded and deterministic ·
+  → outcome pending

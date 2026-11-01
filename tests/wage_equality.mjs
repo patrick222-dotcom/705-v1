@@ -14,15 +14,13 @@
 import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
-import { serve, STORAGE_KEY } from './harness.mjs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { serve, STORAGE_KEY, chromiumLaunch } from './harness.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = join(ROOT, '.equality-scratch');
 const DEPLOYED_URL = process.env.DEPLOYED_URL || 'https://badgebudget.com/index.html';
-const BROWSER = process.env.PW_CHROMIUM
-  || '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell';
-const LAUNCH = existsSync(BROWSER) ? { executablePath: BROWSER, args: ['--no-sandbox'] } : { args: ['--no-sandbox'] };
+const LAUNCH = chromiumLaunch();
 
 const CDN = [
   ['https://unpkg.com/react@18.2.0/umd/react.production.min.js', 'react/umd/react.production.min.js'],

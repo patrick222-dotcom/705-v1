@@ -182,6 +182,16 @@
   .sync-banner .row{display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
   .sync-banner button{background:#4A4FC4;color:#fff;padding:9px 14px;min-height:44px;border-radius:11px;font-weight:600;font-size:12.5px}
   .sync-banner button.ghost{background:transparent;color:#474DA0;border:1px solid #CFD5FA}
+  /* The manual-sync opt-out. Lower weight than "Not now" on purpose: "not this plan" is the
+     common answer and must stay the easy one. Keeps the 44px tap target (tests/smoke.mjs 30). */
+  .sync-banner button.opt{background:transparent;color:#474DA0;border:0;padding:6px 0 0;min-height:44px;font-weight:600;font-size:12px;text-align:left;text-decoration:underline}
+  /* The same opt-out on the import stepper's confirm card (2026-10-22). Deliberately NOT
+     full-width and deliberately below the Confirm row: this sheet's job is confirming
+     wage-affecting changes, so the affordance that turns syncing off must be the hardest
+     thing on the card to hit by accident, not a peer of the primary button. Shrink-to-fit
+     keeps the 44px tap target (tests/smoke.mjs 30) while giving a mis-tap far less area. */
+  .sheet button.opt{background:transparent;color:#474DA0;border:0;padding:6px 0 0;min-height:44px;font-weight:600;font-size:12px;text-align:left;text-decoration:underline}
+  .sheet .opt-done{font-size:12px;color:var(--muted-2);line-height:1.45;padding-top:12px}
   /* An exhausted cloud LOAD, not a failed save — see the `cloudLoad` state. Danger palette on
      purpose: nothing she types is being kept while this is up, which is worse than the stale-row
      case the top-bar sync link covers. */
@@ -575,9 +585,15 @@
        measured on the fallback face, 14px leaves 0px of spare between the brand and
        .top-actions, 13px leaves ~5px and 12px leaves ~12px, and real Bricolage ran ~5px wider
        than the fallback on the runner — so 12px is the first size with real margin under either
-       face. Reverting to 14px alone does NOT fail a test (the clip absorbs it); it just clips the
-       wordmark. That is recorded rather than asserted because this sandbox cannot load the face
-       the choice is about.
+       face.
+       UPDATED 2026-10-23 — the sentence that used to end this paragraph ("recorded rather than
+       asserted because this sandbox cannot load the face the choice is about") was FALSE: the
+       sandbox does reach fonts.googleapis.com and does render real Bricolage Grotesque 800.
+       Measured in it at 320pt, this rule gives the wordmark 87px of 109.2px — 22px spare, not
+       clipped — while 14px needs 100px in 99px and DOES clip. So 12px is now asserted, not just
+       recorded: tests/smoke.mjs §30 settles the webfont, confirms off the FontFaceSet that the
+       row really was laid out in it, and only then checks the fit — so reverting to 14px fails a
+       test instead of silently clipping the wordmark.
        `min-width:0` was in the first draft of this rule and is DELETED on purpose, not forgotten:
        it is redundant with the overflow above, and keeping both made the test unfalsifiable --
        deleting either one alone still passed, because each is independently sufficient. One rule,
@@ -2926,6 +2942,31 @@ function redactMoney(v){
     .replace(/\$\s?[\d,]+(?:\.\d{1,2})?/g, '$#')
     .replace(/\b\d[\d,]*\.\d{2}\b/g, '#.##');
 }
+/* Invariant 13's third clause -- the iCal feed URL "never goes into `events`" -- held at exactly
+   ONE call site and nowhere else. `icalFailureDetail` is careful (§24 pins its whitelist from the
+   credential side), but the boot script mirrors EVERY `console.error` in the app into this same
+   ring buffer (~line 690), so the clause actually rested on every present and future console.error
+   formatting its arguments carefully. One debug line -- `console.error('sync', url)` -- would put a
+   bearer credential into a shared table permanently, and Invariant 13's Detect trailer is `none`:
+   nothing observable changes when it happens, and the only revocation is NurseGrid reissuing the
+   feed. So the guarantee belongs at the choke point every row passes through, beside redactMoney,
+   for the same reason `serializeState` carries the blob half -- one place, every path.
+   A URL keeps its scheme and host and loses its path, query and fragment. The host is the whole
+   diagnostic value of the failures this buffer exists to carry (a blocked CDN script is Invariant
+   2's only live signal, and "which host" is the answer there), and the path is where the secret
+   lives: `https://app.nursegrid.com/calendars/777/<uuid>`. Host-only is therefore not a compromise
+   between safety and diagnosis -- it is the whole of both.
+   Deliberately NOT applied to the ring buffer itself: `scrubpayErrors` is her own localStorage
+   (Invariant 5) holding a URL she typed into Settings, and the watchdog screen's "Copy error log"
+   hands her that buffer verbatim for a bug report. The leak this closes is the one that reaches a
+   table the admins read. */
+function redactUrlPaths(v){
+  return String(v==null?'':v).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>]+/gi, (u)=>{
+    const after = u.indexOf('://') + 3;
+    const cut = u.slice(after).search(/[/?#]/);
+    return cut < 0 ? u : u.slice(0, after + cut) + '/...';
+  });
+}
 /* `viaBeacon` is the unload path: same batch, same redaction, same read-and-clear discipline,
    but sent with keepalive so it survives the tab closing. Without it the buffer only ever
    flushed on the NEXT load, and no public device has ever had a next load. */
@@ -2936,7 +2977,7 @@ function flushClientErrors(userId, viaBeacon){
     if(!buf.length) return;
     const errors = buf.slice(-ERR_FLUSH_CAP).map(e=>({
       t: (e && e.t) || null,
-      msg: redactMoney(e && e.msg).slice(0,160),
+      msg: redactMoney(redactUrlPaths(e && e.msg)).slice(0,160),
       src: String((e && e.src) || '').split('/').pop().slice(0,80) || null,
       line: (e && e.line) || null
     }));
@@ -5515,6 +5556,25 @@ function App(){
               <button onClick={()=>{ track('ics_resync_opened',{},user&&user.id); icsDismissedPlan.current=null; setIcsImport(icsPending); setIcsPending(null); }}>Review</button>
               <button className="ghost" onClick={()=>{ track('ics_resync_dismissed',{},user&&user.id); icsDismissedPlan.current=icsPlanFingerprint(icsPending); setIcsPending(null); }}>Not now</button>
             </div>
+            {/* The switch she asked for twice, offered where she meets the thing she asked to stop.
+                It shipped 2026-10-16 (Settings -> the iCal section, under "Sync now") and the
+                events say she never found it: three loads on 2026-10-20 at 20:15, 22:26 and 23:02
+                UTC, three `ics_sync_result {changes}` carrying 125 events each, zero
+                `ics_import_done` since 2026-10-10, and `ics_autosync_pref` has still never fired
+                from any device. A preference nobody can reach is not a preference.
+                Same state and same event as the Settings switch -- `src` is the only difference,
+                so a row with no `src` came from Settings.
+                It deliberately does NOT fire `ics_resync_dismissed`. That row is the complaint
+                proxy this whole thread was read off (she dismissed at 08:54:05 on 2026-10-14 and
+                filed "it keeps asking me to approve" 81 seconds later), and a tap that means
+                "thank you, stop" is the opposite of a tap that means "ask me again". Mixing them
+                would corrupt the one metric that found this. */}
+            <button className="opt" onClick={()=>{
+              setSyncManualOnly(true);
+              track('ics_autosync_pref',{manual:true,src:'banner'},user&&user.id);
+              icsDismissedPlan.current=icsPlanFingerprint(icsPending);
+              setIcsPending(null);
+            }}>Only sync when I tap “Sync now”</button>
           </div>
         )}
 
@@ -5819,7 +5879,12 @@ function App(){
       {icsImport &&
         <IcsImportSheet state={icsImport} differentials={differentials}
           onAnswer={icsAnswer} onBack={icsBack} onNext={icsNext}
-          onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices} />}
+          onConfirm={icsConfirmImport} onCancel={icsCancelImport} onDismissNotices={icsDismissNotices}
+          syncManualOnly={syncManualOnly}
+          onManualOnly={icalSub ? ()=>{
+            setSyncManualOnly(true);
+            track('ics_autosync_pref',{manual:true,src:'stepper'},user&&user.id);
+          } : null} />}
 
       <input ref={fileImport} type="file" accept=".json" onChange={importData} style={{display:'none'}} />
     </div>
@@ -5972,8 +6037,11 @@ function fmtShiftUpdate(u){
   if((u.prevStart||null)!==(u.start||null)) parts.push(`${ps||'no start time'} → ${ns||'no start time'}`);
   return parts.join(', ');
 }
-function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices}){
+function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,onCancel,onDismissNotices,syncManualOnly,onManualOnly}){
   const {groups,toUpdate,answers,stepIdx,dropNotice} = state;
+  /* Local, because the prop flips to true the moment she taps and the button would vanish with
+     no acknowledgement. This remembers that the tap happened HERE, so the card can say so. */
+  const [optedOut,setOptedOut] = useState(false);
   const toRemove = state.toRemove || [];
   const toUpdateEvents = state.toUpdateEvents || [];
   const toRemoveEvents = state.toRemoveEvents || [];
@@ -6055,6 +6123,28 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
             {total>0 && <button className="back" style={{width:44,height:44}} onClick={onBack} aria-label="Back">‹</button>}
             <button className="btn btn-primary" style={{flex:1}} onClick={onConfirm}>Confirm</button>
           </div>
+          {/* The manual-sync opt-out, on the door the banner could not reach (2026-10-22).
+              The banner carried it from 2026-10-21, but the banner fired on ONE of her three
+              2026-10-20 loads -- the other two were cold loads, and a cold load opens this
+              stepper by design (CLAUDE.md -> Calendar sync). So on two thirds of her visits she
+              met a 125-event confirm sheet with no way to say "stop asking me".
+              Worded IDENTICALLY to the Settings switch and the banner so she meets one setting
+              and not three. Same state, same event; `src` is the only difference, and a row with
+              no `src` came from Settings.
+              Unlike the banner's copy of this button it does NOT dismiss anything: the banner's
+              whole job is "ask me later", but the plan on this card may hold changes she wants,
+              and throwing it away on a tap that means "stop the asking" would cost her the
+              shifts too. The sheet stays open; Confirm and Close are untouched.
+              Offered only when a feed subscription exists (see the mount) -- a file import has
+              nothing to stop -- and only while automatic syncing is still on. */}
+          {onManualOnly && (optedOut
+            ? <div className="opt-done" role="status">
+                Automatic syncing is off. Tap &ldquo;Sync now&rdquo; in Settings when you want to check for changes.
+              </div>
+            : !syncManualOnly &&
+              <button className="opt" onClick={()=>{ setOptedOut(true); onManualOnly(); }}>
+                Only sync when I tap &ldquo;Sync now&rdquo;
+              </button>)}
         </div>
       </div>
     );

@@ -15,6 +15,12 @@
  * deploy branch), 11 (protected branches), 12 (registrar settings) and 13 (the iCal feed URL as a
  * bearer credential). 7 and 13 were missing from that roll-call until 2026-09-13 — neither checked
  * nor declared, which is the silent omission this comment exists to forbid.
+ *
+ * 3 and 13 are PARTLY gated, and both say which part: 3's persona rule (2026-10-10), and 13's
+ * three mechanical clauses — the feed field staying out of the single serializer and the proxy
+ * logging nothing (2026-10-26), and the .ics parser keeping no titles (2026-10-29). The clauses a
+ * machine cannot honestly check stay human-held, and the roll-call keeps naming them, because
+ * "13 is checked" would be a worse claim than "13 is not".
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +37,8 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const html = read('index.html');
 const ops = read('ops.html');
 const deploy = read('.github/workflows/deploy.yml');
+/* Invariant 13's second clause lives in the Edge Function, not in the app. */
+const proxy = read('supabase/functions/ical-proxy/index.ts');
 
 const results = [];
 const check = (invariant, label, fn) => {
@@ -96,6 +104,190 @@ check(2, 'SRI on all 5 CDN scripts', () => {
   return '5/5 pinned + hashed';
 });
 
+/* ---- Invariant 2's sibling: the CSP that decides whether those five scripts run at all --
+   SRI answers "is this the exact file we pinned?". The <meta> CSP answers the earlier question,
+   "may the browser fetch it from that host at all?", and nothing in this repo was reading it.
+   CLAUDE.md -> Architecture states the rule ("the <meta> CSP must cover every runtime host") and
+   it was held by nobody.
+
+   The break this catches is the worst shape in the file: swap a CDN host, or add a sixth script
+   from a new one, and leave the CSP alone. The browser blocks the script, React or Babel never
+   defines, and Invariant 1's watchdog replaces the app with the boot error screen for EVERY
+   visitor — and Invariant 1's own Detect trailer says that is invisible: a device that never
+   boots never fires app_open and never flushes its error buffer. Same silence as the 47-day
+   upsert outage, reached in one edit.
+
+   Only the honest direction is gated. Every host a TAG loads from must be permitted; a permitted
+   host nothing loads is NOT reported, because connect-src carries hosts no tag can reveal
+   (https://*.supabase.co, accounts.google.com) and img-src is a wildcard. A reverse check would
+   have to either whitelist those by name or flag them forever, and neither is a machine honestly
+   checking anything.
+
+   font-src gets the one derived assertion, because no tag names a font file: Google Fonts
+   stylesheets fetch their woff2 from fonts.gstatic.com, so a page that loads the css2 stylesheet
+   must permit that host or the webfont silently falls back to a system face. Silently is the
+   problem — the 2026-10-23 band measured the real Bricolage needing 96px of 109px of room on a
+   320pt screen, so a fallback is a layout change nothing would report.
+
+   privacy.html is checked from the other end. It ships to a public URL with NO CSP, and what
+   makes that safe is the property CLAUDE.md records as load-bearing: it is self-contained, so it
+   "can't break and makes no third-party requests". That is exactly one regex, and it is the
+   assertion that keeps the missing CSP honest rather than merely absent. */
+check(2, 'CSP covers every host the pages load', () => {
+  /* 'self' deliberately satisfies nothing here: these are remote hosts, and the page's own
+     origin is badgebudget.com. A bare scheme ('https:') and a wildcard host ('https://*.foo')
+     do satisfy, because the CSP spec says so and the app relies on the second for Supabase. */
+  const allows = (sources, host) => sources.some((s) => {
+    if (s === '*' || s === 'https:' || s === 'https://*') return true;
+    const m = /^https:\/\/(\*\.)?([^/:]+)/.exec(s);
+    if (!m) return false;
+    return m[1] ? host === m[2] || host.endsWith(`.${m[2]}`) : host === m[2];
+  });
+  const directives = (page, name) => {
+    const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(page);
+    must(meta, `${name} has no <meta http-equiv="Content-Security-Policy"> — a deleted CSP must ` +
+      'fail this check, not turn it into a pass by omission');
+    const out = {};
+    for (const part of meta[1].split(';')) {
+      const [dir, ...src] = part.trim().split(/\s+/);
+      if (dir) out[dir] = src;
+    }
+    return out;
+  };
+  const hostOf = (url) => { const m = /^https?:\/\/([^/:"]+)/.exec(url); return m && m[1]; };
+
+  let gated = 0;
+  for (const [name, page] of [['index.html', html], ['ops.html', ops]]) {
+    const dirs = directives(page, name);
+    const src = (d) => dirs[d] || dirs['default-src'] || [];
+
+    /* script-src: the five pinned CDN scripts, and anything a later edit adds beside them. */
+    for (const tag of page.match(/<script\b[^>]*>/g) || []) {
+      const url = /\bsrc="([^"]+)"/.exec(tag);
+      const host = url && hostOf(url[1]);
+      if (!host) continue;
+      must(allows(src('script-src'), host),
+        `${name} loads a script from ${host}, which its own CSP script-src does not permit ` +
+        `(${src('script-src').join(' ') || 'nothing'}) — the browser will block it and Invariant ` +
+        "1's watchdog will replace the app with the boot error screen, silently, for everyone");
+      gated++;
+    }
+
+    /* style-src: stylesheet <link>s only. preconnect and dns-prefetch are not fetches and no CSP
+       fetch directive governs them, so counting them here would invent a rule the browser does
+       not enforce. */
+    for (const tag of page.match(/<link\b[^>]*>/g) || []) {
+      if (!/\brel="stylesheet"/.test(tag)) continue;
+      const url = /\bhref="([^"]+)"/.exec(tag);
+      const host = url && hostOf(url[1]);
+      if (!host) continue;
+      must(allows(src('style-src'), host),
+        `${name} loads a stylesheet from ${host}, which its own CSP style-src does not permit ` +
+        `(${src('style-src').join(' ') || 'nothing'})`);
+      gated++;
+      if (host === 'fonts.googleapis.com') {
+        must(allows(src('font-src'), 'fonts.gstatic.com'),
+          `${name} loads a Google Fonts stylesheet but its CSP font-src does not permit ` +
+          'fonts.gstatic.com, where that stylesheet fetches every woff2 — the webfont would fall ' +
+          'back to a system face with nothing anywhere reporting it');
+        gated++;
+      }
+    }
+  }
+
+  /* privacy.html: no CSP by design, so the property that replaces one is that there is nothing
+     to constrain. Its favicon is a data: URI and its only links are a mailto: and "/". */
+  const remote = (read('privacy.html').match(/\b(?:src|href)="https?:\/\/[^"]+"/g) || []);
+  must(!remote.length,
+    `privacy.html is published with no CSP because it is self-contained, and it now references ` +
+    `${remote.length} remote URL(s): ${remote[0]} — either drop it or give that page a CSP`);
+
+  return `${gated} tag hosts permitted, privacy.html self-contained`;
+});
+
+/* ---- Invariant 2's sixth script: the one the app loads from its OWN origin ---------------
+   Invariant 2 is "SRI on all 5 CDN scripts, exact pinned versions". The app loads a SIXTH
+   script, and none of the three mechanisms above can see it. `pdf.worker.min.js` is fetched at
+   runtime by pdf.js, from this origin, and:
+
+     - SRI does not reach it. A worker script takes no `integrity` attribute, and it is not a
+       `<script>` tag at all — it is a string assigned to `GlobalWorkerOptions.workerSrc`.
+     - The CSP check above does not reach it either, by construction: that check walks TAGS, and
+       this is a URL in JavaScript. (The CSP has no `worker-src`, so the browser falls back to
+       `default-src 'self'` — which is why pointing `workerSrc` at cdnjs to "fix" a worker that
+       would not load produces a worker the browser refuses, even though `script-src` permits
+       that host. The edit looks right, passes every check in this file, and kills the feature.)
+     - Invariant 8's publish-set check names the FILE. Nothing has ever read a byte inside it.
+
+   Four assertions, because there are four separate ways this dies:
+
+   (a) The pinned version is found at all. One pdf.js CDN script, version extractable.
+   (b) The worker is the matching build. pdf.js compares the two itself and throws
+       `The API version "X" does not match the Worker version "Y"` — the message is a literal in
+       the worker file, so this check requires both the guard (proof the 1MB blob really is a
+       pdf.js worker, and not truncated or replaced) and the pinned version inside it. Bumping
+       the CDN pin is a deliberate act because SRI forces a new hash; replacing the worker file
+       beside it is a SEPARATE act, and forgetting it breaks the paystub reader completely with
+       nothing in `events` to say so (`paystub_failed` has never fired for any reason).
+   (c) `workerSrc` stays a bare same-origin filename that is in the publish set. An absolute or
+       protocol-relative URL fails: see the CSP note above, and the in-source comment at the
+       assignment already promises this ("no third-party CDN in the paystub path").
+   (d) `isEvalSupported:false` is still passed to `getDocument`. This is the documented
+       CVE-2024-4367 mitigation for pdf.js < 4.2.0, and 3.11.174 is pinned. The app's CSP carries
+       `'unsafe-eval'` because Babel standalone needs it, so that flag is the ONLY thing standing
+       between a malicious PDF and arbitrary JS in this origin — where the whole `user_data` blob
+       and the auth session live. The input is a file she picks, which is the one input this app
+       takes from outside itself.
+
+   (a) and the "found" halves of (c) and (d) are anti-omission, the same rule check 13 takes for
+   a renamed `serializeState`: a renamed function or a deleted assignment must FAIL rather than
+   turn this into a pass by omission. */
+check(2, 'pdf.js worker matches its pinned library', () => {
+  const pins = html.match(/src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/pdf\.js\/([^/]+)\/pdf(?:\.min)?\.js"/g) || [];
+  must(pins.length === 1,
+    `expected exactly one pinned pdf.js CDN script in index.html, found ${pins.length} — the ` +
+    'version this check compares the same-origin worker against cannot be established');
+  const pinned = /pdf\.js\/([^/]+)\//.exec(pins[0])[1];
+
+  const worker = read('pdf.worker.min.js');
+  must(worker.includes('does not match the Worker version'),
+    'pdf.worker.min.js no longer contains pdf.js\'s own API/worker version guard — the file in ' +
+    'the publish set is not a pdf.js worker build (truncated, replaced, or empty), and nothing ' +
+    'else in this repo reads a byte of it');
+  must(worker.includes(`"${pinned}"`),
+    `index.html pins pdf.js ${pinned} but pdf.worker.min.js does not carry that version — ` +
+    'pdf.js will throw `The API version … does not match the Worker version …` on every ' +
+    'paystub, and paystub_failed has never fired for any reason, so nothing would report it');
+
+  const srcAssign = /GlobalWorkerOptions\.workerSrc\s*=\s*'([^']*)'/.exec(html);
+  must(srcAssign,
+    "could not find the GlobalWorkerOptions.workerSrc assignment — a renamed or deleted worker " +
+    'path must fail this check, not turn it into a pass by omission');
+  const workerSrc = srcAssign[1];
+  must(!/^(https?:)?\/\//.test(workerSrc),
+    `workerSrc is a remote URL (${workerSrc}) — the paystub worker must load from this origin. ` +
+    'The CSP declares no worker-src, so default-src \'self\' blocks it; SRI cannot cover a ' +
+    'worker; and nothing else in this file looks at a script URL that is not a tag');
+  /* Read from deploy.yml rather than restating the list check 8 holds: duplicating it here would
+     make the publish set true in two places, and the workflow is the one that decides. */
+  const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
+  must(copies.includes(workerSrc),
+    `workerSrc is '${workerSrc}', which deploy.yml never copies into _site — it publishes ` +
+    `[${copies.join(', ')}], so this 404s in production while working from a local directory`);
+
+  const getDoc = /getDocument\(\{([^}]*)\}\)/.exec(html);
+  must(getDoc,
+    'could not find the pdf.js getDocument({…}) call — same anti-omission rule: a rewritten ' +
+    'paystub reader must fail this check rather than silently drop the hardening below');
+  must(/isEvalSupported\s*:\s*false/.test(getDoc[1]),
+    'getDocument() no longer passes isEvalSupported:false — that is the CVE-2024-4367 mitigation ' +
+    `for pdf.js < 4.2.0 and ${pinned} is pinned. The CSP carries 'unsafe-eval' for Babel, so ` +
+    'this flag is the only thing between a malicious paystub PDF and arbitrary JS in the origin ' +
+    'holding user_data and the auth session');
+
+  return `${pinned} pinned, worker agrees, same-origin, isEvalSupported:false`;
+});
+
 /* ---- Invariant 4: the upsert that silently broke sync for 47 days ---------------------- */
 check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
   must(/\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/.test(html),
@@ -114,9 +306,17 @@ check(5, 'Storage keys unrenamed', () => {
 
 /* ---- Invariant 6: the .ics self-recognition sentinel ----------------------------------- */
 check(6, '@scrubpay .ics sentinel, both halves', () => {
-  must(/'UID:scrubpay-'\s*\+/.test(html), 'export no longer stamps scrubpay- UIDs');
+  /* There are TWO export stamps — shifts (~index.html:4781) and day events (~4802) — and this
+     check needed only one match until 2026-10-27, so breaking the time-off export alone passed
+     all fourteen checks while the label said "both halves". Asserted as an exact count, the way
+     the publish set and the SRI count are: a third export site is a deliberate change, so it
+     should land here in the same commit rather than silently widen the hole. */
+  const stamps = (html.match(/'UID:scrubpay-'\s*\+/g) || []).length;
+  must(stamps === 2,
+    `expected 2 export sites stamping scrubpay- UIDs (shifts + day events), found ${stamps} — ` +
+    'an unstamped export is not self-recognised, so every event it writes re-imports as a duplicate');
   must(html.includes("indexOf('@scrubpay')"), 'import no longer drops its own UIDs — re-import will duplicate every event');
-  return 'export stamps + import drops';
+  return `${stamps} export stamps + import drops`;
 });
 
 /* ---- Invariant 8/9: the deploy path itself --------------------------------------------- */
@@ -185,6 +385,113 @@ check('events', 'Harness cannot write to production', () => {
     && /neutralizeSupabase\(html, 'ops\.html'\)/.test(h),
     'a scratch page is built without neutralising its Supabase host');
   return 'scratch copies point at .invalid';
+});
+
+/* ---- the harness tests the code the app actually ships -----------------------------------
+   `tests/harness.mjs` holds the five CDN pins a SECOND time, in two tables that must agree with
+   each other and with `index.html`, and nothing had ever compared any of the three:
+
+     PKGS  — what `npm install` fetches into the scratch tree (`react@18.2.0`, `pdfjs-dist@3.11.174`…)
+     MAP   — CDN url -> path inside node_modules, used to rewrite the five <script> tags in the
+             scratch copy because the sandbox blocks unpkg/cdnjs/jsdelivr
+
+   The file's own header already states the rule — "Versions here are pinned to exactly what
+   index.html loads. If you bump a CDN pin, bump it here too or the harness stops testing the code
+   that ships" — and, like the parser-title promise check 13 took over on 2026-10-29 and the
+   `isEvalSupported` promise check 2 took over on 2026-10-31, it was a comment held by nobody.
+
+   Three of the four assertions below guard a failure that is SILENT, and the quietest is the one
+   the local paths create. A MAP target carries no version (`react/umd/react.production.min.js`,
+   `pdfjs-dist/build/pdf.min.js`) — what sits at that path is whatever PKGS installed. So bump the
+   url and not the package and the scratch copy serves a DIFFERENT BUILD than production ships,
+   every assertion in the 883-assertion suite still passes, and nothing anywhere says so. The suite
+   reads green while testing code the app does not run.
+
+   The fourth is the one that reaches the network. A sixth CDN <script> added to index.html and not
+   to MAP is left pointing at the real CDN in the scratch copy, with its `integrity` attribute
+   stripped by the blanket rewrite — on a GitHub Actions runner, where the network is open, that is
+   the rig fetching a third-party script at test time. `check('events', 'Harness cannot write to
+   production')` exists for the sibling case, and the 2026-09-16 incident it records (291 real
+   `app_open` rows inserted into production `events` by CI) is what a harness quietly reaching the
+   internet costs.
+
+   One claim the 2026-10-31 backlog note got WRONG, corrected here rather than built on: it said a
+   bumped pin leaves the scratch copy on the real CDN url. It does not — `buildScratch` throws
+   `CDN pin moved, harness is stale` when a MAP source is absent from index.html, which is the
+   forward direction already enforced. What it is enforced AS is the problem: a throw inside
+   `buildScratch` aborts the suite before `chromium.launch`, and this repo's own rule is that an
+   aborted run is not a failed assertion — the gate reads un-run rather than red, which is exactly
+   why `tests/smoke.mjs` §53 was added on 2026-10-25. Asserting it here makes it a red gate row on
+   a PR instead of a stack trace in a log nobody reads. */
+check('harness', 'Harness tests the pins the app ships', () => {
+  const h = read('tests/harness.mjs');
+
+  /* Anti-omission, the rule checks 2 and 13 both take: a renamed or deleted table must FAIL here,
+     never turn this into a pass by having nothing left to compare. */
+  const pkgsBlock = /export const PKGS = \[([\s\S]*?)\n\];/.exec(h);
+  must(pkgsBlock, 'could not find the PKGS table in tests/harness.mjs — the list of packages the '
+    + 'scratch tree installs is what every version assertion below is read against');
+  const pkgs = [...pkgsBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  must(pkgs.length >= 5, `PKGS lists only ${pkgs.length} packages — index.html loads five CDN `
+    + 'scripts plus the Playwright driver, so this table has lost entries');
+
+  const mapBlock = /\nconst MAP = \[([\s\S]*?)\n\];/.exec(h);
+  must(mapBlock, 'could not find the MAP table in tests/harness.mjs — the CDN-url-to-node_modules '
+    + 'rewrite is how the scratch copy loads the pinned libraries at all');
+  const map = [...mapBlock[1].matchAll(/\['(https:\/\/[^']+)',\s*'([^']+)'\]/g)]
+    .map((m) => ({ url: m[1], local: m[2] }));
+  must(map.length === 5, `MAP holds ${map.length} rows; index.html loads 5 remote scripts`);
+
+  /* PKGS pins by name@version, and a scoped name carries its own @ — split at the last one. */
+  const pinnedPkg = new Map(pkgs.map((p) => {
+    const at = p.lastIndexOf('@');
+    return [p.slice(0, at), p.slice(at + 1)];
+  }));
+
+  for (const { url, local } of map) {
+    /* (1) forward direction: the url the rewrite looks for is really in index.html. Enforced at
+       runtime today only as a throw that aborts the suite. */
+    must(html.includes(url),
+      `tests/harness.mjs rewrites '${url}', which index.html no longer loads — a CDN pin was `
+      + 'bumped without bumping the harness. buildScratch() throws on this, which ABORTS the '
+      + 'smoke suite rather than failing an assertion, so the gate reads un-run instead of red');
+
+    /* (2) the version in the url and the version PKGS installs are the same number. The local
+       path has no version in it, so a disagreement is invisible: the suite serves a different
+       build than production and passes. The package name comes from the LOCAL path because the
+       cdnjs url does not carry it (`pdf.js` is published to npm as `pdfjs-dist`). */
+    const ver = /(?:@|\/)(\d+\.\d+\.\d+[^/@]*)(?:\/|$)/.exec(url);
+    must(ver, `cannot read a version out of the pinned url '${url}', so the harness's copy of `
+      + 'that pin cannot be compared to it');
+    const pkg = local.startsWith('@') ? local.split('/').slice(0, 2).join('/') : local.split('/')[0];
+    must(pinnedPkg.has(pkg),
+      `MAP rewrites '${url}' to node_modules/${local}, but PKGS never installs '${pkg}' — the `
+      + 'scratch copy will 404 that script and every test will fail for the wrong reason');
+    must(pinnedPkg.get(pkg) === ver[1],
+      `index.html pins ${pkg} ${ver[1]} but the harness installs ${pkg}@${pinnedPkg.get(pkg)} — `
+      + 'the MAP target carries no version, so the scratch copy silently serves the installed '
+      + 'build. The whole smoke suite would pass while testing code the app does not ship');
+  }
+
+  /* (3) ops.html is the second page the harness builds, and buildOpsScratch finds its row by
+     substring, so the supabase-js pin has to be present there too. */
+  const supa = map.find((r) => r.url.includes('supabase-js'));
+  must(supa && ops.includes(supa.url),
+    'the supabase-js pin in tests/harness.mjs is not the one ops.html loads — buildOpsScratch '
+    + 'throws, and the ops-console gate assertions never run');
+
+  /* (4) no remote script escapes the rewrite. buildScratch counts how many rewrites it MADE
+     (`n < MAP.length`), which cannot see a sixth script that was never in MAP: that tag keeps its
+     real CDN url, loses its integrity attribute to the blanket strip, and is fetched from the
+     public internet on any runner whose network is open. */
+  const tags = [...html.matchAll(/<script[^>]+src="(https:\/\/[^"]+)"/g)].map((m) => m[1]);
+  const unmapped = tags.filter((u) => !map.some((r) => r.url === u));
+  must(!unmapped.length,
+    `index.html loads ${unmapped.length} remote script(s) the harness does not rewrite `
+    + `(${unmapped.join(', ')}) — the scratch copy keeps the real CDN url with its integrity `
+    + 'attribute stripped, so the test rig fetches a third-party script from the open internet');
+
+  return `${map.length} pins agree with index.html and PKGS`;
 });
 
 /* The MCP gateway imports the wage math from a module generated out of index.html's @core
@@ -256,11 +563,211 @@ check(3, 'Pay math never reads the persona', () => {
   return `${WAGE.length} wage definitions, none names a persona, a pay-event label or a pay-item label`;
 });
 
+/* ---- Invariant 13: the iCal feed URL is a bearer credential -----------------------------
+   CLAUDE.md: "The iCal feed URL is a bearer credential. It lives only in `ical_subscriptions`
+   (owner-only RLS, no `anon` grants), is absent from `serializeState` so it never enters the
+   `user_data` blob (which is exported, mirrored to localStorage and echoed by the sync poll),
+   never goes into `events`, and is never logged by `ical-proxy`." Its Detect trailer is `none`,
+   and says why: a leak is silent by construction — nothing observable changes when a bearer
+   credential escapes, and the only revocation is the calendar provider reissuing the feed. So
+   until now the whole invariant was carried by whoever happened to read the diff.
+
+   Three of its clauses are mechanically checkable and all three are gated here. Two are not —
+   the table's RLS and grants, which live in Postgres, and the absence from `events`, which is
+   now carried at runtime by `redactUrlPaths` at the one choke point every row passes through
+   (2026-10-28) rather than by anything a machine reads here. So 13 stays in the UNCHECKED
+   roll-call below with that qualifier, the way 3 already does. A check that let a reader believe
+   the invariant was covered would be worse than no check at all. */
+check(13, 'iCal feed URL: out of the blob, the log and the parser', () => {
+  /* (a) The blob. `serializeState` is the single serializer — the save effect, the .json export
+     and the unload flush all call it — so a feed field among its keys IS the leak: that object is
+     written to a downloadable file, mirrored into localStorage and echoed back by the 15s sync
+     poll. Read as an AST and asserted as a shape rather than grepped: a new field is fine, a feed
+     field is not, and a `serializeState` this check cannot find must FAIL rather than pass by
+     omission (check 3's rule, for the same reason).
+     `tests/smoke.mjs` §33 scans the outgoing keepalive body for the same pattern at runtime. That
+     covers one path with real bytes; this covers every path from the one place they share. */
+  const Babel = require('@babel/standalone');
+  const open = html.indexOf('<script type="text/babel" data-presets="react">');
+  const start = html.indexOf('>', open) + 1;
+  const src = html.slice(start, html.indexOf('</script>', start));
+  /* Deliberately blunt, and deliberately the same pattern §33 uses, plus `feed` because this side
+     reads field NAMES: `feedUrl` would hold the credential while matching none of the rest. The
+     bluntness is the point — index.html:~1527 records the same trade when `syncManualOnly` was
+     named to avoid tripping it. A future field whose name merely contains "ical" (a `medical*`
+     premium is the realistic one) trips this: rename the field, or narrow this on purpose with a
+     line saying why. Do not delete the guard to make a name read nicer. */
+  const CREDENTIAL = /ical|webcal|feed|basic\.ics/i;
+  let keys = null;
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      VariableDeclarator(p) {
+        if (!(p.node.id.type === 'Identifier' && p.node.id.name === 'serializeState')) return;
+        const found = [];
+        p.traverse({ ObjectProperty(q) {
+          const k = q.node.key && (q.node.key.name || q.node.key.value);
+          if (k) found.push(String(k));
+        } });
+        keys = found;
+      },
+    } })] });
+  must(keys && keys.length > 5,
+    'serializeState was not found as a variable holding an object literal — if the single ' +
+    'serializer moved or was renamed, this check is reading nothing and Invariant 13 just lost ' +
+    'its only mechanical guard');
+  const leaked = keys.filter((k) => CREDENTIAL.test(k));
+  must(!leaked.length,
+    `serializeState carries a feed field (${leaked.join(', ')}) — the user_data blob is exported ` +
+    'to a file, mirrored to localStorage and echoed by the sync poll, so this is the credential ' +
+    'leaving the one table it is allowed to live in');
+
+  /* (b) The proxy log. `ical-proxy` is handed the raw feed URL on every sync, and its own header
+     promises "It is NEVER logged" — assert that instead of trusting it. ANY logging call fails,
+     not just one that visibly formats the URL: the next edit to this file is the likeliest one to
+     add a log, because the first-call `422 not_a_calendar` fault is still unexplained
+     (BACKLOG.md → P2) and a debug line is the obvious way to reach for it. The function's edge
+     log is also the thing two separate grooms have had to read to diagnose a sync, so a URL
+     landing there is a credential sitting in a log somebody opens on purpose. */
+  const logs = proxy.match(/\bconsole\s*\.\s*[A-Za-z]+/g) || [];
+  must(!logs.length,
+    `ical-proxy logs (${logs.join(', ')}) — it is handed the feed URL on every sync and that URL ` +
+    'is a bearer credential: anyone holding it reads her whole calendar until the provider ' +
+    'reissues the feed');
+
+  /* (c) The parser. Invariant 13's last sentence: "The parser stores dates, times, hours and
+     UIDs — never titles. It *reads* `SUMMARY` once, at parse time, to set the boolean
+     `offHint` (time off vs. shift), and keeps nothing else from it." index.html:~1145 makes the
+     same promise in prose — "The title is read HERE and only here, reduced to this one boolean,
+     and never stored or sent anywhere" — and nothing held it.
+     The blast path is the one (a) guards, reached from the other end: a parsed event becomes a
+     shift, a shift goes into the `user_data` blob, and the blob is exported to a file, mirrored
+     to localStorage and echoed by the 15s poll. A title is not the feed URL, but it is calendar
+     content from a credentialed fetch, and it is the field most likely to be added by accident —
+     a "show her what the feed called it" card is an obvious feature, and the parser is the file
+     sync work edits (the time-off title default landed 2026-10-03, the timezone conversion
+     2026-09-28). Four assertions, each a different way the clause dies. */
+  const TEXT_PROPS = /^(SUMMARY|DESCRIPTION|LOCATION|COMMENT|CATEGORIES|CONTACT|ATTENDEE|ORGANIZER)$/;
+  /* The per-event shape. A new key here is fine and must be added on purpose — the same intended
+     friction the roster check applies to the check count. */
+  const EVENT_KEYS = ['dateKey', 'start', 'hours', 'uid', 'offHint'];
+  let sawParser = false, sawOff = false;
+  const extraKeys = [], loose = [], returns = [];
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      FunctionDeclaration(p) {
+        const name = p.node.id && p.node.id.name;
+        if (name === 'parseICSSchedule') {
+          sawParser = true;
+          p.traverse({
+            /* Every object literal handed to a .push() inside the parser is a candidate event. */
+            CallExpression(q) {
+              const callee = q.node.callee;
+              if (!(callee.type === 'MemberExpression' && callee.property.name === 'push')) return;
+              const arg = q.node.arguments[0];
+              if (!arg || arg.type !== 'ObjectExpression') return;
+              for (const prop of arg.properties) {
+                const k = prop.key && (prop.key.name || prop.key.value);
+                if (k && !EVENT_KEYS.includes(String(k))) extraKeys.push(String(k));
+              }
+            },
+            /* A text-bearing VEVENT property may only be read as an argument to icsLooksOff.
+               Hoisting it into a local first — `const t = props.SUMMARY.value` — is exactly how
+               it starts being kept, so that shape must fail even before anything stores it. */
+            MemberExpression(q) {
+              const k = q.node.property && (q.node.property.name || q.node.property.value);
+              if (!k || !TEXT_PROPS.test(String(k))) return;
+              const inOff = q.findParent((a) => a.isCallExpression()
+                && a.node.callee.type === 'Identifier' && a.node.callee.name === 'icsLooksOff');
+              if (!inOff) loose.push(String(k));
+            },
+          });
+        }
+        if (name === 'icsLooksOff') {
+          sawOff = true;
+          /* `offHint` IS stored, so the one thing that keeps (b) honest is this function
+             returning a boolean. `return title` or `return props.SUMMARY.value` would put the
+             title into every parsed event while matching the key whitelist exactly. Allowed node
+             types are the boolean-valued ones; a future helper call (`isOffTitle(t)`) trips this
+             on purpose — widen it with a line saying why, do not delete it. */
+          p.traverse({ ReturnStatement(q) {
+            const a = q.node.argument;
+            if (!a) return;
+            const okType = a.type === 'BooleanLiteral' || a.type === 'UnaryExpression'
+              || a.type === 'LogicalExpression' || a.type === 'BinaryExpression'
+              || (a.type === 'CallExpression' && a.callee && a.callee.type === 'MemberExpression'
+                  && a.callee.property.name === 'test');
+            if (!okType) returns.push(a.type);
+          } });
+        }
+      },
+    } })] });
+  must(sawParser, 'parseICSSchedule was not found — the .ics parser is where a feed\'s titles ' +
+    'enter the app, so a renamed or moved parser turns this clause into a pass by omission ' +
+    '(check 3\'s rule, and (a)\'s)');
+  must(sawOff, 'icsLooksOff was not found — the title is read there and nowhere else, so this ' +
+    'clause is reading nothing');
+  must(!extraKeys.length,
+    `the parsed .ics event carries fields Invariant 13 does not allow (${[...new Set(extraKeys)].join(', ')}) — ` +
+    'a parsed event becomes a shift and a shift goes into the user_data blob, which is exported ' +
+    'to a file, mirrored to localStorage and echoed by the sync poll. Add the key to EVENT_KEYS ' +
+    'in this check if it is genuinely not calendar text');
+  must(!loose.length,
+    `a text-bearing VEVENT property (${[...new Set(loose)].join(', ')}) is read in the parser outside ` +
+    'icsLooksOff — the title may only ever be reduced to that one boolean, never hoisted into a ' +
+    'local, logged or stored');
+  must(!returns.length,
+    `icsLooksOff returns something that is not boolean-valued (${returns.join(', ')}) — offHint IS ` +
+    'stored on every parsed event, so a non-boolean return carries the feed\'s title into the ' +
+    'blob while passing the field whitelist above');
+
+  return `${keys.length} blob fields, none a feed; proxy logs nothing; parser keeps ${EVENT_KEYS.length} fields, no title`;
+});
+
 /* ---- operating-committee caps (docs/leadership.md) -------------------------------------- */
 check('cos', 'Operating-committee caps', () => {
   const v = cosViolations(ROOT);
   if (v.length) throw new Error(v.join('; '));
   return '≤3 threads, ≤3 decisions, ≤5 per seat queue, brief ≤40 lines';
+});
+
+/* ---- the gate's own roster ---------------------------------------------------------------
+   Everything above holds an invariant. Nothing held THIS FILE. Delete a `check()` call and the
+   suite prints "All 14 mechanical checks passed" instead of 15, exits 0, and the PR goes green:
+   the invariant that check was holding is now held by nobody and no signal anywhere says so.
+   That is Invariant 4's shape aimed at the gate, and it is why the count is declared here and
+   compared rather than merely printed.
+
+   Adding a check means adding its label to this list in the same commit. That is the intended
+   friction — the number was unwatched, so it may only move on purpose.
+
+   `scripts/test_check_build.mjs` holds the same roster and, unlike this check, proves the gate
+   actually FAILS on a broken tree (one deliberate break per check, and one per clause where a
+   check holds several). A self-check cannot
+   establish its own teeth; that suite is what does. */
+check('gate', 'Every check this gate claims is still here', () => {
+  const self = read('scripts/check_build.mjs');
+  const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on all 5 CDN scripts',
+    'CSP covers every host the pages load',
+    'pdf.js worker matches its pinned library',
+    "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
+    '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
+    'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
+    'Unload telemetry intact', 'Harness cannot write to production',
+    'Harness tests the pins the app ships',
+    'Extracted core in sync with index.html', 'Pay math never reads the persona',
+    'iCal feed URL: out of the blob, the log and the parser', 'Operating-committee caps',
+    'Every check this gate claims is still here'];
+  const absent = LABELS.filter((l) => !self.includes(`, '${l}', () =>`) && !self.includes(`, "${l}", () =>`));
+  must(!absent.length,
+    `the gate no longer contains checks it claims: ${absent.join('; ')} — either a check was ` +
+    'deleted (the invariant it held is now unguarded) or renamed without updating this roster');
+  /* Counted from declarations at column 0, which is how every check in this file is written. */
+  const declared = (self.match(/^check\(/gm) || []).length;
+  must(declared === LABELS.length,
+    `this file declares ${declared} checks but the roster lists ${LABELS.length} — a check was ` +
+    'added or removed without updating the roster, so "All N passed" is no longer a number ' +
+    'anything compares');
+  return `${declared} checks, all declared`;
 });
 
 /* ---- report ---------------------------------------------------------------------------- */
@@ -269,7 +776,7 @@ console.log('\nBadgeBudget build gate\n');
 for (const r of results) {
   console.log(`  ${r.ok ? '✓' : '✗'} ${pad('[' + r.invariant + ']', 9)} ${pad(r.label, 42)} ${r.detail}`);
 }
-console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL\n');
+console.log('\n  UNCHECKED (human-held): 3 wage-core (only its persona rule is gated), 7 swap salt (deployed SQL), 10 fetch-before-branch,\n                          11 protected branches, 12 URL forwarding off, 13 iCal feed URL (blob + proxy log + parser titles gated; RLS and events are not)\n');
 
 const failed = results.filter(r => !r.ok);
 if (failed.length) {

@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-10-20 by the session-4 build (T3), after the 10-19 nightly pass. Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-10-26 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -26,20 +26,31 @@ Updated 2026-10-20 by the session-4 build (T3), after the 10-19 nightly pass. Ch
 
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
-- **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174);
-  effective-dated rates shipped (#187). Session 4 (dated pay items) built 2026-10-20 — PR waits on D3.
-- **Next:** session 5 — the Law enforcement and Fire & EMS tiles. Kickoff prompt:
-  `docs/session-2026-10-20-dated-pay-items.md`.
+- **Where:** sessions 1–3 of 6 shipped (onboarding v2, configurable work period, pay events #174).
+  Session 4 is **built and open as PR #191**, waiting on Pat since 2026-10-20 (it moves figures) —
+  **seven nights** as of tonight, head unchanged since it opened.
+- **Next:** Pat merges #191 (D3 below), then session 5 — the Law enforcement and Fire & EMS tiles.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
 - **Waiting on:** a dedicated session.
 
 ## Needs Pat
 
+**D3 — Merge PR #191, session 4 (dated pay items)? — opened 2026-10-20, no default.** It is the
+owner tier: it moves dollar figures, so the loop may not merge it. **Seven nights open**, more than
+twice as long as the raise PR (D2) waited — and in that window she deleted 42 of her own shifts.
+That is the cost of a slow read on this tier, not an argument to lower it. Nothing in the PR has
+changed since it opened; it needs a yes or a no, not more review. It is also now blocking a second
+thing: the dated-rate telemetry item has been skipped for seven nights because #191 edits the same
+three regions of `index.html` (`BACKLOG.md` → the 10-20 band).
 
-**D3 — Merge the dated-pay-items PR (session 4)?** It moves figures only for someone who adds an
-item; with none, every figure matched the live site. The PR opens with a before → after card of
-three example paychecks — that card is the decision. Default: none; it waits for Pat.
+**CABINET MISSED (seventh night).** `docs/cos/brief.md` is **13.8 days** old and still reads *"No
+cabinet has run yet. The first runs Sunday 2026-10-18."* **Two** Sundays have now passed without a
+cabinet — 2026-10-18 and 2026-10-25, the second of which the 10-25 groom was explicitly waiting
+for — and the next is **2026-11-01**. (The 10-19 and 10-21 groom notes called 10-19 "the second
+Sunday"; 2026-10-19 was a Monday, so that count was wrong and is not carried forward.) The nightly
+cannot clear this — writing the brief is the Sunday cabinet pass's job — so the notify line carries
+it until a cabinet runs.
 
 **D1 — Is `personas` the third thread? — DEFAULTED YES on 2026-10-19** by the nightly cos pass,
 which is the rule D1 was opened with ("Default: yes. Defaults on 2026-10-19") and not a new call.

@@ -101,7 +101,9 @@ see Positioning.
   **Effective-dated rates shipped 2026-10-20** (#187, owner-merged, LIVE at `a103682`;
   `docs/effective-dated-rates-spec.md`): "New rate from [date]" in Settings, each shift priced by
   the rate on the day it starts.
-  **Session 4 (dated pay items) built 2026-10-20** (the PR waits for Pat because it moves figures —
+  **Session 4 (dated pay items) shipped 2026-11-01** (#191, built 2026-10-20, approved by Pat
+  2026-11-01 off its before → after card, merged after the deploy branch was brought into it and
+  `tests/equality.mjs` re-read 34 identical / 0 unintended / 5 of 5 named against badgebudget.com;
   `docs/dated-pay-items-spec.md`): money that lands in one particular check — longevity, holiday
   cash, a ratification lump — as a `payItems` list on the job, never on a shift, in the pay period
   whose dates hold its date. It never enters that period's overtime (29 CFR 778.209(a)); a "bonus"
@@ -172,11 +174,12 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `supabase/migrations/` | `000_core.sql` (`user_data`/`feedback`/`events` + RLS, captured 2026-09-13), `001_swap_board.sql`, `002_ical_subscription.sql` (the iCal feed table), `003_feedback_kind.sql` (the feedback tile tag), `004_ops_console.sql` (the `ops_admins` allow-list + the admin-gated ops RPCs + the first indexes on `events`/`feedback`; applied 2026-09-13, gate probed 10/10), `005_feedback_anon_id.sql` (the device join key on `feedback`; applied 2026-09-14), `006_ops_device_trail.sql` (phase 3b — `ops_device_list()` + `ops_device()`, the per-device touch-point trail; applied 2026-09-16, gate probed 6/6 including over the real REST API with the public anon key), `007_feedback_inbox_anon_id.sql` (adds `anon_id` to `ops_feedback_inbox()` so a report links to that device's trail; applied 2026-09-16 — a DROP and recreate, because Postgres cannot add an OUT column with CREATE OR REPLACE, with the grants and the `anon` denial re-probed after). 000→004 in order stands up a fresh project; 000 is a snapshot of the schema *before* `kind`, so it is never back-edited |
 | `supabase/functions/ical-proxy/index.ts` | SSRF-guarded Edge Function that fetches a nurse's secret iCal feed (deployed, `verify_jwt` on) |
 | `scripts/groom_seed.mjs` + `scripts/test_groom_seed.mjs` | Reddit-seed groom tooling + its 33-assertion suite |
-| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, and (since 2026-10-12) the operating committee's caps |
+| `scripts/check_build.mjs` | the mechanical invariant gate — parses the JSX and asserts Invariants 1, 2, 4, 5, 6, 8, 9, plus that the extracted core below is in sync, (since 2026-10-10) that no wage-core definition names a persona, (since 2026-10-12) the operating committee's caps, and (since 2026-10-26, a third since 2026-10-29) three of Invariant 13's five clauses — no feed field in `serializeState`, no logging in `ical-proxy`, no title kept by the .ics parser — (since 2026-10-30) that **every host the published HTML loads is permitted by its own CSP**, the forward direction only, and (since 2026-10-31) that **the same-origin `pdf.worker.min.js` is the build the CDN pin names**, which is the sixth script the app loads and the one none of the other mechanisms can see, and (since 2026-11-01) that **the test harness installs and rewrites exactly the pins `index.html` ships** — `tests/harness.mjs` holds the five CDN versions a second time, in `PKGS` and `MAP`, and a disagreement makes the 883-assertion suite pass against a different build than production runs, and (since 2026-10-27) **its own roster** — the last check declares the others by label and fails if the count moves, because "All N passed" was a number nothing compared. 19 checks |
+| `scripts/test_check_build.mjs` | the gate's own meta-test (46 — 41 until the harness-pin check's five breaks 2026-11-01, 33 until the pdf.js-worker check's eight breaks 2026-10-31, 28 until the CSP clause's five 2026-10-30, 23 until the parser clause's five 2026-10-29) — the roster, plus **41 deliberate breaks covering all nineteen checks**, each run against a `.gate-scratch/` copy and required to exit non-zero AND name the right invariant. A check holding several clauses gets one break per clause, because a group of `must()`s broken as a group only proves that *one* of them has teeth. **Since 2026-10-30 a break may pin the failing check's LABEL as well as its tag**, and the fourteen `[2]` breaks do: **three** checks share that tag now (SRI, the CSP, and the pdf.js worker), so `✗ [2]` alone would credit a CSP break to the SRI check and count a break that failed the wrong row as a win. The pin is negative-tested like any assertion — pointing it at the wrong label turns all five CSP breaks red (measured 2026-10-30) and all eight worker breaks red (measured 2026-10-31, 33 passed / 8 failed). A check with a tag of its own needs no label pin, which is why the five `[harness]` breaks added 2026-11-01 carry none; they were negative-tested the other way instead — neutering the check to `return` turns all five red (measured 2026-11-01, 41 passed / 5 failed). Why both halves: a gate whose `must()` is neutered to a no-op still prints "All 19 mechanical checks passed", and the roster half passes it completely — only the breaks catch it (measured 2026-10-27: 16 of 23 fail). **Not in CI yet** — the `gate` job needs one line, and editing a workflow file is blocked for agent sessions |
 | `scripts/extract_core.mjs` + `supabase/functions/_shared/badgebudget-core.mjs` + `tests/core.test.mjs` | the pure domain core (wage math, pay-period paycheck, sanitizer, patterns, stub parser) sliced out of `index.html`'s `/* @core:begin … */` regions into an importable ES module — **generated, committed, never hand-edited** — and its Node unit tests (175 — 135 until dated pay items 2026-10-20, 116 until effective-dated rates 2026-10-17, 111 until the manual-sync preference 2026-10-16, 83 until the pay events 2026-10-11, 71 until the FICA health-premium split 2026-10-11, 51 until the configurable work period, 20 until onboarding v2's presets and whitelist, both 2026-10-10). One copy of the math, two callers: the app and the MCP gateway (2026-10-07) |
-| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **836 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "817" until dated pay items 2026-10-20, "802" until effective-dated rates 2026-10-20, "791" until the empty-day save 2026-10-18, "786" until the paystub empty-parse counter 2026-10-17, "772" until the manual-sync switch 2026-10-16, "765" until the planner-delete uid memory 2026-10-15, "757" until the paystub photo refusal 2026-10-14, "751" until the paystub-reader failure 2026-10-13, "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable |
+| `tests/harness.mjs` + `tests/smoke.mjs` | the Playwright rig, in git since 2026-09-07; **883 assertions** on an iPhone 13 profile, plus first-gen iPhone SE in §30 and §38 (read "869" until §54's feed-credential redaction 2026-10-28, "860" until §53's browser resolver 2026-10-25, "852" until §52's .ics round trip 2026-10-24, "850" until §30's webfont-guarded wordmark fit 2026-10-23, "832" until the stepper sync opt-out 2026-10-22, "817" until the banner sync opt-out 2026-10-21, "802" until effective-dated rates 2026-10-20, "791" until the empty-day save 2026-10-18, "786" until the paystub empty-parse counter 2026-10-17, "772" until the manual-sync switch 2026-10-16, "765" until the planner-delete uid memory 2026-10-15, "757" until the paystub photo refusal 2026-10-14, "751" until the paystub-reader failure 2026-10-13, "736" until the pay events 2026-10-11/12 merged, "725" until the anon-id freshness flag 2026-10-12, "694" until the FICA health-premium split 2026-10-11, "682" until the configurable work period 2026-10-10, "633" until onboarding v2 2026-10-10, "632" until the core-extraction probe 2026-10-10, "591" until the re-sync dismissal 2026-10-10, "571" until the import-update disclosure 2026-10-09, "555" until the exhausted-load banner 2026-10-07, "539" until the cloud-load retry 2026-10-06, "518" until the unload-save keepalive 2026-10-05, "496" until the time-off repair path 2026-10-04, "467" until the hero-stats change 2026-10-03, "456" until time-off entries got their own default 2026-10-03, "455" until the weekend-pickup card was hidden 2026-10-03, "450" before the second 2026-10-03 change, "437" before that — regenerate the figure from a run, don't trust the line). `buildScratch` emits a local copy of `ops.html` too, so the console's gate is drivable. **The browser is discovered, never pinned** (2026-10-25): `chromiumLaunch()` in `harness.mjs` is the one resolver all three Playwright entrypoints share — newest headless shell, then `/opt/pw-browsers/chromium`, then the newest full build, then **`null`** so playwright-core resolves its own on CI. A pinned path that has moved kills the suite with Playwright's "just installed or updated" banner, which is a **harness error, not a failed assertion** — the gate reads un-run rather than red. Pinned by `tests/smoke.mjs` §53, which runs *before* `chromium.launch` so that break prints a FAIL instead of only an exception |
 | `scripts/ops_gate_probe.sql` | the adversarial probe set for the ops console's guard — non-admin, `anon`, revocation, and the positive control. Run it before trusting `/ops.html`; the SQL editor's default session is a superuser and both obvious probes lie |
-| `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 36-assertion classifier suite is |
+| `scripts/silence_watch.mjs` + `scripts/test_silence_watch.mjs` | is the app silent because nobody came, or because telemetry is broken? Four verdicts (`FRESH` / `SILENT_BUT_HEALTHY` / `SILENT_AND_UNHEALTHY` / `UNKNOWN`), always saying which side it could establish. Reports rather than alarms — only a silence *with* a failed health check exits non-zero. Needs network + `SUPABASE_ACCESS_TOKEN`, so like `tests/equality.mjs` it is not in CI; its 39-assertion classifier suite is |
 | `docs/onboarding-funnel-spec.md` + `scripts/onboarding_funnel.sql` | onboarding v2's spec (every screen, the field each answer sets, the event it fires) and its funnel query — devices per screen, answer mix, back-outs, completion, with the harness pair, `nostore-`, insiders and crawlers excluded |
 | `scripts/dashboard_snapshot.sql` + `.mjs` | one query → one JSON blob for the ops dashboard; the `.mjs` folds in the track-name inventory read from `index.html` |
 | `scripts/deploy_watch.mjs` + `scripts/test_deploy_watch.mjs` | is what is MERGED actually LIVE? Hashes the three HTML files of the publish set against the deploy branch's git blobs — `deploy.yml` copies them verbatim, so a sha256 match is conclusive and needs no marker string. Five verdicts (`LIVE` / `BEHIND` / `NOT_THE_APP` / `UNKNOWN_BUILD` / `UNREACHABLE`); `BEHIND` names the commit actually being served and how many changes are unshipped. **It fetches the deploy ref before judging anything against it** (2026-10-19) — on 2026-10-11 it printed `LIVE` 24 seconds after a merge, naming the *pre-merge* commit, because the local clone was behind origin and `history[0]` was not the tip; a fetch it cannot complete now degrades `LIVE` to `UNKNOWN_BUILD` rather than printing a warning, because the verdict word is the part that gets read. Needs network, so like `silence_watch.mjs`'s live probes it is not in CI; its 84-assertion classifier suite is |
@@ -199,8 +202,13 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 
 ## Invariants — never weaken, never rename
 
-`scripts/check_build.mjs` gates **1, 2, 4, 5, 6, 8 and 9** on every PR. **3, 7, 10, 11, 12 and 13
-are human-held** — no machine sees them.
+`scripts/check_build.mjs` gates **1, 2, 4, 5, 6, 8 and 9** on every PR. **7, 10, 11 and 12 are
+human-held** — no machine sees them. **3 and 13 are PARTLY gated and the gate says which part:** 3's
+persona rule only (2026-10-10), and 13's three mechanical clauses — the feed field staying out
+of `serializeState` and `ical-proxy` logging nothing (2026-10-26), and the .ics parser keeping no
+titles (2026-10-29). Everything else in 3 and 13 is
+human-held, and the gate's roll-call keeps naming it: "13 is checked" would be a worse claim than
+"13 is not".
 
 Each one carries a `↳` trailer in a fixed shape: **Detect** (what would tell you it is *already*
 broken in production), **Blast** (what breaks, and how widely, when it is) and **Verify** (the
@@ -222,6 +230,13 @@ the 47-day outage it exists to catch.
    ↳ **Detect** none — SRI *working* is a blocked script, which surfaces as the watchdog screen,
    indistinguishable from a CDN outage. **Blast** without it a CDN compromise runs arbitrary JS with
    the whole `user_data` blob in reach. **Verify** the grep above; gated by `check_build.mjs`.
+   **Two sibling controls now sit in the same `[2]` check band.** The first is the `<meta>` CSP,
+   gated since 2026-10-30: SRI pins *which file*, the CSP permits *which host*, and the CSP is the
+   one that fires first — a host it does not list means the script is never fetched, so its hash is
+   never compared and the count still reads 5. The second, since 2026-10-31, is the **same-origin**
+   `pdf.worker.min.js`: the sixth script this app loads, which SRI cannot cover (a worker takes no
+   `integrity` attribute) and the CSP check cannot see (it walks tags; this one is a URL in
+   JavaScript). See Architecture for what each of the three does and does not check.
 3. **Wage-core** (`shiftGross`, `hourlyRate`, `computeNet` — the per-paycheck tax model shared by the
    hero and the pattern lab since #65, with two pre-tax buckets since 2026-10-11: retirement is FICA
    wages, Section 125 health premiums are not — `calc` and the **`periodPaycheck`** it calls, **`keepRatioOf`**
@@ -272,8 +287,24 @@ the 47-day outage it exists to catch.
    every previously exported event re-imports as a duplicate.
    ↳ **Detect** none — the symptom is duplicate shifts after a re-import, visible to the nurse and
    reported nowhere. **Blast** every previously exported shift duplicates, inflating hours and every
-   wage figure downstream of them. **Verify** `check_build.mjs` asserts both halves; there is no
-   round-trip test — a known gap.
+   wage figure downstream of them. **Verify** `check_build.mjs`'s `[6]` check is labelled "both
+   halves" and, since 2026-10-27, guards both: it counts the **two** export stamps exactly (shifts
+   at ~`index.html`:4781, day events at ~4802) as well as the import-side drop, so breaking either
+   stamp alone now fails it. That precision was the point — measured 2026-10-24 the check guarded
+   **one** half, all 14 checks passing on a build whose export stamped `@badgebudget`, and the
+   2026-10-26 groom then found a **third** hole of the same kind: the old regex needed one match
+   while the file has two stamp sites, so the time-off export could stop being self-recognised with
+   the gate still green. All three breaks are now pinned in `scripts/test_check_build.mjs`
+   (`[6]` import, `[6]` first stamp, `[6]` second stamp). The one hole left is the one the gate
+   never claimed: a UID that drops its **date** still passes, which `tests/smoke.mjs` §52 catches
+   off the real bytes. The
+   round trip itself is pinned since 2026-10-24 by `tests/smoke.mjs` §52: it exports a real file
+   from a seeded blob, asserts every UID off those bytes, feeds the file back through the picker,
+   and confirms the import offers nothing and writes nothing. The assertion that carries it is the
+   one after a **confirm** — a build with the sentinel broken offers the duplicates through the
+   stepper and writes nothing until she taps, so a blob read before that point is unfalsifiable and
+   was deleted for it. One event with a **foreign** UID rides in the same file, because every
+   "nothing to import" assertion above it would also pass on a build whose import is simply broken.
 7. **`'scrubpay-swaps'` is a live md5 salt** deriving `poster_key` in the deployed `swap_board()`
    function. It is the swap board's anonymity model, not a string — **and, as of 2026-09-13, a
    known-broken one** (`security-00`, critical): the hash's other inputs are readable by any
@@ -340,9 +371,52 @@ the 47-day outage it exists to catch.
     parse time, to set the boolean `offHint` (time off vs. shift), and keeps nothing else from it.
     ↳ **Detect** none, and a leak is silent by construction — nothing observable changes when a bearer
     credential escapes. **Blast** anyone holding the URL reads the nurse's whole calendar
-    indefinitely; the only revocation is the calendar provider reissuing it. **Verify** confirm
-    `serializeState` never touches the feed field, `ical-proxy` logs no URL, and an exported blob
-    contains no feed address. UNCHECKED in the gate.
+    indefinitely; the only revocation is the calendar provider reissuing it. **Verify** `check_build.mjs`'s
+    `[13]` check gates three clauses mechanically. Since 2026-10-26 the first two: it parses
+    `serializeState` as an AST and fails on any key matching `/ical|webcal|feed|basic\.ics/i` — and
+    fails if it cannot *find* `serializeState`, so a renamed serializer can't turn it into a pass by
+    omission — and it fails on any `console.*` in `ical-proxy`, because the next edit to that file
+    is the likeliest one to add a debug log (the first-call `422` is still unexplained). Four
+    deliberate breaks plus a false-positive control, measured. **Since 2026-10-29 the third:
+    the parser keeps no titles** — the clause whose promise was made twice in prose (here, and at
+    `index.html`:~1145, "read HERE and only here, reduced to this one boolean") and held by
+    nobody. Four assertions, because there are four separate ways it dies: the per-event object
+    pushed by `parseICSSchedule` may carry only `dateKey`/`start`/`hours`/`uid`/`offHint` (a new
+    key is intended friction, added on purpose); a text-bearing VEVENT property —
+    `SUMMARY`/`DESCRIPTION`/`LOCATION`/`COMMENT`/`CATEGORIES`/`CONTACT`/`ATTENDEE`/`ORGANIZER` —
+    may be read *only* inside an `icsLooksOff(…)` argument, so **hoisting it into a local fails
+    before anything stores it**, which is the shape the edit actually takes; `icsLooksOff` must
+    return a boolean-valued expression, because `offHint` IS stored and `return title` would ride
+    the whitelist unchanged; and both functions must be **found**, so a rename cannot make it a
+    pass by omission. Five deliberate breaks, one per assertion, each measured to fail `[13]` with
+    its own message. The blast path is (a)'s from the other end: a parsed event becomes a shift,
+    and a shift is in the blob that is exported, mirrored and polled. **The other two clauses stay
+    UNCHECKED in the gate**: the table's owner-only RLS and absent `anon` grants, and the absence
+    from `events` — which has the runtime redaction below rather than a gate.
+    `tests/smoke.mjs` §33 covers the outgoing keepalive
+    body at runtime; the gate covers the one source every write path shares, including the `.json`
+    export, which nothing scanned before.
+    **The `events` clause got a mechanism on 2026-10-28, and it is a redaction rather than a
+    gate.** It had been held at exactly ONE call site: `icalFailureDetail` whitelists the proxy's
+    error code to a snake_case token (§24 pins that thoroughly), but that helper guards one
+    `console.error` — and the boot script mirrors **every** `console.error` in the app into the
+    error ring buffer, which `flushClientErrors` ships to `events` as a `client_error` row. So the
+    clause rested on every present and future console.error formatting its arguments carefully, and
+    one debug line (`console.error('sync', url)`) would have put a bearer credential in a shared
+    table permanently with nothing observable changing. `redactUrlPaths` now sits beside
+    `redactMoney` at that choke point — one place, every path, the same shape `serializeState`
+    carries for the blob half. **A URL keeps its scheme and host and loses its path, query and
+    fragment**: the host is the whole diagnostic value of these rows (a blocked CDN script is
+    Invariant 2's only live signal), and the path is where the secret lives. Deliberately **not**
+    applied to the ring buffer itself — `scrubpayErrors` is her own localStorage (Invariant 5)
+    holding a URL she typed into Settings, and the watchdog's "Copy error log" hands her that
+    buffer verbatim for a bug report. **No live leak was found**: no `console.error` in the app
+    formats the feed URL today, so this is a regression guard on a silent-by-construction
+    invariant, not a fix for an observed escape. Pinned by `tests/smoke.mjs` §54, off the real row
+    the app hands the client rather than a helper's return value, and **falsifiable in both
+    directions** — four measured breaks: dropping the scrub (7 fails), over-redacting the host away
+    (4), dropping the money scrub (1), and matching only `https?:` so `webcal:` slips through (5),
+    which is the realistic one, because `webcal://` is what NurseGrid actually hands out.
 
 **What this shape surfaced (2026-09-13).** Filling in `Detect` for all thirteen showed that only #4
 has a live production signal; #8 and #9 have one that exists in the data but nothing watches. The
@@ -355,6 +429,38 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   single-file. Two god components, `App` and `SwapsSheet`. CDN deps are pinned with SRI
   (React/ReactDOM 18.2.0, Babel 7.24.7, pdf.js 3.11.174 with `isEvalSupported:false`, supabase-js
   2.45.4); the `<meta>` CSP must cover every runtime host.
+  **That CSP rule is gated since 2026-10-30, in the forward direction only.** SRI asks "is this the
+  exact file we pinned?"; the CSP asks the earlier question, "may the browser fetch it from that
+  host at all?", and a host missing from it is a *silent total outage* — the script is blocked,
+  React or Babel never defines, and Invariant 1's watchdog shows the boot error screen to every
+  visitor, which Invariant 1's `Detect` records as invisible (a device that never boots never fires
+  `app_open`). `check_build.mjs` asserts every host a **tag** loads from is permitted by the
+  matching directive in `index.html` and `ops.html`, that a page with no CSP meta **fails** rather
+  than passing by omission, that a Google Fonts stylesheet implies `font-src https://fonts.gstatic.com`
+  (no tag names a woff2, and a silent fallback moves the layout — the wordmark has 13px of
+  headroom at 320pt), and that **`privacy.html`, which ships with no CSP, references no remote URL
+  at all** — the property that makes the absence safe. The reverse direction is deliberately
+  **not** checked: `connect-src` carries hosts no tag can reveal and `img-src` is `https:`
+  wholesale, so flagging an unused permission would be coverage theatre.
+  **The app loads a SIXTH script, from its own origin, and it is gated separately since
+  2026-10-31.** `pdf.worker.min.js` is fetched at runtime by pdf.js, and none of the three
+  mechanisms above reach it: SRI cannot (a worker takes no `integrity` attribute, and it is not a
+  tag at all — it is a string assigned to `GlobalWorkerOptions.workerSrc`), the CSP check cannot
+  (it walks tags; this is a URL in JavaScript), and Invariant 8's publish-set check names the
+  *file* — nothing in this repo had ever read a byte inside it. Four properties, eight
+  assertions, one deliberate break each: the worker's embedded version must equal the version in
+  the CDN pin (**pdf.js compares them itself and throws** `The API version "X" does not match the
+  Worker version "Y"`, so a bumped pin with the old worker beside it kills the paystub reader
+  outright — and `paystub_failed` has never fired for any reason, so nothing would report it);
+  `workerSrc` must stay a bare filename that is in the publish set (the CSP declares no
+  `worker-src`, so `default-src 'self'` blocks a CDN worker **even though `script-src` permits
+  that host** — which makes "serve the worker from the CDN instead" the edit that looks right,
+  passes every other check, and kills the feature); and `getDocument` must still be passed
+  `isEvalSupported:false`, the CVE-2024-4367 mitigation for pdf.js < 4.2.0. That last one is
+  load-bearing in a way the pin is not: the CSP carries `'unsafe-eval'` because Babel standalone
+  needs it, so the flag is the only thing between a malicious paystub PDF — a file *she* picks,
+  the one input this app takes from outside itself — and arbitrary JS in the origin holding
+  `user_data` and the auth session.
   **The core is marked, not moved** (2026-10-07): the pure math lives in `/* @core:begin <name> */ …
   /* @core:end */` regions of `index.html`, and `scripts/extract_core.mjs` slices them into
   `supabase/functions/_shared/badgebudget-core.mjs` for Node tests and the MCP gateway. The app stays
@@ -408,7 +514,12 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   sent), so nothing she types can ride one. `session_end` goes through
   `beaconInsert()` (keepalive fetch), not `track()`, and the row to read is the LAST per load.
   `nostore-<uuid>` anon_ids are visits, never returning devices — exclude them from device counts.
-  `client_error` is one row per load, money-redacted, read-and-clear.
+  `client_error` is one row per load, money- **and URL-path-**redacted, read-and-clear — a URL in an
+  error message keeps its scheme and host and loses its path, query and fragment (`redactUrlPaths`,
+  2026-10-28), because every `console.error` in the app is mirrored into that buffer and the iCal
+  feed URL is a bearer credential (Invariant 13). The host is kept on purpose: "which host failed"
+  is the whole diagnostic value of these rows, and a blocked CDN script is Invariant 2's only live
+  signal. Pinned by `tests/smoke.mjs` §54, which fails in both directions.
   **`app_open` says whether the load MINTED its `anon_id` or read one back** (2026-10-12):
   `fresh:true` when minted, **absent** otherwise — never `false`, because months of rows predate the
   key and a null has to keep meaning "not known". `nostore-` only labels the loud failure, where
@@ -499,6 +610,38 @@ break is worth nothing against a break nobody sees, and the 47-day sync outage i
   BadgeBudget "checks it each time you open the app", which the switch makes false. Courtney asked
   for this twice in 28 hours, the second time **39 seconds** after a cold-load sync re-proposed the
   126-event plan she had already declined. Pinned by `tests/smoke.mjs` §46.
+  **And the switch is offered on the re-sync banner, because she never found it in Settings**
+  (2026-10-21): it shipped 10-16 under the iCal section, and her first three loads after it —
+  2026-10-20 20:15, 22:26 and 23:02 UTC — were three more `ics_sync_result {changes}` carrying 125
+  events each, with zero `ics_import_done` (last fired 10-10) and **`ics_autosync_pref` at zero
+  rows from any device, ever**. So the banner that is asking now carries the answer: a third,
+  quieter affordance under "Review" / "Not now", worded **identically to the Settings switch** so
+  she meets one setting and not two. It sets the same `syncManualOnly` and fires the same
+  `ics_autosync_pref`, with `src:'banner'` — a row with **no** `src` came from Settings. It
+  deliberately does **not** fire `ics_resync_dismissed`: that row is the complaint proxy this whole
+  thread was read off (she dismissed at 08:54:05 on 10-14 and filed *"it keeps asking me to
+  approve"* 81 seconds later), and a tap meaning "thank you, stop" is the opposite of one meaning
+  "ask me again". **Never let it replace "Not now"** — "not this plan" is the common answer and
+  must stay the easy one. The import stepper (the cold-load door, 2 of her 3 loads) does **not**
+  carry it yet; that is a separate surface and `BACKLOG.md` → P1. Pinned by `tests/smoke.mjs` §50,
+  whose own first draft aborted the run instead of failing when the button was removed — the
+  regression it exists to catch — because a locator matching nothing times out at 30s.
+  **And since 2026-10-22 the import stepper carries it too, which is the door that actually
+  matters** — the banner fired on **one** of her three 10-20 loads; the other two were cold loads,
+  and a cold load opens the stepper by design, so on two thirds of her visits she met a 125-event
+  confirm sheet with no way to stop the asking. Same wording, same `syncManualOnly`, same
+  `ics_autosync_pref` with `src:'stepper'`. Two properties are load-bearing and pinned, not
+  incidental: it renders on the **confirm card only** (on the classify cards it would be one copy
+  per group — 125 of them for her feed), and **it does not dismiss the sheet**. That second one is
+  where it deliberately differs from the banner's copy: the banner's job is "ask me later", but
+  this sheet's plan may hold changes she wants, so a tap meaning "stop asking" must not also throw
+  the plan away — it sets the preference, acknowledges itself in place, and leaves Confirm working.
+  It sits below the primary row and is narrower than it, because a mis-tap on the sheet that
+  confirms wage-affecting changes is the one real risk here. Offered only when a feed subscription
+  exists — a file import has nothing to stop. Pinned by `tests/smoke.mjs` §51, whose own first
+  draft repeated §50's mistake one layer down: the dismiss-on-tap break printed a single failure
+  and then **aborted** on a detached-locator timeout, so the sheet-open check is captured once and
+  guards every read after it.
   **The sync is now offered, not just available** (2026-10-01): it shipped 2026-09-03 and lived at
   the bottom of Settings behind a label that assumed a feed URL was already in hand — the owner's
   own first real sync took a hand-held walkthrough. A home-screen card ("Want to sync your
@@ -766,7 +909,10 @@ rule. It never blocks; a missing `docs/cos/now.md` prints nothing.
 
 ## Testing (detail: the `harness` skill and `docs/project-notes.md` → Testing)
 
-`node scripts/check_build.mjs` (gate), `node scripts/test_groom_seed.mjs` (33),
+`node scripts/check_build.mjs` (gate, 19 checks), `node scripts/test_check_build.mjs` (46, the
+gate's own meta-test — roster + 41 deliberate breaks, one per check and one per `must()` where a
+check holds several, with the failing check's label pinned where checks share a tag; ~105s, not in CI yet),
+`node scripts/test_groom_seed.mjs` (33),
 `node tests/core.test.mjs` (175, the extracted core, no browser), `node tests/smoke.mjs` (Playwright,
 iPhone 13). `tests/equality.mjs` is the wage-core check against
 the **deployed** build — by hand only, needs network. Every new assertion is negative-tested. Scratch
