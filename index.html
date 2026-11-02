@@ -5290,6 +5290,16 @@ function App(){
         const uid = user.id;
         try{ await withTimeout(supabase.from('user_data').delete().eq('user_id',uid), 5000, 'clear'); }
         catch(e){ console.error('Cloud clear error:',e); }
+        /* The calendar-feed link lives in its OWN table, so the user_data delete above never
+           reaches it — and the URL it holds is a bearer credential (Invariant 13), so leaving it
+           behind means "Clear all data" leaves the one row that still reads her whole calendar.
+           Two properties are load-bearing, both pinned by tests/smoke.mjs §56:
+             • it runs BEFORE signOutClient() — `ical_subscriptions` is owner-only RLS, so a delete
+               issued after the session is gone is refused, and refused silently;
+             • it is guarded and timed out exactly like the delete above, because a failure here
+               must never block the sign-out and reload in the `finally` below. */
+        try{ await withTimeout(deleteIcalSub(uid), 5000, 'clear feed'); }
+        catch(e){ console.error('Cloud clear error (calendar link):',e); }
         await signOutClient();   // WebKit-safe: won't hang before the reload below
         try{ localStorage.removeItem(BACKUP_KEY(uid)); }catch(_){}
       }

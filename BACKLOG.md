@@ -29,7 +29,8 @@ and the push P0 it pointed at was fixed the same day.
 ## Queue
 
 ### P1 (new, cabinet 2026-11-01)
-- [ ] **"Clear all data" leaves the calendar-feed link in the database** (P1 · source:cabinet (Risk
+- [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
+  tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
   seat, filed to the CTO queue) · `harness:drivable` · thread T2) — `clearAll` in `index.html`
   (~5177) deletes the `user_data` row and signs out, but never touches `ical_subscriptions`, whose
   row holds the feed URL — a bearer credential (Invariant 13). It goes only when the sign-in account
@@ -51,6 +52,110 @@ and the push P0 it pointed at was fixed the same day.
   line is Pat's, and the gate's publish-set check will need the same one-line change. Open the PR
   **ready, auto-merge OFF**: legal text is always Pat's tier (`docs/leadership.md`). Next after it,
   same rule: the in-app deletion spec (`docs/cos/seats/risk.md` item 2), as a doc PR.
+
+### P1 (new, groom 2026-11-02)
+- [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED
+  2026-11-02**, tonight's build (see Done log). (P1 · source:cabinet (Risk seat, filed to the CTO
+  queue) · `harness:drivable` · thread T2) Taken because it was the top of `## Queue`, unblocked,
+  gate-safe, `harness:drivable`, not wage core, and a **tightening** — so it merges on its own by
+  tier (`docs/leadership.md` → *Approval tiers*). `clearAll` now calls the existing
+  `deleteIcalSub(uid)` before `signOutClient()`, guarded and timed out exactly like the `user_data`
+  delete above it. Eight assertions in `tests/smoke.mjs` §56, three deliberate breaks measured.
+  **The ordering is the half a grep could not have found.** `ical_subscriptions` is owner-only RLS,
+  so a delete issued after the session is gone is refused — and refused *silently*, which is the
+  same failure shape as Invariant 4's 23505s. A fix written in the obvious place (after sign-out,
+  beside the `BACKUP_KEY` removal) would look right, pass any source-level check, and leave the
+  bearer credential in the table forever. §56 records the op order off the client and asserts
+  `feed < signOut`; break 2 (the call moved one line down) failed exactly that one assertion and
+  nothing else.
+  **No legal text was touched, and that was the point.** `privacy.html`:162 says Clear all data
+  "deletes your record from the database" and its line-166 list of what survives does not name the
+  link, so the notice was under-disclosing. Fixing the code made the notice true; fixing the text
+  would have made it accurate about a worse product, and legal text is Pat's tier either way.
+- [ ] **CABINET MISSED is CLEARED after thirteen nights — the Sunday cabinet ran 2026-11-01**
+  (housekeeping, and it closes the longest-running item in this file) — `docs/cos/brief.md` was
+  written **2026-11-01** (`400272a`, **1.0 day**), so this run's notify line carries **no**
+  CABINET MISSED for the first time since 10-19. `scripts/cos_check.mjs` passes. The 10-31 and
+  11-01 notes said thirteen nights made the dead-man's switch itself the finding and that the
+  decision — gate on an over-age brief, or retire the claim — was Pat's; **it is still open**, and
+  it is now open on a healthy brief rather than a dead one, which is the cheaper time to take it.
+  The brief's own reading is worth keeping: the "CABINET MISSED" was never a missed Sunday, it was
+  a cabinet that **ran and could not push**.
+- [ ] **PR #191 is MERGED and LIVE — the twelve-day stall is over and thread T3 moved**
+  (housekeeping) — `deploy_watch` reads **LIVE** with `index.html` serving **`8e099cb`
+  (2026-11-01)**, which is #191, *dated pay items* (session 4). D3 was approved 2026-11-01, the
+  branch was brought up to base, the four conflicts are gone and `tests/equality.mjs` was re-read
+  (34 identical / 0 unintended / 5 of 5 named) before the merge. **`## Queue` now has zero open PRs
+  against it** (`list_pull_requests` → `[]`), so for the first time in thirteen nights the
+  skip-an-item-that-overlaps-an-open-PR rule had nothing to skip. Session 5 (the Law enforcement
+  and Fire & EMS tiles) is next, and it is a dedicated session, not a nightly item.
+  `tests/smoke.mjs` is **910** assertions now: 902 off #191's §55, plus tonight's eight.
+- [ ] **`silence_watch` has flipped to SILENT_BUT_HEALTHY — the forecast the 10-31 note made
+  arrived on schedule** (P2 · source:groom · no action, and specifically not an alarm) — `events`
+  holds **1,758 rows**, byte-identical for the third groom running, newest still **2026-10-31
+  03:04:15**, now **53.0h** old and past the 48h window. The verdict is
+  **`SILENT_BUT_HEALTHY`**: badgebudget.com serves 574,082 characters with 5 SRI scripts and the
+  `events` insert policy is intact, so the quiet is **nobody came**, not **telemetry broken** —
+  which is the whole reason this script exists and the distinction three grooms hand-ran in
+  September before it was written down. **Zero rows in 48h**, six consecutive nights with no human
+  load. 9 distinct devices in 7 days, every one of them the three-row desktop-Linux onboarding
+  burst. **Do not quote this as an activation signal**: 31 `app_open {fresh:true}` rows ever, and
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort
+  until the device classifier is fixed.
+- [ ] **Courtney has not opened the app in 12.4 days, and the DST question from Nov 1 is now
+  unanswerable rather than open** (P2 · housekeeping) — her device `f184ffa5` last filed anything
+  at **2026-10-20 23:02:03**, which predates `d438d58` (the banner switch, 10-21) and `cd77392`
+  (the stepper switch, 10-22). `ics_autosync_pref` is at **zero rows from any device, ever**;
+  `ics_autosync_off` at **zero**. Both stay **expected** — nobody has been shown either
+  affordance. `ics_import_done` unchanged at **10 rows ever** (last 2026-10-10),
+  `ics_sync_result` at **42**, `ics_sync_done` at **27** — all three identical for seven grooms.
+  The 11-01 note said the DST item reaches its date and cannot be read; a day past it, that is
+  settled rather than pending. Leave it unverified, leave it out of the nightly (it is a pay
+  figure, so `wage-core` protocol, dedicated session), and **do not read the date passing as
+  evidence either way**.
+  **Twelve days is worth one line of plain reading:** nothing in `events` distinguishes "working
+  nights, has not needed it" from "stopped using it", and the app has no signal that would. The
+  two sync opt-outs she asked for twice in 28 hours are both still field-unverified because she
+  has not been shown either one.
+- [ ] **`feedback` and `client_error` are both unchanged — FIFTEENTH groom running** (housekeeping,
+  re-read at the END of the run with every column as the 10-14 item requires) — the whole
+  `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` holds **28 rows**, newest still the `auth check timed out`
+  row on device `daf590c4` from **2026-10-15 16:45**, which the 10-16 groom classified as
+  **Invariant 1 working**. `paystub_failed` has **still never fired for any reason**, and no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met**. Do not
+  build a worker mitigation. One line against tonight's build: fifteen grooms of a flat
+  `client_error` is also fifteen grooms in which the leftover feed row could never have surfaced —
+  nothing about a bearer credential quietly outliving a delete produces a row anywhere, which is
+  Invariant 13's own `Detect: none` and why it needed a driven assertion rather than a dashboard.
+- [ ] **The staking-out habit is 4-for-4, and the publish-set figure drifted a SIXTH time**
+  (housekeeping) — `deploy_watch` reads **LIVE**, deploy ref fetched before the verdict formed.
+  `privacy.html` and `ops.html` print **`62f321b` (2026-10-08)** tonight against `568ddfa`,
+  `8ae7b4d`, `4caeb15`, `bfbd944` and `a64348b` on the five nights before, for two files unchanged
+  since 2026-09-24 — `gitHistory()` names whichever matching commit its walk reaches first, so for
+  an unchanged file the figure is an artefact. The stable facts are the verdict word and
+  `index.html`'s commit. **Tonight's build DOES change a publish-set file** (`index.html`), which
+  breaks the four-night streak of not-moving predictions on purpose: tomorrow's `deploy_watch`
+  should name **tonight's merge commit**, not `8e099cb`. That is the falsifiable position.
+- [ ] **The gate meta-test is STILL not in CI — seventh night unchanged** (P2 ·
+  `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not
+  call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions
+  in this sandbox** (the same block that made `f1aa7a6` an owner commit). One line after the
+  existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (~105s, no browser, no network). Covered without it: a **deleted**
+  `check()` is red in CI today, because the roster lives inside `check_build.mjs`, which `gate`
+  already runs — and the roster declares **19**. Missing: the teeth half, the only half that can
+  prove a break fails the *right* row. Tonight's build adds nothing to it — §56 is a runtime
+  assertion in the Playwright suite, which CI **does** run, so tonight's three measured breaks are
+  covered by the binding gate rather than by the half that is not in it.
+- [ ] **Next in `## Queue` is the `terms.html` draft, and it is the first item in weeks whose rule
+  is "never merge it"** (P2 · source:pat, D4 approved 2026-11-01 · `harness:drivable` · thread T2)
+  — tonight cleared the only item above it, so the next run takes this one unless the groom files
+  something higher. Read its own entry before starting: it opens **ready, auto-merge OFF**, because
+  legal text is always Pat's tier, and adding `terms.html` to the publish set touches `deploy.yml`
+  (Invariant 8) plus the gate's publish-set check — **both lines are Pat's**, so the PR says so
+  rather than attempting them. The lead term is already decided: BadgeBudget gives an **estimate**,
+  not tax, payroll or legal advice; the employer's stub is the record.
 
 ### P1 (new, groom 2026-11-01)
 - [x] ~~**The test rig holds the five CDN pins a SECOND time, and nothing compared the two
@@ -3941,6 +4046,52 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-02 — **"Clear all data" left behind the one row that still reads her whole calendar.**
+  `clearAll` deleted the `user_data` blob and signed out; the feed URL lives in
+  `ical_subscriptions`, a different table, so that delete never reached it. The row went only when
+  the sign-in account itself was deleted (`on delete cascade`,
+  `002_ical_subscription.sql`:12) — which nothing in the app does. The URL is a **bearer
+  credential** (Invariant 13): anyone holding it reads her calendar indefinitely, and the only
+  revocation is NurseGrid reissuing the feed. So the state after "Clear all data" was: no pay
+  history, no cloud blob, signed out — and a live credential in a table she can no longer reach to
+  remove.
+  **Found by the Risk seat at the Sunday cabinet (2026-11-01) and filed to the CTO queue**, which
+  is the first item that net has produced; it sat at the top of `## Queue` as the only unblocked,
+  gate-safe, `harness:drivable` item.
+  **The fix is one call, and `deleteIcalSub(uid)` already existed** — `onRemoveIcalUrl` has used it
+  since the subscription shipped. It goes in `clearAll` before `signOutClient()`, wrapped in
+  `withTimeout(…, 5000)` and a `catch` that only `console.error`s, matching the `user_data` delete
+  one line above it.
+  **Both of those shapes are load-bearing, and neither is visible in a diff read on its own:**
+  · **Before sign-out, not after.** `ical_subscriptions` is owner-only RLS with no `anon` grants, so
+    a delete issued once the session is gone is **refused, and refused silently** — Invariant 4's
+    exact failure shape in a second table. The natural place to write this fix is after
+    `signOutClient()`, beside the `BACKUP_KEY` removal, where it reads correctly and does nothing.
+  · **Guarded and timed out.** `deleteIcalSub` *throws* on error. An unguarded `await` escapes the
+    `try`, which skips the `finally` — and the `finally` is what removes `STORE_KEY` and reloads.
+    An unreachable Supabase would have left her on a stale signed-in app with her local data intact,
+    i.e. "Clear all data" silently doing nothing at all.
+  **`tests/smoke.mjs` §56 — eight assertions, driven, three deliberate breaks measured:**
+  · call removed → **3 fails** (deleted / scoped / before-sign-out), no abort
+  · call moved one line below `signOutClient()` → **1 fail**, the ordering assertion alone
+  · `deleteIcalSub(uid)` swapped for an unfiltered `.delete()` → **1 fail**, the scope assertion alone
+  Driven rather than grepped because both properties are runtime-ordered: the section records every
+  op the stubbed client receives — table, operation and `eq` filter — plus `auth.signOut`, and
+  asserts the feed delete appears, carries `('user_id', <her uid>)`, and sits **before** the
+  sign-out entry. The op log is mirrored to a localStorage key `clearAll` does not touch, because
+  `clearAll` ends in `location.reload()` and an in-page array would be gone before anything could
+  read it. Every wait is on something present whether or not the fix is — §50 and §51 were both
+  bitten by a locator that matches nothing timing out at 30s, and an aborted run is not a failed
+  assertion.
+  **No legal text touched, deliberately.** `privacy.html`:162 says Clear all data "deletes your
+  record from the database" and its line-166 list of what survives does not name the link, so the
+  notice was under-disclosing. Fixing the code made the notice true. Fixing the text would have
+  made it an accurate description of a worse product — and legal text is Pat's tier regardless
+  (`docs/leadership.md`).
+  **Merged on its own by tier:** a tightening that removes exposure, moves no dollar figure, adds
+  no table and loosens no access. Not wage core — `clearAll` prints nothing.
+  Suite: **910 assertions**, 0 failed (902 after #191's §55, plus tonight's eight); gate 19/19;
+  core 175; groom-seed 33. Thread T2.
 - 2026-11-01 — **The test rig holds the five CDN pins a second time, and nothing had ever compared
   the two copies.** `tests/harness.mjs` carries `PKGS` (what `npm install` fetches into the scratch
   tree) and `MAP` (CDN url → path inside `node_modules`, the rewrite that lets the scratch copy load
