@@ -7064,6 +7064,141 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 56. "Clear all data" takes the calendar-feed link with it (2026-11-02) ------------- */
+  if (want(56)) {
+    /* The feed URL is a bearer credential (Invariant 13) and it lives in `ical_subscriptions`,
+       not in the `user_data` blob — so the one delete `clearAll` used to issue could not reach
+       it. Left behind, the row still reads her whole calendar after she has asked the app to
+       erase everything, and `privacy.html` ("deletes your record from the database", and a list
+       of what survives that does not name the link) under-discloses it.
+
+       Driven here rather than grepped, because the two properties that make the fix correct are
+       both runtime-ordered: the delete has to be ISSUED, and it has to be issued while the
+       session still exists. `ical_subscriptions` is owner-only RLS, so a delete that lands after
+       signOut is refused — and refused silently, which is the failure this section exists to
+       make loud.
+
+       Every wait below (settings modal, confirm dialog, the reload) is on something that is
+       there whether or not the fix is present: the §50/§51 lesson is that a locator matching
+       nothing times out at 30s and ABORTS, and an aborted run is not a failed assertion. The
+       recorded op log is read from localStorage, which survives `clearAll`'s own
+       `removeItem(STORE_KEY)` and the reload after it, so nothing here depends on winning a
+       race against `location.reload()`. */
+    const UID = '56565656-5656-4656-8656-565656565656';
+    const LOG_KEY = '__smoke56_ops';
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.addInitScript(([k, v]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} },
+      [STORAGE_KEY, SEEDED_STATE]);
+    await page.addInitScript(([uid, logKey]) => {
+      /* Mirrored to localStorage on every push: the app reloads itself at the end of clearAll,
+         so an in-page array alone would be gone before the assertions could read it. */
+      const rec = (o) => {
+        let log = [];
+        try { log = JSON.parse(localStorage.getItem(logKey) || '[]'); } catch (_) {}
+        log.push(o);
+        try { localStorage.setItem(logKey, JSON.stringify(log)); } catch (_) {}
+      };
+      const A = { user: { id: uid, email: 'clear@example.com' }, access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                /* Recorded, not just stubbed: the ORDER of the feed delete against this is the
+                   assertion that catches a delete moved below signOutClient(). */
+                c.auth.signOut = async () => { rec({ op: 'signOut', table: null, eq: null }); return { error: null }; };
+                c.from = (table) => {
+                  const q = { _op: 'select', _eq: null };
+                  for (const m of ['select', 'order', 'limit', 'maybeSingle', 'single', 'update']) q[m] = () => q;
+                  q.eq = (col, val) => { q._eq = [col, val]; return q; };
+                  q.delete = () => { q._op = 'delete'; return q; };
+                  q.insert = () => { q._op = 'insert'; return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') { rec({ op: q._op, table, eq: q._eq }); return Promise.resolve({ error: null }).then(res, rej); }
+                    /* She HAS a feed saved — that is the whole case. */
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: 'https://app.nursegrid.com/calendars/56/not-a-real-token', provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* No network from the sync path: the proxy answers with an error, so the cold
+                   load neither fetches nor opens the import stepper over the Settings sheet. */
+                Object.defineProperty(c, 'functions', { value: { invoke: async () => ({ data: null, error: { message: 'stubbed' } }) }, configurable: true });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [UID, LOG_KEY]);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    const readLog = async () => page.evaluate((k) => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch (_) { return []; } }, LOG_KEY);
+
+    /* Control: the drive is real. Without a live stubbed session there is no avatar menu, no
+       Settings sheet and no signed-in branch of clearAll at all, so every assertion below would
+       be vacuous. */
+    await page.locator('.avatar').click();
+    await page.locator('button[role="menuitem"]:has-text("Settings")').click();
+    await page.waitForSelector('.modal[aria-label="Settings"]', { timeout: 8000 });
+    ok('clear-all: the drive is signed in (Settings reachable, sign-out offered)',
+      await page.locator('.modal[aria-label="Settings"]').isVisible());
+
+    await page.locator('.modal[aria-label="Settings"] .danger-link:has-text("Clear all data")').click();
+    await page.waitForSelector('.cdlg', { timeout: 8000 });
+    const ask = await page.locator('.cdlg').innerText();
+    ok('clear-all: it asks first, and says the cloud copy goes too',
+      /cloud copy/i.test(ask) && /cannot be undone/i.test(ask), JSON.stringify(ask));
+
+    /* A fresh window is the reload's only reliable tell — this property is undefined again
+       afterwards, and it exists whether or not the fix is present. */
+    await page.evaluate(() => { window.__preClear = 1; });
+    await page.locator('.cdlg .btn-danger').click();
+    await page.waitForFunction(() => window.__preClear === undefined, null, { timeout: 25000 });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+
+    const log = await readLog();
+    const first = (p) => log.findIndex(p);
+    const iUser = first((r) => r && r.op === 'delete' && r.table === 'user_data');
+    const iFeed = first((r) => r && r.op === 'delete' && r.table === 'ical_subscriptions');
+    const iOut = first((r) => r && r.op === 'signOut');
+
+    ok('clear-all: the user_data delete still happens (the fix added a delete, it replaced nothing)',
+      iUser >= 0 && Array.isArray(log[iUser] && log[iUser].eq) && log[iUser].eq[0] === 'user_id' && log[iUser].eq[1] === UID,
+      JSON.stringify(log.slice(0, 8)));
+    ok('clear-all: the calendar-feed row is deleted too — the bearer credential does not survive',
+      iFeed >= 0, JSON.stringify(log.slice(0, 8)));
+    ok('clear-all: and it is scoped to her own user_id, not an unfiltered delete',
+      iFeed >= 0 && Array.isArray(log[iFeed].eq) && log[iFeed].eq[0] === 'user_id' && log[iFeed].eq[1] === UID,
+      JSON.stringify(iFeed >= 0 ? log[iFeed] : null));
+    ok('clear-all: issued BEFORE sign-out, or owner-only RLS refuses it silently',
+      iFeed >= 0 && iOut >= 0 && iFeed < iOut, `feed@${iFeed} signOut@${iOut}`);
+    /* The reload is the proof the guard held: a throw out of the feed delete would escape the
+       try and skip the `finally`, leaving her on a stale signed-in app. */
+    ok('clear-all: the reload still happened, so a failing feed delete can never block it',
+      (await page.locator('.avatar').count()) > 0);
+
+    const real56 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('clear-all: no page errors across section 56', real56.length === 0, real56[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

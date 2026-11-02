@@ -1,6 +1,6 @@
 # Now
 
-Updated 2026-11-01 by the chief of staff (Sunday cabinet). Charter: `docs/leadership.md`. Caps (enforced by
+Updated 2026-11-02 by the chief of staff (nightly pass). Charter: `docs/leadership.md`. Caps (enforced by
 `scripts/cos_check.mjs`): 3 threads, 3 decisions.
 
 ## Threads
@@ -19,26 +19,27 @@ Updated 2026-11-01 by the chief of staff (Sunday cabinet). Charter: `docs/leader
 - **Seat:** Risk & Compliance
 - **Where:** `privacy.html` is live. No terms page, no deletion spec, on any branch (11-01). Stalled
   20 days: the seat runs only when a merge touches its files, and drafting is not a trigger.
-  **New, verified 11-01:** "Clear all data" deletes `user_data` but leaves the `ical_subscriptions`
-  row (the feed URL) until the sign-in account is deleted — filed to `BACKLOG.md` → Queue as P1.
+  **The Risk seat's first find is FIXED and live, 11-02:** "Clear all data" used to leave the
+  `ical_subscriptions` row (the feed URL, a bearer credential) behind — `clearAll` now deletes it
+  before signing out, pinned by `tests/smoke.mjs` §56. The notice is true without touching its text.
 - **Next:** the nightly drafts `terms.html` (lead term: an estimate, not tax or payroll advice)
   and the deletion spec as PRs for Pat whenever `## Queue` has nothing unblocked (D4, approved
   2026-11-01).
 - **Done when:** terms live and linked from Settings; deletion works end to end in the harness;
   `privacy.html` says how to delete.
-- **Waiting on:** the nightly's first draft, then Pat's review — legal text never merges without him.
+- **Waiting on:** the nightly's `terms.html` draft — next in `## Queue` now that 11-02 cleared the
+  item above it — then Pat's review; legal text never merges without him.
 
 ### T3 `personas` — beyond nurses
 - **Seat:** CTO
-- **Where:** sessions 1–3 of 6 shipped. Session 4 is PR #191, head `c41b8cc` unchanged since
-  2026-10-20, now **4 conflicts and 14 commits behind** (`git merge-tree --write-tree`, 11-01) —
-  a yes cannot land as it stands.
-- **Next:** bring #191 up to date with the deploy branch, re-run its suites and the equality check
-  against badgebudget.com, merge (D3 approved 2026-11-01), then session 5 — the Law enforcement and
-  Fire & EMS tiles.
+- **Where:** sessions **1–4** of 6 shipped. **#191 merged and LIVE at `8e099cb`, verified 11-02**
+  (`deploy_watch` → LIVE) — the twelve-day stall is over; equality re-read 34 identical / 0
+  unintended / 5 of 5 named before the merge.
+- **Next:** session 5 — the Law enforcement and Fire & EMS tiles. It is a **dedicated session**,
+  not a nightly item: it moves dollar figures, so `wage-core` protocol and Pat's tier.
 - **Done when:** Law enforcement and Fire & EMS tiles are live with zero phantom overtime on the
   probed 12-hour schedules (session 5).
-- **Waiting on:** the update-and-merge of #191 (in progress, 2026-11-01).
+- **Waiting on:** a dedicated session for session 5. Nothing else; zero open PRs (11-02).
 
 ## Needs Pat
 
