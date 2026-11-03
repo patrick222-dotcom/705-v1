@@ -686,6 +686,28 @@
      reached the ring buffer — which is why the 2026-08-23 sync investigation opened with an
      empty error log while cloud writes had been failing for 47 days. Mirrored, never replaced:
      the original console.error still runs, and a throw inside the mirror can't break it. */
+  /* ONE message is dropped before it reaches the buffer, and only one. Babel standalone's code
+     generator console.errors a NOTE about its own output formatting, once per load, when the
+     inline script passes its 500,000-byte threshold. Ours crossed that at `8e099cb` (#191, dated
+     pay items, live 2026-11-01): the block went 497,329 -> 510,998 bytes, and it is 511,887 now.
+     The note is not a failure -- "deoptimised the styling" means Babel stopped pretty-printing
+     the code it emits, and the app runs identically -- but the mirror is indiscriminate, so from
+     that commit EVERY load filed a client_error row. Two are in production `events` already
+     (2026-11-02 17:23:15, 2026-11-03 04:04:11), both from clean first loads with nothing wrong.
+     That is the cost: `client_error` is the only channel in this repo that fires on a real fault.
+     Invariant 4's 23505s and Invariant 2's blocked CDN script surface here and nowhere else, and
+     "a client_error row exists" had stopped meaning anything at all.
+     Dropped at the MIRROR, not at `flushClientErrors`: the watchdog screen and Settings both hand
+     the raw ring buffer to the user for a bug report via `__copyErrorLog`, and a note about
+     Babel's pretty-printer is noise in one. The original console.error still runs below, so
+     nothing is hidden from a devtools console.
+     Deliberately narrow -- BOTH halves of Babel's own string must match, and the prefix is
+     anchored at 0. NEVER widen this into a prefix test, a substring test, or a list: a mirror
+     that drops categories of message is exactly how the 47-day sync outage stayed invisible, and
+     this mirror exists because of it. */
+  var __isBabelStyleNote = function(m){
+    return m.indexOf('[BABEL] Note:') === 0 && m.indexOf('deoptimised the styling') > 0;
+  };
   var __origConsoleError = (window.console && console.error) ? console.error.bind(console) : null;
   if(__origConsoleError){
     console.error = function(){
@@ -697,7 +719,8 @@
             : (typeof a === 'object' && a !== null ? (function(){ try{ return JSON.stringify(a); }catch(_){ return String(a); } })()
             : String(a)));
         }
-        window.__logClientError('console.error: ' + parts.join(' '));
+        var joined = parts.join(' ');
+        if(!__isBabelStyleNote(joined)) window.__logClientError('console.error: ' + joined);
       }catch(_){}
       return __origConsoleError.apply(null, arguments);
     };

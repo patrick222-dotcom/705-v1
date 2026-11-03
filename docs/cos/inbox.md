@@ -7,8 +7,14 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
-(none — the 2026-11-01 cabinet gave all 21 an outcome; the full nightly write-ups are in
-`BACKLOG.md` → Done log and in this file's git history at `bb1d8f1`)
+- 2026-11-03 · nightly · belongs to no live thread (T1/T2/T3) — an observability fix: since #191
+  crossed Babel's 500,000-byte inline-script threshold on 2026-11-01, **every load filed a
+  `client_error` row** carrying a benign Babel formatting note, which is the only channel that
+  fires on a real fault (Invariant 4's 23505s, Invariant 2's blocked CDN script). Shipped tonight,
+  filtered at the mirror, `tests/smoke.mjs` §57. · **for the CTO seat if it wants a standing
+  item:** a feature-sized commit silently broke the fault channel and nothing but a groom's
+  fifteen-night flat reading caught it — worth deciding whether that reading should be a check
+  rather than a habit.
 
 ## Parked
 

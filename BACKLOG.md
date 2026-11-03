@@ -28,6 +28,83 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-11-03)
+- [x] ~~**Every load files a `client_error` row, and it has since #191**~~ — **SHIPPED 2026-11-03**,
+  tonight's build (see Done log). (P1 · source:groom · `harness:drivable`) Taken ahead of the
+  `terms.html` draft that last night named as next, and the reason is worth stating: this was found
+  in the groom as a **live production regression** dated to a commit, while the `terms.html` item is
+  a drafting task whose own entry says *"take this only when nothing above it in `## Queue` is
+  unblocked."* A fresh P1 outranks it. The note crossed Babel's 500,000-byte generator threshold at
+  `8e099cb` (#191, live 2026-11-01) and poisoned the one channel that fires on a real fault.
+  Twelve assertions in `tests/smoke.mjs` §57, six deliberate breaks measured.
+- [ ] **`client_error` broke a FIFTEEN-groom flat reading, and that is the finding, not the rows**
+  (P2 · source:groom · no action) — `client_error` read **28** rows for fifteen consecutive grooms
+  and **30** tonight. Neither new row is a fault: both are the Babel note tonight's build removed
+  (`2026-11-02 17:23:15`, `2026-11-03 04:04:11`), each from a clean first load. The useful line is
+  what the streak was actually measuring — fifteen nights of "unchanged" was read as health, and
+  the first thing to move the number was **the channel breaking rather than the app**. Post-fix,
+  a `client_error` row means something again; expect this count to stay at 30 and treat 31 as real.
+- [ ] **The inline Babel block is now PERMANENTLY over Babel's threshold — do not read the filter
+  as temporary** (P2 · source:build · `harness:unscoped`) — the block is **511,887 bytes** against
+  a 500,000-byte limit and has grown every session (468,858 at `97f8e86`, 491,707 at `a103682`,
+  497,329 at `be6cec2`, 510,998 at `8e099cb`). Shrinking back under it is not a goal and was not
+  the fix: it would be undone by the next feature, and the note is benign anyway. Two things a
+  later run should NOT conclude: (a) that the filter is dead code if the note stops appearing —
+  §57 asserts Babel still emits it, so that assertion fails loudly first; (b) that the threshold
+  is worth gating in `check_build.mjs` — the note costs nothing now that it is filtered, and a
+  gate on inline-script size would fail on every ordinary feature commit.
+- [ ] **`silence_watch` is back to FRESH after six nights of nobody, and it is still not an
+  activation signal** (P2 · source:groom · no action) — **FRESH**, newest event **4.3h** old
+  against a 48h window; `events` holds **1,766** rows against 1,758 for three grooms. The eight new
+  rows are **two** desktop onboarding bursts (`145057ab` 11-02 17:23, `2eff2694` 11-03 04:04), four
+  rows each, both `app_open {fresh:true}`, both stopped at `ob_view {screen:'landing'}` — screen 0,
+  no `session_end`, neither past the first screen. 11 distinct devices in 7 days, every one of them
+  this same shape. CLAUDE.md records every activation figure since 2026-09-07 as inflated by
+  exactly this cohort until the device classifier is fixed; two more landings do not change it.
+- [ ] **Courtney has not opened the app in 13.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for eight grooms. Both sync opt-outs she asked for
+  twice in 28 hours remain field-unverified for the same one reason.
+- [ ] **`feedback` is unchanged for the SIXTEENTH groom; `client_error` is not, for the first time**
+  (housekeeping, re-read at the END of the run with every column as the 10-14 item requires) — the
+  whole `feedback` table including `contact` and `user_id`: **18 rows**, newest still Courtney's
+  **2026-10-15 12:30**. `client_error` moved 28 → **30** and both rows are tonight's build's
+  subject, not a fault. `paystub_failed` has **still never fired for any reason** and there are no
+  new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met** — do
+  not build a worker mitigation.
+- [ ] **CABINET MISSED stays CLEARED — second night** (housekeeping) — `docs/cos/brief.md` is
+  `400272a`, **2026-11-01**, **2.0 days** old, so this run's notify line carries **no** CABINET
+  MISSED. `scripts/cos_check.mjs` passes. The open decision the 11-01 and 11-02 notes both left for
+  Pat is unchanged and still cheapest to take on a healthy brief: **gate the build on an over-age
+  brief, or retire the dead-man's-switch claim** — nothing in the repo enforces it today, the
+  notify line is the whole mechanism, and it under-reported for thirteen nights.
+- [ ] **Last night's falsifiable prediction HELD, and the publish-set figure drifted a SEVENTH
+  time** (housekeeping) — `deploy_watch` reads **LIVE** with `index.html` serving **`3955696`
+  (2026-11-02)**, which is #207, exactly what the 11-02 note staked out when it broke its own
+  four-night streak of not-moving predictions. `privacy.html` and `ops.html` print **`078a4d8`
+  (2026-10-08)** against `62f321b` last night, for two files unchanged since 2026-09-24 — the
+  artefact the notes have now called seven times. **Tonight's build changes `index.html`**, so
+  tomorrow's `deploy_watch` should name tonight's merge commit, not `3955696`.
+- [ ] **The gate meta-test is STILL not in CI — eighth night unchanged** (P2 ·
+  `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not
+  call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions
+  in this sandbox**. One line after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (46 assertions, ~105s, no
+  browser, no network — re-run green tonight). Tonight's build adds nothing to it: §57 is a runtime
+  assertion in the Playwright suite, which CI **does** run, so tonight's six measured breaks sit
+  behind the binding gate rather than behind the half that is not in it.
+- [ ] **`terms.html` is next in `## Queue` again, unchanged and still "never merge it"** (P2 ·
+  source:pat, D4 approved 2026-11-01 · `harness:drivable` · thread T2) — tonight displaced it with
+  a fresh production P1 rather than clearing it, so it is next unless the groom files something
+  higher again. Read its own entry before starting: it opens **ready, auto-merge OFF**, because
+  legal text is always Pat's tier, and adding `terms.html` to the publish set touches `deploy.yml`
+  (Invariant 8) plus the gate's publish-set check — **both lines are Pat's**. Lead term already
+  decided: BadgeBudget gives an **estimate**, not tax, payroll or legal advice; the employer's stub
+  is the record.
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4046,6 +4123,53 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-03 — **Every load had been filing a `client_error` row since #191, and the row said
+  nothing was wrong.** Babel standalone's code generator `console.error`s a *note* about its own
+  output formatting once per load when the inline script passes **500,000 bytes**: `[BABEL] Note:
+  The code generator has deoptimised the styling of /Inline Babel script as it exceeds the max of
+  500KB.` The boot script's `console.error` mirror is indiscriminate by design — that is why it
+  exists, the 2026-08-23 investigation opened with an empty error log while cloud writes had been
+  failing for 47 days — so the note went into the ring buffer and `flushClientErrors` shipped it to
+  `events` on every single load.
+  **Dated exactly, not guessed.** The inline block measured across the deploy branch: `97f8e86`
+  468,858 → `a103682` 491,707 → `be6cec2` 497,329 → **`8e099cb` 510,998** → `3955696` 511,887. So
+  it crossed at **#191, dated pay items, live 2026-11-01** — a size threshold tripped by a feature
+  that had nothing to do with error handling.
+  **Found in the groom, not the queue.** Fifteen consecutive grooms had recorded `client_error`
+  as flat at 28 rows; tonight it read **30**, and both new rows are this note — `2026-11-02
+  17:23:15` and `2026-11-03 04:04:11`, each from a clean first load with nothing whatsoever wrong.
+  **Why it is a P1 and not cosmetic.** The note is harmless in itself: "deoptimised the styling"
+  means Babel stopped pretty-printing the code it emits, and the app runs identically. The damage
+  is to the only channel this repo has that fires on a real fault. Invariant 4's 23505s and
+  Invariant 2's blocked CDN script surface in `client_error` **and nowhere else** — both invariants
+  carry `Detect: none` otherwise — so "a `client_error` row exists" had quietly stopped meaning
+  "something went wrong" and started meaning "a page loaded". It also breaks the groom's own
+  fifteen-night health read, and it would have handed the user a note about Babel's pretty-printer
+  through the watchdog's "Copy error log".
+  **The fix is a guard at the mirror, and the placement is the half a diff does not show.** Dropped
+  in the `console.error` mirror rather than in `flushClientErrors`, so it never enters the ring
+  buffer either — `__copyErrorLog` hands that buffer to the user verbatim for a bug report. The
+  original `console.error` still runs, so a devtools console still shows the note. The predicate is
+  deliberately narrow: **both** halves of Babel's string must match and the prefix is anchored at
+  position 0. This is the one filter in that mirror and it must stay the one filter.
+  **`tests/smoke.mjs` §57 — twelve assertions, six deliberate breaks measured:**
+  · no filter at all → **4 fails** (the pre-fix behaviour)
+  · widened to a prefix-only test → **2 fails** (a different `[BABEL] Note` gets eaten)
+  · widened to a substring-only test → **3 fails** (both near-misses get eaten)
+  · the mirror muted entirely → **5 fails**, the 23505 assertion among them — the direction that
+    would blind every other check in §54 while passing all of them
+  · the prefix unanchored (`>= 0`) → **2 fails** (a wrapped copy gets eaten)
+  · the filter moved to the flush instead of the mirror → **2 fails**, which is what pins the
+    placement choice rather than merely asserting it in a comment
+  The load half is driven off a **real** load with nothing seeded — the note has to be produced by
+  the actual Babel transform of the actual file — and it asserts Babel *did* emit it on that load,
+  so the row's absence is the filter working and not a transform that quietly stopped running.
+  **One assertion was written and DELETED for being unfalsifiable**, recorded in §57 rather than
+  dropped silently: a post-load read of `scrubpayErrors` asserting the note never entered the ring
+  buffer. `flushClientErrors` read-and-*clears* that buffer on `app_open`, so the read is empty on
+  every build — it passed with the filter removed **and** with the filter moved to the flush, which
+  is the exact claim it was supposed to make. §33 and §35 each deleted one of these; this is the
+  third. The probe half carries the claim properly, off the buffer with no flush in between.
 - 2026-11-02 — **"Clear all data" left behind the one row that still reads her whole calendar.**
   `clearAll` deleted the `user_data` blob and signed out; the feed URL lives in
   `ical_subscriptions`, a different table, so that delete never reached it. The row went only when
