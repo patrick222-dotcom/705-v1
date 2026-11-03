@@ -7199,6 +7199,150 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 57. a clean load files no client_error row (the Babel style note, 2026-11-03) ------- */
+  if (want(57)) {
+    /* Babel standalone console.errors a note about its own output formatting once per load when
+       the inline script passes 500,000 bytes. Ours crossed that at `8e099cb` (#191, live
+       2026-11-01) -- 497,329 -> 510,998, and 511,887 today -- and the boot script's console.error
+       mirror is indiscriminate, so from that commit EVERY load filed a client_error row. Two sit
+       in production `events` (2026-11-02 17:23:15, 2026-11-03 04:04:11), both clean first loads
+       with nothing wrong.
+
+       Why that is worth a section: `client_error` is the only channel in this repo that fires on
+       a real fault. Invariant 4's 23505s and Invariant 2's blocked CDN script surface here and
+       nowhere else, both invariants carry `Detect: none` otherwise, and the 47-day sync outage ran
+       as long as it did because this channel did not exist yet. A row on every load does not break
+       the app; it breaks the only thing watching it.
+
+       The first half is driven off a REAL load with NOTHING seeded, which is what makes it a
+       regression test rather than a test of a helper: the note has to be produced by the actual
+       Babel transform of the actual file, so it also fails if the inline block ever drops back
+       under the threshold and someone then widens the filter believing it unused.
+
+       The second half is the direction that matters more. A filter at this choke point can mute
+       the app's whole error channel and every leak-style assertion in §54 would still pass, so
+       four messages that must SURVIVE are driven through the same mirror -- including two
+       near-misses that share one half of Babel's string each, which is what gives the
+       both-halves-anchored rule teeth rather than just a passing grep. */
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const page = await ctx.newPage();
+    if (STEP_TIMEOUT) { page.setDefaultTimeout(STEP_TIMEOUT); page.setDefaultNavigationTimeout(30000); }
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    /* The native console.error must still run for everything, dropped or not -- the mirror is a
+       mirror, and a developer at a devtools console must still see Babel's note. */
+    const seen = [];
+    page.on('console', (m) => { if (m.type() === 'error') seen.push(m.text()); });
+
+    await page.addInitScript(([key, blob]) => {
+      window.__ev = [];
+      try { localStorage.setItem(key, JSON.stringify(blob)); } catch (_) {}
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'user_data') {
+                      return Promise.resolve({ data: { data: blob, updated_at: '2026-10-27T00:00:00.000Z' }, error: null }).then(res, rej);
+                    }
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [STORAGE_KEY, SEEDED_STATE]);
+
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    /* Fixed wait, never waitForFunction: the direction this section guards is a row that must NOT
+       arrive, and a predicate that never comes true aborts the run instead of failing an assertion
+       (the harness skill's second lie; §50 and §51 were both bitten by it). */
+    await page.waitForTimeout(2500);
+
+    const rows57 = await page.evaluate(() => window.__ev || []);
+    const names57 = rows57.map((r) => r && r.name);
+    /* The control: without this, every assertion below would also pass on a build whose analytics
+       stub never captured anything at all. */
+    ok('babel-note: the stub did capture this load\'s events, so the absence below means something',
+      names57.includes('app_open'), JSON.stringify(names57));
+    ok('babel-note: a clean load files NO client_error row',
+      !names57.includes('client_error'), JSON.stringify(rows57.filter((r) => r && r.name === 'client_error')));
+    ok('babel-note: and no event row of any name carries Babel\'s note',
+      !JSON.stringify(rows57).includes('deoptimised'), JSON.stringify(names57));
+
+    /* ONE assertion was written here and DELETED for being unfalsifiable, which is worth more
+       written down than silently dropped. It read `scrubpayErrors` after the load and asserted the
+       note never entered the ring buffer `__copyErrorLog` hands the user. But `flushClientErrors`
+       read-and-CLEARS that buffer on app_open, so the post-load read is empty on every build: it
+       passed with the filter removed (break 1) and passed again with the filter moved to the flush
+       (break 6), which is the exact claim it was supposed to make. The placement claim is carried
+       properly by the probe half below, where the buffer is read directly off the mirror with no
+       flush in between -- break 6 fails two assertions there. §33 and §35 each deleted one of these
+       for the same reason; this is the third.
+       Falsifiable the other way round for the load half: Babel really did emit it on this load,
+       so the row's absence is a filter working and not a transform that silently stopped running. */
+    ok('babel-note: Babel DID emit the note on this load, so the absence is the filter, not luck',
+      seen.some((m) => m.includes('deoptimised the styling')), JSON.stringify(seen.slice(0, 3)));
+
+    /* ---- the half that proves this is a filter and not a mute ---- */
+    const NOTE = '[BABEL] Note: The code generator has deoptimised the styling of /Inline Babel script as it exceeds the max of 500KB.';
+    const probes = await page.evaluate((note) => {
+      try { localStorage.removeItem('scrubpayErrors'); } catch (_) {}
+      /* 1 drops. 2-5 must all survive. 3 and 4 each carry exactly ONE half of Babel's string and 5
+         carries both but unanchored, so a filter loosened to a prefix test, a substring test or an
+         OR fails right here instead of quietly eating real errors. */
+      console.error(note);
+      console.error('Save threw: 23505 duplicate key value violates unique constraint');
+      console.error('[BABEL] Note: something else entirely went wrong');
+      console.error('the renderer has deoptimised the styling of this row');
+      console.error('wrapped: [BABEL] Note: The code generator has deoptimised the styling of x');
+      try { return JSON.parse(localStorage.getItem('scrubpayErrors') || '[]').map((e) => e.msg); } catch (_) { return 'THREW'; }
+    }, NOTE);
+
+    ok('babel-note: exactly the four non-Babel messages were kept, and only them',
+      Array.isArray(probes) && probes.length === 4, JSON.stringify(probes));
+    ok('babel-note: a real 23505 still reaches the buffer — Invariant 4\'s only live signal',
+      Array.isArray(probes) && probes.some((m) => m.includes('23505')), JSON.stringify(probes));
+    ok('babel-note: the exact note is the one message gone',
+      Array.isArray(probes) && !probes.some((m) => m.includes('exceeds the max of 500KB')), JSON.stringify(probes));
+    ok('babel-note: a DIFFERENT [BABEL] Note survives — the prefix alone must not match',
+      Array.isArray(probes) && probes.some((m) => m.includes('something else entirely')), JSON.stringify(probes));
+    ok('babel-note: "deoptimised the styling" without the prefix survives too',
+      Array.isArray(probes) && probes.some((m) => m.includes('the renderer has deoptimised')), JSON.stringify(probes));
+    ok('babel-note: and both halves unanchored survive — the prefix is pinned at position 0',
+      Array.isArray(probes) && probes.some((m) => m.includes('wrapped:')), JSON.stringify(probes));
+    /* A mirror must never swallow what the console shows. All five reached the real console.error. */
+    ok('babel-note: the native console.error still ran for all five, note included',
+      seen.filter((m) => m.includes('deoptimised the styling')).length >= 2
+      && seen.some((m) => m.includes('23505')), JSON.stringify(seen.length));
+
+    const real57 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('babel-note: no page errors across section 57', real57.length === 0, real57[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
