@@ -7,6 +7,18 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-06 · nightly (second run of the day) · belongs to no live thread (T1/T2/T3) — a tooling
+  honesty fix: `deploy_watch.mjs` named a commit it could not know for **eight consecutive
+  nights** (`privacy.html`/`ops.html` reported as "serving" a drifting 2026-10-08/09 commit, for
+  files unchanged since 2026-09-24), because containers here clone **shallow** and a shallow
+  boundary commit looks to `git log` like the commit that added every file in its tree. Verdict
+  was always right; the attribution never was. Shipped tonight, `scripts/test_deploy_watch.mjs`
+  98/0, seven breaks measured. · **two things for the chief of staff:** (a) PR #209's open review
+  was nearly force-pushed over by the loop's shared working branch — tonight dodged it with a
+  per-session branch, but the standing rule is Pat's call; (b) eight nights of a known-false
+  figure being re-explained in prose rather than fixed is the same shape as the CABINET MISSED
+  line under-reporting for thirteen — worth one decision covering both.
+
 - 2026-11-03 · nightly · belongs to no live thread (T1/T2/T3) — an observability fix: since #191
   crossed Babel's 500,000-byte inline-script threshold on 2026-11-01, **every load filed a
   `client_error` row** carrying a benign Babel formatting note, which is the only channel that

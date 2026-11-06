@@ -105,6 +105,90 @@ and the push P0 it pointed at was fixed the same day.
   decided: BadgeBudget gives an **estimate**, not tax, payroll or legal advice; the employer's stub
   is the record.
 
+### P1 (new, groom 2026-11-06, second run)
+
+**Why this band sits BELOW the 11-03 one instead of at the top of `## Queue`:** PR #209 (the
+`terms.html` draft, opened 01:45 UTC tonight) already inserts a `### P1 (new, groom 2026-11-06)`
+band at line 29, and it is an **owner-review PR that must not be disturbed**. Two inserts at the
+same hunk would hand Pat a merge conflict on a legal-text review. Placed 77 lines down, both
+diffs apply cleanly. Newest-first ordering loses to a clean review.
+
+- [x] ~~**`deploy_watch` named a commit it could not know, every night, for eight nights**~~ —
+  **SHIPPED 2026-11-06** (see Done log). (P2 · source:groom · `harness:drivable` (script-level))
+  Taken because `## Queue` has no unblocked build item that does not collide with PR #209, and
+  because this is the artefact *this file* has flagged eight consecutive times in prose — the
+  definition of something to fix rather than re-explain. Fourteen assertions in
+  `scripts/test_deploy_watch.mjs` (98 now, was 84), seven deliberate breaks measured.
+- [ ] **PR #209 was NOT force-pushed over, and the way out was a branch name** (P1 · resolved for
+  tonight, still open as a standing decision) — last night's run filed this as a P1 addressed to
+  whoever ran next: the loop's step 3 begins `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, which would have rewritten #209's head and thrown
+  away Pat's pending review of the terms page. **It did not happen.** This session's own
+  designated branch is `claude/great-feynman-t3xr62`, so tonight's work went there and #209's head
+  is untouched at `ceacb5f`. That is option (b) from last night's note — a per-item branch for
+  owner-tier work — demonstrated rather than argued, and it cost nothing. **The standing decision
+  is still Pat's**, because the loop prompt's branch name is an instruction from outside this
+  file: either owner-tier work gets its own branch by rule, or #209 is merged/closed before the
+  next run that needs the shared one. Until then, a run that finds an open PR on
+  `claude/clause-md-review-9tqlj8` should branch elsewhere and say so first.
+- [ ] **The 11-03 `client_error` fix is confirmed on EIGHT clean loads now, not four** (P2 ·
+  source:groom · no action) — `client_error` is **30**, unchanged, across four further loads since
+  last night's groom read it (`04a9caf5` 11-05 02:41, `cb4166ac` 03:12, `3ac67816` 04:51,
+  `7c7c1a0c` 09:52). Every one is a fresh device off the live build (`aa53aec`), and **not one
+  filed a row**; before #208 each would have filed one. The 11-03 note said "expect this count to
+  stay at 30 and treat 31 as real", and it has now stayed at 30 on eight loads that would each
+  have added one. This is the only prediction in this file that has been tested twice and held
+  twice.
+- [ ] **`silence_watch` is FRESH, and the cohort is unchanged for the eleventh night** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **22.2h** old against a 48h window; `events`
+  holds **1,781** rows, byte-identical to last night's groom — **zero new rows in the ~6.5 hours
+  between the two runs**, which is the honest reading of two runs on one calendar day. 15 rows in
+  48h, **8** distinct devices in 7 days. Every device is the same shape recorded since 10-29:
+  `app_open {fresh:true}` and `ob_step {step:0}` on the same timestamp, `ob_view
+  {screen:'landing'}`, nothing past screen 0, some with a `session_end` at 2–5 seconds. **Do not
+  quote any of it as activation** — CLAUDE.md records every activation figure since 2026-09-07 as
+  inflated by exactly this cohort until the device classifier is fixed.
+- [ ] **Courtney has not opened the app in 16.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for ten grooms. The two sync opt-outs she asked for
+  twice in 28 hours remain field-unverified for that one reason.
+- [ ] **`feedback` is unchanged for the EIGHTEENTH groom** (housekeeping, re-read at the END of the
+  run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"). `paystub_failed` has **still never fired for any reason** and there are no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met** — do not
+  build a worker mitigation.
+- [ ] **CABINET MISSED stays CLEARED — fifth night, and the window is now three days wide** (P2 ·
+  housekeeping) — `docs/cos/brief.md` is `400272a`, **2026-11-01**, **5.1 days** old against the
+  8-day switch, so this run's notify line carries **no** CABINET MISSED. `scripts/cos_check.mjs`
+  passes. The decision the 11-01 through 11-06 notes have all left for Pat is unchanged: **gate
+  the build on an over-age brief, or retire the dead-man's-switch claim** — nothing in the repo
+  enforces it, the notify line is the whole mechanism, and it under-reported for thirteen nights.
+  **It fires again on 2026-11-09** unless a cabinet runs, which is the last cheap window to take
+  the decision in.
+- [ ] **Last night's prediction HELD, and the publish-set figure has now been FIXED rather than
+  re-explained** (housekeeping) — `deploy_watch` reads **LIVE** with `index.html` serving
+  **`aa53aec` (2026-11-03)**, exactly as the 11-06 note staked out when it predicted nothing would
+  merge. `privacy.html` and `ops.html` no longer print a drifting commit at all: tonight's build
+  makes them say *"serving the current bytes … this clone's history for it stops at `b468e5d` …
+  so it cannot be named"*. The eight-night drift is over because the figure that drifted is gone.
+  **Tonight's prediction:** tonight's merge touches no publish-set file, so tomorrow's
+  `deploy_watch` should **still** name `aa53aec` for `index.html`, and the two legal pages should
+  print the truncation sentence rather than any commit. If a commit name comes back for them, the
+  clone was complete that night — which is information, not a regression.
+- [ ] **The gate meta-test is STILL not in CI — tenth night unchanged** (P2 · `harness:unscoped` ·
+  needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox**. One line after the existing `Deploy-watch classifier suite` step: `- name: Gate
+  meta-test` / `run: node scripts/test_check_build.mjs` (46 assertions, ~105s, no browser, no
+  network). **Tonight's build is covered without it**: the fourteen new assertions live in
+  `scripts/test_deploy_watch.mjs`, which that same `gate` job already runs, so all seven measured
+  breaks sit behind the binding gate. Still worth pairing with #209's change (1) when Pat is in
+  that file anyway.
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4170,6 +4254,62 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   every build — it passed with the filter removed **and** with the filter moved to the flush, which
   is the exact claim it was supposed to make. §33 and §35 each deleted one of these; this is the
   third. The probe half carries the claim properly, off the buffer with no flush in between.
+- 2026-11-06 — **`deploy_watch` printed a commit it could not know, for eight consecutive nights,
+  and this file explained it away each time instead of fixing it.** The watch is the one tool this
+  loop trusts to answer "is what is MERGED actually LIVE" — CLAUDE.md's rule is *treat every merge
+  as unshipped until it says `LIVE`*. For `privacy.html` and `ops.html` it reported `serving
+  b468e5d (2026-10-09)`, `078a4d8 (2026-10-08)`, `62f321b`, `568ddfa`, `8ae7b4d`, `4caeb15`,
+  `bfbd944` and `a64348b` on eight different nights, for two files **unchanged since 2026-09-24**.
+  Every one of those nights the backlog wrote a paragraph calling it an artefact and telling the
+  reader to trust the verdict word instead.
+  **The cause, measured rather than guessed.** Containers for this repo clone **shallow** —
+  Invariant 10 says so in as many words, and this one holds 50 commits with `.git/shallow`
+  present. A shallow clone's boundary commit is **parentless in the local graph**, so `git log --
+  <path>` cannot tell it apart from a commit that genuinely added the file: the boundary appears
+  to create everything in its tree. For any file whose last real change is older than the
+  boundary, `gitHistory` therefore returns exactly **one** entry — the boundary — carrying the
+  tip's blob. `git log -n12 … -- privacy.html` on this clone returns precisely that: one commit,
+  `b468e5d`. The figure drifted nightly because the *clone depth* drifted nightly, not because
+  anything about the file did.
+  **It is `history[0]`-is-not-the-tip again, through a door `applyRefFreshness` cannot cover.**
+  That guard was written for the 2026-10-11 run that printed `LIVE` twenty-four seconds after a
+  merge while naming the pre-merge commit. It proves the ref is **current**; it cannot prove the
+  history behind it is **complete**, and in a shallow clone those are two different questions.
+  **The verdict is deliberately unchanged, and that is the finding rather than a softened fix.**
+  The newest commit the walk can see carries the tip's blob for that path either way — if the file
+  changed after the boundary that commit is in the log, and if it did not the boundary's blob *is*
+  the tip's — so a `behind: 0` match still **proves** the served bytes are current. What was false
+  was the attribution, so the attribution is what changed. Degrading those two files to
+  `UNKNOWN_BUILD` every night, in a clone shape that is normal here, would be crying wolf, and
+  this script's whole value is that its green word can be trusted.
+  **What it says now.** `shallowBoundaries()` asks `git rev-parse --is-shallow-repository` and
+  then `git rev-list --max-parents=0`, gated on the first so that a **complete** clone's genuine
+  root commit — which really did add the files in it — is still named. `classifyFile` takes
+  `truncatedAt`; a `LIVE` match on that sha prints *"serving the current bytes of privacy.html,
+  but this clone's history for it stops at b468e5d — the commit that last changed it is older than
+  the clone, so it cannot be named"*, and a `BEHIND` match on it bounds the claim to *"no newer
+  than"* while keeping the unshipped count, which is still exact because every later change is
+  inside the window.
+  **`scripts/test_deploy_watch.mjs` — fourteen assertions (98 now, was 84), seven deliberate
+  breaks measured:**
+  · the attribution reverted to the old unconditional string → **5 fails**, which is the
+    pre-fix behaviour, i.e. the artefact itself
+  · the verdict degraded to `UNKNOWN_BUILD` on truncation (the over-reaction) → **3 fails**
+  · the `BEHIND` bounding reverted → **1 fail**
+  · `atBoundary` widened to fire on any commit → **4 fails**, one of them a *pre-existing*
+    assertion (`BEHIND prints the live subject beside the LIVE sha`), because an always-on guard
+    strips the subject the 10-19 fix put there
+  · the truncated `LIVE` dropping its `behind` count → **1 fail**
+  · a truncated `BEHIND` degraded and its count dropped → **2 fails**
+  · and the **git half**, which the unit suite cannot see by design (no git in CI's pure-logic
+    suite): `shallowBoundaries` blinded to return an empty set, run live against
+    badgebudget.com → both legal pages went straight back to `serving b468e5d (2026-10-09)`,
+    reproducing the recorded artefact exactly. That break is the one that proves the fix is load-
+    bearing rather than a re-worded string.
+  **Not shipped to production, and that is correct**: `deploy_watch.mjs` is a repo script, not part
+  of Invariant 8's publish set, so `index.html` is untouched and nothing about the live app moved.
+  Gate green: `check_build` 19/19, `core` 175/0, `smoke` **922/0**, `groom_seed` 33/0,
+  `silence_watch` 39/0, `deploy_watch` **98/0**, `cos_check` pass.
 - 2026-11-02 — **"Clear all data" left behind the one row that still reads her whole calendar.**
   `clearAll` deleted the `user_data` blob and signed out; the feed URL lives in
   `ical_subscriptions`, a different table, so that delete never reached it. The row went only when

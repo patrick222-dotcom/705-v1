@@ -245,5 +245,74 @@ ok('render: a local ref says there is no remote to fetch',
   /no remote to fetch/.test(render(classifyDeploy([live], null, FETCH_LOCAL))));
 ok('render: omits the ref line entirely when no fetch was attempted', !/deploy ref/.test(render(oneBehind)));
 
+// 14. truncated history — the artefact eight consecutive grooms had to explain away in prose.
+//     Containers for this repo clone shallow (Invariant 10), and a shallow boundary commit is
+//     parentless in the local graph, so `git log -- <path>` reports it as the commit that ADDED
+//     the file. For `privacy.html` and `ops.html` — unchanged since 2026-09-24, with every real
+//     change below the boundary — the walk returns one entry and the watch printed it as "serving
+//     <that commit>", a figure that drifted every night with the clone depth.
+//
+//     Two halves, and they are tested separately because they fail separately: the VERDICT must
+//     not move (the newest commit the walk can see carries the tip's blob either way, so the
+//     bytes really are current, and downgrading a normal clone shape nightly would be crying
+//     wolf), and the ATTRIBUTION must stop naming a boundary commit as the one that last changed
+//     the file.
+const BOUNDARY = [{ sha: 'ddddddddddddddd1', date: '2026-10-09', subject: 'fix(sync): the import card', blobSha256: sha256(HEAD_BODY) }];
+const truncLive = classifyFile({
+  path: 'privacy.html', url: URL_PRIV, status: 200, body: HEAD_BODY,
+  history: BOUNDARY, scanned: 1, truncatedAt: 'ddddddddddddddd1',
+});
+ok('truncated: a match on the shallow boundary is STILL LIVE', truncLive.verdict === 'LIVE', truncLive.verdict);
+ok('truncated: and it still reports 0 behind', truncLive.behind === 0);
+ok('truncated: it does NOT name the boundary as the commit being served',
+  !/serving ddddddd/.test(String(truncLive.detail)), truncLive.detail);
+ok('truncated: it says the history stops there and names what it cannot say',
+  /stops at ddddddd/.test(String(truncLive.detail)) && /cannot be named/.test(String(truncLive.detail)),
+  truncLive.detail);
+ok('truncated: it still says the bytes are current', /current bytes of privacy\.html/.test(String(truncLive.detail)));
+ok('truncated: the file carries the flag for a reader that reads the object, not the string',
+  truncLive.truncated === true);
+
+// 14a. the SAME history with no boundary reported must keep naming its commit — otherwise the
+//      fix would have replaced one false statement with a vaguer one on every file, including
+//      `index.html`, whose history sits above the boundary and whose commit name is the single
+//      most-read figure this script prints.
+const untruncLive = classifyFile({
+  path: 'privacy.html', url: URL_PRIV, status: 200, body: HEAD_BODY,
+  history: BOUNDARY, scanned: 1, truncatedAt: null,
+});
+ok('truncated: with no boundary, LIVE names its commit exactly as before',
+  untruncLive.verdict === 'LIVE' && /serving ddddddd \(2026-10-09\)/.test(String(untruncLive.detail)),
+  untruncLive.detail);
+ok('truncated: and carries no truncation flag', untruncLive.truncated === undefined);
+ok('truncated: a boundary that is not the matched commit changes nothing',
+  /serving aaaaaaa \(2026-10-07\)/.test(String(file({ truncatedAt: 'ddddddddddddddd1' }).detail)),
+  file({ truncatedAt: 'ddddddddddddddd1' }).detail);
+
+// 14b. BEHIND through the same door. A match on the boundary means the served bytes are no NEWER
+//      than that commit; they may be older, because the commits before it are not in the clone.
+//      The unshipped count is still exact — every later change is inside the window — so the
+//      count stays and only the "serving <sha>" claim is bounded.
+const truncBehind = classifyFile({
+  path: 'index.html', url: URL_INDEX, status: 200, body: PREV_BODY,
+  history: HISTORY, scanned: HISTORY.length, truncatedAt: 'bbbbbbbbbbbbbbbb',
+});
+ok('truncated: a BEHIND match on the boundary is still BEHIND', truncBehind.verdict === 'BEHIND');
+ok('truncated: BEHIND bounds the claim instead of asserting the commit',
+  /no newer than bbbbbbb/.test(String(truncBehind.detail)) && !/serving bbbbbbb \(/.test(String(truncBehind.detail)),
+  truncBehind.detail);
+ok('truncated: BEHIND still counts the unshipped changes exactly',
+  truncBehind.behind === 1 && /1 later change to index\.html is unshipped/.test(String(truncBehind.detail)),
+  truncBehind.detail);
+
+// 14c. and the whole-deploy verdict is unaffected, which is the point of keeping it LIVE — a
+//      shallow clone is the NORMAL shape here, so a run in one must still exit 0.
+const truncDeploy = classifyDeploy([file(), truncLive], { ok: true, detail: 'ok' }, FETCH_OK);
+ok('truncated: a run in a shallow clone still reaches LIVE and exits 0',
+  truncDeploy.verdict === 'LIVE' && truncDeploy.exitCode === 0,
+  `${truncDeploy.verdict} exit ${truncDeploy.exitCode}`);
+ok('truncated: and the rendered report marks the truncated file [ok], not FAIL',
+  /\[ok\] privacy\.html — serving the current bytes/.test(render(truncDeploy)), render(truncDeploy));
+
 console.log(`\n==== deploy_watch tests: ${pass} passed / ${fail} failed ====`);
 process.exit(fail === 0 ? 0 : 1);

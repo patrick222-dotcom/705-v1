@@ -78,8 +78,14 @@ export function matchCommit(liveSha, history) {
  *                   deployed out of band — the two need a human to tell apart.
  *   UNREACHABLE   — the fetch itself failed.
  */
-export function classifyFile({ path, url, status, body, fetchError, history, scanned }) {
+export function classifyFile({ path, url, status, body, fetchError, history, scanned, truncatedAt }) {
   const head = Array.isArray(history) && history.length ? history[0] : null;
+
+  /* `truncatedAt` is the sha the walk STOPPED at because the clone does not contain that
+     commit's parents — a shallow clone's boundary, which `git log` cannot tell apart from a
+     commit that genuinely added the file. See `nameCommit` below for why that matters and why
+     it changes the attribution without touching the verdict. */
+  const atBoundary = (c) => Boolean(truncatedAt && c && c.sha === truncatedAt);
 
   if (fetchError) {
     return { path, verdict: 'UNREACHABLE', detail: `fetch failed: ${fetchError}`, liveSha: null, head };
@@ -96,7 +102,19 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
      cannot hash to a 468KB blob — so the floors only ever have to explain a mismatch. */
   const hit = matchCommit(liveSha, history);
   if (hit && hit.behind === 0) {
-    return { path, verdict: 'LIVE', detail: `serving ${head.sha.slice(0, 7)} (${head.date})`, liveSha, head, behind: 0 };
+    return {
+      path,
+      verdict: 'LIVE',
+      detail: atBoundary(head)
+        ? `serving the current bytes of ${path}, but this clone's history for it stops at `
+          + `${head.sha.slice(0, 7)} — the commit that last changed it is older than the clone, `
+          + `so it cannot be named`
+        : `serving ${head.sha.slice(0, 7)} (${head.date})`,
+      liveSha,
+      head,
+      behind: 0,
+      truncated: atBoundary(head) || undefined,
+    };
   }
 
   if (status !== 200) {
@@ -117,12 +135,17 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
        commit's subject immediately after the HEAD commit's sha, which reads as though the
        newest change were already out — the confident-but-false shape this repo keeps paying
        for. The two shas are labelled separately now. */
+    const served = atBoundary(c)
+      ? `serving bytes no newer than ${c.sha.slice(0, 7)}, the oldest commit this clone holds `
+        + `for ${path} — the commit they came from may be older still`
+      : `serving ${c.sha.slice(0, 7)} (${c.date}) "${String(c.subject).slice(0, 60)}"`;
     return {
       path, verdict: 'BEHIND', liveSha, head, behind: hit.behind,
-      detail: `serving ${c.sha.slice(0, 7)} (${c.date}) "${String(c.subject).slice(0, 60)}" — `
+      detail: `${served} — `
         + `${hit.behind} later change${hit.behind === 1 ? '' : 's'} to ${path} `
         + `${hit.behind === 1 ? 'is' : 'are'} unshipped, newest ${head.sha.slice(0, 7)}`,
       liveCommit: c,
+      truncated: atBoundary(c) || undefined,
     };
   }
 
@@ -281,12 +304,55 @@ function gitFetchRef(ref) {
 /* Only the commits that actually touched this path, head first — on a 5,800-line single-file app
    that is most of them for index.html and a handful for the other two, which is why the walk is
    per-path rather than over the branch log. */
+/* `nameCommit`, and why a verdict word is not the only thing that has to be true.
+ *
+ * Containers for this repo clone SHALLOW — Invariant 10 says so in as many words, and this one
+ * holds 50 commits with `.git/shallow` present. A shallow clone's boundary commit has no parents
+ * in the local graph, so `git log -- <path>` cannot tell it apart from a commit that genuinely
+ * ADDED the file: the boundary appears to create everything in its tree. For any file whose last
+ * real change is older than the boundary, the walk therefore returns exactly ONE entry — the
+ * boundary — carrying the tip's blob for that path.
+ *
+ * That is why eight consecutive grooms recorded `privacy.html` and `ops.html` as "serving"
+ * 2026-10-08, 10-09 and five other commits, drifting night to night, for two files unchanged
+ * since 2026-09-24: the figure was never the commit that last changed them, it was wherever that
+ * night's clone happened to stop. BACKLOG.md called it an artefact each time and told the reader
+ * to trust the verdict word instead. A tool that needs a paragraph of caveat beside its own
+ * output every night is printing something false; this names it instead.
+ *
+ * It is `history[0]`-is-not-the-tip again, through a door `applyRefFreshness` cannot cover. That
+ * guard proves the ref is CURRENT; it cannot prove the history behind it is COMPLETE, and in a
+ * shallow clone those are different questions.
+ *
+ * The VERDICT is deliberately unchanged, and that is the finding rather than a softened fix: the
+ * newest commit the walk can see carries the tip's blob for that path either way — if the file
+ * changed after the boundary that commit is in the log, and if it did not the boundary's blob IS
+ * the tip's — so a `behind: 0` match still proves the served bytes are current. What was false
+ * was the attribution, so the attribution is what changes. Degrading these two files to
+ * UNKNOWN_BUILD every night in a clone shape that is normal here would be crying wolf, and this
+ * file's whole value is that its green word can be trusted. */
+function shallowBoundaries(ref) {
+  let shallow;
+  try {
+    shallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'], { encoding: 'utf8' }).trim();
+  } catch { return new Set(); }
+  if (shallow !== 'true') return new Set();
+  /* In a shallow clone the boundary is parentless in the local graph, which is exactly what
+     `--max-parents=0` finds. Gated on `--is-shallow-repository` on purpose: in a COMPLETE clone
+     the same query returns the real root commit, which genuinely did add the files in it, and
+     naming it would be correct. */
+  try {
+    const roots = execFileSync('git', ['rev-list', '--max-parents=0', ref], { encoding: 'utf8' });
+    return new Set(roots.split('\n').filter(Boolean));
+  } catch { return new Set(); }
+}
+
 function gitHistory(path, ref, limit) {
   let log;
   try {
     log = execFileSync('git', ['log', `-n${limit}`, '--format=%H%x09%cI%x09%s', ref, '--', path], { encoding: 'utf8' });
   } catch (e) {
-    return { history: [], error: String(e.message || e).split('\n')[0] };
+    return { history: [], truncatedAt: null, error: String(e.message || e).split('\n')[0] };
   }
   const history = [];
   for (const line of log.split('\n').filter(Boolean)) {
@@ -297,7 +363,9 @@ function gitHistory(path, ref, limit) {
     } catch { continue; }
     history.push({ sha, date: date.slice(0, 10), subject: rest.join('\t'), blobSha256: sha256(blob) });
   }
-  return { history, error: null };
+  const boundaries = shallowBoundaries(ref);
+  const oldest = history.length ? history[history.length - 1].sha : null;
+  return { history, truncatedAt: oldest && boundaries.has(oldest) ? oldest : null, error: null };
 }
 
 async function main() {
@@ -313,8 +381,8 @@ async function main() {
   const files = [];
   for (const path of WATCHED) {
     const probe = await probeFile(SITE_ORIGIN, path);
-    const { history } = gitHistory(path, DEPLOY_REF, limit);
-    files.push(classifyFile({ path, ...probe, history, scanned: history.length }));
+    const { history, truncatedAt } = gitHistory(path, DEPLOY_REF, limit);
+    files.push(classifyFile({ path, ...probe, history, scanned: history.length, truncatedAt }));
   }
   const cname = await probeCname(SITE_ORIGIN);
 
