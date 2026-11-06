@@ -108,6 +108,10 @@ export function buildScratch(root, outDir, { dev = false } = {}) {
      self-contained (no fonts, scripts or styles from anywhere else), which is the whole point of
      it. Copy it verbatim so its text can be asserted off the real DOM rather than grepped. */
   copyFileSync(join(root, 'privacy.html'), join(outDir, 'privacy.html'));
+  /* terms.html is the same shape and is copied for the same reason. It is NOT in the publish set
+     yet (that line in deploy.yml is the owner's), so this copy is what makes it drivable at all:
+     Settings links to it, and a link to a page nothing ever loads is how a 404 ships quietly. */
+  copyFileSync(join(root, 'terms.html'), join(outDir, 'terms.html'));
   return join(outDir, 'index.html');
 }
 

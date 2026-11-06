@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms — BadgeBudget</title>
+<meta name="description" content="BadgeBudget gives you an estimate of your take-home pay. Your employer's paystub is the record.">
+<meta name="theme-color" content="#16181F">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316181F'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2334D399'/%3E%3C/svg%3E">
+<!-- Self-contained on purpose, exactly like privacy.html: no fonts, scripts or styles from
+     anywhere else, and no remote URL of any kind. These two pages ship with no <meta> CSP, and
+     "it references nothing remote" is the property that replaces one — scripts/check_build.mjs
+     asserts it for privacy.html and should assert it for this page the moment it joins the
+     publish set in deploy.yml. -->
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#F7F7F5; --card:#FFFFFF; --ink:#16181F; --ink-2:#21242F;
+    --muted:#4A4A52; --muted-2:#726D62; --mint:#34D399; --line:#E5E4E0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      color-scheme: dark;
+      --bg:#121316; --card:#1A1C21; --ink:#F5F5F3; --ink-2:#FFFFFF;
+      --muted:#C0BFB8; --muted-2:#8E8D84; --line:#2C2E34;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:32px 20px 72px}
+  .brand{display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.02em; font-size:17px; margin-bottom:28px}
+  .dot{width:11px; height:11px; border-radius:50%; background:var(--mint); flex:0 0 auto}
+  h1{font-size:29px; line-height:1.2; letter-spacing:-.025em; margin:0 0 8px; font-weight:700}
+  .updated{color:var(--muted-2); font-size:13.5px; margin:0 0 26px}
+  .lede{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px; margin-bottom:32px;
+  }
+  .lede p{margin:0 0 10px}
+  .lede p:last-child{margin:0}
+  .lede strong{color:var(--ink-2)}
+  h2{font-size:18px; letter-spacing:-.015em; margin:34px 0 10px; font-weight:650}
+  h3{font-size:15px; margin:22px 0 6px; font-weight:650; color:var(--ink-2)}
+  p{margin:0 0 13px; color:var(--muted)}
+  li{margin:0 0 8px; color:var(--muted)}
+  ul{padding-left:20px; margin:0 0 14px}
+  strong{color:var(--ink)}
+  code{
+    font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:13px; background:var(--card); border:1px solid var(--line);
+    padding:1px 5px; border-radius:4px; color:var(--ink-2);
+  }
+  a{color:#1F7A55; text-decoration:underline; text-underline-offset:2px}
+  @media (prefers-color-scheme: dark){ a{color:var(--mint)} }
+  hr{border:0; border-top:1px solid var(--line); margin:34px 0}
+  .foot{color:var(--muted-2); font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand"><span class="dot"></span>badgebudget</div>
+
+  <h1>Terms of use</h1>
+  <p class="updated">Last updated 6 November 2026</p>
+
+  <div class="lede">
+    <p><strong>BadgeBudget gives you an estimate, not tax, payroll or legal advice.</strong> Every
+      dollar figure in the app — take-home pay, a differential, overtime, a savings goal — is a
+      projection built from the numbers you entered.</p>
+    <p><strong>Your employer's paystub is the record.</strong> Where the app and your paystub
+      disagree, the paystub is right and the app is wrong. Don't use a figure from BadgeBudget to
+      settle a question with payroll, your union, a lender or the IRS.</p>
+  </div>
+
+  <h2>Who runs this</h2>
+  <p>BadgeBudget is built and run by one person, not a company. It started as a planner for one
+    nurse and her unit. There is no support team and no service agreement behind it; there is an
+    email address at the bottom of this page, read by the person who writes the code.</p>
+
+  <h2>What it costs</h2>
+  <p>Nothing. There is no subscription, no trial, no payment of any kind, and nothing in the app
+    sells your attention or your data to anyone. Because you are not paying for a service, nothing
+    here is a promise that the app will keep working, keep its current features, or stay online.</p>
+
+  <h2>The estimate, in detail</h2>
+  <p>This is the part worth reading twice, because it is the whole product.</p>
+  <ul>
+    <li><strong>The app computes, it does not know.</strong> It uses the base rate, differentials,
+      shift lengths, pre-tax deductions and filing assumptions <em>you</em> gave it. Wrong input,
+      wrong answer, with no way for the app to tell.</li>
+    <li><strong>Taxes are approximated.</strong> Federal, state and local withholding, FICA and
+      pre-tax buckets are modelled with simplified rules. Real withholding depends on your W-4,
+      your employer's payroll system, year-to-date totals and local rules the app does not see.</li>
+    <li><strong>Premiums and overtime follow your contract, not ours.</strong> Differentials,
+      overtime multipliers, work-period rules, court or call-back minimums and lump-sum payments
+      are whatever you configured. Your contract or employer policy governs what you are actually
+      owed.</li>
+    <li><strong>A projection is not a promise of pay.</strong> Picking up a shift because the app
+      said it was worth a certain amount is your decision, made on an estimate.</li>
+    <li><strong>Calendar sync can be wrong or out of date.</strong> Imported shifts come from a
+      third-party calendar feed. Dates, times and lengths are read as published; a change your
+      employer makes after the feed is read is not in the app until it syncs again.</li>
+    <li><strong>Paystub reading is a convenience.</strong> When the app reads a rate out of a
+      paystub PDF it is pattern-matching on your device. Check what it filled in.</li>
+  </ul>
+
+  <h2>Not advice, and not affiliated</h2>
+  <p>BadgeBudget is not a tax preparer, payroll provider, financial adviser, accountant or law
+    firm, and using it creates no professional relationship of any kind. For a decision that
+    matters — a tax question, a wage dispute, a loan — talk to someone qualified, with your
+    paystubs in hand.</p>
+  <p>BadgeBudget is an independent app. It is not affiliated with, endorsed by or sponsored by any
+    employer, hospital, health system, staffing agency, union, or any scheduling or calendar
+    service it can import from. Those names appear in the app only to describe where your own data
+    comes from, and they belong to their owners.</p>
+
+  <h2>Your account and your data</h2>
+  <p>You can use BadgeBudget without signing in at all, in which case your data stays in your
+    browser on that device. If you do sign in, your data is stored so it can sync between your
+    devices. What is stored, what is never collected, and how to export or delete it is set out in
+    the <a href="/privacy.html">privacy notice</a>, which is part of these terms.</p>
+  <p>Keep your sign-in to yourself — anyone who can get into your account can read your pay
+    history. An account is for one person; don't share one. Tell us if you think someone else has
+    access to it.</p>
+  <p>You can take your data out at any time (Settings → Export) and delete it at any time
+    (Settings → Clear all data). Deleting is not reversible, and there is no backup to restore it
+    from.</p>
+
+  <h2>What you put into it</h2>
+  <p>Your shifts, notes, goals and anything else you type stay yours. By entering them you give
+    BadgeBudget only the permission it needs to run: to store them, sync them to your own devices,
+    and show them back to you. Nothing you enter is sold, licensed or shared for advertising.</p>
+  <p>If you use the shift-swap board, a post you make is shown to other signed-in members of that
+    board, under a per-group handle rather than your name. Read the limits of that handle in the
+    <a href="/privacy.html">privacy notice</a> before posting; treat a post as visible to your
+    unit. Don't post anyone else's personal information, a patient's details, or anything you are
+    not free to share.</p>
+
+  <h2>Using it fairly</h2>
+  <p>Don't use BadgeBudget to harass anyone, to break the law, or to get at other people's data.
+    Don't try to break, overload, scrape or work around the app's security, and don't use it to
+    store or send anything you have no right to. Access can be cut off for any of that.</p>
+
+  <h2>Availability and changes</h2>
+  <p>The app can change, break, be taken down for a while, or stop existing, with or without
+    notice. Features can be added or removed. Because the data you can see is exportable at any
+    time, the best protection against that is an export you keep yourself.</p>
+  <p>If these terms change, the date at the top of this page changes with them. Continuing to use
+    the app after that is how you accept the new version; if you don't accept it, stop using the
+    app and delete your data.</p>
+
+  <h2>As-is, and what that means</h2>
+  <p>BadgeBudget is provided as it is, with no warranty of any kind — not of accuracy, not of
+    availability, not of fitness for anything in particular. To the fullest extent the law allows,
+    the person who runs it is not liable for any loss that follows from using it or from relying on
+    a figure it produced, including a shift picked up, a bill planned for, or a savings goal that
+    did not land where the app said it would. Nothing here takes away a right you have that cannot
+    be waived under the law where you live.</p>
+
+  <h2>Who can use it</h2>
+  <p>BadgeBudget is for working adults planning their own pay. It is not directed at children and
+    is not intended for anyone under 18.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about these terms, a correction, or a deletion request:
+    <a href="mailto:patrickguthrie222@gmail.com">patrickguthrie222@gmail.com</a>.</p>
+
+  <hr>
+  <p class="foot"><a href="/">← Back to BadgeBudget</a> · <a href="/privacy.html">Privacy</a></p>
+
+</div>
+</body>
+</html>

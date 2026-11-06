@@ -7343,6 +7343,121 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 58. the terms page exists, is reachable, and is self-contained (2026-11-06) -------- */
+  if (want(58)) {
+    /* `terms.html` is the second legal page and the first one written after a decision rather
+       than after an incident (D4, approved 2026-11-01): BadgeBudget gives an ESTIMATE, not tax,
+       payroll or legal advice, and the employer's paystub is the record. Two things make it worth
+       a driven section rather than a grep.
+
+       One: it is only a legal page if it is REACHABLE. `privacy.html` backs the Google consent
+       screen, so a 404 there fails loudly somewhere outside this repo; nothing anywhere fails
+       when a terms link 404s. The only route to either page is the pair of links at the bottom of
+       Settings, so the link and the page it points at are asserted in one section, against the
+       real sheet and the real DOM.
+
+       Two: both pages ship with NO `<meta>` CSP, and the property that stands in for one is that
+       they reference nothing remote. `check_build.mjs` asserts that for `privacy.html` by reading
+       its source; here it is driven instead, which is strictly stronger -- a stylesheet pulled in
+       from a CSS `@import`, or a font the source names in a way the regex misses, still shows up
+       as an off-origin request. The gate should pick the source half up for this file the moment
+       the owner adds it to the publish set in `deploy.yml`; until then this section is the only
+       thing that checks it at all, which is why the request log is read and not just the HTML. */
+    const { ctx, page, errors } = await newPage(browser, url);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.topbar', { timeout: 15000 }).catch(() => {});
+    await page.locator('.avatar').click();
+    await page.locator('.acct-menu button', { hasText: 'Settings' }).click();
+    await page.waitForSelector('.modal[aria-label="Settings"]', { timeout: 4000 });
+
+    const sheet = page.locator('.modal[aria-label="Settings"]');
+    const terms = sheet.locator('a[href="terms.html"]');
+    const privacy = sheet.locator('a[href="privacy.html"]');
+    /* Counted before anything is read off them: a locator matching nothing times out at 30s and
+       aborts the run, which this repo's own rule says is un-run rather than red (§50, §51). */
+    const nTerms = await terms.count(), nPrivacy = await privacy.count();
+    ok('terms: Settings carries exactly one link to the terms page', nTerms === 1, `${nTerms} found`);
+    ok('terms: and the privacy link is still there -- Terms was added BESIDE it, not instead of it',
+      nPrivacy === 1, `${nPrivacy} found`);
+
+    if (nTerms === 1 && nPrivacy === 1) {
+      ok('terms: the link is labelled Terms', (await terms.innerText()).trim() === 'Terms',
+        (await terms.innerText()).trim());
+      /* A legal page that replaces the app loses whatever she was in the middle of editing. */
+      ok('terms: both legal links open in a new tab with rel=noopener',
+        (await terms.getAttribute('target')) === '_blank' && /noopener/.test(await terms.getAttribute('rel') || '')
+        && (await privacy.getAttribute('target')) === '_blank' && /noopener/.test(await privacy.getAttribute('rel') || ''));
+      /* The styling regression that is easy to ship and easy to miss: a link left as
+         `display:block` stacks the two and pushes Done off the first screenful.
+         Both rects are read inside ONE evaluate, which is not tidiness -- the sheet animates in,
+         so two awaited `boundingBox()` calls measure it at two points in the slide and the second
+         link reads ~5px higher than the first on a build where nothing is wrong (measured). A
+         tolerance wide enough to absorb that would also absorb a one-line stack. */
+      const row = await page.evaluate(() => {
+        const q = (h) => document.querySelector(`.modal[aria-label="Settings"] a[href="${h}"]`);
+        const a = q('terms.html').getBoundingClientRect(), b = q('privacy.html').getBoundingClientRect();
+        return { dy: Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2),
+          sameParent: q('terms.html').parentElement === q('privacy.html').parentElement,
+          h: Math.max(a.height, b.height) };
+      });
+      ok('terms: the two links sit on ONE row, not stacked',
+        row.sameParent && row.dy < 2 && row.h < 30, JSON.stringify(row));
+      /* Measured against the sheet, never `window.innerWidth` -- §35's lesson, and the sheet is
+         the scrolling box here anyway. */
+      const fits = await sheet.evaluate((n) => n.scrollWidth <= n.clientWidth + 1);
+      ok('terms: adding the row did not make Settings scroll sideways', fits);
+    }
+    await ctx.close();
+
+    /* ---- the page itself, off its own DOM and its own request log ---- */
+    {
+      const { ctx: c2, page: p2, errors: e2 } = await newPage(browser, url, { seed: false });
+      const reqs = [];
+      p2.on('request', (r) => reqs.push(r.url()));
+      const resp = await p2.goto(url.replace(/\/$/, '') + '/terms.html', { waitUntil: 'load' });
+      /* Asserted before anything is read off the page: Settings now links here, and the whole
+         risk in this change is the link shipping without the file (the `cp` line in deploy.yml is
+         the owner's). A missing page would otherwise time out on the selector below and take the
+         section out as a harness error -- un-run, not red, which is the one failure shape this
+         suite refuses to accept (§53). */
+      const served = !!resp && resp.status() === 200;
+      ok('terms: /terms.html is actually served, not a 404 behind a link in Settings',
+        served, String(resp && resp.status()));
+      if (served) {
+      await p2.waitForSelector('h2', { timeout: 20000 });
+      const text = (await p2.locator('body').innerText()).replace(/\s+/g, ' ');
+
+      ok('terms: the lead term is the estimate, not advice',
+        /gives you an estimate, not tax, payroll or legal advice/i.test(text),
+        text.slice(0, 120));
+      ok('terms: and the paystub is named as the record that wins',
+        /paystub is the record/i.test(text) && /the paystub is right and the app is wrong/i.test(text));
+      ok('terms: the as-is clause is present', /provided as it is, with no warranty/i.test(text));
+      ok('terms: it disclaims affiliation with employers, unions and calendar services',
+        /not affiliated with, endorsed by or sponsored by/i.test(text));
+      /* Positioning (CLAUDE.md): in-app copy may not call the swap board anonymous until the
+         security-00 hardening session lands, and a terms page is in-app copy. The word is banned
+         outright rather than pattern-matched, because this page has no reason to use it. */
+      ok('terms: the page never calls the board -- or anything else -- anonymous',
+        !/anonymous|anonymity/i.test(text), (text.match(/.{0,40}anonym.{0,40}/i) || [''])[0]);
+      ok('terms: it points back to the app and to the privacy notice',
+        (await p2.locator('a[href="/privacy.html"]').count()) >= 1
+        && (await p2.locator('a[href="/"]').count()) >= 1);
+
+      const offOrigin = reqs.filter((u) => !u.startsWith(url.replace(/\/$/, '')) && !u.startsWith('data:'));
+      ok('terms: the page fetched NOTHING off-origin -- the property that replaces a CSP',
+        offOrigin.length === 0, offOrigin.slice(0, 3).join(' '));
+      }
+
+      const real58b = e2.filter((e) => !isExpectedNetwork(e));
+      ok('terms: no page errors rendering the terms page', real58b.length === 0, real58b[0] || '');
+      await c2.close();
+    }
+
+    const real58 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('terms: no page errors across section 58', real58.length === 0, real58[0] || '');
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });

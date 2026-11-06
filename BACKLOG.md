@@ -28,6 +28,119 @@ and the push P0 it pointed at was fixed the same day.
 
 ## Queue
 
+### P1 (new, groom 2026-11-06)
+- [~] **`terms.html` drafted and OPENED FOR PAT — deliberately not merged** (P2 · source:pat, D4
+  approved 2026-11-01 · `harness:drivable` · thread T2) — tonight's build, and the first nightly
+  item in this file whose own rule is *never merge it*: legal text is Pat's tier
+  (`docs/leadership.md` → *Approval tiers*), so the PR opened **ready, auto-merge OFF** and sits
+  there. Taken because it was the top unblocked, gate-safe item in `## Queue`, `## Queue` had
+  **zero open PRs against the deploy branch** (`list_pull_requests` → `[]`, second night running),
+  and nothing in the groom outranked it. The page is self-contained like `privacy.html` (no remote
+  URL of any kind), linked from Settings beside the privacy link, and the lead term is the one
+  already decided: **BadgeBudget gives an estimate, not tax, payroll or legal advice; the
+  employer's paystub is the record.** Sixteen assertions in `tests/smoke.mjs` §58, seven
+  deliberate breaks measured.
+  **Three one-line changes are Pat's and the page cannot ship without them** — they are listed in
+  the PR body in the order they must land, all in the same merge: (1) `cp terms.html _site/` in
+  `.github/workflows/deploy.yml`, which agents cannot edit in this sandbox; (2) `terms.html` added
+  to the `expected` array in `scripts/check_build.mjs`'s publish-set check, which asserts the set
+  **exactly in both directions** — add the `cp` without this line and the gate goes red on the
+  next PR; (3) the same file's `privacy.html`-is-self-contained clause extended to `terms.html`.
+  (2) and (3) are agent-editable but could not be pre-staged: the gate reads the publish set out of
+  `deploy.yml`, so staging them tonight would have failed the gate on this very PR.
+  **The risk this carries is a link to a 404, and it is why the §58 shape is what it is.** Settings
+  now links to `/terms.html`; merge without (1) and every nurse who taps *Terms* gets a 404, with
+  nothing anywhere firing — `privacy.html` at least backs the Google consent screen, so a 404
+  there breaks something outside this repo, and a terms 404 breaks nothing that reports. The
+  harness serves the page itself and the first assertion on it is **HTTP 200**, with every DOM read
+  below gated on that status: break 7 (the published copy removed, which is exactly the
+  merge-without-(1) shape) prints one red row and a summary instead of timing out on a selector,
+  which this repo counts as un-run rather than red (§53's lesson, §50's and §51's before it).
+  **Self-containment is asserted off the REQUEST LOG, not the source.** Both legal pages ship with
+  no `<meta>` CSP and "it references nothing remote" is the property that stands in for one; the
+  gate checks that for `privacy.html` by regexing `src=`/`href=`, which an `@import` inside the
+  `<style>` block walks straight past. §58 counts off-origin requests on a real load instead, so
+  break 4 (a Google Fonts stylesheet added) fails whether the regex would have seen it or not.
+  **One break passed and that is worth more than the six that failed.** The first attempt at the
+  stacked-links break set the row container to `display:block` and **all 16 still passed** —
+  inline anchors flow on one line regardless of their parent. The real regression shape is the
+  per-anchor `display:'block'` the old single Privacy link carried, which is what a future edit
+  would copy; re-broken that way it fails with `dy:30`. Also measured and fixed: the two rects
+  must be read inside **one** `page.evaluate`, because the sheet animates in and two awaited
+  `boundingBox()` calls read it 5px apart on a build where nothing is wrong — a tolerance wide
+  enough to absorb that would also absorb a one-line stack.
+- [ ] **The nightly's own branch is now holding a PR that must wait for Pat, and tomorrow's run
+  will force-push over it** (P1 · needs a decision · read this BEFORE step 3 of the loop) — every
+  previous nightly PR merged the same night, so this has never come up. Tonight's work sits on
+  `claude/clause-md-review-9tqlj8`, the loop's single working branch, and step 3 of the loop begins
+  `git checkout -B claude/clause-md-review-9tqlj8 origin/claude/migrate-to-github-deploy-3F5RD`
+  followed by a `--force-with-lease` push: that rewrites the open PR's head, so Pat would open the
+  terms PR and find tomorrow night's change in it. The commits are not lost (GitHub keeps
+  force-pushed commits reachable from the PR timeline) but the review is. **Two ways out, and the
+  choice is Pat's because the branch name is a standing instruction from outside this file:**
+  (a) he merges or closes the terms PR before the next run, which costs nothing; (b) a
+  per-item branch name for owner-tier work, which means the nightly prompt's "push to
+  `claude/clause-md-review-9tqlj8`" stops being unconditional. Until one of those, a run that finds
+  this PR still open should say so in its notify line **first**, and treat the force-push as a
+  known cost rather than a surprise.
+- [ ] **The 11-03 fix is confirmed in production: four clean loads, zero new `client_error` rows**
+  (P2 · source:groom · no action, and it is the first falsified-or-held read this channel has
+  offered in weeks) — `client_error` is **30**, unchanged, and that is now a measurement rather
+  than a streak. #208 went live 2026-11-03; `events` has taken **four** loads since
+  (`04a9caf5` 11-05 02:41, `cb4166ac` 11-05 03:12, `3ac67816` 11-05 04:51, plus 09:52), each a
+  fresh device off the live build, and **not one filed a row**. Before the fix every load filed
+  one. The 11-03 note said "expect this count to stay at 30 and treat 31 as real"; it stayed at 30
+  on four loads that would each have added one. The inline Babel block is **512,274 bytes**
+  tonight (up from 511,887), so the note is still being emitted and the filter is still the reason
+  the rows are absent — `tests/smoke.mjs` §57 asserts that half directly.
+- [ ] **`silence_watch` is FRESH, and the cohort is unchanged for the tenth night** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **15.6h** old against a 48h window; `events`
+  holds **1,781** rows against 1,766 at the 11-03 groom. 15 rows in 24h, **9** distinct devices in
+  7 days, **9** `app_open` in 7 days. Every one of the four new devices is the same shape the
+  notes have recorded since 10-29: `app_open {fresh:true}` and `ob_step {step:0}` on the *same
+  timestamp*, `ob_view {screen:'landing'}`, no screen past 0, two of the four with a `session_end`
+  at 3–5 seconds. **Do not quote any of this as activation.** CLAUDE.md records every activation
+  figure since 2026-09-07 as inflated by exactly this cohort until the device classifier is fixed,
+  and for ten nights it has been the only cohort.
+- [ ] **Courtney has not opened the app in 16.1 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for nine grooms. The two sync opt-outs she asked for
+  twice in 28 hours remain field-unverified for that one reason, and no signal in `events`
+  distinguishes "working nights, has not needed it" from "stopped using it".
+- [ ] **`feedback` is unchanged for the SEVENTEENTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"). `paystub_failed` has **still never fired for any reason** and there are no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met** — do not
+  build a worker mitigation.
+- [ ] **CABINET MISSED stays CLEARED — fourth night** (housekeeping) — `docs/cos/brief.md` is
+  `400272a`, **2026-11-01**, **5.0 days** old against the 8-day switch, so this run's notify line
+  carries **no** CABINET MISSED. `scripts/cos_check.mjs` passes. The open decision the 11-01,
+  11-02 and 11-03 notes all left for Pat is unchanged: **gate the build on an over-age brief, or
+  retire the dead-man's-switch claim** — nothing in the repo enforces it, the notify line is the
+  whole mechanism, and it under-reported for thirteen nights. Three days of brief age left before
+  it fires again, which is the cheap window to take the decision in.
+- [ ] **Last night's falsifiable prediction HELD, and the publish-set figure drifted an EIGHTH
+  time** (housekeeping) — `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec`
+  (2026-11-03)**, which is #208, exactly what the 11-03 note staked out. `privacy.html` and
+  `ops.html` print **`b468e5d` (2026-10-09)** against `078a4d8` last night, for two files unchanged
+  since 2026-09-24 — the artefact the notes have now called eight times; the stable facts are the
+  verdict word and `index.html`'s commit. **Tonight's prediction is the opposite of the last two:**
+  nothing merges tonight by design, so tomorrow's `deploy_watch` should **still** name `aa53aec`.
+  If it names something else, something merged that this run did not.
+- [ ] **The gate meta-test is STILL not in CI — ninth night unchanged** (P2 ·
+  `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not
+  call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions
+  in this sandbox** — the same block that makes change (1) above Pat's. One line after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (46 assertions, ~105s, no browser, no network). Tonight's build
+  adds nothing to it and does not touch `check_build.mjs` at all: §58 is a runtime assertion in the
+  Playwright suite, which CI **does** run. Worth pairing with change (1) when Pat is in that file
+  anyway — two one-line edits in two workflow-adjacent places, one trip.
+
 ### P1 (new, groom 2026-11-03)
 - [x] ~~**Every load files a `client_error` row, and it has since #191**~~ — **SHIPPED 2026-11-03**,
   tonight's build (see Done log). (P1 · source:groom · `harness:drivable`) Taken ahead of the
@@ -4123,6 +4236,60 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-06 — **`terms.html`: the terms of use drafted, driven and opened for Pat — NOT merged,
+  and not merge-able as it stands.** The second legal page, and the first page in this repo written
+  off a decision (D4, approved 2026-11-01) rather than off an incident. Lead term, already decided
+  before the drafting started: **BadgeBudget gives an estimate, not tax, payroll or legal advice;
+  the employer's paystub is the record** — spelled out in a six-bullet section covering wrong input
+  giving a wrong answer with no way for the app to tell, approximated withholding, premiums and
+  overtime following her contract and not ours, a projection not being a promise of pay, calendar
+  sync being as current as the feed, and paystub reading being pattern-matching on her device. Plus
+  who runs it (one person, not a company), what it costs (nothing, and therefore no promise it
+  keeps running), a non-affiliation clause naming no employer, union or calendar service as an
+  endorser, account and data terms that point at the privacy notice as part of the terms, acceptable
+  use, availability, an as-is clause, and an over-18 line.
+  **Opened ready with auto-merge OFF, which is the opposite of this loop's default.** Agents merge
+  their own PRs here; legal text is the one category that always goes to Pat
+  (`docs/leadership.md` → *Approval tiers*), so the PR sits. It also **cannot** merge as it
+  stands: three one-line changes are listed in the PR body in the order they must land in the same
+  merge — `cp terms.html _site/` in `deploy.yml` (agents cannot edit a workflow file in this
+  sandbox), `terms.html` added to the `expected` array in `check_build.mjs`'s publish-set check
+  (which matches `deploy.yml` **exactly in both directions**, so the `cp` alone turns the gate
+  red), and that file's self-containment clause extended from `privacy.html` to this page. The
+  last two are agent-editable but could not be pre-staged: the gate reads the publish set out of
+  `deploy.yml`, so staging them tonight would have failed the gate on this very PR.
+  **Settings is the only route to either legal page, so the link and the page are asserted
+  together.** The single Privacy link became a Privacy · Terms row; both open in a new tab with
+  `rel=noopener`, because a legal page that replaces the app loses whatever she was editing.
+  **The risk is a link to a 404.** Merge without the `cp` line and every nurse who taps *Terms*
+  gets a 404 with nothing anywhere firing — `privacy.html` at least backs the Google OAuth consent
+  screen, so a 404 there breaks something outside this repo; a terms 404 breaks nothing that
+  reports. So the harness serves the page (`buildScratch` copies it, as it already did for
+  `privacy.html`) and the **first** assertion on it is HTTP 200, with every DOM read below gated on
+  that status. Break 7 — the published copy removed, which is precisely the merge-without-the-`cp`
+  shape — prints one red row and a summary rather than timing out on a selector, which this repo
+  counts as un-run rather than red (§53, and §50/§51 before it).
+  **Self-containment is asserted off the request log, not the source.** Both legal pages ship with
+  no `<meta>` CSP and "references nothing remote" is the property that replaces one; the gate
+  checks that for `privacy.html` by regexing `src=`/`href=`, which an `@import` inside `<style>`
+  walks past. §58 counts off-origin requests on a real load instead, so break 4 (a Google Fonts
+  stylesheet) fails whichever way it was written in.
+  **Sixteen assertions (`tests/smoke.mjs` §58, 922 → 938), seven deliberate breaks, and one of
+  them passing is the useful part.** The first stacked-links break set the row container to
+  `display:block` and **all 16 still passed** — inline anchors flow on one line whatever their
+  parent does. The regression shape that matters is the per-anchor `display:'block'` the old single
+  Privacy link carried, which is what a future edit would copy from; re-broken that way it fails
+  with `dy:30`. Measured and fixed in the same pass: both rects must be read inside **one**
+  `page.evaluate`, because the sheet animates in and two awaited `boundingBox()` calls read it 5px
+  apart on a build where nothing is wrong — a tolerance wide enough to absorb that would absorb a
+  one-line stack too. The other five breaks: the Terms link removed (`0 found`), the Privacy link
+  replaced instead of joined (`0 found`), the lead term softened to "helps you understand your
+  pay" , and the word *anonymous* reinstated — which §58 bans outright on this page, because
+  in-app copy may not call the swap board anonymous until `security-00` lands and a terms page is
+  in-app copy.
+  Gate: `check_build.mjs` 19/19, `test_groom_seed.mjs` 33/33, `core.test.mjs` 175/175,
+  `tests/smoke.mjs` **938 passed / 0 failed**. Nothing merged, so nothing deployed: `deploy_watch`
+  still reads `LIVE` at `aa53aec` and should still say so tomorrow. Thread T2.
 - 2026-11-03 — **Every load had been filing a `client_error` row since #191, and the row said
   nothing was wrong.** Babel standalone's code generator `console.error`s a *note* about its own
   output formatting once per load when the inline script passes **500,000 bytes**: `[BABEL] Note:
