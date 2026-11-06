@@ -22,16 +22,16 @@ Updated 2026-11-06 by the chief of staff (nightly pass). Charter: `docs/leadersh
   **The Risk seat's first find is FIXED and live, 11-02:** "Clear all data" used to leave the
   `ical_subscriptions` row (the feed URL, a bearer credential) behind — `clearAll` now deletes it
   before signing out, pinned by `tests/smoke.mjs` §56. The notice is true without touching its text.
-  **`terms.html` is drafted, driven and OPEN for review, 11-06** (nightly build; 16 assertions in
+  **`terms.html` is drafted, driven and OPEN for review as #209, 11-06** (nightly build; 16 assertions in
   `tests/smoke.mjs` §58). Ready, auto-merge OFF — legal text is Pat's tier. It cannot merge as it
   stands: three one-line changes listed in the PR body must land in the same merge, one of them
   `cp terms.html _site/` in `deploy.yml`, which agents cannot edit here.
-- **Next:** Pat merges or closes the terms PR — and sooner rather than later, because it sits on
+- **Next:** Pat merges or closes #209 — and sooner rather than later, because it sits on
   the nightly's own working branch, which tomorrow's run force-pushes. Then the deletion spec as a
   doc PR (`docs/cos/seats/risk.md` item 2).
 - **Done when:** terms live and linked from Settings; deletion works end to end in the harness;
   `privacy.html` says how to delete.
-- **Waiting on:** Pat's review of the terms PR plus his three one-line changes; legal text never
+- **Waiting on:** Pat's review of #209 plus his three one-line changes; legal text never
   merges without him.
 
 ### T3 `personas` — beyond nurses
@@ -47,7 +47,7 @@ Updated 2026-11-06 by the chief of staff (nightly pass). Charter: `docs/leadersh
 
 ## Needs Pat
 
-**The terms PR (open 2026-11-06).** Review the text, then three one-line changes in the same merge:
+**The terms PR, #209 (open 2026-11-06).** Review the text, then three one-line changes in the same merge:
 `cp terms.html _site/` in `deploy.yml`; `terms.html` in the `expected` array of
 `check_build.mjs`'s publish-set check; that file's self-containment clause extended to it.
 Merging the `cp` alone turns the gate red, and merging the page without it ships a Settings link to

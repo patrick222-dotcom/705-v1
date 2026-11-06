@@ -32,7 +32,7 @@ and the push P0 it pointed at was fixed the same day.
 - [~] **`terms.html` drafted and OPENED FOR PAT — deliberately not merged** (P2 · source:pat, D4
   approved 2026-11-01 · `harness:drivable` · thread T2) — tonight's build, and the first nightly
   item in this file whose own rule is *never merge it*: legal text is Pat's tier
-  (`docs/leadership.md` → *Approval tiers*), so the PR opened **ready, auto-merge OFF** and sits
+  (`docs/leadership.md` → *Approval tiers*), so **PR #209** opened **ready, auto-merge OFF** and sits
   there. Taken because it was the top unblocked, gate-safe item in `## Queue`, `## Queue` had
   **zero open PRs against the deploy branch** (`list_pull_requests` → `[]`, second night running),
   and nothing in the groom outranked it. The page is self-contained like `privacy.html` (no remote
@@ -69,8 +69,8 @@ and the push P0 it pointed at was fixed the same day.
   must be read inside **one** `page.evaluate`, because the sheet animates in and two awaited
   `boundingBox()` calls read it 5px apart on a build where nothing is wrong — a tolerance wide
   enough to absorb that would also absorb a one-line stack.
-- [ ] **The nightly's own branch is now holding a PR that must wait for Pat, and tomorrow's run
-  will force-push over it** (P1 · needs a decision · read this BEFORE step 3 of the loop) — every
+- [ ] **PR #209 is holding the nightly's own branch, and tomorrow's run will force-push over
+  it** (P1 · needs a decision · read this BEFORE step 3 of the loop) — every
   previous nightly PR merged the same night, so this has never come up. Tonight's work sits on
   `claude/clause-md-review-9tqlj8`, the loop's single working branch, and step 3 of the loop begins
   `git checkout -B claude/clause-md-review-9tqlj8 origin/claude/migrate-to-github-deploy-3F5RD`
@@ -78,7 +78,7 @@ and the push P0 it pointed at was fixed the same day.
   terms PR and find tomorrow night's change in it. The commits are not lost (GitHub keeps
   force-pushed commits reachable from the PR timeline) but the review is. **Two ways out, and the
   choice is Pat's because the branch name is a standing instruction from outside this file:**
-  (a) he merges or closes the terms PR before the next run, which costs nothing; (b) a
+  (a) he merges or closes #209 before the next run, which costs nothing; (b) a
   per-item branch name for owner-tier work, which means the nightly prompt's "push to
   `claude/clause-md-review-9tqlj8`" stops being unconditional. Until one of those, a run that finds
   this PR still open should say so in its notify line **first**, and treat the force-push as a
@@ -4288,7 +4288,7 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   in-app copy may not call the swap board anonymous until `security-00` lands and a terms page is
   in-app copy.
   Gate: `check_build.mjs` 19/19, `test_groom_seed.mjs` 33/33, `core.test.mjs` 175/175,
-  `tests/smoke.mjs` **938 passed / 0 failed**. Nothing merged, so nothing deployed: `deploy_watch`
+  `tests/smoke.mjs` **938 passed / 0 failed**. PR #209. Nothing merged, so nothing deployed: `deploy_watch`
   still reads `LIVE` at `aa53aec` and should still say so tomorrow. Thread T2.
 - 2026-11-03 — **Every load had been filing a `client_error` row since #191, and the row said
   nothing was wrong.** Babel standalone's code generator `console.error`s a *note* about its own
