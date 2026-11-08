@@ -186,6 +186,7 @@ Applies to every session in this repo — nightly loop, council run, ad-hoc, sub
 | `docs/reddit-persona-pipeline.md`, `reddit_seed.json`, `reddit_personas.json`, `reddit_intake_prompt.md` | Reddit insights → backlog candidates → persona testers |
 | `docs/ops-console-scope.md` | the ops console design record — why an artifact can never be live, the three read-path shapes and why security-definer functions won, the wedge that shipped, phases 2–4, and the written-down line on what the console may never show |
 | `docs/swap-board.md` | swap-board design, anonymity model, audit history, verification standard |
+| `docs/data-deletion-spec.md` | the account-and-data deletion design record (2026-11-08, spec only, nothing built) — the twelve tables that hold a signed-in user's data and which six have no client DELETE policy, the two security-definer functions, the eight-probe gate, and the **finding that `privacy.html`'s emailed account-deletion promise is unkeepable today**: `events.user_id` and `feedback.user_id` are `ON DELETE NO ACTION` FKs to `auth.users`, so deleting any of the 4 accounts raises 23503 by every route |
 | `docs/domains.md` | registrar, DNS, renewals, OAuth consent-screen limitation |
 | `docs/council.md` | the council charter — the 13×10 lens/slice matrix, the ≥8/10 standard, adversarial verification, and what a run deliberately does not do. Runnable form: `.claude/workflows/council.mjs` |
 | `docs/history.md` | dated log of decisions, incidents and resolved work (council runs, the sync P0, NurseGrid research) |

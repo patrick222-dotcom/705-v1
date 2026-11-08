@@ -189,6 +189,123 @@ diffs apply cleanly. Newest-first ordering loses to a clean review.
   breaks sit behind the binding gate. Still worth pairing with #209's change (1) when Pat is in
   that file anyway.
 
+### P1 (new, groom 2026-11-08)
+
+**Why this band sits BELOW the two 11-06 bands instead of at the top of `## Queue`:** PR #209 (the
+`terms.html` draft, open for Pat's review since 2026-11-06) inserts its own `### P1` band at line
+29. A third insert at that same hunk would hand Pat a merge conflict on a legal-text review for the
+third night running. Placed ~165 lines down, both diffs apply cleanly. Newest-first ordering loses
+to a clean review — the same call the 11-06 run made, and for the same reason.
+
+- [x] ~~**The in-app deletion spec — and the promise in `privacy.html` that the database refuses**~~
+  — **SHIPPED 2026-11-08**, tonight's build (see Done log). (P1 · source:cos (Risk seat item 2,
+  D4 approved 2026-11-01) · doc PR, no runtime change · thread T2) Taken because it is the
+  explicitly recorded next item: `terms.html` above it is **built and open as #209**, so it is not
+  unblocked work, and the `terms.html` entry's own line is *"Next after it, same rule: the in-app
+  deletion spec (`docs/cos/seats/risk.md` item 2), as a doc PR."* T2 has been the stalled thread
+  for 26 days and D4 exists to unstall exactly this.
+  **The spec found a live false statement, which is why it is a P1 rather than the P2 a spec
+  usually is.** `privacy.html`:166–167 promises *"Email the address below and those will be deleted
+  too"* for past analytics, feedback **and the sign-in account itself**. The account half cannot be
+  done: `events.user_id` and `feedback.user_id` are `ON DELETE NO ACTION` foreign keys to
+  `auth.users` (`confdeltype = 'n'` on 3 of the 19 FKs in `public`; the other 16 are CASCADE), and **all
+  four accounts carry such rows** — 455 `events` across 4 of 4, 17 `feedback` across 3 of 4. So
+  `delete from auth.users` raises `23503` by every route: the Supabase dashboard's *Delete user*
+  button, `auth.admin.deleteUser()`, and SQL. Nobody has hit it because nobody has asked.
+  **Read from the catalog, NOT executed** — the MCP connection is `--read-only` and this is the
+  only project, holding four real users' pay history. The spec names the one command that settles
+  it (`begin; delete from auth.users where id='…'; rollback;` in a session with Management API
+  access) and says plainly that a success there makes §1 of the spec wrong.
+  **The fix is Pat's tier and is one line of SQL, not a feature**: `events.user_id` and
+  `feedback.user_id` to `ON DELETE SET NULL`. That alone makes the *existing emailed* promise
+  keepable with no app change, no new surface and no UI — which is why the spec's build order puts
+  it first and alone, ahead of the functions, the probe and the Settings link.
+- [ ] **Three production tables are in no migration file, and two of them hold `user_id`**
+  (P2 · source:groom · needs a dedicated session · thread T2) — `siri_tokens`, `ops_inbox` and
+  `app_config` exist in the production project and in **no file under `supabase/migrations/`**;
+  they appear only in `docs/siri-shortcut.md` and `docs/agent-gateway-scope.md` prose, from the
+  Siri-Shortcut work that shipped as #70. CLAUDE.md's migrations row says *"000→004 in order
+  stands up a fresh project"* — it would stand up one missing three tables. Two consequences, the
+  second worse than the first: (a) the rehearsal project `docs/agent-gateway-scope.md` requires
+  from its first write cannot be built from this repo; (b) **a deletion path written off the
+  migrations folder rather than off the live catalog silently misses two tables carrying
+  `user_id`** — which is how tonight's spec found them. Capturing them is a `008`/`009`-era
+  migration job against production, so **not nightly work**: it needs the Management API and a
+  careful `IF NOT EXISTS` capture that cannot drift from what is deployed.
+- [ ] **`silence_watch` is SILENT_BUT_HEALTHY and the quiet is now three days wide** (P2 ·
+  source:groom · no action, specifically not an alarm) — **SILENT_BUT_HEALTHY**: newest event
+  **70.2h** old against a 48h window, while badgebudget.com serves 576,854 characters with 5 SRI
+  scripts and the `events` insert policy is intact. So the quiet is **nobody came**, not
+  **telemetry broken** — the distinction this script exists for. `events` holds **1,781 rows**,
+  byte-identical to both 11-06 grooms, so **zero new rows in ~70 hours**. Newest device is still
+  `7c7c1a0c` (11-05 09:52), and every one of the **6** distinct devices in 7 days is the same
+  shape recorded since 10-29: `app_open {fresh:true}` + `ob_step {step:0}` on the same timestamp,
+  `ob_view {screen:'landing'}`, nothing past screen 0. **Do not quote any of it as activation** —
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort
+  until the device classifier is fixed.
+- [ ] **The 11-03 `client_error` fix now holds on eight loads and has had nothing to disprove it
+  since** (P2 · source:groom · no action) — `client_error` is **30**, unchanged for the third
+  groom. No new loads at all since 11-05 09:52, so tonight adds **no** new evidence either way:
+  the prediction *"expect this count to stay at 30 and treat 31 as real"* is still 2-for-2 and not
+  3-for-3. Worth stating rather than inflating — a flat count on zero loads is not a passed test.
+- [ ] **Courtney has not opened the app in 18.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for eleven grooms. The two sync opt-outs she asked
+  for twice in 28 hours remain field-unverified for that one reason.
+- [ ] **`feedback` is unchanged for the NINETEENTH groom** (housekeeping, re-read at the END of the
+  run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"). `paystub_failed` has **still never fired for any reason** and there are no new
+  `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still not met** — do not
+  build a worker mitigation. One line against tonight's build: nineteen grooms of a flat
+  `feedback` table is also nineteen grooms in which the 23503 account-delete blocker could never
+  have surfaced — **a deletion request is the only thing that would ever reveal it**, and it would
+  reveal it to Pat as a failed favour for a user who had already asked to leave.
+- [ ] **CABINET MISSED fires again TOMORROW unless a cabinet runs** (P2 · housekeeping, and the
+  last cheap window has closed) — `docs/cos/brief.md` is `400272a`, **2026-11-01**, **7.1 days**
+  old against the 8-day switch, so this run's notify line carries **no** CABINET MISSED; the next
+  one almost certainly does. `scripts/cos_check.mjs` passes. The decision the 11-01 through 11-06
+  notes have all left for Pat is unchanged and is now a day from being taken by default: **gate the
+  build on an over-age brief, or retire the dead-man's-switch claim** — nothing in the repo
+  enforces it, the notify line is the whole mechanism, and it under-reported for thirteen nights.
+- [ ] **Last night's prediction HELD for the second time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-06 note staked out when it predicted its own merge would touch no publish-set file.
+  `privacy.html` and `ops.html` print the truncation sentence rather than a commit — *"serving the
+  current bytes … this clone's history for it stops at `1c57f98` … so it cannot be named"* — which
+  is #210 working. The boundary commit it names moved (`b468e5d` → `1c57f98`) and **that is
+  expected, not a regression**: the boundary is a property of this container's clone depth, which
+  is why the figure it replaced was unsafe to print as a deploy fact. **Tonight's prediction:**
+  tonight's merge is doc-only and touches no publish-set file, so tomorrow's `deploy_watch` should
+  **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — eleventh night unchanged** (P2 ·
+  `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does not
+  call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions
+  in this sandbox**. One line after the existing `Deploy-watch classifier suite` step: `- name:
+  Gate meta-test` / `run: node scripts/test_check_build.mjs` (46 assertions, ~105s, no browser, no
+  network). **Tonight's build needs no coverage at all** — it adds no runtime behaviour, which is
+  the honest reason there is no new assertion tonight rather than a gap being papered over. Still
+  worth pairing with #209's three one-line changes when Pat is in that file anyway.
+- [ ] **PR #209 is still open on the loop's shared working branch — second night, and the standing
+  decision is still Pat's** (P1 · needs the owner) — head unchanged at `ceacb5f`, open since
+  2026-11-06 01:45. Tonight branched to `claude/great-feynman-1k56yh` instead, so #209's head is
+  untouched for the second run running; that is option (b) from the 11-06 note demonstrated twice
+  rather than argued. **The rule is still not written down anywhere a future run must read**: the
+  loop prompt's step 3 says `git checkout -B claude/clause-md-review-9tqlj8 origin/…` followed by
+  `--force-with-lease`, and a run that follows it literally destroys Pat's pending legal review.
+  Either owner-tier work gets its own branch by rule, or #209 is merged/closed before the next run
+  that needs the shared one.
+  **It costs a second thing tonight, and this is the third night of it: `docs/cos/now.md` goes
+  un-updated.** #209 rewrites T2's whole `Where`/`Next`/`Waiting on` block and the entire `Needs
+  Pat` section, which is exactly where tonight's deletion spec belongs. Editing it would conflict
+  on Pat's legal review, so the T2 update went to `docs/cos/seats/risk.md` instead and `now.md`
+  still reads "Updated 2026-11-02". **The one page Pat is meant to read is now six days stale, and
+  the cause is a mergeable PR sitting unmerged** — that is the real cost of #209 waiting, larger
+  than the branch question above it.
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4202,7 +4319,6 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 - [ ] **Agreed swaps fall apart last-minute** (P3 · source:reddit-seed · shift-swapping · needs-live-auth) — A colleague backs out of an agreed trade late, leaving someone scrambling; nurses want confirmation and a clear record of who accepted. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from the curated Reddit seed corpus; groom to confirm priority/scope before build.
 - [ ] **Nurses want to negotiate swaps in a channel managers can't see until the trade is final** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Units coordinate swaps in Facebook groups, GroupMe, or Teams that managers also belong to, letting a manager block an already-agreed trade after the fact. The prevailing advice is to find the partner in a management-free channel and bring only the finished trade for sign-off. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: 1 dedicated r/nursing thread (~1y, 855 up / 99 comments) with broad independent corroboration); groom to confirm priority/scope before build.
 - [ ] **Swaps get denied by hidden eligibility rules (no-overtime, skill/seniority tier match)** (P3 · source:reddit-owner · shift-swapping · needs-live-auth) — Facilities require trades to be even in hours so nobody triggers overtime, and to preserve skill mix so a charge-qualified slot only goes to another charge-qualified nurse. These constraints are invisible until a swap is rejected, which reads as arbitrary even when it is a stated policy. Maps to `swap-board` (harness:needs-live-auth — the sandbox cannot reach an authenticated board; verify by the swap-UI standard instead). Auto-surfaced from owner-gathered Reddit signal (observed: same r/nursing thread plus scattered one-line confirmations elsewhere); groom to confirm priority/scope before build.
-- [ ] **Managers contacting nurses off shift, on PTO, or on leave to chart or cover** (P3 · source:reddit-owner · manager-conflicts · unscoped) — Managers reach out about documentation fixes or coverage during vacation, leave, or days off, occasionally escalating to a write-up for not responding off the clock. A boundary/communication-norms complaint distinct from schedule-change or PTO-denial themes. Out of scope for a pay planner; recorded for completeness. Maps to `new` (harness:unscoped — maps to no existing surface; a feature to design, not a one-run build). Auto-surfaced from owner-gathered Reddit signal (observed: 1 r/nursing thread (~2mo, 29 up / 22 comments); could NOT be independently corroborated — signal downgraded from the reporter's 'occasional'); groom to confirm priority/scope before build.
 
 <!-- GROOM_SEED:END -->
 
@@ -4310,6 +4426,52 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   of Invariant 8's publish set, so `index.html` is untouched and nothing about the live app moved.
   Gate green: `check_build` 19/19, `core` 175/0, `smoke` **922/0**, `groom_seed` 33/0,
   `silence_watch` 39/0, `deploy_watch` **98/0**, `cos_check` pass.
+- 2026-11-08 — **The in-app deletion spec — and the finding that `privacy.html` promises an
+  operation the database refuses.** `docs/data-deletion-spec.md`, the Risk seat's item 2 under D4
+  (approved by Pat 2026-11-01). Spec only: nothing is built, and the spec says so in its first
+  line. Taken because `## Queue`'s next item, the `terms.html` draft, is **built and open as #209**
+  awaiting Pat, and that entry's own rule is *"Next after it, same rule: the in-app deletion spec,
+  as a doc PR."* Thread T2 `legitimacy`, stalled 26 days.
+  **The finding is a live false statement, not a design gap.** `privacy.html`:166–167 promises
+  *"Email the address below and those will be deleted too"* for past analytics events, submitted
+  feedback **and the sign-in account itself**. The account half cannot be done by any route:
+  `events.user_id` and `feedback.user_id` are `ON DELETE NO ACTION` foreign keys to `auth.users`
+  (`pg_constraint.confdeltype='n'` on exactly 3 of the 19 FKs in `public`; the other 16 are `'c'`,
+  CASCADE, and the third NO ACTION one — `ops_inbox.token_id` — is a second, currently-dormant
+  ordering hazard the spec's §4 writes down), and
+  **every account carries such rows** — 455 `events` rows across 4 of 4 accounts, 17 `feedback`
+  rows across 3 of 4. `delete from auth.users` therefore raises `23503 foreign_key_violation`, and
+  so do the Supabase dashboard's *Delete user* button and `auth.admin.deleteUser()`, which are the
+  two routes a hand-served deletion request would actually use.
+  **Established from the catalog and explicitly NOT executed.** The MCP connection is
+  `--read-only`, and this is the only project — it holds four real users' pay history, one of them
+  Courtney's. The spec names the single command that would settle it (`begin; delete from
+  auth.users where id='…'; rollback;`, Management API session) and states that a success there
+  makes its §1 wrong. That is the repo's own standard applied to its own finding: this file has
+  been burned by confident claims three times, so the claim ships with its falsifier attached.
+  **The fix is one line of SQL and it is Pat's, not the nightly's.** `events.user_id` and
+  `feedback.user_id` to `ON DELETE SET NULL` makes the *existing emailed* promise keepable with no
+  app change, no new surface and no UI — so the spec's build order puts it **first and alone**,
+  ahead of the two functions, the eight-probe gate and the Settings link. By `docs/leadership.md`
+  → *Approval tiers* it alters constraints on existing data, which is his tier; migrations here run
+  against production, which is why it is not a nightly item however small the diff looks.
+  **What the catalog read turned up beyond the spec's scope**, both filed in `## Queue`:
+  (a) **seven of the twelve tables holding a signed-in user's data have no client DELETE policy at
+  all** — `siri_tokens`, `swap_posts`, `swap_groups`, `swap_matches`, `swap_match_legs`, `events`
+  and `feedback` — and four of the seven deliberately do not: a swap post is *withdrawn* (an
+  UPDATE), never deleted, so the other legs of a match keep their history. Granting DELETE to `authenticated` to serve a
+  deletion feature would loosen the swap board while `security-00` is open, which is why the spec's
+  mechanism is a security-definer function and not twelve client-side deletes.
+  (b) **`siri_tokens`, `ops_inbox` and `app_config` are in production and in no file under
+  `supabase/migrations/`** — they exist only in `docs/siri-shortcut.md` and
+  `docs/agent-gateway-scope.md` prose, from the Siri-Shortcut work that shipped as #70. CLAUDE.md's
+  migrations row claims "000→004 in order stands up a fresh project"; it would stand up one missing
+  three tables, two of them carrying `user_id`. **That is how the gap was found**: a deletion path
+  written off the migrations folder rather than off the live catalog misses two tables silently.
+  **No assertion ships with this, and that is the honest reason rather than an omission**: the
+  change is three documentation files and has no runtime behaviour to drive. The gate ran green
+  anyway — 19 mechanical checks, 33 groom-seed, 175 core, 922 smoke — because a doc-only night is
+  still a night the suites must pass before anything merges.
 - 2026-11-02 — **"Clear all data" left behind the one row that still reads her whole calendar.**
   `clearAll` deleted the `user_data` blob and signed out; the feed URL lives in
   `ical_subscriptions`, a different table, so that delete never reached it. The row went only when
