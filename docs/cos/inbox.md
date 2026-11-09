@@ -7,6 +7,21 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-09 · nightly · belongs to no live thread (T1/T2/T3) — an observability fix with a
+  doc correction attached: the ops dashboard's event inventory was a grep that could not see four
+  of the app's `track()` shapes, so `dead_events` — *which shipped feature has nobody touched* —
+  **structurally could not name the telemetry of the raise (#187) or dated pay items (#191)**, the
+  two newest money features, both of which have zero rows. Four firing names (`ob_view`,
+  `ob_answer`, `ob_back`, `session_end`) were also outside the list. Now an AST walk; 63 names, was
+  55; new suite `scripts/test_dashboard_snapshot.mjs` 44/0, nine breaks measured. · **two things
+  for the chief of staff:** (a) this closes a claim BACKLOG.md carried for **six nights** — that
+  the raise shipped with no telemetry — which was false from the start and survived because it was
+  checked with the same grep whose blind spot was the subject; worth one line in the brief on
+  re-checking a premise, not just an overlap; (b) PR #209's review has now blocked
+  `docs/cos/now.md` from being updated for **four consecutive nights** (it still says "Updated
+  2026-11-02"), so the one page Pat reads is seven days stale because a mergeable PR is sitting
+  unmerged — that is a decision, not a chore.
+
 - 2026-11-06 · nightly (second run of the day) · belongs to no live thread (T1/T2/T3) — a tooling
   honesty fix: `deploy_watch.mjs` named a commit it could not know for **eight consecutive
   nights** (`privacy.html`/`ops.html` reported as "serving" a drifting 2026-10-08/09 commit, for
