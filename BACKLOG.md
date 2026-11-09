@@ -306,6 +306,138 @@ to a clean review — the same call the 11-06 run made, and for the same reason.
   the cause is a mergeable PR sitting unmerged** — that is the real cost of #209 waiting, larger
   than the branch question above it.
 
+### P1 (new, groom 2026-11-09)
+
+**Why this band sits BELOW the 11-06 and 11-08 bands instead of at the top of `## Queue`:** PR #209
+(the `terms.html` draft, open for Pat's review since 2026-11-06) inserts its own `### P1` band at
+line 29. A fourth insert at that same hunk would hand Pat a merge conflict on a legal-text review
+for the fourth night running. Placed below, every diff applies cleanly. Newest-first ordering loses
+to a clean review — the same call the 11-06 and 11-08 runs made, for the same reason.
+
+- [x] ~~**The ops dashboard's event inventory could not see the telemetry of the two newest money
+  features**~~ — **SHIPPED 2026-11-09**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) `scripts/dashboard_snapshot.mjs`'s `instrumentedEvents()` was
+  the regex `/track\('([a-z_]+)'/`, so a name had to be a bare literal spelled immediately after
+  `track(`. The app had grown **four shapes it could not see**, and production `events` proves the
+  cost in both directions:
+  (a) `ob_view` (**79 rows**), `ob_answer` (**27**), `ob_back` (**1**) and `session_end` (**148**)
+  have all been firing from **outside** the inventory — `ob_*` because they ride `trackOb`, the
+  onboarding whitelist wrapper, and `session_end` because it rides `eventRow` through the keepalive
+  beacon rather than `track` at all. So `fired_count` under-reported by four.
+  (b) The worse direction: `rate_change_added` / `rate_change_removed` (#187, 2026-10-20) and
+  `pay_item_added` / `pay_item_removed` (#191, 2026-11-01) are built with a ternary —
+  `track(verb==='removed' ? 'x_removed' : 'x_added', …)` — and have **zero rows**. Zero rows is
+  exactly what `dead_events` exists to print, and `dead_events` could never contain them. **The one
+  tool built to answer "which shipped feature has nobody touched" was structurally blind to the
+  telemetry of the raise and of dated pay items.**
+  Now an AST walk over four callees (`track`, `trackOb`, `trackDeferred`, `eventRow`) with every
+  branch of a conditional resolved recursively, relays counted as forwarders rather than listed,
+  and **any shape it cannot resolve throwing** — there is deliberately no regex fallback, because a
+  fallback that silently returns the old short list IS the bug. **63 names, was 55; nothing lost.**
+  New suite `scripts/test_dashboard_snapshot.mjs`, **44 assertions, nine deliberate breaks
+  measured** (33/10, 35/8, 36/7, 42/2, 42/1, 40/3, 38/5, 42/1, 11/32 — one per rule plus a full
+  revert to the old regex, which case 30 pins on purpose so "simplify this back to a grep" fails
+  loudly instead of dropping eight names again).
+  **One measurement worth keeping, because it nearly made the negative test worthless:** the first
+  run of those nine breaks was done in a scratch dir **outside the repo**, where `node_modules`
+  does not resolve — all nine "failed", every one with `no Babel available`, and all nine looked
+  CAUGHT. That is the harness skill's third lie (patch a copy — a *faithful* one) arriving in a
+  script-level suite. Re-run from `.ds-scratch/` inside the repo, which is what the figures above
+  are. The same run surfaced the skill's **first** lie too: eight of the nine originally killed the
+  file on an uncaught throw from a *fixture* case, printing a stack trace and never reaching the
+  live cases, so every call that is not asserting a throw now goes through a guard (`inv`/`sites`/
+  `built`) that turns a throw into a FAIL line.
+- [ ] **CORRECTION: the "dated-rate telemetry is missing" item was wrong on its premise, and six
+  nights called it blocked** (P2 · source:groom · closes the 10-20 and 10-25 entries) — the 10-20
+  item says the effective-dated-rate feature "ships with **no telemetry**", and five later nights
+  recorded it as blocked by PR #191's overlap at `index.html`:~1813 and ~7001–7052. The overlap
+  reading was sound; **the premise was not.** `rate_change_added` / `rate_change_removed` were
+  added by `a103682` — **#187 itself**, the same commit that shipped the feature, on 2026-10-20 —
+  and `pay_item_added` / `pay_item_removed` likewise by #191. `git log -S rate_change_removed`
+  settles it in one call. The telemetry was never missing; **the inventory could not see it**,
+  which is tonight's build. The useful lesson is not the wasted nights, it is *how* the false claim
+  survived: it was checked by reading the app's call sites with a grep whose blind spot was the
+  thing being looked for. Both entries are struck below.
+- [ ] **A gate check for the inventory was considered and NOT built tonight** (P3 · source:build ·
+  `harness:unscoped`) — the obvious follow-up is a `check_build.mjs` check that the inventory
+  resolves, so a new unresolvable `track()` shape fails the PR rather than the next snapshot. It is
+  deliberately not tonight's work: adding a check moves the gate's roster from 19 to 20 and its
+  meta-test from 46 upward, which is a second build item, and the inventory is **not an invariant**
+  — a dashboard that throws is loud, where the thing being fixed was a dashboard that was quiet.
+  Take it only with the roster and the meta-test breaks in the same pass.
+- [ ] **`silence_watch` is FRESH, and the new row is the same cohort for the twelfth night** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **1.4h** old against a 48h window. `events`
+  holds **1,784 rows** against 1,781 for the last two grooms: **three** new rows, all one device
+  (`4fc0945a`, 2026-11-09 06:40:13), and all one shape — `app_open {fresh:true}` + `ob_step
+  {step:0}` on the same timestamp, then `ob_view {screen:'landing'}`, nothing past screen 0, **no
+  `session_end`**. **7** distinct devices in 7 days. Identical to every device recorded since
+  10-29. **Do not quote any of it as activation** — CLAUDE.md records every activation figure since
+  2026-09-07 as inflated by exactly this cohort until the device classifier is fixed.
+- [ ] **The 11-03 `client_error` fix is now 3-for-3, on nine loads** (P2 · source:groom · no
+  action) — `client_error` is **30**, unchanged for the fourth groom, and tonight is **not** a flat
+  night: `4fc0945a`'s 06:40 load is a real new load off the live build (`aa53aec`) that filed **no**
+  row. Before #208 it would have filed one. So the 11-03 prediction *"expect this count to stay at
+  30 and treat 31 as real"* has now been tested on nine loads and held on all nine, and tonight
+  moves it from 2-for-2 to 3-for-3 — the only prediction in this file tested three times.
+- [ ] **Courtney has not opened the app in 19.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for twelve grooms. The two sync opt-outs she asked
+  for twice in 28 hours remain field-unverified for that one reason. One line tonight's build adds:
+  those two opt-outs are **in** the inventory and always were (`ics_autosync_pref` is a literal), so
+  their zero rows were visible — it is the raise and the pay items whose zeros were not.
+- [ ] **`feedback` is unchanged for the TWENTIETH groom** (housekeeping, re-read at the END of the
+  run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **24.8 days** old. `paystub_failed` has **still never fired for any reason**
+  and there are no new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is **still
+  not met** — do not build a worker mitigation.
+- [ ] **CABINET MISSED does NOT fire tonight, and it crosses FOUR AND A HALF HOURS from now** (P2 ·
+  housekeeping) — `docs/cos/brief.md` is `400272a`, committed **2026-11-01 12:54:09 UTC**, which at
+  this run's 08:16 UTC is **7.8 days** against the 8-day switch. So this run's notify line carries
+  **no** CABINET MISSED by four hours and thirty-eight minutes; it crosses at **12:54 UTC today**
+  and the next run almost certainly carries it. `scripts/cos_check.mjs` passes. The decision the
+  11-01 through 11-08 notes have all left for Pat is unchanged and has now been left seven times:
+  **gate the build on an over-age brief, or retire the dead-man's-switch claim** — nothing in the
+  repo enforces it, the notify line is the whole mechanism, and it under-reported for thirteen
+  nights.
+- [ ] **Last night's prediction HELD for the third time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-08 note staked out when it predicted its own doc-only merge would touch no publish-set
+  file. `privacy.html` and `ops.html` print the truncation sentence rather than a commit, and the
+  boundary commit it names moved again (`1c57f98` → `f1aa7a6`) — **expected, not a regression**:
+  the boundary is a property of this container's clone depth, which is exactly why #210 stopped
+  printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches only
+  `scripts/`, `docs/` and `BACKLOG.md`/`CLAUDE.md`, so no publish-set file, so tomorrow's
+  `deploy_watch` should **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — twelfth night unchanged, and tonight adds a SECOND
+  suite CI does not run** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox**. Now two lines, not
+  one, after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (46, ~105s) and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s, no browser, no network). The second one is the cheaper and the more load-bearing of
+  the pair: it is the only thing standing between the inventory and a silent return to the regex.
+  Worth pairing with #209's one-line changes when Pat is in that file anyway.
+- [ ] **PR #209 is still open on the loop's shared working branch — THIRD night, and the standing
+  decision is still Pat's** (P1 · needs the owner) — head unchanged at `ceacb5f`, open since
+  2026-11-06 01:45, now 2.3 days. Tonight branched to `claude/great-feynman-0qsc5c` instead, so
+  #209's head is untouched for the third run running; that is option (b) from the 11-06 note
+  demonstrated three times rather than argued. **The rule is still not written down anywhere a
+  future run must read**: the loop prompt's step 3 says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that follows
+  it literally destroys Pat's pending legal review. Either owner-tier work gets its own branch by
+  rule, or #209 is merged/closed before the next run that needs the shared one.
+  **And `docs/cos/now.md` goes un-updated for the FOURTH night, for the same reason.** #209
+  rewrites T2's whole `Where`/`Next`/`Waiting on` block and the entire `Needs Pat` section, so
+  editing it would conflict on Pat's legal review; tonight's line went to `docs/cos/inbox.md`
+  instead, which #209 does not touch. **The one page Pat is meant to read now says "Updated
+  2026-11-02" — seven days — and the cause is a mergeable PR sitting unmerged.** That is still the
+  real cost of #209 waiting, larger than the branch question above it.
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -1339,8 +1471,13 @@ to a clean review — the same call the 11-06 run made, and for the same reason.
   tonight's item was promoted from CLAUDE.md's own invariant notes instead of from the queue. That
   is a legitimate source and the loop should keep using it, but a queue that cannot feed its own
   build step is worth saying out loud rather than papering over with a thin build.
-- [ ] **The dated-rate telemetry item is blocked by PR #191 for the FIFTH night, and the overlap was
-  re-read from the diff rather than trusted** (P2 · source:groom · `harness:drivable`) — the 10-20
+- [x] ~~**The dated-rate telemetry item is blocked by PR #191 for the FIFTH night, and the overlap was
+  re-read from the diff rather than trusted**~~ — **CLOSED 2026-11-09.** The overlap reading below
+  was sound and is left standing as a good piece of work; the thing it was protecting did not need
+  building, because the telemetry had shipped with the feature in #187. See the correction in the
+  11-09 band. Original note below:
+- [ ] ~~**The dated-rate telemetry item is blocked by PR #191 for the FIFTH night, and the overlap was
+  re-read from the diff rather than trusted**~~ (P2 · source:groom · `harness:drivable`) — the 10-20
   item wants a `track()` on the add/edit/remove path for an effective-dated rate, because the fix
   for the most wrong-money complaint in this file shipped 10-19 with **no telemetry at all**. Its
   two regions are `index.html`:~1813 (the rate code) and ~7001–7052 (the Settings save path).
@@ -1663,8 +1800,17 @@ to a clean review — the same call the 11-06 run made, and for the same reason.
   reading of the 10-19/10-20 code on a real phone. No new `pdf.worker` rows, so the 10-13 item's
   "read a second device" bar is **still not met**, and `paystub_failed` has **still never fired for
   any reason**. Do not build a worker mitigation.
-- [ ] **The effective-dated-rate fix went live on 10-19 and nothing in `events` can tell you
-  whether she used it** (P2 · source:groom · `harness:drivable`) — she had three loads on the new
+- [x] ~~**The effective-dated-rate fix went live on 10-19 and nothing in `events` can tell you
+  whether she used it**~~ — **CLOSED 2026-11-09 as WRONG ON ITS PREMISE, not as built.** The
+  telemetry was never missing: `rate_change_added` / `rate_change_removed` were added by `a103682`
+  — **#187 itself**, the same commit that shipped the feature — and `git log -S rate_change_removed`
+  says so in one call. What was missing was the ops dashboard's ability to SEE them: its inventory
+  was a regex that only matched a bare literal after `track(`, and these two are built with a
+  ternary. Fixed 2026-11-09 (see the groom band and the Done log). Six nights recorded this as
+  blocked by PR #191 on a premise nobody re-checked — and it survived because it was checked with
+  the same kind of grep whose blind spot was the thing being looked for. Original note below:
+- [ ] ~~**The effective-dated-rate fix went live on 10-19 and nothing in `events` can tell you
+  whether she used it**~~ (P2 · source:groom · `harness:drivable`) — she had three loads on the new
   build and the table holds no row for adding, editing or removing a dated rate: the feature ships
   with **no telemetry**, so "did the fix for the most wrong-money complaint in this file actually
   get used" is unanswerable from here. This is the same shape as the `ics_sync_result` gap (10-02)
@@ -4472,6 +4618,56 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   change is three documentation files and has no runtime behaviour to drive. The gate ran green
   anyway — 19 mechanical checks, 33 groom-seed, 175 core, 922 smoke — because a doc-only night is
   still a night the suites must pass before anything merges.
+- 2026-11-09 — **The ops dashboard could not see the telemetry of the two newest money features,
+  and it is the tool whose whole job is to notice that.** `scripts/dashboard_snapshot.mjs` exists
+  to answer one question Postgres cannot: *which instrumented events have never fired*, because
+  that is where a shipped feature nobody has touched shows up. It computed that from
+  `instrumentedEvents()`, which was the regex `/track\('([a-z_]+)'/` — a name had to be a bare
+  string literal spelled immediately after `track(`.
+  **Four shapes had grown past it, and production `events` priced both directions of the miss.**
+  `ob_view` (**79 rows**), `ob_answer` (**27**) and `ob_back` (**1**) ride `trackOb`, the
+  onboarding whitelist wrapper; `session_end` (**148**) rides `eventRow` through the keepalive
+  beacon and never touches `track` at all — so four live, firing names sat outside the inventory
+  and `fired_count` under-reported by four. The worse direction is the other one:
+  `rate_change_added` / `rate_change_removed` (#187, 2026-10-20) and `pay_item_added` /
+  `pay_item_removed` (#191, 2026-11-01) are emitted as `track(verb==='removed' ? 'x_removed' :
+  'x_added', …)` and have **zero rows**. Zero rows is exactly what `dead_events` prints, and
+  `dead_events` could never contain them. The raise and dated pay items are the two most recent
+  money features in this app, and the tool built to report "nobody has used this" was blind to
+  precisely those four names.
+  **It also closed a false claim this file carried for six nights.** The 10-20 item said the
+  effective-dated-rate feature "ships with no telemetry", and five later nights filed it as
+  blocked by PR #191's overlap at `index.html`:~1813 and ~7001–7052. The overlap reading was
+  correct; the premise was not — `git log -S rate_change_removed` places both names in `a103682`,
+  **#187 itself**, the commit that shipped the feature. The claim survived because it was checked
+  by grepping the call sites with the very scan whose blind spot was the thing being looked for.
+  **Now an AST walk, with the failure mode inverted.** Four callees count (`track`, `trackOb`,
+  `trackDeferred`, `eventRow` — the four functions that reach the `events` table); every branch of
+  a conditional or `||` chain resolves recursively; a first argument that is a plain identifier or
+  member expression is a **forwarder** (`track(name, …)` inside `trackOb`, `eventRow(name, …)`
+  inside `track`), counted in a new `instrumented_forwarders` field rather than listed, so a new
+  routing layer — the one change that can hide a name — is visible as a number; a name must be
+  coarse snake_case (CLAUDE.md → Analytics); and **any shape it cannot resolve throws**, as does an
+  empty inventory, a missing `text/babel` block, and no Babel at all. There is deliberately **no
+  regex fallback**: a fallback that quietly produces the old short list is the bug being fixed.
+  **63 names, was 55. Nothing lost** — the eight added are exactly the four shapes.
+  **New suite `scripts/test_dashboard_snapshot.mjs`, 44 assertions, nine deliberate breaks
+  measured** (33/10, 35/8, 36/7, 42/2, 42/1, 40/3, 38/5, 42/1, and 11/32 for a full revert to the
+  old regex). The live cases are asserted against the **real `index.html`**, not a fixture, because
+  a fixture cannot regress when the app changes; case 30 runs the old regex on purpose and requires
+  it to come back short, so "simplify this back to a grep" fails here instead of silently dropping
+  eight names again.
+  **Two harness lies were walked into and are recorded rather than tidied away.** The first run of
+  those nine breaks used a scratch dir **outside the repo**, where `node_modules` does not resolve:
+  all nine "failed" with `no Babel available` and all nine read as CAUGHT, which is a measurement
+  of nothing. And eight of the nine originally **aborted** the suite on an uncaught throw from a
+  fixture case — one stack trace, the live cases never reached — so every call that is not itself
+  asserting a throw now goes through a guard that turns a throw into a FAIL line. The figures above
+  are from the re-run, in `.ds-scratch/` inside the repo, with the guards in place.
+  Gate: `check_build.mjs` 19/19, `test_check_build.mjs` 46/0, `test_groom_seed.mjs` 33/0,
+  `test_deploy_watch.mjs` 98/0, `test_silence_watch.mjs` 39/0, `tests/core.test.mjs` 175/0,
+  `tests/smoke.mjs` 922/0. No runtime change: `index.html` is untouched, so nothing in the publish
+  set moves and `deploy_watch` should still name `aa53aec`.
 - 2026-11-02 — **"Clear all data" left behind the one row that still reads her whole calendar.**
   `clearAll` deleted the `user_data` blob and signed out; the feed URL lives in
   `ical_subscriptions`, a different table, so that delete never reached it. The row went only when
