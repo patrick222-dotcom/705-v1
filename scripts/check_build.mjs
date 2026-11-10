@@ -28,6 +28,7 @@ import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { buildCore, OUT as CORE_OUT } from './extract_core.mjs';
 import { cosViolations } from './cos_check.mjs';
+import { trackCallSites } from './dashboard_snapshot.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -385,6 +386,104 @@ check('events', 'Harness cannot write to production', () => {
     && /neutralizeSupabase\(html, 'ops\.html'\)/.test(h),
     'a scratch page is built without neutralising its Supabase host');
   return 'scratch copies point at .invalid';
+});
+
+/* ---- the event inventory can still see every name ----------------------------------------
+   `scripts/dashboard_snapshot.mjs` answers one question — which instrumented event has NEVER
+   fired, i.e. which shipped feature nobody has touched — and it answers it from `index.html`,
+   not from Postgres. On 2026-11-09 it was found to be structurally blind to four call shapes,
+   so the telemetry of the two newest money features (the raise, #187; dated pay items, #191)
+   could never appear in `dead_events` however long nobody used them. The fix was an AST walk,
+   pinned by `scripts/test_dashboard_snapshot.mjs` — 44 assertions, nine measured breaks, one of
+   which runs the old regex and requires it to come back short.
+
+   **CI does not run that suite.** BACKLOG.md's own words for it: "it is the only thing standing
+   between the inventory and a silent return to the regex." This row is that guard moved behind
+   the gate CI does run. It is not an invariant and does not claim to be — it is the one property
+   whose failure mode is a tool that answers the adoption question with a confident short list.
+
+   Three clauses:
+
+   (a) it RESOLVES. A tracking call whose name cannot be worked out statically throws by design,
+       so a new unresolvable shape goes red on the PR rather than on the next night's snapshot.
+   (b) every write to `events` is a row built by `eventRow`. The inventory walks four callees, so
+       a row assembled inline — `insert({name:'foo', …})` — reaches the table carrying a name the
+       inventory can never list. That is the 11-09 defect in a new costume, it is silent, and
+       nothing else in this repo looks for it. Both write paths must also be FOUND: a renamed one
+       must fail rather than pass by having nothing left to inspect (checks 2, 3 and 13's rule).
+   (c) the eight names only an AST can resolve are still in the list. A revert to
+       `/track\('([a-z_]+)'/` loses exactly these eight and nothing else, so "simplify this back
+       to a grep" goes red here. */
+check('events', 'Event inventory sees every name that reaches events', () => {
+  /* (a) */
+  let sites;
+  try {
+    sites = trackCallSites(html);
+  } catch (e) {
+    throw new Error(`the event inventory cannot resolve index.html: ${e.message}`);
+  }
+
+  /* (b) Two writers reach the table and no more: supabase-js inside `track`, and the raw
+     keepalive POST inside `beaconInsert` (the only sender that survives the tab going away).
+     Both are fed by `eventRow`, which exists so the two row shapes cannot drift. Asserted as a
+     shape rather than grepped, because the failing edit is an ordinary-looking one. */
+  const Babel = require('@babel/standalone');
+  const open = html.indexOf('<script type="text/babel" data-presets="react">');
+  const start = html.indexOf('>', open) + 1;
+  const src = html.slice(start, html.indexOf('</script>', start));
+  const builtByEventRow = (n) => {
+    if (!n) return false;
+    if (n.type === 'CallExpression') return n.callee && n.callee.type === 'Identifier' && n.callee.name === 'eventRow';
+    if (n.type === 'ArrayExpression') return n.elements.length > 0 && n.elements.every(builtByEventRow);
+    return false;
+  };
+  let supaWrites = 0, beaconWrites = 0;
+  const inline = [];
+  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+    plugins: [() => ({ visitor: {
+      CallExpression(p) {
+        const c = p.node.callee, where = `line ${(p.node.loc && p.node.loc.start.line) || '?'}`;
+        /* supabase.from('events').insert(row) */
+        const isSupa = c && c.type === 'MemberExpression' && c.property.name === 'insert'
+          && c.object && c.object.type === 'CallExpression'
+          && c.object.callee && c.object.callee.type === 'MemberExpression'
+          && c.object.callee.property.name === 'from'
+          && c.object.arguments.length === 1
+          && (c.object.arguments[0].value === 'events');
+        const isBeacon = c && c.type === 'Identifier' && c.name === 'beaconInsert';
+        if (!isSupa && !isBeacon) return;
+        if (isSupa) supaWrites += 1; else beaconWrites += 1;
+        if (!builtByEventRow(p.node.arguments[0])) {
+          inline.push(`${isSupa ? "from('events').insert" : 'beaconInsert'} at ${where} (${(p.node.arguments[0] || {}).type || 'no argument'})`);
+        }
+      },
+    } })] });
+  must(supaWrites > 0,
+    "no supabase.from('events').insert(…) call was found — the app's main analytics writer was "
+    + 'renamed or moved, so this clause is inspecting nothing and a row built outside eventRow '
+    + 'would pass by omission');
+  must(beaconWrites > 0,
+    'no beaconInsert(…) call was found — the unload sender is the only route session_end takes, '
+    + 'and it is exactly the path the 2026-11-09 inventory bug hid behind');
+  must(!inline.length,
+    `an events row is assembled outside eventRow (${inline.join('; ')}) — every name the app can `
+    + 'file has to pass through one of the four callees the inventory walks, or dead_events '
+    + 'reports a shipped feature as uninstrumented while it is quietly firing');
+
+  /* (c) One name per shape the 2026-11-09 walk was built to see. Four ride `trackOb` or
+     `eventRow` rather than `track`; four are spelled as the consequent/alternate of a ternary.
+     A bare-literal grep produces the other 55 and misses precisely these. Refactoring one of
+     these call sites into a plain literal fails this on purpose: say so here in the same commit,
+     the way the roster below takes a new check. */
+  const AST_ONLY = ['ob_view', 'ob_answer', 'ob_back', 'session_end',
+    'rate_change_added', 'rate_change_removed', 'pay_item_added', 'pay_item_removed'];
+  const lost = AST_ONLY.filter((n) => !sites.names.includes(n));
+  must(!lost.length,
+    `the inventory no longer sees ${lost.join(', ')} — these are the names a bare `
+    + "/track\\('([a-z_]+)'/ cannot produce, so losing them is the signature of the scan being "
+    + 'simplified back to a grep, which is the 2026-11-09 defect itself');
+
+  return `${sites.names.length} names, ${sites.forwarders} forwarders, ${sites.calls} calls, all rows via eventRow`;
 });
 
 /* ---- the harness tests the code the app actually ships -----------------------------------
@@ -753,6 +852,7 @@ check('gate', 'Every check this gate claims is still here', () => {
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
     'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
     'Unload telemetry intact', 'Harness cannot write to production',
+    'Event inventory sees every name that reaches events',
     'Harness tests the pins the app ships',
     'Extracted core in sync with index.html', 'Pay math never reads the persona',
     'iCal feed URL: out of the blob, the log and the parser', 'Operating-committee caps',

@@ -7,6 +7,21 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-10 · nightly · belongs to no live thread (T1/T2/T3) — a gate-coverage fix: last night's
+  event-inventory rewrite shipped its regress guard in `scripts/test_dashboard_snapshot.mjs`, a
+  suite **CI does not run**, so "simplify this back to a grep" would have been caught by nothing on
+  a PR. Moved behind `check_build.mjs` as check 20 (roster 19 → 20, meta-test 46 → 51, five
+  measured breaks). Found and closed a pre-existing hole on the way: `events` is now a shared tag
+  and its two older breaks had no label pin, so a break failing the *wrong* row counted as a win —
+  the exact defect the 10-30 run fixed for the `[2]` band, quietly reappeared. · **two things for
+  the chief of staff:** (a) **CABINET MISSED fires tonight** — `brief.md` is 8.8 days old, the
+  first firing since the 11-01 cabinet, and the decision it was meant to force (*gate the build on
+  an over-age brief, or retire the dead-man's-switch claim*) has now been filed unanswered eight
+  nights running; a notify line that has never once changed anyone's behaviour is not a mechanism;
+  (b) PR #209 is **4.3 days** open and has blocked `docs/cos/now.md` for a **fifth** consecutive
+  night — the one page Pat reads says "Updated 2026-11-02", eight days stale, because a mergeable
+  PR is sitting unmerged. Saying so four times has not merged it.
+
 - 2026-11-09 · nightly · belongs to no live thread (T1/T2/T3) — an observability fix with a
   doc correction attached: the ops dashboard's event inventory was a grep that could not see four
   of the app's `track()` shapes, so `dead_events` — *which shipped feature has nobody touched* —
