@@ -61,6 +61,7 @@ const ROSTER = [
   [9, 'Deploy branch still triggers a deploy'],
   ['events', 'Unload telemetry intact'],
   ['events', 'Harness cannot write to production'],
+  ['events', 'Event inventory sees every name that reaches events'],
   ['harness', 'Harness tests the pins the app ships'],
   ['core', 'Extracted core in sync with index.html'],
   [3, 'Pay math never reads the persona'],
@@ -87,6 +88,9 @@ const NEEDED = [
   'scripts/check_build.mjs',
   'scripts/extract_core.mjs',
   'scripts/cos_check.mjs',
+  /* Imported by the gate as of 2026-11-10: the inventory check runs the real trackCallSites()
+     rather than a copy of its rules, so the module has to resolve from inside the scratch tree. */
+  'scripts/dashboard_snapshot.mjs',
   'docs/cos',
 ];
 
@@ -171,6 +175,9 @@ ok('teeth: clean copy reports the declared count',
    exactly the thing `expect` exists to catch. Where a tag is unique the label is redundant and is
    left off. */
 const CSP = 'CSP covers every host the pages load';
+const UNLOAD = 'Unload telemetry intact';
+const NEUTRAL = 'Harness cannot write to production';
+const INVENTORY = 'Event inventory sees every name that reaches events';
 const PDFW = 'pdf.js worker matches its pinned library';
 const BREAKS = [
   ['[build] JSX stops parsing', 'index.html', (s) => {
@@ -257,10 +264,35 @@ const BREAKS = [
     (s) => s.replace('</body>', '<script>document.body.innerHTML = "x";</script></body>'), '8'],
   ['[9] deploy branch removed from the triggers', '.github/workflows/deploy.yml',
     (s) => s.split('claude/migrate-to-github-deploy-3F5RD').join('claude/some-other-branch'), '9'],
+  /* THREE checks share the `events` tag as of 2026-11-10, so every break below pins the label
+     too — the same rule the fourteen `[2]` breaks follow, and for the same reason: `✗ [events]`
+     alone would credit an inventory break to the keepalive check and count a break that failed
+     the wrong row as a win. */
   ['[events] unload sender loses keepalive', 'index.html',
-    (s) => s.split('keepalive: true').join('keepalive: false'), 'events'],
+    (s) => s.split('keepalive: true').join('keepalive: false'), 'events', UNLOAD],
   ['[events] harness stops neutralising Supabase', 'tests/harness.mjs',
-    (s) => s.split('NEUTRAL_SUPABASE_HOST').join('REAL_SUPABASE_HOST'), 'events'],
+    (s) => s.split('NEUTRAL_SUPABASE_HOST').join('REAL_SUPABASE_HOST'), 'events', NEUTRAL],
+  /* The inventory check, added 2026-11-10. Five breaks, one per `must()` (counting the resolve
+     clause's throw), because a group of musts negative-tested as a group only proves that ONE of
+     them has teeth. Two of the five patch `scripts/dashboard_snapshot.mjs` rather than the app:
+     the clause they cover is about the TOOL losing its sight, which is what happened in the
+     first place. */
+  ['[events] a tracking call gets a name the inventory cannot resolve', 'index.html',
+    (s) => s.replace("track('app_open', appOpenProps(), null)", "track('app'+'_open', appOpenProps(), null)"), 'events', INVENTORY],
+  ['[events] an events row is assembled inline instead of by eventRow', 'index.html',
+    (s) => s.replace('supabase.from(\'events\').insert(eventRow(name, props, userId))',
+      "supabase.from('events').insert({name:String(name).slice(0,64), props:props||null, user_id:userId||null, anon_id:anonId()})"), 'events', INVENTORY],
+  /* Anti-omission, both directions: a renamed write path must FAIL, never pass by leaving the
+     clause nothing to inspect. */
+  ['[events] the supabase events writer is renamed away', 'index.html',
+    (s) => s.replace("supabase.from('events').insert(eventRow(name, props, userId))",
+      "supabase.from(EVENTS_TABLE).insert(eventRow(name, props, userId))"), 'events', INVENTORY],
+  ['[events] the keepalive events writer is renamed away', 'index.html',
+    (s) => s.split('beaconInsert(').join('beaconSend('), 'events', INVENTORY],
+  /* The one with no other home in CI: the walk reverts to a bare-literal scan, the eight names
+     the two newest money features file go missing, and dead_events starts lying again. */
+  ['[events] the inventory stops walking the wrapper callees', 'scripts/dashboard_snapshot.mjs',
+    (s) => s.replace("new Set(['track', 'trackOb', 'trackDeferred', 'eventRow'])", "new Set(['track', 'trackDeferred'])"), 'events', INVENTORY],
   /* The harness-pin check, added 2026-11-01. FIVE breaks, one per `must()` group, because a group
      of musts negative-tested as a group only proves that ONE of them has teeth. The tag is unique
      so no label pin is needed — the convention the eight `[2]` worker breaks follow in reverse. */

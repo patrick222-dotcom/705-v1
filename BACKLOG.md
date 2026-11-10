@@ -438,6 +438,135 @@ to a clean review — the same call the 11-06 and 11-08 runs made, for the same 
   2026-11-02" — seven days — and the cause is a mergeable PR sitting unmerged.** That is still the
   real cost of #209 waiting, larger than the branch question above it.
 
+### P1 (new, groom 2026-11-10)
+
+**Why this band sits BELOW the 11-06, 11-08 and 11-09 bands instead of at the top of `## Queue`:**
+PR #209 (the `terms.html` draft, open for Pat's review since 2026-11-06) inserts its own `### P1`
+band at line 29. A fifth insert at that same hunk would hand Pat a merge conflict on a legal-text
+review for the fifth night running. Placed below, every diff applies cleanly. Newest-first
+ordering loses to a clean review — the same call the three runs before this one made.
+
+- [x] ~~**The only thing standing between the event inventory and a silent return to a grep was a
+  suite CI does not run**~~ — **SHIPPED 2026-11-10**, tonight's build (see Done log). (P3 →
+  taken as P1 · source:build (filed by last night's run) · `harness:drivable` (script-level))
+  Last night's run rewrote `scripts/dashboard_snapshot.mjs`'s event inventory from a regex into an
+  AST walk and filed the obvious follow-up as a P3 it deliberately did not take: *"a
+  `check_build.mjs` check that the inventory resolves, so a new unresolvable `track()` shape fails
+  the PR rather than the next snapshot… Take it only with the roster and the meta-test breaks in
+  the same pass."* Tonight is that pass. **But the argument it was filed under is not the argument
+  it shipped under, and the difference is the point.** Last night's reason against was "a
+  dashboard that throws is loud" — true, and it makes the *resolve* clause the least valuable of
+  the three. The load-bearing one is the other direction: `scripts/test_dashboard_snapshot.mjs`
+  case 30 runs the old regex and requires it to come back short, which is the whole guard against
+  "simplify this back to a grep" — **and CI does not run that suite**, as the 11-09 band's own
+  CI item says in those words. A guard that lives only in a suite nobody runs is the shape this
+  repo keeps getting burned by. Tonight moves it behind the gate CI does run.
+  Three clauses, five deliberate breaks, every one measured:
+  (a) **it resolves** — a tracking call whose name cannot be worked out statically goes red on the
+  PR instead of on the next night's snapshot;
+  (b) **every write to `events` is a row built by `eventRow`** — there are exactly two writers
+  (supabase-js inside `track`, the raw keepalive POST inside `beaconInsert`) and the inventory
+  walks four callees, so a row assembled inline (`insert({name:'foo', …})`) would reach the table
+  carrying a name the inventory can never list. **That is the 11-09 defect in a new costume, it is
+  silent, and nothing else in this repo looks for it.** Both writers must also be *found*, so a
+  rename fails rather than passing by omission — checks 2, 3 and 13's rule;
+  (c) **the eight names only an AST can resolve are still in the list** — `ob_view`, `ob_answer`,
+  `ob_back`, `session_end`, `rate_change_added`/`_removed`, `pay_item_added`/`_removed`. A bare
+  `/track\('([a-z_]+)'/` produces the other 55 and misses precisely these, so a revert to a grep
+  goes red here.
+  Gate roster **19 → 20**; `scripts/test_check_build.mjs` **46 → 51**. Two of the five breaks
+  patch `scripts/dashboard_snapshot.mjs` rather than the app, because the clause they cover is
+  about the *tool* losing its sight.
+  **One thing fixed in passing that was a real hole:** three checks now share the `events` tag, and
+  the two pre-existing `[events]` breaks carried **no label pin** — so `✗ [events]` from any of
+  the three would have been counted as a win for whichever break was running. That is exactly the
+  defect the 2026-10-30 run fixed for the `[2]` band and it had quietly reappeared. All seven
+  `[events]` breaks now pin the label. Negative-tested the way that band was: pointing the
+  inventory pin at a *different* real label turns all five new breaks red (measured 2026-11-10).
+- [ ] **`silence_watch` reads FRESH and not one of the ten devices behind it is established as a
+  person** (P2 · source:groom · no action, and a sharpening of the classifier item) — **FRESH**,
+  newest event **6.1h** old against a 48h window. `events` holds **1,794 rows** against 1,784 last
+  night: **ten** new rows in a **97-second burst** at 2026-11-10 02:02 UTC, across **five** new
+  `anon_id`s, and **all five self-declare as Googlebot in their user agent** — three as the
+  `Nexus 5X … compatible; Googlebot/2.1` mobile crawler, two as the desktop one. Same shape as
+  every device since 10-29: `app_open {fresh:true}` + `ob_step {step:0}`, `ob_view
+  {screen:'landing'}`, nothing past screen 0, no `session_end`.
+  **The sharpening is the seven-day window, not tonight's burst.** Of the **10** distinct devices
+  in 7 days, **nine name themselves in the UA**: Googlebot ×5, HubSpot Crawler, `meta-externalagent`,
+  `bitdiscovery` ×2. The tenth (`4fc0945a`, 11-09 06:40) is a desktop `Chrome/146.0.0.0` on
+  Windows that reached screen 0 and stopped — indistinguishable in shape from the nine, and not
+  established as a person either way. So the verdict word **FRESH means "something fetched the
+  page", not "someone used the app"**, and the honest reading of this week is that the app may
+  have had **zero** human visitors. `silence_watch`'s own contract is that it says which side it
+  could establish; this is the side it cannot, and the fix is the device classifier in
+  `## Needs a dedicated session`, which already names "which rows are a person at all" as its
+  deliverable. **Do not quote any of it as activation.**
+- [ ] **The 11-03 `client_error` fix is 4-for-4, on fourteen loads** (P2 · source:groom · no
+  action) — `client_error` is **30**, unchanged for the fifth groom, and tonight is a real test
+  rather than a flat night: five fresh loads off the live build (`aa53aec`) filed **no** row
+  between them. Before #208 each would have filed one. The 11-03 prediction *"expect this count
+  to stay at 30 and treat 31 as real"* has now been tested on fourteen loads and held on all
+  fourteen — still the only prediction in this file tested four times.
+- [ ] **CABINET MISSED FIRES TONIGHT — the first time since the 11-01 cabinet, and it is the
+  decision being taken by default** (P2 · housekeeping · needs the owner) — `docs/cos/brief.md`
+  is `400272a`, committed **2026-11-01 12:54:09 UTC**, which at this run's 08:0x UTC is **8.8
+  days** against the 8-day switch. It crossed at 12:54 UTC yesterday, exactly where the 11-09 note
+  predicted. `scripts/cos_check.mjs` still passes — the switch is **not** in the gate, the notify
+  line is the whole mechanism. The decision the 11-01 through 11-09 notes have now left for Pat
+  **eight times** is unchanged: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** Eight consecutive nights of filing the same unanswered decision is
+  itself the answer to whether a notify line is a mechanism.
+- [ ] **Courtney has not opened the app in 20.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**,
+  `ics_sync_done` **27** — all three identical for thirteen grooms. The two sync opt-outs she
+  asked for twice in 28 hours remain field-unverified for that one reason.
+- [ ] **`feedback` is unchanged for the TWENTY-FIRST groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **25.8 days** old. `paystub_failed` has **still never fired for any reason**
+  and there are no new `pdf.worker` rows, so the 10-13 item's "read a second device" bar is
+  **still not met** — do not build a worker mitigation.
+- [ ] **Last night's prediction HELD for the fourth time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-09 note staked out when it predicted its own script-and-docs merge would touch no
+  publish-set file. `privacy.html` and `ops.html` print the truncation sentence rather than a
+  commit, and the boundary commit it names moved again (`f1aa7a6` → `1ff44c2`) — **expected, not
+  a regression**: the boundary is a property of this container's clone depth, which is why #210
+  stopped printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches only
+  `scripts/`, `docs/` and `BACKLOG.md`/`CLAUDE.md`, so no publish-set file, so tomorrow's
+  `deploy_watch` should **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — thirteenth night, and tonight it got 5 assertions
+  heavier while the other missing suite got cheaper to justify** (P2 · `harness:unscoped` · needs
+  the owner) — `.github/workflows/ci.yml`'s `gate` job still does not call
+  `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent sessions in
+  this sandbox**. Still the same two lines after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (now **51**, ~110s)
+  and `- name: Dashboard-snapshot inventory suite` / `run: node
+  scripts/test_dashboard_snapshot.mjs` (44, <2s). **Tonight narrows what the first one is for.**
+  The inventory's regex-revert guard no longer depends on either missing suite — it is clause (c)
+  of a `check_build.mjs` row, which CI runs on every PR. What is still outside CI is the proof
+  that the gate's own `must()`s have teeth, which only the meta-test gives, and it is now holding
+  twenty checks instead of nineteen. Worth pairing with #209's one-line changes when Pat is in
+  that file anyway.
+- [ ] **PR #209 is still open on the loop's shared working branch — FOURTH night, and
+  `docs/cos/now.md` is now eight days stale** (P1 · needs the owner) — head unchanged at
+  `ceacb5f`, open since 2026-11-06 01:45, now **4.3 days**. Tonight branched to
+  `claude/great-feynman-2v1zp9` instead, so #209's head is untouched for the fourth run running;
+  that is option (b) from the 11-06 note demonstrated four times rather than argued. **The rule is
+  still not written down anywhere a future run must read**: the loop prompt's step 3 says `git
+  checkout -B claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run
+  that follows it literally destroys Pat's pending legal review. Either owner-tier work gets its
+  own branch by rule, or #209 is merged/closed before the next run that needs the shared one.
+  **And `docs/cos/now.md` goes un-updated for the FIFTH night, for the same reason** — #209
+  rewrites T2's whole `Where`/`Next`/`Waiting on` block and the entire `Needs Pat` section, so
+  editing it would conflict on Pat's legal review; tonight's line went to `docs/cos/inbox.md`
+  again. **The one page Pat is meant to read still says "Updated 2026-11-02" — eight days — and
+  the cause is a mergeable PR sitting unmerged.** Four nights of saying so has not merged it;
+  this is the item on this list with the clearest single action behind it.
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4469,6 +4598,53 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-10 — **The event inventory's only regression guard lived in a suite CI does not run.**
+  Last night (#212) rewrote `scripts/dashboard_snapshot.mjs`'s instrumented-event list from the
+  regex `/track\('([a-z_]+)'/` into an AST walk, because four call shapes had grown past the regex
+  and `dead_events` — *which shipped feature has nobody touched* — was structurally unable to name
+  the telemetry of the raise (#187) or dated pay items (#191). The rewrite shipped with
+  `scripts/test_dashboard_snapshot.mjs`, 44 assertions, whose case 30 runs the old regex and
+  requires it to come back short so that "simplify this back to a grep" fails loudly. **That suite
+  is not in CI**, which the same night's backlog said in those words: *"it is the only thing
+  standing between the inventory and a silent return to the regex."* Tonight moves the guard
+  behind the gate CI does run, as `check_build.mjs` check **20**, `[events] Event inventory sees
+  every name that reaches events`.
+  **The clause worth having is not the one the follow-up was filed for.** Last night filed this as
+  a P3 whose stated purpose was *"a new unresolvable `track()` shape fails the PR rather than the
+  next snapshot"*, and argued against taking it because "a dashboard that throws is loud". That
+  argument is right, and it makes the resolve clause the least valuable of the three:
+  - **(a) it resolves** — kept, cheap, and it turns a loud failure into an earlier one.
+  - **(b) every write to `events` is a row built by `eventRow`** — the one with no other home.
+    There are exactly two writers: `supabase.from('events').insert(…)` inside `track`, and the raw
+    keepalive POST inside `beaconInsert`. The inventory walks four callees, so a row assembled
+    inline — `insert({name:'foo', …})` — would reach the table carrying a name the inventory can
+    never list, and **nothing anywhere would say so**. That is the 11-09 defect in a new costume
+    and it is silent, which is the category this repo keeps losing to. Both writers must also be
+    *found*: a renamed one fails rather than passing by omission, the rule checks 2, 3 and 13 take.
+  - **(c) the eight names only an AST can resolve are still in the list** — `ob_view`,
+    `ob_answer`, `ob_back`, `session_end`, `rate_change_added`/`_removed`,
+    `pay_item_added`/`_removed`. A bare-literal grep produces the other 55 and misses exactly
+    these eight, so a revert to one goes red here. Refactoring a call site into a plain literal
+    trips it on purpose — say so in the same commit, the way the roster takes a new check.
+  **Gate roster 19 → 20; `scripts/test_check_build.mjs` 46 → 51**, five deliberate breaks, one per
+  `must()`: an unresolvable name, an inline row, each writer renamed away, and the inventory's
+  callee whitelist cut back to `track`/`trackDeferred` (the "simplify it" shape). Two of the five
+  patch `scripts/dashboard_snapshot.mjs` rather than the app, because the clause they cover is
+  about the tool losing its sight rather than the app changing shape; that module joins the
+  meta-test's `NEEDED` list so it resolves from inside `.gate-scratch/`.
+  **A pre-existing hole found and closed in passing.** `events` is now the second tag three checks
+  share, and the two older `[events]` breaks (`unload sender loses keepalive`, `harness stops
+  neutralising Supabase`) carried **no label pin** — so `✗ [events]` from any of the three rows
+  would have been counted as a win for whichever break was running. That is precisely the defect
+  the 2026-10-30 run fixed for the `[2]` band; it had quietly reappeared in a band nobody
+  revisited. All seven `[events]` breaks now pin the label, and the pin was negative-tested the
+  way that band's was: pointing it at a different real label turns **all five** new breaks red
+  (measured 2026-11-10, 46 passed / 5 failed) while the other 46 assertions stay green.
+  **Scope, stated plainly:** this is not an invariant and the check does not claim to be one. It
+  holds one property — that the tool answering "has anyone used this" can still see what the app
+  files. No runtime behaviour changed, so there is no new `tests/smoke.mjs` assertion tonight;
+  that is the honest reason rather than a gap being papered over. Gate 20/20, meta-test 51/0,
+  `test_groom_seed` 33/0, `test_dashboard_snapshot` 44/0, `core` 175/0, smoke 922/0.
 - 2026-11-03 — **Every load had been filing a `client_error` row since #191, and the row said
   nothing was wrong.** Babel standalone's code generator `console.error`s a *note* about its own
   output formatting once per load when the inline script passes **500,000 bytes**: `[BABEL] Note:
