@@ -567,6 +567,101 @@ ordering loses to a clean review — the same call the three runs before this on
   the cause is a mergeable PR sitting unmerged.** Four nights of saying so has not merged it;
   this is the item on this list with the clearest single action behind it.
 
+### P1 (new, groom 2026-11-11)
+
+**Why this band sits BELOW the 11-06, 11-08, 11-09 and 11-10 bands instead of at the top of
+`## Queue`:** PR #209 (the `terms.html` draft, open for Pat's review since 2026-11-06) inserts its
+own `### P1` band at line 29. A sixth insert at that same hunk would hand Pat a merge conflict on a
+legal-text review for the sixth night running. Placed below, every diff applies cleanly — the same
+call the four runs before this one made.
+
+- [x] ~~**A published page could link to a file the deploy never copies, and PR #209 does exactly
+  that**~~ — **SHIPPED 2026-11-11**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Invariant 8's existing check asserts the publish set is
+  *exactly* deploy.yml's five `cp` lines. It never asked whether that set is **sufficient for what
+  the pages reference**, and those are different questions. New gate check 21,
+  `[8] Published pages link only to published files`: every same-origin `href`/`src` in a published
+  HTML page must itself be in the publish set, derived from deploy.yml rather than from a second
+  hardcoded list.
+  **This is not a hypothetical, and the live instance is Pat's open PR.** #209 adds a *Terms* link
+  beside *Privacy* in Settings, teaches `tests/harness.mjs` to copy `terms.html` into the scratch
+  tree so all 922 smoke assertions can drive it, and **never adds it to deploy.yml** — its own
+  comment says so in those words. So it is green on every gate, drivable in the harness, and a
+  **404 on badgebudget.com**. Measured against the real PR head tonight: 20 of 21 checks pass and
+  this one goes red, naming `terms.html`. It is the only mechanism in the repo that sees it.
+  **Consequence Pat has to know about: #209's CI will now be red**, and that is the check doing its
+  job rather than a conflict with his review — merging it today ships a dead link on a legal page.
+  The fix is two lines and both are his tier: `cp terms.html _site/` in `.github/workflows/deploy.yml`
+  (agent sessions cannot edit a workflow file) **and** `'terms.html'` added to `expected` in
+  `scripts/check_build.mjs`, which the exact-set assertion requires in the same commit. Nothing
+  told him that before tonight either.
+  Four clauses, four deliberate breaks measured; `scripts/test_check_build.mjs` **51 → 55**.
+  **And `[8]` was already a shared tag with no label pins** — two checks, two breaks, neither
+  pinned, so `✗ [8]` from the ops-console row counted as a win for the CNAME break. Same defect the
+  10-30 run fixed for `[2]` and the 11-10 run fixed for `[events]`, still open in a third band; all
+  five `[8]` breaks now pin the label, negative-tested by pointing the pin at a different real
+  label (51 passed / 4 failed, measured 2026-11-11).
+- [ ] **A flat night: zero new rows in 24 hours, and the cohort behind `FRESH` is last night's**
+  (P2 · source:groom · no action) — `events` holds **1,794 rows**, byte-identical to last night, so
+  **no row has arrived since 2026-11-10 02:02:10**. `silence_watch` reads **FRESH** on a newest
+  event **30.0h** old against its 48h window, which is the verdict word doing exactly what the
+  11-10 band warned about: FRESH here means *nothing has changed since five self-declared
+  Googlebots fetched the landing screen*. The 7-day cohort is the **same 10 devices** as last
+  night — nine naming themselves in the UA (Googlebot ×5, HubSpot Crawler, `meta-externalagent`,
+  `bitdiscovery` ×2) and one unplaced desktop `Chrome/146`. **Do not quote any of it as
+  activation**; the honest reading of the last eight days is still that the app may have had zero
+  human visitors.
+- [ ] **The 11-03 `client_error` fix is 5-for-5** (P2 · source:groom · no action) — `client_error`
+  is **30**, unchanged for the sixth groom. Tonight is a weak test rather than a real one (no new
+  loads at all), so the useful statement is narrow: the prediction *"expect this count to stay at
+  30 and treat 31 as real"* has now held on every load since #208 and has not been disproved. It
+  remains the only prediction in this file tested five times.
+- [ ] **`feedback` is unchanged for the TWENTY-SECOND groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **26.8 days** old. `paystub_failed` has **still never fired for any reason**, so
+  the 10-13 item's "read a second device" bar is still not met — do not build a worker mitigation.
+- [ ] **Courtney has not opened the app in 21.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from any
+  device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown either
+  affordance. The two sync opt-outs she asked for twice in 28 hours remain field-unverified.
+- [ ] **CABINET MISSED fires for the SECOND night, and the brief is now 9.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes, because
+  the switch is **not** in the gate and the notify line is the whole mechanism. The decision filed
+  for Pat **nine times** is unchanged: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** Nine nights of the same unanswered filing is itself the answer to
+  whether a notify line is a mechanism.
+- [ ] **Last night's prediction HELD for the fifth time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-10 note staked out. `privacy.html` and `ops.html` print the truncation sentence rather than
+  a commit and the boundary commit moved again (`1ff44c2` → `6b59fce`) — **expected, not a
+  regression**: the boundary is a property of this container's clone depth, which is why #210
+  stopped printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches only
+  `scripts/`, `docs/` and `BACKLOG.md`/`CLAUDE.md`, so no publish-set file, so tomorrow's
+  `deploy_watch` should **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — fourteenth night, and it is now 55 assertions**
+  (P2 · `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s `gate` job still does
+  not call `scripts/test_check_build.mjs`, and **editing a workflow file is blocked for agent
+  sessions in this sandbox**. Still the same two lines after the existing `Deploy-watch classifier
+  suite` step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` (now **55**,
+  ~115s) and `- name: Dashboard-snapshot inventory suite` / `run: node
+  scripts/test_dashboard_snapshot.mjs` (44, <2s). Worth pairing with the two lines #209 needs when
+  Pat is in that file anyway — which is now **three** one-line workflow edits waiting on one visit.
+- [ ] **PR #209 is still open on the loop's shared working branch — FIFTH night, and tonight the
+  branch rule was finally applied rather than argued** (P1 · needs the owner) — head unchanged at
+  `ceacb5f`, open since 2026-11-06 01:45, now **5.3 days**. Tonight branched to
+  `claude/great-feynman-ytxn94`, so #209's head is untouched for the fifth run running. **The rule
+  the 11-06 note asked for is now written in two places**: this session's own branch requirement and
+  the Done-log entry below. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that follows
+  it literally still destroys Pat's pending legal review — **that prompt is the one artefact no
+  agent can edit**, so the standing answer is: owner-tier work gets its own branch, and #209 should
+  be merged or closed. `docs/cos/now.md` goes un-updated for the SIXTH night for the same reason
+  (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md` again. **The one page
+  Pat is meant to read still says "Updated 2026-11-02" — nine days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4598,6 +4693,56 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-11 — **Invariant 8 asserted the publish set was exactly five files and never that those
+  five were enough.** `check_build.mjs` has compared deploy.yml's `cp` lines against a hardcoded
+  five-element list since 2026-09-13, in both directions, and the comment above it says why: a file
+  not copied silently 404s, one copied by accident ships publicly. What nothing asked is the third
+  question — **does anything the published pages LINK to also get published?** New check 21,
+  `[8] Published pages link only to published files`: for every HTML file in the publish set, every
+  same-origin `href`/`src` must resolve to a path the publish set contains. The allowed set is
+  derived from deploy.yml, not written down a second time, so adding a file to the publish set
+  admits links to it automatically.
+  **The hole has a live instance and it is Pat's open PR, which is how it was found.** #209 adds a
+  *Terms* link beside *Privacy* in Settings and teaches `tests/harness.mjs` to copy `terms.html`
+  into the scratch tree — its comment says *"It is NOT in the publish set yet (that line in
+  deploy.yml is the owner's), so this copy is what makes it drivable at all"* — and so the page is
+  reachable in all 922 smoke assertions, reachable in a local checkout, and **absent from
+  badgebudget.com**. Two copies of one rule, the shape this repo keeps losing to, with the test rig
+  on the wrong side of it. Measured against the real PR head: **20 of 21 pass and this check goes
+  red**, naming `terms.html` and the five files that are published. Invariant 8's own blast list
+  names this exact failure for `privacy.html` — a 404 there breaks the Google OAuth consent screen
+  and leaves the app with no reachable privacy notice.
+  **Four clauses, because there are four separate ways it dies**, and a group of `must()`s broken as
+  a group only proves one of them has teeth:
+  - **(a) a link to an unpublished same-origin path fails** — the #209 shape, reduced to one line.
+  - **(b) the loop walks every published page, not just the app** — the second break puts the dead
+    link in `ops.html`, so a check that reads one file goes red.
+  - **(c) a dynamically built `href`/`src` fails** — a tag walk cannot resolve a computed URL. That
+    is the CSP check's blind spot and the reason the pdf.js worker needed a check of its own; here
+    it is intended friction instead of a silent gap.
+  - **(d) a page that stops yielding attributes this walk can see fails** — anti-omission, the rule
+    checks 2, 13 and the harness pin all take. Single-quote the attributes and the walk sees
+    nothing, which must be red rather than "all published".
+  **Scope stated rather than implied:** this is a tag walk, so `window.open('x.html')` is invisible
+  to it. Clause (c) is what keeps that from being a quiet hole. The false-positive control was
+  measured too — a `#anchor`, an external URL with a query and fragment, and `./index.html` all
+  stay green (4 same-origin refs, all published).
+  **`scripts/test_check_build.mjs` 51 → 55, and a pre-existing hole closed in passing.** `[8]` was
+  **already** shared by two checks (the publish set, and the ops console's four page-level
+  assertions) and **neither break pinned a label**, so `✗ [8]` from the ops row would have been
+  counted as a win for the CNAME break. That is exactly the defect the 2026-10-30 run fixed for the
+  `[2]` band and the 2026-11-10 run fixed for `[events]` — a third band nobody had revisited. All
+  five `[8]` breaks now pin the label, negative-tested the way that band was: pointing the new pin at
+  a different real label turns all four new breaks red (**51 passed / 4 failed**, measured).
+  **What Pat has to do about #209, plainly:** its CI is now red, correctly. Merging it as it stands
+  ships a Terms link that 404s. Two lines, both his tier: `cp terms.html _site/` in
+  `.github/workflows/deploy.yml` (an agent session cannot edit a workflow file) and `'terms.html'`
+  in `expected` in `scripts/check_build.mjs`, which the exact-set assertion requires in the same
+  commit. Before tonight nothing in the repo would have told him either.
+  Gate **20 → 21** checks; suites green: gate 21, meta-test 55, groom-seed 33, core 175,
+  dashboard-snapshot 44, smoke **922**. No `index.html` change, so no publish-set file moves and
+  PR #209's regions are untouched — the fifth consecutive run that branched away from
+  `claude/clause-md-review-9tqlj8` rather than force-pushing over Pat's review.
 - 2026-11-10 — **The event inventory's only regression guard lived in a suite CI does not run.**
   Last night (#212) rewrote `scripts/dashboard_snapshot.mjs`'s instrumented-event list from the
   regex `/track\('([a-z_]+)'/` into an AST walk, because four call shapes had grown past the regex
