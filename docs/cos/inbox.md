@@ -7,6 +7,22 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-11 · nightly · touches T2 but is not T2 work — a deploy-correctness gate: Invariant 8
+  asserted the publish set is *exactly* five files and never that those five are **enough**, so a
+  published page could link to a file `deploy.yml` never copies. New `check_build.mjs` check 21
+  (roster 20 → 21, meta-test 51 → 55, four measured breaks), and the `[8]` tag — shared by two
+  checks since 2026-09-13 with *neither* break pinning a label — is pinned now. · **two things for
+  the chief of staff:** (a) **PR #209's CI is now red, correctly**: it adds a Settings link to
+  `terms.html`, copies the file into the harness tree, and never adds it to the publish set, so
+  merging it as it stands ships a 404 on a legal page. The fix is two lines, both Pat's tier (`cp
+  terms.html _site/` in the workflow, which agents cannot edit, plus `'terms.html'` in the gate's
+  `expected`), and that makes **three** one-line workflow edits now waiting on one visit from him —
+  the other two being the gate meta-test and the dashboard-inventory suite; (b) **CABINET MISSED
+  fires for the second night** (`brief.md` 9.8 days) and #209 has blocked `docs/cos/now.md` for a
+  **sixth** consecutive night — the one page Pat reads still says "Updated 2026-11-02", nine days
+  stale. Nine nights of filing the same dead-man's-switch decision unanswered is the answer to
+  whether a notify line is a mechanism.
+
 - 2026-11-10 · nightly · belongs to no live thread (T1/T2/T3) — a gate-coverage fix: last night's
   event-inventory rewrite shipped its regress guard in `scripts/test_dashboard_snapshot.mjs`, a
   suite **CI does not run**, so "simplify this back to a grep" would have been caught by nothing on

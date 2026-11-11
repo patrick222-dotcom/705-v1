@@ -353,6 +353,64 @@ check(8, 'Ops console ships nothing it should not', () => {
   return 'noindex, no service_role, no innerHTML, unlinked';
 });
 
+/* ---- Invariant 8: a published page may only link to a published file -------------------
+   The check above asserts the publish set is exactly the five files deploy.yml copies. It says
+   nothing about whether that set is SUFFICIENT for what the pages reference, and those are
+   different questions: `privacy.html` is in the set because Settings links to it, and a link to
+   a file the deploy never copies is a 404 that works perfectly everywhere except production.
+
+   The harness makes that gap worse rather than better. `buildScratch` copies pages into the
+   scratch tree by name, so a page it copies and deploy.yml does not is reachable in all 922
+   smoke assertions and absent from badgebudget.com — two copies of one rule, which is the shape
+   this repo keeps getting burned by. Invariant 8's blast list names exactly this for
+   privacy.html: a 404 there breaks the Google OAuth consent screen and leaves the app with no
+   reachable privacy notice.
+
+   Scope, stated rather than implied: this walks TAG attributes. A URL computed in JavaScript is
+   invisible to it — the same blind spot the CSP check has, and the reason the pdf.js worker
+   needed a check of its own — so clause (b) fails on a dynamic href/src instead of letting the
+   walk go quietly blind. */
+check(8, 'Published pages link only to published files', () => {
+  const published = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
+  const pages = published.filter((f) => f.endsWith('.html'));
+  /* Anti-omission: if the derivation above ever yields nothing, every assertion below passes by
+     having nothing to walk. The same rule check 13 takes for a renamed serializeState. */
+  must(pages.includes('index.html'),
+    `the publish set this check walks does not contain index.html (found [${pages.join(', ')}]) — ` +
+    'the derivation from deploy.yml broke, so this check is inspecting nothing');
+
+  const offsite = /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|$)/i;   // scheme, protocol-relative, fragment, empty
+  let refs = 0;
+  for (const page of pages) {
+    const src = read(page);
+    /* (b) a computed attribute cannot be resolved by a tag walk, so it is intended friction:
+       write the literal, or publish the target and link it plainly. */
+    must(!/\b(?:href|src)\s*=\s*\{/.test(src),
+      `${page} builds an href/src dynamically — a tag walk cannot resolve it, so a link to an ` +
+      'unpublished page would ship unseen. Write the literal path instead.');
+    const attrs = [...src.matchAll(/\b(?:href|src)\s*=\s*"([^"]*)"/g)].map((m) => m[1]);
+    /* (c) every published page has at least one href or src today (index many, privacy 3, ops 1).
+       Zero means the attribute shape changed under this regex — single quotes, a minifier — and
+       a walk that sees nothing must fail rather than report success. */
+    must(attrs.length > 0,
+      `${page} yields no href/src attributes to this check — the attribute shape changed, so the ` +
+      'walk is blind and its silence is not evidence');
+    for (const raw of attrs) {
+      if (offsite.test(raw)) continue;                    // CDN, data:, mailto:, tel:, #anchor
+      const path = raw.split('#')[0].split('?')[0].replace(/^\.?\//, '') || 'index.html';
+      refs++;
+      /* (a) the one that matters. A link written to a page the deploy never copies 404s in
+         production and nowhere else — not locally, not in the harness, not in CI. */
+      must(published.includes(path),
+        `${page} links to "${raw}", which deploy.yml never copies into _site — it publishes ` +
+        `[${published.join(', ')}], so that link 404s on badgebudget.com while working ` +
+        'everywhere else. Add it to the publish set (and to this gate\'s expected list) or ' +
+        'drop the link.');
+    }
+  }
+  return `${pages.length} pages, ${refs} same-origin refs, all published`;
+});
+
 check(9, 'Deploy branch still triggers a deploy', () => {
   must(deploy.includes('claude/migrate-to-github-deploy-3F5RD'),
     'the de facto default branch was removed from the push triggers — this stops ALL deploys');
@@ -850,7 +908,9 @@ check('gate', 'Every check this gate claims is still here', () => {
     'pdf.js worker matches its pinned library',
     "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
-    'Ops console ships nothing it should not', 'Deploy branch still triggers a deploy',
+    'Ops console ships nothing it should not',
+    'Published pages link only to published files',
+    'Deploy branch still triggers a deploy',
     'Unload telemetry intact', 'Harness cannot write to production',
     'Event inventory sees every name that reaches events',
     'Harness tests the pins the app ships',

@@ -58,6 +58,7 @@ const ROSTER = [
   [6, '@scrubpay .ics sentinel, both halves'],
   [8, 'Publish set is exactly the intended files'],
   [8, 'Ops console ships nothing it should not'],
+  [8, 'Published pages link only to published files'],
   [9, 'Deploy branch still triggers a deploy'],
   ['events', 'Unload telemetry intact'],
   ['events', 'Harness cannot write to production'],
@@ -179,6 +180,14 @@ const UNLOAD = 'Unload telemetry intact';
 const NEUTRAL = 'Harness cannot write to production';
 const INVENTORY = 'Event inventory sees every name that reaches events';
 const PDFW = 'pdf.js worker matches its pinned library';
+/* `[8]` became a shared tag the moment a third check joined it (2026-11-11) — and it had ALREADY
+   been shared by two since 2026-09-13 with neither break pinning a label, so `✗ [8]` from the ops
+   row would have been counted as a win for the CNAME break. That is the same hole the 2026-10-30
+   run fixed for `[2]` and the 2026-11-10 run fixed for `[events]`, still open in a third band.
+   All five `[8]` breaks now pin the label. */
+const PUBSET = 'Publish set is exactly the intended files';
+const OPSPAGE = 'Ops console ships nothing it should not';
+const LINKS = 'Published pages link only to published files';
 const BREAKS = [
   ['[build] JSX stops parsing', 'index.html', (s) => {
     const open = s.indexOf('<script type="text/babel" data-presets="react">');
@@ -259,9 +268,33 @@ const BREAKS = [
   ['[6] only the SECOND export stamp broken', 'index.html',
     (s) => s.replace("'UID:scrubpay-'+dateKey+'-'+safeId(ev.id)", "'UID:badgebudget-'+dateKey+'-'+safeId(ev.id)"), '6'],
   ['[8] CNAME dropped from the publish set', '.github/workflows/deploy.yml',
-    (s) => s.split('cp CNAME _site/').join('# cp CNAME _site/'), '8'],
+    (s) => s.split('cp CNAME _site/').join('# cp CNAME _site/'), '8', PUBSET],
   ['[8] ops.html assigns innerHTML', 'ops.html',
-    (s) => s.replace('</body>', '<script>document.body.innerHTML = "x";</script></body>'), '8'],
+    (s) => s.replace('</body>', '<script>document.body.innerHTML = "x";</script></body>'), '8', OPSPAGE],
+  /* The published-link clause, added 2026-11-11. Four breaks, one per `must()`, because a group of
+     musts negative-tested as a group only proves that ONE of them has teeth.
+
+     The first break is not hypothetical: it is PR #209's diff reduced to one line. That PR adds a
+     Settings link to `terms.html`, copies the file into the harness tree so all 922 smoke
+     assertions can drive it, and never adds it to deploy.yml — so it is green everywhere and a
+     404 on badgebudget.com. Measured against the real PR head, this check is the only thing in
+     the repo that goes red on it. */
+  ['[8] index.html links to a page the deploy never copies', 'index.html',
+    (s) => s.replace('<a href="privacy.html" target="_blank" rel="noopener"',
+      '<a href="terms.html">Terms</a>\n        <a href="privacy.html" target="_blank" rel="noopener"'), '8', LINKS],
+  /* The loop has to walk every published page, not just the app. ops.html is the second one, and
+     a break that only ever fired on index.html would pass a check that reads one file. */
+  ['[8] ops.html links to a page the deploy never copies', 'ops.html',
+    (s) => s.replace('</body>', '<a href="admin-notes.html">notes</a></body>'), '8', LINKS],
+  /* A computed attribute is invisible to a tag walk — the CSP check's blind spot and the reason
+     the pdf.js worker needed a check of its own. Intended friction rather than a silent gap. */
+  ['[8] a published page builds its href dynamically', 'index.html',
+    (s) => s.replace('<a href="privacy.html" target="_blank" rel="noopener"',
+      '<a href={PRIVACY_URL} target="_blank" rel="noopener"'), '8', LINKS],
+  /* Anti-omission, the rule checks 2, 13 and the harness pin all take: a page whose attribute
+     shape moves out from under the regex must FAIL, not pass for having nothing left to walk. */
+  ['[8] a published page stops yielding attributes this walk can see', 'privacy.html',
+    (s) => s.replace(/\b(href|src)="([^"]*)"/g, "$1='$2'"), '8', LINKS],
   ['[9] deploy branch removed from the triggers', '.github/workflows/deploy.yml',
     (s) => s.split('claude/migrate-to-github-deploy-3F5RD').join('claude/some-other-branch'), '9'],
   /* THREE checks share the `events` tag as of 2026-11-10, so every break below pins the label
