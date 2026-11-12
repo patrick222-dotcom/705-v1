@@ -662,6 +662,117 @@ call the four runs before this one made.
   (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md` again. **The one page
   Pat is meant to read still says "Updated 2026-11-02" — nine days.**
 
+### P1 (new, groom 2026-11-12)
+
+**Why this band sits BELOW the 11-06 through 11-11 bands instead of at the top of `## Queue`:** PR
+#209 (the `terms.html` draft, open for Pat's review since 2026-11-06) inserts its own `### P1` band
+at line 29. A seventh insert at that same hunk would hand Pat a merge conflict on a legal-text
+review for the seventh night running. Placed below, every diff applies cleanly — the same call the
+five runs before this one made.
+
+- [x] ~~**`tests/smoke.mjs` printed a number nothing compared, and it is the suite CI binds on**~~
+  — **SHIPPED 2026-11-12**, tonight's build (see Done log). (P1 · source:build ·
+  `harness:drivable`) Picked because `## Queue` holds no unblocked build item that does not need
+  Pat: `terms.html` is **built and open as #209**, the in-app deletion spec shipped 11-08, the gate
+  meta-test in CI and the three workflow one-liners are all blocked for agent sessions, and the
+  device classifier is explicitly in `## Needs a dedicated session`.
+  **The defect is `check_build.mjs`'s 2026-10-27 roster hole, still open in the other suite.** That
+  run added a roll-call to the gate because *"All N mechanical checks passed" was a number nothing
+  compared*. `tests/smoke.mjs` ends with `==== smoke: 922 passed / 0 failed ====` and **nothing has
+  ever asked which assertions were supposed to run**. A section is an `if (want(n))` block, so
+  three edits take whole sections out of the run and **exit 0**: a guard that can no longer be true,
+  a section renumbered into a free id, and a `SMOKE_ONLY` that leaks into the environment — the
+  tally simply comes back smaller. The parenthetical `(sections 5,6 only)` is printed to stdout and
+  nothing machine-reads it.
+  Section 58 is a roll-call of 57 declared sections, **outside `want()` on purpose** because the run
+  it most needs to speak up on is the narrowed one. Thirteen assertions, **six deliberate breaks
+  measured**, every one naming the right section id.
+- [ ] **The roster is now a figure that moves every time a section is added, and that is the deal**
+  (P2 · source:build · no action) — adding a section to `tests/smoke.mjs` now costs one line in
+  `SECTIONS`, and a run that forgets it goes red naming the id. This is the same friction
+  `check_build.mjs` took on 2026-10-27 and it is the point: a roster derived from the file it
+  checks cannot catch the file. **Do not "fix" it by generating `SECTIONS` from the source** —
+  clause (c) deliberately reads the source and compares it *against* the declaration, in both
+  directions; collapsing the two makes the check vacuous.
+- [ ] **The harness skill's THIRD lie caught this build too, and it cost one wasted full run**
+  (P2 · source:build · no action, but read it before the next script-level negative test) — the
+  five cheap breaks were driven against a copy under `.roster-scratch/` with `index.html`,
+  `ops.html`, `privacy.html`, `pdf.worker.min.js` and `node_modules` symlinked, and all five were
+  caught correctly, because `SMOKE_ONLY=5,6` never reaches a section that needs anything else. The
+  sixth break needed a **full** run, and that run died at section 15 with
+  `ERR_MODULE_NOT_FOUND … supabase/functions/_shared/badgebudget-core.mjs` — piped through `grep
+  '^FAIL'`, which printed **nothing and exited 0**. A break that looks CAUGHT and a break that
+  looks CLEAN are the same output when the run aborts. The copy needed `supabase/` as well; the
+  full list of what the suite reads from `ROOT` is `index.html`, `privacy.html`,
+  `supabase/functions/_shared/badgebudget-core.mjs`, `supabase/migrations/006_ops_device_trail.sql`
+  and (new tonight) `tests/smoke.mjs` itself. This is the same lesson the 11-09 run recorded for
+  `scripts/test_dashboard_snapshot.mjs`, arriving one suite over.
+- [ ] **A flat night with three new rows, and the eighth device in seven days is AhrefsBot**
+  (P2 · source:groom · no action) — `events` holds **1,797 rows** against 1,794 last night: three
+  new rows, one device (`24dd458a`, 2026-11-11 14:27:47), **self-declaring as
+  `AhrefsBot/7.0` in its user agent**, same shape as every device since 10-29 — `app_open
+  {fresh:true}` + `ob_step {step:0}` on the same timestamp, `ob_view {screen:'landing'}`, nothing
+  past screen 0, no `session_end`. `silence_watch` reads **FRESH** on a newest event **17.6h** old.
+  The 7-day cohort is **8** devices, **seven of which name themselves in the UA** (Googlebot ×5,
+  HubSpot Crawler, AhrefsBot) and one unplaced desktop `Chrome/146`. **Do not quote any of it as
+  activation** — the honest reading of the last nine days is still that the app may have had zero
+  human visitors.
+- [ ] **The 11-03 `client_error` fix is 6-for-6** (P2 · source:groom · no action) — `client_error`
+  is **30**, unchanged for the seventh groom. Tonight is a real test rather than a flat one:
+  `24dd458a`'s 14:27 load is a new load off the live build (`aa53aec`) that filed **no** row, and
+  before #208 it would have filed one. The 11-03 prediction *"expect this count to stay at 30 and
+  treat 31 as real"* has now held on fifteen loads.
+- [ ] **`feedback` is unchanged for the TWENTY-THIRD groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **27.8 days** old. `paystub_failed` has **still never fired for any reason**, so
+  the 10-13 item's "read a second device" bar is still not met — do not build a worker mitigation.
+- [ ] **Courtney has not opened the app in 22.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from any
+  device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown either
+  affordance. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **42**, `ics_sync_done`
+  **27** — all three identical for fifteen grooms.
+- [ ] **CABINET MISSED fires for the THIRD night, and the brief is now 10.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism. The decision
+  filed for Pat **ten times** is unchanged: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** Ten nights of the same unanswered filing is itself the answer to
+  whether a notify line is a mechanism — and tonight's build is the same defect class in a
+  different file, which is worth one line: a mechanism that only prints is not a mechanism.
+- [ ] **Last night's prediction HELD for the sixth time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-11 note staked out when it predicted its own `scripts/`-only merge would touch no
+  publish-set file. `privacy.html` and `ops.html` print the truncation sentence rather than a commit
+  and the boundary commit moved again (`6b59fce` → `37025f5`) — **expected, not a regression**: the
+  boundary is a property of this container's clone depth, which is why #210 stopped printing it as a
+  deploy fact. **Tonight's prediction:** tonight's merge touches only `tests/`, `BACKLOG.md` and
+  `CLAUDE.md`, so no publish-set file, so tomorrow's `deploy_watch` should **still** name `aa53aec`
+  for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — fifteenth night, and tonight's work went into the
+  suite CI DOES run** (P2 · `harness:unscoped` · needs the owner) —
+  `.github/workflows/ci.yml`'s `gate` job still does not call `scripts/test_check_build.mjs`, and
+  **editing a workflow file is blocked for agent sessions in this sandbox**. Still the same two
+  lines after the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run:
+  node scripts/test_check_build.mjs` (**55**, ~115s, re-run green tonight) and `- name:
+  Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s).
+  **Tonight deliberately chose the other side of that line**: the roll-call is thirteen assertions
+  inside `tests/smoke.mjs`, which the `smoke` job runs on every PR, so all six measured breaks sit
+  behind the binding gate. Still **three** one-line workflow edits waiting on one visit, counting
+  #209's `cp terms.html _site/`.
+- [ ] **PR #209 is still open on the loop's shared working branch — SIXTH night** (P1 · needs the
+  owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **6.3 days**. Tonight
+  branched to `claude/great-feynman-7vnwop`, so #209's head is untouched for the sixth run running.
+  The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8 origin/…`
+  followed by `--force-with-lease`, and a run that follows it literally still destroys Pat's pending
+  legal review — **that prompt is the one artefact no agent can edit**, so the standing answer is:
+  owner-tier work gets its own branch, and #209 should be merged or closed. **Its CI is red on
+  purpose since last night** (#214's new check names `terms.html`), which is the check working, not
+  a conflict with the review. `docs/cos/now.md` goes un-updated for the SEVENTH night for the same
+  reason (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one
+  page Pat is meant to read still says "Updated 2026-11-02" — ten days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4693,6 +4804,51 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-12 — **`tests/smoke.mjs` ended with a number nothing compared, in the suite CI binds on.**
+  `check_build.mjs` grew a roll-call on 2026-10-27 for exactly this reason — *"All N mechanical
+  checks passed" was a number nothing compared* — and the identical hole stayed open in the
+  Playwright suite, which is the **binding required check for runtime behaviour** and is where
+  almost every invariant's live proof lives. A section is an `if (want(n))` block and the run ends
+  `==== smoke: 922 passed / 0 failed ====`; nothing ever asked which assertions were *supposed* to
+  run. Three edits therefore take whole sections out and still **exit 0**: a guard that can no
+  longer be true, a section renumbered into a free id, and a `SMOKE_ONLY` leaked into the
+  environment. The tally just comes back smaller, and the `(sections 5,6 only)` parenthetical is
+  stdout nothing machine-reads.
+  **Section 58** is a declared roster of the 57 sections (id + label) plus a roll-call that runs
+  **outside `want()`**, because the run it most needs to speak up on is the narrowed one. `want()`
+  now records the order sections first ran and the assertion count at that moment — first answer
+  per id only, since section 34's guard is `want(34) || want(35)` and its body asks four more
+  times, so counting every call would corrupt the spans. Three clauses:
+  - **(a) every declared section ran.** Catches the deleted guard, the renumber, and the SMOKE_ONLY
+    leak. On a subset run the rule narrows to what `SMOKE_ONLY` asked for, and a requested section
+    that is not in the roster is named rather than ignored.
+  - **(b) every section that ran contributed at least one assertion.** This is the clause nothing
+    else in the repo can reach: a body that no-ops — an early `return`, every `ok()` inside a
+    branch that never fires — produces no FAIL line at all, only a smaller tally. Measured as the
+    span between consecutive first-runs, with the last section measured against the final total.
+  - **(c) the roster and the file's own `want(n)` guards agree, in both directions.** The only
+    clause that reads the source, and it exists for what (a) cannot see on a subset run: a section
+    **added** without a roster line. Both directions, because a roster that merely contains every
+    guard would pass with fifty spare ids in it.
+  **Thirteen assertions, six deliberate breaks, every one measured and every one naming the right
+  id.** Nine of the thirteen drive a pure `rosterProblems()` against a synthetic 3-section world —
+  section 53's pattern — because proving this has teeth would otherwise cost one ~15-minute full
+  run per break. The breaks: (1) section 6's guard made unreachable → `§6 never ran`, one FAIL,
+  where the same run printed *13 passed / 0 failed* before the fix; (2) section 5's assertions
+  neutered → `§5 ran but recorded no assertions` **while the count still read 2/2 sections**, which
+  is the clause earning its keep; (3) an undeclared `want(58)` added → `guards 58 / roster 57`;
+  (4) section 44's roster line deleted → `guards 57 / roster 56`; (5) section 44's label emptied →
+  the legibility assertion alone; (6) a **full** run with the roster at 56 → all three live clauses
+  red at once (`932 passed / 3 failed`), which is the only way to negative-test the full-run count.
+  **The harness skill's third lie cost one wasted run and is worth recording again.** Breaks 1–5
+  ran against a `.roster-scratch/` copy with four files and `node_modules` symlinked, and were
+  faithful — `SMOKE_ONLY=5,6` reaches nothing else. Break 6 needed a full run, which died at
+  section 15 with `ERR_MODULE_NOT_FOUND … badgebudget-core.mjs`, piped through `grep '^FAIL'`, and
+  printed **nothing while exiting 0**: an aborted run and a clean run are the same output through
+  that filter. The copy needed `supabase/` too. Same lesson the 11-09 run recorded one suite over.
+  Suite **922 → 935**; `node scripts/check_build.mjs` 21/21, `tests/core.test.mjs` 175,
+  `scripts/test_check_build.mjs` 55, `test_groom_seed` 33, `test_dashboard_snapshot` 44,
+  `test_silence_watch` 39, `test_deploy_watch` 98 — all green. No publish-set file touched.
 - 2026-11-11 — **Invariant 8 asserted the publish set was exactly five files and never that those
   five were enough.** `check_build.mjs` has compared deploy.yml's `cp` lines against a hardcoded
   five-element list since 2026-09-13, in both directions, and the comment above it says why: a file

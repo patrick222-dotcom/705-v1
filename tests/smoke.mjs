@@ -28,7 +28,117 @@ const LAUNCH = chromiumLaunch();
    Playwright's 30s default so a deliberately broken build fails fast instead of waiting it out.
    Unset, both default to the full suite at normal timeouts — CI is unaffected. */
 const ONLY = (process.env.SMOKE_ONLY || '').split(',').map((x) => x.trim()).filter(Boolean);
-const want = (n) => !ONLY.length || ONLY.includes(String(n));
+
+/* THE SUITE'S OWN ROLL-CALL (section 58, 2026-11-12).
+ *
+ * `check_build.mjs` grew a roster on 2026-10-27 because "All N mechanical checks passed" was a
+ * number nothing compared. This file had the identical hole, in the suite that is the BINDING CI
+ * gate for runtime behaviour: a section is an `if (want(n))` block, so a deleted guard, a section
+ * renumbered to a free id, or a `SMOKE_ONLY` that leaks into the environment all print
+ * `==== smoke: N passed / 0 failed ====` and exit 0 with whole sections never run. The tally
+ * counts assertions that RAN; nothing has ever asked which were supposed to.
+ *
+ * Declared by hand on purpose, and that is the whole design: a roster derived from the file it
+ * checks cannot catch the file. The number moving is intended friction — a new section costs one
+ * line here, the same deal `check_build.mjs` took.
+ *
+ * Section 58 itself is deliberately NOT in this list and does NOT go through `want()`. It is the
+ * roll-call, not a section, and it has to run on a SMOKE_ONLY run too — that is precisely the run
+ * where coverage is being quietly narrowed. */
+const SECTIONS = [
+  [1, 'boot happy path'],
+  [2, 'onboarding funnel instrumentation'],
+  [3, 'the avatar is the only Settings/sign-out route on a phone'],
+  [4, 'feedback tiles: pick the shape, get a scaffold'],
+  [5, 'failure mode: getSession() hangs (the WebKit deadlock)'],
+  [6, 'failure mode: Babel blocked -> the boot error screen'],
+  [7, 'ops console: the signed-out gate'],
+  [8, 'overtime reaches the screen, and the screen explains it'],
+  [9, 'the missed lunch reaches the screen'],
+  [10, 'the paystub importer, driven with a real PDF'],
+  [11, 'council 2026-09-13, bucket 1'],
+  [12, 'session_end: the exit row'],
+  [13, 'ob_step 0, and the harness’s own containment'],
+  [14, 'the feedback row links to that device’s trail (migration 007)'],
+  [15, 'wage-core, council 2026-09-13 bucket 3'],
+  [16, 'the saved-pattern card and the multi-paycheck average'],
+  [17, 'council 2026-09-18 re-check: the six fixes nothing pinned'],
+  [18, 'the public copy: crawler, search result, JS-disabled human'],
+  [19, 'in-app and privacy-notice copy vs the positioning decision'],
+  [20, 'the exit row keeps its device id when storage fails at unload'],
+  [21, 'the swap board goes quiet (Positioning, 2026-09-19)'],
+  [22, 'imported shift times honour the feed’s timezone'],
+  [23, 'a webcal:// feed URL reaches the proxy as https'],
+  [24, 'a failed sync says WHY, in the record that outlives the day'],
+  [25, 'the day sheet’s date header and the re-sync banner summary'],
+  [26, 'the NurseGrid connect card and its how-to sheet'],
+  [27, 'every sync says how it ended, and which provider it was'],
+  [28, 'a feed never proposes deleting shifts she has WORKED'],
+  [29, 'time off in a feed defaults to "Not a shift"'],
+  [30, 'money surfaces and the wordmark fit (iPhone 13 + iPhone SE)'],
+  [31, 'the "Bucks County" palette reaches existing users'],
+  [32, 'the repair half of the time-off default'],
+  [33, 'the unload save rides keepalive'],
+  [34, 'a failed cloud load retries instead of sinking the load'],
+  [35, 'the banner for an exhausted load'],
+  [36, 'an update says what it is about to change'],
+  [37, '"Not now" means not this, not "ask me again in ten minutes"'],
+  [38, 'onboarding v2: the funnel, its events, Healthcare equality'],
+  [39, 'the configurable work period reaches the screen'],
+  [40, 'pre-tax health premiums skip FICA; retirement money does not'],
+  [41, 'app_open says whether this load MINTED its device id'],
+  [42, 'pay events: per-shift multiplier + minimum hours'],
+  [43, 'a PDF reader that would not load is not a parse failure'],
+  [44, 'a photo of a paystub is refused by naming the PHOTO'],
+  [45, 'deleting a synced shift remembers its uid'],
+  [46, '"only sync when I press the button"'],
+  [47, 'a parse that succeeded and found nothing is countable'],
+  [48, 'emptying a day saves it empty, and the button says so'],
+  [49, 'a raise from a date (effective-dated rates)'],
+  [50, 'the manual-sync switch is offered on the re-sync banner'],
+  [51, 'the same opt-out on the import stepper’s confirm card'],
+  [52, 'Invariant 6 round trip: our own export re-imports as NOTHING'],
+  [53, 'the browser is FOUND, not pinned'],
+  [54, 'the feed credential never reaches a client_error row'],
+  [55, 'extra pay on a set date (dated pay items, session 4)'],
+  [56, '"Clear all data" takes the calendar-feed link with it'],
+  [57, 'a clean load files no client_error row (the Babel style note)'],
+];
+
+/* `ran` is the order sections FIRST ran; `marks` is how many assertions had been recorded when
+   each started, which is what lets the roll-call see a section that ran and asserted nothing.
+   Only the first true answer per id is recorded: section 34's guard is `want(34) || want(35)` and
+   its body asks again four times, so counting every call would corrupt the spans. */
+const ran = [];
+const marks = new Map();
+const want = (n) => {
+  if (ONLY.length && !ONLY.includes(String(n))) return false;
+  if (!marks.has(n)) { ran.push(n); marks.set(n, pass + fail); }
+  return true;
+};
+
+/* Pure, and that is what makes the negative test affordable: proving this check has teeth would
+   otherwise cost one FULL suite run per break. Returns the problems found — empty means the run
+   covered what the tally implies it covered. */
+const rosterProblems = ({ declared, ran: order, marks: at, total, only }) => {
+  const problems = [];
+  const ids = declared.map(([id]) => id);
+  const seen = new Set(order);
+  const asked = (only || []).map((x) => Number(x));
+  ids.forEach((id, i) => { if (ids.indexOf(id) !== i) problems.push(`roster declares §${id} twice`); });
+  for (const id of order) if (!ids.includes(id)) problems.push(`§${id} ran but is not in the roster`);
+  for (const id of asked) if (!ids.includes(id)) problems.push(`SMOKE_ONLY asked for §${id}, which is not in the roster`);
+  const expected = asked.length ? ids.filter((id) => asked.includes(id)) : ids;
+  for (const id of expected) if (!seen.has(id)) problems.push(`§${id} never ran`);
+  /* The quiet half: a body that no-ops contributes no FAIL line, only a smaller tally. Measured
+     as the span between one section's first run and the next's. */
+  for (let i = 0; i < order.length; i++) {
+    const from = at.get(order[i]);
+    const to = i + 1 < order.length ? at.get(order[i + 1]) : total;
+    if (!(Number(to) - Number(from) > 0)) problems.push(`§${order[i]} ran but recorded no assertions`);
+  }
+  return problems;
+};
 const STEP_TIMEOUT = Number(process.env.SMOKE_TIMEOUT || 0);
 
 let pass = 0, fail = 0;
@@ -7346,6 +7456,89 @@ const run = async () => {
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
+
+  /* ---- 58. the suite's own roll-call -------------------------------------------------------
+     Runs on EVERY invocation, outside `want()`, because the run it most needs to speak up on is
+     the narrowed one. Three directions, and the first two are the ones a FAIL line cannot
+     otherwise reach:
+       (a) every section this file declares actually ran  — catches a deleted `if (want(n))`
+           guard, a section renumbered into a free id, and a SMOKE_ONLY leaked into CI;
+       (b) every section that ran contributed at least one assertion — catches a body that
+           no-ops (an early `return`, a guard that can no longer be true, every `ok()` inside a
+           branch that never fires). This one is silent today: the tally simply comes back
+           smaller, and nothing compares it;
+       (c) the roster and the file's own guards agree — catches a section ADDED without a roster
+           line, on a subset run, where (a) cannot see it.
+     `total` is captured before any assertion below it, so section 57's span is its own. */
+  const liveTotal = pass + fail;
+
+  /* Synthetic cases first. Driving the real suite once per break would be ~15 minutes a piece;
+     a pure function takes the breaks in milliseconds and still pins the same rules. The shape is
+     section 53's: assert against a fabricated world, because an assertion about the real one
+     would only describe this run. */
+  const R3 = [[1, 'a'], [2, 'b'], [3, 'c']];
+  const clean = { declared: R3, ran: [1, 2, 3], marks: new Map([[1, 0], [2, 4], [3, 9]]), total: 12, only: [] };
+  const only = (o) => (x) => ({ ...x, only: o });
+  const p58 = (x) => rosterProblems(x);
+
+  ok('roll-call: a full, complete run reports no problems',
+    p58(clean).length === 0, JSON.stringify(p58(clean)));
+  ok('roll-call: a section that never ran is named',
+    p58({ ...clean, ran: [1, 3], marks: new Map([[1, 0], [3, 4]]) }).join('|') === '§2 never ran',
+    p58({ ...clean, ran: [1, 3], marks: new Map([[1, 0], [3, 4]]) }).join('|'));
+  ok('roll-call: a section that ran but is not declared is named',
+    p58({ ...clean, ran: [1, 2, 3, 9], marks: new Map([[1, 0], [2, 4], [3, 9], [9, 11]]) })
+      .some((m) => m === '§9 ran but is not in the roster'),
+    JSON.stringify(p58({ ...clean, ran: [1, 2, 3, 9], marks: new Map([[1, 0], [2, 4], [3, 9], [9, 11]]) })));
+  ok('roll-call: a section that ran and asserted NOTHING is named',
+    p58({ ...clean, marks: new Map([[1, 0], [2, 4], [3, 4]]), total: 9 }).join('|')
+      === '§2 ran but recorded no assertions',
+    p58({ ...clean, marks: new Map([[1, 0], [2, 4], [3, 4]]), total: 9 }).join('|'));
+  ok('roll-call: and the LAST section is covered by the same rule, against the final tally',
+    p58({ ...clean, total: 9 }).join('|') === '§3 ran but recorded no assertions',
+    p58({ ...clean, total: 9 }).join('|'));
+  ok('roll-call: a SMOKE_ONLY subset that ran is clean, not "two sections missing"',
+    p58(only(['2'])({ ...clean, ran: [2], marks: new Map([[2, 0]]), total: 3 })).length === 0,
+    JSON.stringify(p58(only(['2'])({ ...clean, ran: [2], marks: new Map([[2, 0]]), total: 3 }))));
+  ok('roll-call: a SMOKE_ONLY section that did NOT run is still named',
+    p58(only(['2', '3'])({ ...clean, ran: [2], marks: new Map([[2, 0]]), total: 3 })).join('|')
+      === '§3 never ran',
+    p58(only(['2', '3'])({ ...clean, ran: [2], marks: new Map([[2, 0]]), total: 3 })).join('|'));
+  ok('roll-call: SMOKE_ONLY naming a section this suite does not have is named',
+    p58(only(['99'])({ ...clean, ran: [], marks: new Map(), total: 0 })).join('|')
+      === 'SMOKE_ONLY asked for §99, which is not in the roster',
+    p58(only(['99'])({ ...clean, ran: [], marks: new Map(), total: 0 })).join('|'));
+  ok('roll-call: a roster that declares one id twice says so',
+    p58({ ...clean, declared: [[1, 'a'], [2, 'b'], [2, 'b again'], [3, 'c']] })
+      .some((m) => m === 'roster declares §2 twice'),
+    JSON.stringify(p58({ ...clean, declared: [[1, 'a'], [2, 'b'], [2, 'b again'], [3, 'c']] })));
+
+  /* (c) the roster against the file's own guards. This is the only clause that reads the source,
+     and it exists for the direction (a) is blind to on a narrowed run: a section added without a
+     roster line. Both directions, because a roster that merely CONTAINS every guard would pass
+     with fifty extra ids in it. */
+  const smokeSrc = readFileSync(join(ROOT, 'tests', 'smoke.mjs'), 'utf8');
+  const guardIds = [...new Set([...smokeSrc.matchAll(/\bwant\((\d+)\)/g)].map((m) => Number(m[1])))]
+    .sort((a, b) => a - b);
+  const rosterIds = SECTIONS.map(([id]) => id);
+  ok('roll-call: the roster declares exactly the sections this file guards',
+    guardIds.length === rosterIds.length && guardIds.every((id, i) => id === rosterIds[i]),
+    `guards ${guardIds.length} / roster ${rosterIds.length}`
+    + `  guards-not-declared: ${JSON.stringify(guardIds.filter((id) => !rosterIds.includes(id)))}`
+    + `  declared-not-guarded: ${JSON.stringify(rosterIds.filter((id) => !guardIds.includes(id)))}`);
+  ok('roll-call: every declared section carries a label, so a failure is legible',
+    SECTIONS.every(([, label]) => typeof label === 'string' && label.trim().length > 3),
+    String(SECTIONS.length));
+
+  /* And the live one. */
+  const liveProblems = rosterProblems({ declared: SECTIONS, ran, marks, total: liveTotal, only: ONLY });
+  ok(`roll-call: this run covered what it claims — ${ran.length}/${ONLY.length ? ONLY.length : SECTIONS.length} sections`,
+    liveProblems.length === 0, liveProblems.join(' | '));
+  if (!ONLY.length) {
+    ok('roll-call: a full run means all 57 sections, counted not assumed',
+      ran.length === SECTIONS.length && SECTIONS.length === 57,
+      `${ran.length} ran / ${SECTIONS.length} declared`);
+  }
 
   console.log(`\n==== smoke: ${pass} passed / ${fail} failed ====${ONLY.length ? `  (sections ${ONLY.join(',')} only)` : ''}\n`);
   process.exit(fail ? 1 : 0);

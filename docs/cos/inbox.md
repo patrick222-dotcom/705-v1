@@ -7,6 +7,24 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-12 · nightly · belongs to no live thread (T1/T2/T3) — a test-coverage fix of the same
+  class as the last two nights, one suite over: `tests/smoke.mjs` ended with
+  `==== smoke: 922 passed / 0 failed ====` and **nothing had ever compared that number to what was
+  supposed to run**, so a deleted `if (want(n))` guard, a renumbered section, or a `SMOKE_ONLY`
+  leaked into the environment all exit 0 with whole sections never run. That is the hole
+  `check_build.mjs` closed for itself on 2026-10-27, still open in the suite CI actually binds on.
+  New section 58: a hand-declared roster of 57 sections, run outside `want()`, failing if a section
+  never ran, if a section ran and asserted **nothing**, or if the roster and the file's own guards
+  disagree either way. Suite 922 → 935, six measured breaks. · **two things for the chief of
+  staff:** (a) **CABINET MISSED fires for the third night** (`brief.md` 10.8 days) and the
+  dead-man's-switch decision has now been filed unanswered **ten** nights — which tonight's build
+  makes concrete rather than rhetorical: a mechanism that only prints a line is the exact defect
+  just fixed in two suites, and this one is still open; (b) PR #209 is **6.3 days** open, its CI is
+  **red on purpose** since last night's check named `terms.html`, and it has blocked
+  `docs/cos/now.md` for a **seventh** consecutive night — the one page Pat reads still says
+  "Updated 2026-11-02", ten days stale, because a PR needing two one-line owner edits is sitting
+  unmerged.
+
 - 2026-11-11 · nightly · touches T2 but is not T2 work — a deploy-correctness gate: Invariant 8
   asserted the publish set is *exactly* five files and never that those five are **enough**, so a
   published page could link to a file `deploy.yml` never copies. New `check_build.mjs` check 21
