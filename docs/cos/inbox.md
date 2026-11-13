@@ -7,6 +7,24 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-13 · nightly · **attaches to T2 `legitimacy`** — Invariant 13's RLS clause had no
+  mechanism and, by its own `Verify` line, no reproducible check at all (`rls_audit.js` is not in
+  git). It decides whether the iCal feed URL — a bearer credential — is readable by the public
+  anon key in `index.html`, and a leak there is silent by construction. New
+  `scripts/access_watch.mjs` reads the production catalog and grades 16 rules across
+  `ical_subscriptions`, `user_data`, `events`, `feedback`, `ops_admins` and the five `ops_*`
+  functions; classifier is `tests/smoke.mjs` §59 (27 assertions, eight measured breaks), put in
+  the suite CI runs rather than a fourth orphan suite. **First run: TIGHT, 16/16 — the clause
+  holds, which nothing in this repo had ever established.** · **three things for the chief of
+  staff:** (a) one real finding to route — `anon` holds **TRUNCATE** on `user_data` and the swap
+  tables, and TRUNCATE escapes RLS, so the only control today is that PostgREST has no route to
+  it; the fix is a one-line revoke but it is production DDL and needs a dedicated session (Risk
+  seat); (b) **CABINET MISSED fires for the fourth night** (`brief.md` 11.6 days) and the
+  dead-man's-switch decision is now **eleven** nights unanswered — tonight's build is the third
+  consecutive instance of the same class, a true sentence with no mechanism under it, so the
+  pattern is the finding; (c) PR #209 is **7.3 days** open and has blocked `docs/cos/now.md` for
+  an **eighth** night — the one page Pat reads still says "Updated 2026-11-02".
+
 - 2026-11-12 · nightly · belongs to no live thread (T1/T2/T3) — a test-coverage fix of the same
   class as the last two nights, one suite over: `tests/smoke.mjs` ended with
   `==== smoke: 922 passed / 0 failed ====` and **nothing had ever compared that number to what was

@@ -13,6 +13,12 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY, findChromium, chromiumLaunch } from './harness.mjs';
+/* Section 59 drives the access watch's classifier with no browser and no network. The watch
+   itself only runs `main()` when it IS the entry point, so importing it here is inert. */
+import {
+  classify as classifyAccess, parseAclItem, effectivePrivs as effectiveAccessPrivs,
+  exprIsOwnerGated, policyIsOwnerGated,
+} from '../scripts/access_watch.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRATCH = join(ROOT, '.harness-scratch');
@@ -103,6 +109,7 @@ const SECTIONS = [
   [55, 'extra pay on a set date (dated pay items, session 4)'],
   [56, '"Clear all data" takes the calendar-feed link with it'],
   [57, 'a clean load files no client_error row (the Babel style note)'],
+  [59, 'the access watch\u2019s classifier (Invariant 13\u2019s RLS clause)'],
 ];
 
 /* `ran` is the order sections FIRST ran; `marks` is how many assertions had been recorded when
@@ -240,6 +247,183 @@ const run = async () => {
       !live.executablePath || existsSync(live.executablePath), live.executablePath || '(playwright-core resolves)');
 
     rmSync(bRoot, { recursive: true, force: true });
+  }
+
+  /* ---- 59. the access watch's classifier ----------------------------------------------------
+     Pure logic, no browser and no network, and it sits HERE rather than at the end for the same
+     reason §53 does: a section that needs no browser should not be hostage to one.
+
+     Why it is in THIS file and not a `scripts/test_access_watch.mjs`. Two suites of exactly that
+     shape — `scripts/test_check_build.mjs` and `scripts/test_dashboard_snapshot.mjs` — have been
+     waiting fifteen nights on a one-line workflow edit no agent session in this sandbox can make,
+     and the 2026-11-10 run's whole lesson was to put the guard in the gate CI actually runs. The
+     `smoke` job is a required check. A third orphan suite would be a third.
+
+     The fixture is the production catalog as `access_watch.mjs` read it on 2026-11-13, so every
+     assertion below is a ONE-FIELD mutation of a real answer rather than of an invented one. */
+  if (want(59)) {
+    /* A true copy of what the live probe returned tonight, trimmed to the tables the rules name. */
+    const TIGHT_CATALOG = () => ({
+      tables: [
+        { name: 'ical_subscriptions', rlsEnabled: true,
+          acl: 'postgres=arwdDxtm/postgres | authenticated=arwdDxtm/postgres | service_role=arwdDxtm/postgres' },
+        { name: 'user_data', rlsEnabled: true,
+          acl: 'postgres=arwdDxtm/postgres | anon=arwdDxtm/postgres | authenticated=arwdDxtm/postgres | service_role=arwdDxtm/postgres' },
+        { name: 'events', rlsEnabled: true,
+          acl: 'postgres=arwdDxtm/postgres | anon=aDxtm/postgres | authenticated=aDxtm/postgres | service_role=arwdDxtm/postgres' },
+        { name: 'feedback', rlsEnabled: true,
+          acl: 'postgres=arwdDxtm/postgres | anon=aDxtm/postgres | authenticated=aDxtm/postgres | service_role=arwdDxtm/postgres' },
+        { name: 'ops_admins', rlsEnabled: true,
+          acl: 'postgres=arwdDxtm/postgres | service_role=arwdDxtm/postgres' },
+      ],
+      policies: [
+        ...['SELECT', 'INSERT', 'UPDATE', 'DELETE'].flatMap((cmd) => [
+          { table: 'ical_subscriptions', name: `ical_sub_${cmd.toLowerCase()}`, cmd, roles: '{public}',
+            qual: cmd === 'INSERT' ? null : '(( SELECT auth.uid() AS uid) = user_id)',
+            with_check: cmd === 'INSERT' || cmd === 'UPDATE' ? '(( SELECT auth.uid() AS uid) = user_id)' : null },
+          { table: 'user_data', name: `user_data_${cmd.toLowerCase()}`, cmd, roles: '{public}',
+            qual: cmd === 'INSERT' ? null : '(( SELECT auth.uid() AS uid) = user_id)',
+            with_check: cmd === 'INSERT' || cmd === 'UPDATE' ? '(( SELECT auth.uid() AS uid) = user_id)' : null },
+        ]),
+        { table: 'events', name: 'anyone can insert events', cmd: 'INSERT', roles: '{anon,authenticated}',
+          qual: null, with_check: '((char_length(name) >= 1) AND (char_length(name) <= 64))' },
+      ],
+      functions: ['is_ops_admin', 'ops_device', 'ops_device_list', 'ops_feedback_inbox', 'ops_feedback_summary']
+        .map((name) => ({ name, acl: 'postgres=X/postgres | authenticated=X/postgres | service_role=X/postgres', secdef: true })),
+    });
+    const verdictOf = (mutate) => {
+      const c = TIGHT_CATALOG();
+      if (mutate) mutate(c);
+      return classifyAccess({ catalog: c });
+    };
+    const ruleNamed = (r, frag) => (r.rules || []).find((x) => x.name.includes(frag));
+
+    /* The control. Without this, every break below could be passing for the wrong reason. */
+    const base = verdictOf(null);
+    ok('59 access: tonight\'s real production catalog classifies TIGHT',
+      base.verdict === 'TIGHT' && base.exitCode === 0, `${base.verdict} — ${base.reason}`);
+    ok('59 access: and it graded all sixteen rules, not a subset',
+      (base.rules || []).length === 16, String((base.rules || []).length));
+
+    /* --- the ACL parser, which is the part a grep would have got wrong ---------------------- */
+    const anonEvents = parseAclItem('anon=aDxtm/postgres');
+    ok('59 access: aDxtm is INSERT without SELECT — the whole basis of "insert-only"',
+      anonEvents.grantee === 'anon' && anonEvents.privs.includes('INSERT') && !anonEvents.privs.includes('SELECT'),
+      JSON.stringify(anonEvents));
+    ok('59 access: an empty grantee is PUBLIC, which is how Postgres writes a grant to everyone',
+      parseAclItem('=r/postgres').grantee === 'PUBLIC', JSON.stringify(parseAclItem('=r/postgres')));
+    ok('59 access: the grant-option star is not itself a privilege',
+      !parseAclItem('anon=r*/postgres').privs.includes('UNKNOWN(*)'),
+      JSON.stringify(parseAclItem('anon=r*/postgres').privs));
+    ok('59 access: an unknown privilege letter is KEPT, never dropped into looking harmless',
+      parseAclItem('anon=Z/postgres').privs.join() === 'UNKNOWN(Z)',
+      JSON.stringify(parseAclItem('anon=Z/postgres').privs));
+
+    /* Asymmetry (b): a grant to PUBLIC reaches anon without the string "anon" appearing. */
+    ok('59 access: a PUBLIC grant counts as an anon grant',
+      effectiveAccessPrivs('postgres=arwdDxtm/postgres | =r/postgres', 'anon').has('SELECT'));
+    const viaPublic = verdictOf((c) => {
+      c.tables.find((t) => t.name === 'ical_subscriptions').acl += ' | =r/postgres';
+    });
+    ok('59 access: so `grant select on ical_subscriptions to public` is LOOSE, not invisible',
+      viaPublic.verdict === 'LOOSE'
+      && /GRANTED SELECT/.test(ruleNamed(viaPublic, 'ical_subscriptions: anon holds no grant')?.detail || ''),
+      `${viaPublic.verdict} — ${ruleNamed(viaPublic, 'ical_subscriptions: anon holds no grant')?.detail}`);
+
+    /* Asymmetry (a): NULL means owner-only on a table and PUBLIC EXECUTE on a function. */
+    const nullTableAcl = verdictOf((c) => { c.tables.find((t) => t.name === 'ical_subscriptions').acl = null; });
+    ok('59 access: a table with NO acl is owner-only, so it stays TIGHT',
+      nullTableAcl.verdict === 'TIGHT', `${nullTableAcl.verdict} — ${nullTableAcl.reason}`);
+    const nullFnAcl = verdictOf((c) => { c.functions.find((f) => f.name === 'ops_device').acl = null; });
+    ok('59 access: a FUNCTION with no acl is PUBLIC EXECUTE, so the SAME null is LOOSE',
+      nullFnAcl.verdict === 'LOOSE'
+      && /no ACL = PUBLIC EXECUTE/.test(ruleNamed(nullFnAcl, 'not executable by anon')?.detail || ''),
+      `${nullFnAcl.verdict} — ${ruleNamed(nullFnAcl, 'not executable by anon')?.detail}`);
+
+    /* --- the policy shape test ---------------------------------------------------------- */
+    ok('59 access: `auth.uid() = user_id` is owner-gated',
+      exprIsOwnerGated('(( SELECT auth.uid() AS uid) = user_id)'));
+    ok('59 access: a `true` qual is NOT, however permissive the policy is called',
+      !exprIsOwnerGated('true'));
+    ok('59 access: `auth.uid() is not null` names the function and gates NOTHING',
+      !exprIsOwnerGated('(auth.uid() IS NOT NULL)'));
+    ok('59 access: and `user_id = user_id` is a tautology, not a gate',
+      !exprIsOwnerGated('(user_id = user_id)'));
+    ok('59 access: an owner-gated qual does not excuse a `true` with_check',
+      !policyIsOwnerGated({ qual: '(( SELECT auth.uid() AS uid) = user_id)', with_check: 'true' }));
+
+    /* --- the four ways a table rule goes LOOSE ------------------------------------------ */
+    const rlsOff = verdictOf((c) => { c.tables.find((t) => t.name === 'user_data').rlsEnabled = false; });
+    ok('59 access: RLS switched off on user_data is LOOSE',
+      rlsOff.verdict === 'LOOSE' && ruleNamed(rlsOff, 'user_data: RLS enabled')?.ok === false, rlsOff.verdict);
+    const widened = verdictOf((c) => {
+      c.policies.find((p) => p.table === 'user_data' && p.cmd === 'SELECT').qual = 'true';
+    });
+    ok('59 access: one user_data SELECT policy widened to `true` is LOOSE',
+      widened.verdict === 'LOOSE' && ruleNamed(widened, 'user_data: every policy')?.ok === false, widened.verdict);
+    const noDelete = verdictOf((c) => {
+      c.policies = c.policies.filter((p) => !(p.table === 'ical_subscriptions' && p.cmd === 'DELETE'));
+    });
+    ok('59 access: losing the DELETE policy is LOOSE — Invariant 13 needs clearAll to delete the row',
+      noDelete.verdict === 'LOOSE'
+      && /no owner-gated policy for DELETE/.test(ruleNamed(noDelete, 'ical_subscriptions: all four')?.detail || ''),
+      ruleNamed(noDelete, 'ical_subscriptions: all four')?.detail);
+    const forAll = verdictOf((c) => {
+      c.policies = c.policies.filter((p) => p.table !== 'ical_subscriptions');
+      c.policies.push({ table: 'ical_subscriptions', name: 'ical_sub_all', cmd: 'ALL', roles: '{public}',
+        qual: '(( SELECT auth.uid() AS uid) = user_id)', with_check: '(( SELECT auth.uid() AS uid) = user_id)' });
+    });
+    ok('59 access: a single owner-gated `FOR ALL` policy covers all four commands',
+      forAll.verdict === 'TIGHT', `${forAll.verdict} — ${forAll.reason}`);
+
+    /* --- the grant rules the public anon key makes real ---------------------------------- */
+    const anonSelect = verdictOf((c) => {
+      const t = c.tables.find((x) => x.name === 'events');
+      t.acl = t.acl.replace('anon=aDxtm', 'anon=arDxtm');
+    });
+    ok('59 access: one SELECT letter added for anon on `events` is LOOSE',
+      anonSelect.verdict === 'LOOSE' && ruleNamed(anonSelect, 'events: anon cannot')?.ok === false,
+      ruleNamed(anonSelect, 'events: anon cannot')?.detail);
+    const opsPolicy = verdictOf((c) => {
+      c.policies.push({ table: 'ops_admins', name: 'fix the advisor INFO', cmd: 'SELECT',
+        roles: '{authenticated}', qual: 'true', with_check: null });
+    });
+    ok('59 access: "fixing" the ops_admins advisor INFO with a policy is LOOSE',
+      opsPolicy.verdict === 'LOOSE' && ruleNamed(opsPolicy, 'ops_admins: still zero')?.ok === false,
+      ruleNamed(opsPolicy, 'ops_admins: still zero')?.detail);
+    const opsAnon = verdictOf((c) => {
+      c.functions.find((f) => f.name === 'ops_feedback_inbox').acl += ' | anon=X/postgres';
+    });
+    ok('59 access: an anon EXECUTE on an ops_* function is LOOSE — that is the gate removed',
+      opsAnon.verdict === 'LOOSE' && ruleNamed(opsAnon, 'not executable by anon')?.ok === false,
+      ruleNamed(opsAnon, 'not executable by anon')?.detail);
+    const notDefiner = verdictOf((c) => { c.functions.find((f) => f.name === 'ops_device').secdef = false; });
+    ok('59 access: an ops_* function that stops being SECURITY DEFINER is LOOSE',
+      notDefiner.verdict === 'LOOSE' && ruleNamed(notDefiner, 'SECURITY DEFINER')?.ok === false,
+      ruleNamed(notDefiner, 'SECURITY DEFINER')?.detail);
+
+    /* --- missing subjects, which must never pass by omission ----------------------------- */
+    const renamed = verdictOf((c) => { c.tables = c.tables.filter((t) => t.name !== 'ical_subscriptions'); });
+    ok('59 access: a renamed/absent ical_subscriptions is UNKNOWN, never TIGHT',
+      renamed.verdict === 'UNKNOWN' && renamed.exitCode === 2, `${renamed.verdict} — ${renamed.reason}`);
+    const noFns = verdictOf((c) => { c.functions = []; });
+    ok('59 access: no ops_* function at all is UNKNOWN, not "nothing to expose"',
+      noFns.verdict === 'UNKNOWN', `${noFns.verdict} — ${noFns.reason}`);
+
+    /* A confirmed loosening outranks a check that could not be established — otherwise the one
+       line that matters is buried under "could not establish". */
+    const both = verdictOf((c) => {
+      c.tables = c.tables.filter((t) => t.name !== 'ops_admins');
+      c.tables.find((t) => t.name === 'user_data').rlsEnabled = false;
+    });
+    ok('59 access: LOOSE outranks UNKNOWN when both are present',
+      both.verdict === 'LOOSE' && both.exitCode === 1, `${both.verdict} — ${both.reason}`);
+
+    /* An unreadable catalog is UNREACHABLE, and specifically is not a quiet TIGHT on zero rules. */
+    const dead = classifyAccess({ error: 'Management API HTTP 503' });
+    ok('59 access: an unreadable catalog is UNREACHABLE with a non-zero exit, not an empty TIGHT',
+      dead.verdict === 'UNREACHABLE' && dead.exitCode === 2 && (dead.rules || []).length === 0,
+      `${dead.verdict}/${dead.exitCode}`);
   }
 
   rmSync(SCRATCH, { recursive: true, force: true });
@@ -7535,8 +7719,8 @@ const run = async () => {
   ok(`roll-call: this run covered what it claims — ${ran.length}/${ONLY.length ? ONLY.length : SECTIONS.length} sections`,
     liveProblems.length === 0, liveProblems.join(' | '));
   if (!ONLY.length) {
-    ok('roll-call: a full run means all 57 sections, counted not assumed',
-      ran.length === SECTIONS.length && SECTIONS.length === 57,
+    ok('roll-call: a full run means all 58 sections, counted not assumed',
+      ran.length === SECTIONS.length && SECTIONS.length === 58,
       `${ran.length} ran / ${SECTIONS.length} declared`);
   }
 
