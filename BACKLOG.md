@@ -773,6 +773,125 @@ five runs before this one made.
   reason (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one
   page Pat is meant to read still says "Updated 2026-11-02" — ten days.**
 
+### P1 (new, groom 2026-11-13)
+
+**Why this band sits BELOW the 11-06 through 11-12 bands instead of at the top of `## Queue`:**
+unchanged from the last six runs — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and a seventh insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 13's RLS clause has been held, for its entire life, by a file nobody can
+  run**~~ — **SHIPPED 2026-11-13**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked the same way the last six nights were: `## Queue` has
+  no unblocked build item that does not need Pat — `terms.html` is built and open as #209, the
+  gate meta-test and the dashboard-inventory suite are both one blocked workflow line, the three
+  unmigrated tables are explicitly "not nightly work", and the device classifier is in `## Needs a
+  dedicated session`.
+  **The defect:** Invariant 13 has five clauses. Three got a mechanical gate (10-26, 10-29) and
+  one got a runtime redaction (10-28). The fifth — *"owner-only RLS, no `anon` grants"* — got
+  nothing, and its own `Verify` line says why: *"`rls_audit.js` — **not in git**, so currently
+  unreproducible"*. A leak there is silent by construction, so there is no symptom to notice and
+  nothing to grep; the only thing that can be read is the catalog. `scripts/access_watch.mjs`
+  reads it and grades 16 rules. **27 assertions in `tests/smoke.mjs` §59, eight measured breaks.**
+- [ ] **The clause HOLDS, and this is the first time anything in this repo established that**
+  (P2 · source:build · no action) — first run, 2026-11-13: **TIGHT**, 16/16. `ical_subscriptions`
+  has row security on, four policies all `auth.uid() = user_id`, and **`authenticated` is the only
+  role in its ACL** — `anon` holds no privilege on it at all, so even a broken policy would meet a
+  table the public anon key cannot address. Two independent layers, both intact. `user_data` is
+  owner-gated on all four commands; `events` and `feedback` have no SELECT for either role;
+  `ops_admins` is still at zero policies; all five `ops_*`/`is_ops_admin` functions are
+  `authenticated`+`service_role` EXECUTE only and still SECURITY DEFINER. **Nine weeks of
+  "UNCHECKED (human-held)" in the gate's roll-call turned out to be nine weeks of a true claim
+  nobody had checked** — which is the good outcome and not a reason to have left it.
+- [ ] **`anon` holds TRUNCATE on `user_data`, and TRUNCATE is the one verb RLS does not cover**
+  (P2 · source:build · needs a dedicated session · thread T2) — read from the catalog tonight:
+  `anon=arwdDxtm` on `user_data` and every swap table, `anon=aDxtm` on `events`/`feedback`. The
+  `D` is TRUNCATE. RLS policies apply to SELECT/INSERT/UPDATE/DELETE **and not to TRUNCATE**, so
+  the four owner-gated policies on `user_data` are no defence against it: the only thing between
+  the public anon key in `index.html`:831 and every user's pay history being gone is that
+  **PostgREST has no route that issues TRUNCATE**. That is an implementation detail of a
+  dependency, not a control this repo holds. These are Supabase's default grants in `public`
+  (`alter default privileges … grant all on tables to anon, authenticated`), so nobody chose them
+  and nothing has ever named them. **The fix is one line and it TIGHTENS access** —
+  `revoke truncate on all tables in schema public from anon, authenticated;` — but it is
+  production DDL through the Management API, which CLAUDE.md puts in a dedicated session, and it
+  needs a pass over the swap tables rather than a blind sweep. **Deliberately NOT a rule in
+  `access_watch` yet**, and the script says so where the rule would go: a watch that is red on its
+  first night over an unreachable privilege is a watch that gets ignored. Add the rule in the same
+  commit that revokes the grant.
+- [ ] **A watch that reads the catalog is not a watch that probes as `anon`, and the gate still
+  says UNCHECKED** (P2 · source:build · no action) — `access_watch` never connects as `anon`, so a
+  policy that is owner-gated in *shape* and wrong in *logic* passes it. `scripts/ops_gate_probe.sql`
+  is still the only thing that exercises the gate, and CLAUDE.md's warning that "the SQL editor's
+  default session is a superuser and both obvious probes lie" is about that file and still stands.
+  `check_build.mjs`'s roll-call therefore still prints *"13: RLS and events are not [gated]"* —
+  correct, because the gate parses files and cannot see a deployed database. **Do not "fix" the
+  roll-call line to claim 13 is checked.** The honest shape is the one the 11-13 run left: the
+  clause has a nightly READ, not a gate.
+- [ ] **A flat night with five rows, one device, and the first non-uuid `anon_id` in nine days**
+  (P2 · source:groom · no action) — `events` holds **1,802** against 1,797 last night. Five rows,
+  one device (`mwef613fbmbk0etdm5d`, 2026-11-13 03:30:48–03:31:04), Windows `Chrome/92`, landed on
+  screen 0 and left in 13 seconds. Two things about it, neither a defect: its `app_open` carries
+  **no `fresh` flag**, and a `session_end {secs:0}` and `ob_step` arrive *before* that `app_open`
+  — the shape of `scrubpay_events_pending` flushing a prior load's deferred rows, which is the
+  mechanism working. And its id is the **`freshAnonId` non-crypto fallback** (`Date.now().toString(36)
+  + Math.random()`), not a uuid — 17 such ids exist across the table's whole life, first
+  2026-07-23, so this is rare rather than new. **A cohort query keyed on uuid-or-`nostore-` shape
+  is wrong**, and the device classifier item should know it. `silence_watch` reads **FRESH** on a
+  newest event 4.6h old. Still nothing here to quote as activation.
+- [ ] **The 11-03 `client_error` fix is 7-for-7** (P2 · source:groom · no action) — `client_error`
+  is **30**, unchanged for the eighth groom, and tonight is a real test rather than a flat one:
+  `mwef613fbmbk0etdm5d`'s load is a fresh load off the live build (`aa53aec`) that filed **no**
+  row, and before #208 it would have filed one. The 11-03 prediction *"expect this count to stay
+  at 30 and treat 31 as real"* has now held on sixteen loads.
+- [ ] **`feedback` is unchanged for the TWENTY-FOURTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — **18 rows**, newest still Courtney's
+  **2026-10-15 12:30** ("Stop auto syncing with nurse grid"), now **28.7 days** old.
+  `paystub_failed` has **still never fired for any reason**, so the 10-13 item's "read a second
+  device" bar is still not met — do not build a worker mitigation.
+- [ ] **Courtney has not opened the app in 23.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the banner
+  switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero rows from
+  any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has been shown
+  either affordance.
+- [ ] **CABINET MISSED fires for the FOURTH night, and the brief is now 11.6 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism. The
+  decision filed for Pat **eleven times** is unchanged: **gate the build on an over-age brief, or
+  retire the dead-man's-switch claim.** Tonight's build is a third instance of the same class in a
+  third file — a claim held by nothing — which is worth one line: this repo's recurring defect is
+  not bad code, it is a true sentence with no mechanism under it.
+- [ ] **Last night's prediction HELD for the seventh time in the new form** (housekeeping) —
+  `deploy_watch` reads **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what
+  the 11-12 note staked out when it predicted its own `tests/`-only merge would touch no
+  publish-set file. `privacy.html` and `ops.html` print the truncation sentence rather than a
+  commit (boundary now `24fbe71`) — **expected, not a regression**, and the reason #210 stopped
+  printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches only `scripts/`,
+  `tests/`, `BACKLOG.md` and `CLAUDE.md`, so no publish-set file, so tomorrow's `deploy_watch`
+  should **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — sixteenth night, and tonight again chose the other
+  side of that line** (P2 · `harness:unscoped` · needs the owner) — `.github/workflows/ci.yml`'s
+  `gate` job still does not call `scripts/test_check_build.mjs`, and **editing a workflow file is
+  blocked for agent sessions in this sandbox**. Still the same two lines after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` / `run: node
+  scripts/test_check_build.mjs` (**55**, ~115s) and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). **Tonight's classifier went into
+  `tests/smoke.mjs` rather than a `scripts/test_access_watch.mjs` for exactly this reason** — two
+  orphan suites are a known cost, a third would have been a choice. Still **three** one-line
+  workflow edits waiting on one visit, counting #209's `cp terms.html _site/`.
+- [ ] **PR #209 is still open on the loop's shared working branch — SEVENTH night** (P1 · needs
+  the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **7.3 days**. Tonight
+  branched to `claude/great-feynman-x6b90v`, so #209's head is untouched for the seventh run
+  running. The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, and a run that follows it literally still destroys
+  Pat's pending legal review — **that prompt is the one artefact no agent can edit**, so the
+  standing answer is: owner-tier work gets its own branch, and #209 should be merged or closed.
+  Its CI is red on purpose since #214 (the new check names `terms.html`), which is the check
+  working. `docs/cos/now.md` goes un-updated for the EIGHTH night for the same reason (#209
+  rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
+  meant to read still says "Updated 2026-11-02" — eleven days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4804,6 +4923,53 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-13 — **Invariant 13's RLS clause was held, for its entire life, by a file nobody can
+  run.** The invariant says the iCal feed URL "lives only in `ical_subscriptions` (owner-only RLS,
+  no `anon` grants)". Three of its five clauses got a mechanical gate between 10-26 and 10-29 and a
+  fourth got a runtime redaction on 10-28. The RLS clause got nothing, and its own `Verify` line
+  recorded why: *"`rls_audit.js` — **not in git**, so currently unreproducible"*. That clause
+  decides whether a bearer credential is readable by the public anon key printed on line 831 of the
+  file every visitor downloads, and Invariant 13's `Blast` line says a leak there is **silent by
+  construction** — no symptom, nothing to grep. The only thing that can be read is the catalog.
+  **`scripts/access_watch.mjs`** reads `pg_class`, `pg_policies` and `pg_proc` and grades **16
+  rules**: `ical_subscriptions` with RLS on, four owner-gated policies and no grant reaching
+  `anon`; `user_data` owner-gated on all four commands (Invariant 4's table, where `anon` *does*
+  hold grants, so the policy shape is the whole of the protection); no SELECT on `events` or
+  `feedback` for `anon` or `authenticated`; `ops_admins` still at zero policies; the five
+  `ops_*`/`is_ops_admin` functions not anon-executable and still SECURITY DEFINER. Four verdicts
+  (`TIGHT`/`LOOSE`/`UNKNOWN`/`UNREACHABLE`), only `LOOSE` exits 1, and a missing subject is
+  `UNKNOWN` rather than a pass by omission — the rule `check_build.mjs`'s `[13]` check took when it
+  made a missing `serializeState` a failure.
+  **Two asymmetries are why this is not a grep.** A null `relacl` on a table means default
+  privileges, which is owner-only, so absence is *tight*; a null `proacl` on a **function** means
+  Postgres granted `EXECUTE` to `PUBLIC`, and `anon` is in `PUBLIC`, so absence is *loose* — a new
+  `ops_*` function is anon-callable the moment it exists unless something revokes it, with nothing
+  in the diff that looks wrong. And a grant to `PUBLIC` reaches `anon` without the string "anon"
+  appearing anywhere, so every rule asks for the role's privileges **union** `PUBLIC`'s.
+  **First run: TIGHT, 16/16 — the clause holds, and nothing in this repo had ever established
+  that.** `ical_subscriptions` carries `authenticated` as the only role in its ACL, so `anon` has
+  no privilege on it at all and even a broken policy would meet a table it cannot address.
+  **What it is NOT:** a probe. It never connects as `anon`, so a policy owner-gated in shape and
+  wrong in logic passes; `scripts/ops_gate_probe.sql` remains the only thing that exercises the
+  gate. Read it as "nothing has been loosened". `check_build.mjs`'s roll-call still prints
+  "13: RLS and events are not [gated]", which stays correct — the gate parses files and cannot see
+  a deployed database.
+  **Found on the way, and filed rather than fixed:** `anon` holds **TRUNCATE** on `user_data` and
+  every swap table (Supabase's default grants in `public`), and TRUNCATE is the one verb RLS does
+  not cover — so the only thing between the public anon key and an emptied pay history is that
+  PostgREST has no route that issues it. One-line revoke, production DDL, dedicated session; the
+  script says at the rule site why it is not a rule yet.
+  **27 assertions in `tests/smoke.mjs` §59** — in the suite CI actually runs, deliberately, rather
+  than a fourth orphan suite behind the same blocked workflow line two others have waited sixteen
+  nights for. The fixture is the production catalog as the watch read it tonight, so each break is
+  a one-field mutation of a real answer. **Eight measured breaks**, each naming the right
+  assertion and each printing a tally (an aborted run is not a failed one): `effectivePrivs`
+  ignoring PUBLIC (2 fail), a null `proacl` read as tight (1), `exprIsOwnerGated` always true (5),
+  a missing table passing by omission (1), UNKNOWN outranking LOOSE (1), `policyIsOwnerGated` using
+  `some` instead of `every` (1), the `ops_admins` zero-policy rule neutered (1) — and the eighth
+  from the other side: **deleting §59's own `want(59)` guard is caught by last night's roll-call**,
+  which names `§59 never ran`. Suites after: gate 21, groom-seed 33, core 175, dashboard 44,
+  smoke **962**. Thread: `legitimacy`.
 - 2026-11-12 — **`tests/smoke.mjs` ended with a number nothing compared, in the suite CI binds on.**
   `check_build.mjs` grew a roll-call on 2026-10-27 for exactly this reason — *"All N mechanical
   checks passed" was a number nothing compared* — and the identical hole stayed open in the
