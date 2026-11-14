@@ -892,6 +892,123 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
   meant to read still says "Updated 2026-11-02" — eleven days.**
 
+### P1 (new, groom 2026-11-14)
+
+**Why this band sits BELOW the 11-06 through 11-13 bands instead of at the top of `## Queue`:**
+unchanged for the eighth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 5's gate was a hardcoded list of six, and the app uses eight keys**~~ —
+  **SHIPPED 2026-11-14**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked the same way the last seven nights were: `## Queue`
+  has no unblocked build item that does not need Pat — `terms.html` is built and open as #209,
+  the gate meta-test and the dashboard-inventory suite are both one blocked workflow line, the
+  TRUNCATE revoke is production DDL, and the device classifier is in `## Needs a dedicated
+  session`.
+  **The defect:** the `[5]` check asserted six key literals were present and printed
+  `6/6 intact`. It answered *are these still here?* and could never answer *are these all of
+  them?* — and the app uses **eight**. The set is now derived by an AST walk of both inline
+  scripts. **Eight `must()` clauses, seven new deliberate breaks (50 → 57), measured in both
+  directions.**
+- [ ] **The two keys this found are COSMETIC, and saying otherwise would be the over-claim**
+  (P2 · source:build · no action) — `scrubpay_ical_cta_dismissed` and
+  `scrubpay_ics_longreview_dismissed` are "Not now" flags; renaming one re-shows a dismissed
+  card. Neither is in the synced blob, neither orphans data. So do not read tonight as "two
+  unguarded keys found" — read it as **the gate could not have found them at all**, which is why
+  they sat there for six and seven weeks respectively. They are named in CLAUDE.md under Invariant
+  5 in an explicitly separate tier for exactly this reason.
+- [ ] **The `::` in `nursingWagePlannerData::<uid>` had never been checked, and that one IS
+  load-bearing** (P2 · source:build · no action) — Invariant 5 has named the per-user failed-save
+  backup key since it was written; nothing asserted the separator. Change `'::'` to `':'` and
+  every signed-in user's backup orphans silently — the copy that held their data through Invariant
+  4's 47-day outage, and the one `backupWins` compares. Now pinned as its own clause with its own
+  break. Worth noting the shape: the clause with real blast radius was found while building a
+  check aimed at something else.
+- [ ] **This repo's recurring defect, fourth consecutive night in a fourth file** (P2 ·
+  source:build · no action) — 11-11 found a publish set that said what ships and never whether it
+  was enough; 11-12 found a suite whose section count nothing compared; 11-13 found an invariant
+  clause whose `Verify` line named a file not in git; tonight found a figure that read like
+  completeness and was a hardcoded list. All four are **a true sentence with no mechanism under
+  it**, and in three of the four the printed number was the thing that lied. Not bad code — it is
+  that this repo writes down what it intends and then checks a proxy for it. A future run looking
+  for an item should look here first, and the search that works is: find a claim with a number in
+  it, then ask what that number is actually counting.
+- [ ] **A SILENT night: zero new events in 24h, and `events` is unchanged at 1,802** (P2 ·
+  source:groom · no action) — the table held 1,802 at last night's groom and holds 1,802 now.
+  Newest row is still `2026-11-13 03:31:04`, device `mwef613fbmbk0etdm5d` — the Windows
+  `Chrome/92` load the 11-13 band wrote up. Nobody has opened the app in **28.5 hours**.
+  `silence_watch` reads **FRESH** on a 48h window, which is correct and is also the point the
+  11-13 band made: FRESH is "telemetry works", not "anyone came". Nothing here to quote as
+  activation, and the device classifier is still broken, so do not compute one.
+- [ ] **`access_watch` reads TIGHT on its second night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged from the first run: `ical_subscriptions` RLS on with four
+  `auth.uid() = user_id` policies and `authenticated` the only role in its ACL, `user_data`
+  owner-gated on all four commands, `events`/`feedback` with no SELECT for either role,
+  `ops_admins` at zero policies, five `ops_*` functions `authenticated`+`service_role` only and
+  still SECURITY DEFINER. Second consecutive TIGHT. **Still not a probe** — it reads the catalog,
+  so a policy owner-gated in shape and wrong in logic passes it, and the gate's roll-call
+  correctly still prints *"13: RLS and events are not [gated]"*.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data` and the swap
+  tables; the `D` is TRUNCATE, which RLS does not cover. Re-read tonight from
+  `access_watch`'s own output: `events`/`feedback` print
+  `holds INSERT,MAINTAIN,REFERENCES,TRIGGER,TRUNCATE`. The one-line revoke
+  (`revoke truncate on all tables in schema public from anon, authenticated;`) **tightens**
+  access and would merge on its own by tier, but it is production DDL through the Management API
+  and needs a pass over the swap tables rather than a blind sweep. Add the `access_watch` rule in
+  the same commit.
+- [ ] **`feedback` is unchanged for the TWENTY-FIFTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — **18 rows**, newest still Courtney's
+  **2026-10-15 12:30** ("Stop auto syncing with nurse grid"), now **29.7 days** old.
+  `paystub_failed` has **still never fired for any reason**, so the 10-13 item's "read a second
+  device" bar is still not met — do not build a worker mitigation.
+- [ ] **Courtney has not opened the app in 24.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03**, still predating `d438d58` (the
+  banner switch, 10-21) and `cd77392` (the stepper switch, 10-22). `ics_autosync_pref` **zero
+  rows from any device, ever**; `ics_autosync_off` **zero**. Both stay **expected** — nobody has
+  been shown either affordance.
+- [ ] **The 11-03 `client_error` fix is 8-for-8** (P2 · source:groom · no action) —
+  `client_error` is **30**, unchanged for the ninth groom. No new loads to test it against
+  tonight, so this is a flat reading rather than a fresh pass; the 11-13 run's real test (a clean
+  load off `aa53aec` filing no row) still stands as the last live evidence. The 11-03 prediction
+  *"expect this count to stay at 30 and treat 31 as real"* has held on sixteen loads.
+- [ ] **CABINET MISSED fires for the FIFTH night, and the brief is now 13.0 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — which
+  makes it the fifth instance of tonight's own finding. The decision filed for Pat **twelve
+  times** is unchanged: **gate the build on an over-age brief, or retire the dead-man's-switch
+  claim.**
+- [ ] **Last night's prediction HELD for the eighth time** (housekeeping) — `deploy_watch` reads
+  **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what the 11-13 note
+  predicted for a `tests/`- and `scripts/`-only merge. `privacy.html` and `ops.html` print the
+  truncation sentence rather than a commit (boundary `4edfa33` tonight, was `24fbe71` — **the
+  figure drifts with clone depth, which is why #210 stopped printing it as a deploy fact**).
+  **Tonight's prediction:** tonight's merge touches only `scripts/`, `BACKLOG.md`, `CLAUDE.md`
+  and `docs/cos/inbox.md` — no publish-set file — so tomorrow's `deploy_watch` should **still**
+  name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — seventeenth night** (P2 · `harness:unscoped` ·
+  needs the owner) — and tonight raised its cost: the suite is now **62 assertions / ~130s** and
+  holds the only negative evidence that `[5]`'s eight clauses have teeth. `ci.yml`'s `gate` job
+  still does not call it, and **editing a workflow file is blocked for agent sessions in this
+  sandbox**. Still the same two lines after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — EIGHTH night** (P1 · needs the
+  owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **8.3 days**. Tonight
+  branched to `claude/great-feynman-8h69lm`, so #209's head is untouched for the eighth run
+  running. The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, and a run that follows it literally still destroys
+  Pat's pending legal review — **that prompt is the one artefact no agent can edit**, so the
+  standing answer is: owner-tier work gets its own branch, and #209 should be merged or closed.
+  Its CI is red on purpose since #214 (the published-link check names `terms.html`), which is the
+  check working. `docs/cos/now.md` goes un-updated for the NINTH night for the same reason (#209
+  rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
+  meant to read still says "Updated 2026-11-02" — twelve days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -4923,6 +5040,42 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-14 — **Invariant 5's gate was a hardcoded list of six, and the app uses eight keys.**
+  The check asserted six key literals were present somewhere in `index.html` and printed
+  `6/6 intact` — which reads like completeness and was really "the six I was told about". It
+  answered *are these still here?* and could never answer *are these all of them?*. Two keys had
+  grown past it unnoticed: `scrubpay_ical_cta_dismissed` (the NurseGrid connect card's "Not now",
+  2026-10-01) and `scrubpay_ics_longreview_dismissed` (the long-shift repair card's, 2026-10-04).
+  Both shipped with a feature, neither reached the list, and **nothing in this repo could have
+  said so.** Those two are **cosmetic** — a rename re-shows a dismissed card, it does not orphan
+  data — so the value is not that they are now guarded; it is that the set is now **derived from
+  the file**, so the next key cannot be added without being classified, and the next one may well
+  be load-bearing. Same shape as Invariant 13's five-field parser whitelist and Invariant 8's
+  exact publish set: a new entry is intended friction.
+  The check now AST-walks **both inline scripts** (the boot script owns `scrubpayErrors`, the
+  Babel block the other seven), resolves every `localStorage`/`sessionStorage`
+  get/set/remove key argument, and holds **eight `must()` clauses**: the six-plus-two presence
+  test (unchanged); exactly two inline scripts, so a third is not scanned by nothing; at least 25
+  call sites, so a walk that resolves nothing FAILS rather than reporting a clean sweep; nothing
+  unresolvable, with **deliberately no regex fallback** — a key built at runtime is a key nothing
+  can guard; one known builder by name; the builder's shape still
+  `STORE_KEY + '::' + uid`; no undeclared key; and no declared key whose storage access has
+  moved somewhere the walk cannot see. supabase-js's own `sb-…auth-token` keys are recognised by
+  shape and are not ours to name.
+  **The `::` was the real find.** Invariant 5 has named `nursingWagePlannerData::<uid>` since it
+  was written and nothing had ever checked the separator. Change it and every signed-in user's
+  failed-save backup orphans — the copy that held their data through Invariant 4's 47-day sync
+  outage, and the one `backupWins` reads. That clause is **load-bearing** in a way the two keys
+  this item is named after are not.
+  Folded into the existing check rather than split into a twenty-second row, because it is one
+  question asked from both ends and the misleading figure was that check's own output. So `[5]`
+  stays a tag held by a single check and its breaks need no label pin — unlike `[2]`, `[8]` and
+  `[events]`. Gate reads `8/8 derived (6 load-bearing, 2 cosmetic), 45 sites, backup key intact`;
+  roster unchanged at 21. **Seven new deliberate breaks in `scripts/test_check_build.mjs` (50 →
+  57, suite 55 → 62), one per new clause**, and falsifiable in both directions: neutering the
+  derivation turns all seven red and leaves the presence break green (measured 2026-11-14,
+  55 passed / 7 failed). Suites: gate 21/21, meta-test 62/0, groom-seed 33/0, core 175/0,
+  dashboard-inventory 44/0, smoke 962/0. No `index.html` change, so no publish-set file moves.
 - 2026-11-13 — **Invariant 13's RLS clause was held, for its entire life, by a file nobody can
   run.** The invariant says the iCal feed URL "lives only in `ical_subscriptions` (owner-only RLS,
   no `anon` grants)". Three of its five clauses got a mechanical gate between 10-26 and 10-29 and a

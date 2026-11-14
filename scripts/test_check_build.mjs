@@ -258,6 +258,45 @@ const BREAKS = [
     (s) => s.replace("{onConflict:'user_id'}", '{}'), '4'],
   ['[5] a storage key renamed', 'index.html',
     (s) => s.split('scrubpay_anon_id').join('badgebudget_anon_id'), '5'],
+  /* The derivation clause, added 2026-11-14. SEVEN more breaks, one per `must()`, because
+     the check printed "6/6 intact" for nine weeks while the app used eight keys — a group of
+     musts negative-tested as a group only proves that ONE of them has teeth, and the one with
+     teeth here was the presence test above. No label pin on any of them: `[5]` is still a tag
+     held by a single check, which is why the derivation was folded into it rather than split off
+     into a twenty-second row. */
+  /* Anti-omission 1: the walk reads BOTH inline scripts, because the keys are split across them
+     (the boot script owns scrubpayErrors). A third inline script would be scanned by nothing. */
+  ['[5] a third inline script appears', 'index.html',
+    (s) => s.replace('<style>', '<script>var later = 1;</script>\n<style>'), '5'],
+  /* Anti-omission 2: a derivation that resolves nothing must FAIL rather than report a clean
+     sweep. This is the shape check 3 and check 13 both guard for a renamed function. */
+  ['[5] the walk finds no storage call sites at all', 'index.html',
+    (s) => s.split('localStorage.getItem').join('lsGet').split('localStorage.setItem').join('lsSet')
+      .split('localStorage.removeItem').join('lsDel'), '5'],
+  /* A key built at runtime is a key nothing can guard, so it must throw rather than be skipped.
+     There is deliberately no fallback — that is the hole this whole clause closes. */
+  ['[5] a storage key is built from an unresolvable expression', 'index.html',
+    (s) => s.replace("localStorage.getItem(ANON_ID_KEY)", "localStorage.getItem('scrubpay_' + 'anon_id')"), '5'],
+  /* The builder is recognised by NAME, so a second one cannot ride in behind BACKUP_KEY. */
+  ['[5] a second key builder arrives', 'index.html',
+    (s) => s.replace('localStorage.setItem(BACKUP_KEY(uid)', 'localStorage.setItem(OTHER_KEY(uid)'), '5'],
+  /* Invariant 5 names `nursingWagePlannerData::<uid>` and nothing checked the `::` until tonight.
+     Change the separator and every signed-in user's failed-save backup orphans — the copy that
+     held their data through Invariant 4's 47-day outage. */
+  ['[5] the per-user backup separator changes', 'index.html',
+    (s) => s.replace("STORE_KEY + '::' + uid", "STORE_KEY + ':' + uid"), '5'],
+  /* The completeness assertion itself: a NEW key the lists do not name. This is the break that
+     would have fired in October for scrubpay_ical_cta_dismissed and never did, because the check
+     could not see a key it had not been told about. */
+  ['[5] a new storage key the invariant does not name', 'index.html',
+    (s) => s.replace("localStorage.getItem(ANON_ID_KEY)",
+      "(localStorage.getItem('scrubpay_brand_new') , localStorage.getItem(ANON_ID_KEY))"), '5'],
+  /* The other direction: a declared key whose storage access moves behind a wrapper this walk
+     cannot see. The literal survives in the source, so the presence test above stays green and
+     only the derivation notices — which is the whole point of having both. */
+  ['[5] a declared key stops being reached through localStorage', 'index.html',
+    (s) => s.split('localStorage.setItem(ICAL_CTA_KEY').join('wrapStore.setItem(ICAL_CTA_KEY')
+      .split("localStorage.getItem(ICAL_CTA_KEY").join("wrapStore.getItem(ICAL_CTA_KEY"), '5'],
   ['[6] import side stops dropping its own UIDs', 'index.html',
     (s) => s.split("indexOf('@scrubpay')").join("indexOf('@nothing')"), '6'],
   /* The two export stamps are asserted separately: index.html has one for shifts (~4781) and one
