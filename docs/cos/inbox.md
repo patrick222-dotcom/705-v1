@@ -7,6 +7,20 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-14 · nightly · **belongs to no thread — park or file as a standing CTO item** —
+  Invariant 5's gate was a hardcoded list of six key literals printing `6/6 intact`; the app uses
+  **eight**. The set is now derived by an AST walk (eight clauses, seven new breaks, measured both
+  directions; suite 55 → 62). The two keys it found are cosmetic dismissal flags — the finding is
+  that the gate could not have found them. **One real load-bearing catch inside it:** the `::` in
+  `nursingWagePlannerData::<uid>` had never been checked, and a changed separator orphans every
+  signed-in user's failed-save backup. · **two things for the chief of staff:** (a) this is the
+  **fourth consecutive night** on the same class of defect — a true sentence with no mechanism
+  under it (11-11 publish set, 11-12 suite roster, 11-13 RLS clause, tonight the key list) — which
+  is worth naming as a pattern rather than fixing one file at a time; (b) **CABINET MISSED fires
+  for the fifth night** (`brief.md` 13.0 days) and `now.md` is twelve days stale because #209
+  rewrites T2's block — the twelfth filing of the same decision: gate the build on an over-age
+  brief, or retire the claim. · → **open**
+
 - 2026-11-13 · nightly · **attaches to T2 `legitimacy`** — Invariant 13's RLS clause had no
   mechanism and, by its own `Verify` line, no reproducible check at all (`rls_audit.js` is not in
   git). It decides whether the iCal feed URL — a bearer credential — is readable by the public

@@ -298,11 +298,152 @@ check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
 
 /* ---- Invariant 5: storage keys are data, not branding ---------------------------------- */
 check(5, 'Storage keys unrenamed', () => {
-  const keys = ['nursingWagePlannerData', 'scrubpay_anon_id', 'scrubpay_feedback_pending',
-    'scrubpay_pending_invite', 'scrubpayErrors', 'scrubpay_events_pending'];
-  const missing = keys.filter(k => !html.includes(k));
+  /* Two questions, and until 2026-11-14 this check only ever answered the first.
+   *
+   * (a) "Are the keys we named still here?" — a hardcoded list, each asserted present. That is
+   *     the rename guard, and it works.
+   * (b) "Is that list ALL of them?" — never asked. The check printed `6/6 intact`, which reads
+   *     like completeness and was really "the six I was told about". Two keys had grown past it
+   *     unnoticed: `scrubpay_ical_cta_dismissed` (the connect card's "Not now", 2026-10-01) and
+   *     `scrubpay_ics_longreview_dismissed` (the long-shift repair card's, 2026-10-04). Both
+   *     shipped with a feature, neither reached this list, and nothing could have said so.
+   *
+   * Those two are COSMETIC — renaming one re-shows a dismissed card, it does not orphan data —
+   * so the value here is not that they are now guarded. It is that the set is DERIVED from the
+   * file instead of declared beside it, so the NEXT key cannot be added without being classified,
+   * and the next one may well be load-bearing. Same shape as Invariant 13's five-field parser
+   * whitelist and Invariant 8's exact publish set: a new entry is intended friction.
+   *
+   * Kept as one check rather than split into a twenty-second, because it is one question asked
+   * from both ends and the misleading figure was this check's own output. `[5]` therefore stays a
+   * tag held by a single check, so the breaks in test_check_build.mjs need no label pin. */
+
+  /* A rename of one of these orphans real data, silently — see the invariant's Detect: none. */
+  const LOAD_BEARING = [
+    'nursingWagePlannerData',       // anonymous users' ONLY copy, and the per-user backup's prefix
+    'scrubpay_anon_id',             // the analytics join key; a rename breaks every join historically
+    'scrubpay_feedback_pending',    // feedback queued offline, awaiting a connection
+    'scrubpay_pending_invite',      // a swap invite held across sign-in
+    'scrubpayErrors',               // the error ring buffer; "Copy error log" hands her this
+    'scrubpay_events_pending',      // deferred analytics awaiting the next load
+  ];
+  /* A rename of one of these re-shows a card she dismissed. Named so the derivation can be
+     exact, and tiered so this check does not claim they carry the invariant's blast radius. */
+  const COSMETIC = [
+    'scrubpay_ical_cta_dismissed',        // "Not now" on the NurseGrid connect card
+    'scrubpay_ics_longreview_dismissed',  // "Not now" on the long-shift repair card
+  ];
+  const DECLARED = new Set([...LOAD_BEARING, ...COSMETIC]);
+
+  /* (a) presence — unchanged in behaviour, and deliberately a substring test on the whole file:
+     it fires even if the derivation below is defeated by a shape it cannot read. */
+  const missing = [...DECLARED].filter((k) => !html.includes(k));
   must(!missing.length, `renaming orphans user data / severs analytics joins: ${missing.join(', ')}`);
-  return `${keys.length}/${keys.length} intact`;
+
+  /* (b) derivation. Both inline scripts, because the keys are split across them: the boot script
+     owns `scrubpayErrors` (ERR_KEY, ~index.html:671) and the Babel block owns the other seven. */
+  const Babel = require('@babel/standalone');
+  const inline = [];
+  for (let at = html.indexOf('<script'); at !== -1; at = html.indexOf('<script', at + 1)) {
+    const tagEnd = html.indexOf('>', at);
+    const tag = html.slice(at, tagEnd + 1);
+    if (/\ssrc=/.test(tag)) continue;              // the 5 CDN scripts — Invariant 2's business
+    const body = html.slice(tagEnd + 1, html.indexOf('</script>', tagEnd));
+    inline.push({ tag, body });
+  }
+  must(inline.length === 2,
+    `expected 2 inline scripts (the boot script and the Babel block), found ${inline.length} — ` +
+    'this check reads both, so a third would be scanned by nothing');
+
+  const seen = new Set();          // resolved literal keys
+  const builders = [];             // BACKUP_KEY(uid) and friends
+  const authPurges = [];           // supabase-js's own sb-…auth-token keys
+  const unresolved = [];           // anything else: a hole, so it throws
+  let sites = 0;
+
+  for (const { body } of inline) {
+    /* String literals bound to a name at any scope, which is how every key in this app is
+       written (`const STORE_KEY = 'nursingWagePlannerData'`). Collected first so a call site can
+       resolve a bare identifier regardless of declaration order. */
+    const bound = new Map();
+    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+      plugins: [() => ({ visitor: {
+        VariableDeclarator(p) {
+          if (p.node.id.type !== 'Identifier') return;
+          const v = p.node.init;
+          if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
+        },
+      } })] });
+
+    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+      plugins: [() => ({ visitor: {
+        CallExpression(p) {
+          const callee = p.node.callee;
+          if (callee.type !== 'MemberExpression') return;
+          if (callee.object.type !== 'Identifier') return;
+          if (!/^(localStorage|sessionStorage)$/.test(callee.object.name)) return;
+          const method = callee.property.name || callee.property.value;
+          if (!/^(getItem|setItem|removeItem)$/.test(String(method))) return;
+          sites += 1;
+          const arg = p.node.arguments[0];
+          if (!arg) { unresolved.push(`${method}() with no key argument`); return; }
+          if (arg.type === 'StringLiteral') { seen.add(arg.value); return; }
+          if (arg.type === 'Identifier') {
+            if (bound.has(arg.name)) { seen.add(bound.get(arg.name)); return; }
+            /* An identifier with no string binding is a parameter. Exactly one such site is
+               legitimate: `clearAuthStorage` purges supabase-js's OWN persisted auth token by
+               scanning for the `sb-` prefix (index.html:~4397). Those keys belong to the client
+               library, not to this app, so they are not Invariant 5's to name — but the shape is
+               recognised explicitly rather than skipped, so a second dynamic removeItem cannot
+               hide behind it. */
+            const owner = p.findParent((q) => q.isVariableDeclarator() || q.isFunctionDeclaration());
+            const text = owner ? body.slice(owner.node.start, owner.node.end) : '';
+            if (text.includes("'sb-'") && text.includes('auth-token')) { authPurges.push(arg.name); return; }
+            unresolved.push(`${method}(${arg.name}) — identifier with no string binding`);
+            return;
+          }
+          if (arg.type === 'CallExpression' && arg.callee.type === 'Identifier') {
+            builders.push(arg.callee.name);
+            return;
+          }
+          unresolved.push(`${method}(<${arg.type}>)`);
+        },
+      } })] });
+  }
+
+  /* Pass-by-omission guard, the rule check 3 and Invariant 13's clause both follow: a walk that
+     resolves nothing must FAIL, not report a clean sweep. 30+ sites exist today. */
+  must(sites >= 25,
+    `found only ${sites} localStorage call sites — the walk is reading the wrong thing, and a ` +
+    'derivation that sees nothing would pass this check by omission');
+  must(!unresolved.length,
+    `storage keys this check cannot resolve: ${unresolved.join('; ')} — a key built at runtime is ` +
+    'a key nothing can guard, so name it through a constant (or add its shape here on purpose). ' +
+    'There is deliberately no fallback: a check that shrugs at what it cannot read is the hole.');
+
+  /* The per-user failed-save backup. Invariant 5 names it `nursingWagePlannerData::<uid>`, and
+     until now nothing checked the `::` — change the separator and every signed-in user's backup
+     orphans, which is the copy that held their data through the 47-day sync outage (Invariant 4). */
+  must(builders.length && builders.every((b) => b === 'BACKUP_KEY'),
+    `a storage key is built by a function this check does not know: ${builders.join(', ') || 'none found'}`);
+  must(/const BACKUP_KEY\s*=\s*uid\s*=>\s*STORE_KEY\s*\+\s*'::'\s*\+\s*uid/.test(html),
+    "the per-user backup key is no longer STORE_KEY + '::' + uid — Invariant 5 names it " +
+    "`nursingWagePlannerData::<uid>`, so a changed prefix or separator orphans every signed-in " +
+    "user's failed-save backup, silently");
+
+  /* The completeness assertion this check never had. */
+  const undeclared = [...seen].filter((k) => !DECLARED.has(k));
+  must(!undeclared.length,
+    `localStorage keys the app uses and Invariant 5 does not name: ${undeclared.join(', ')} — add ` +
+    'each to LOAD_BEARING (a rename orphans data) or to COSMETIC (a rename re-shows a card), and ' +
+    'to Invariant 5 in CLAUDE.md if load-bearing. This is the friction, not a bug in the check.');
+  const unused = [...DECLARED].filter((k) => !seen.has(k));
+  must(!unused.length,
+    `declared but never read or written through localStorage: ${unused.join(', ')} — either the ` +
+    'key is dead (drop it from both lists) or its call site moved somewhere this walk cannot see');
+
+  return `${seen.size}/${DECLARED.size} derived (${LOAD_BEARING.length} load-bearing, ` +
+    `${COSMETIC.length} cosmetic), ${sites} sites, backup key intact`;
 });
 
 /* ---- Invariant 6: the .ics self-recognition sentinel ----------------------------------- */
