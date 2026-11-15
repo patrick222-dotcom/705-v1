@@ -7,6 +7,16 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-15 · nightly · **belongs to no thread — park or file as a standing CTO item** —
+  Invariant 2's gate counted five `integrity` ATTRIBUTES and printed `5/5 pinned + hashed`;
+  nothing had ever read a byte of those five CDN files, and the smoke suite strips every
+  `integrity` attribute by construction. A hash copied from the wrong row is a total silent
+  outage — the script never runs, the watchdog screen shows, and `Detect: none`. Now
+  `tests/smoke.mjs` §60: four of five pins verified against the bytes npm ships, the fifth
+  exempt with its exemption asserted (jsDelivr generates `supabase.min.js`). 23 assertions,
+  twelve measured breaks. **Ninth consecutive night of the same repo-wide shape** — a true
+  sentence with no mechanism under it, and a printed number that was counting something else.
+
 - 2026-11-14 · nightly · **belongs to no thread — park or file as a standing CTO item** —
   Invariant 5's gate was a hardcoded list of six key literals printing `6/6 intact`; the app uses
   **eight**. The set is now derived by an AST walk (eight clauses, seven new breaks, measured both

@@ -31,6 +31,14 @@ const MAP = [
   ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js', '@supabase/supabase-js/dist/umd/supabase.js'],
 ];
 
+/* Section 60 of the smoke suite compares each pinned `integrity` hash against the BYTES npm ships
+   at these local paths. Exported rather than re-parsed so this stays ONE table — the 2026-11-14
+   lesson about a list kept beside the thing it describes, which is also why `check_build.mjs`
+   reads this file rather than keeping its own copy of the pins. The alias keeps the declaration
+   line `const MAP = [` byte-identical, because that is the anchor the gate's `[harness]` check
+   looks for and a renamed table must fail there, not quietly stop being compared. */
+export { MAP as CDN_MAP };
+
 /* THE SCRATCH COPY MUST NOT REACH THE REAL PROJECT.
  *
  * Only the five CDN <script> tags were ever rewritten, which left `createClient(SUPABASE_URL, …)`

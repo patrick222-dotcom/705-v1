@@ -1009,6 +1009,144 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
   meant to read still says "Updated 2026-11-02" — twelve days.**
 
+### P1 (new, groom 2026-11-15)
+
+**Why this band sits BELOW the 11-06 through 11-14 bands instead of at the top of `## Queue`:**
+unchanged for the ninth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 2's gate counted five `integrity` ATTRIBUTES and printed "hashed" — nothing
+  had ever read a byte of those five files**~~ — **SHIPPED 2026-11-15**, tonight's build (see Done
+  log). (P1 · source:groom · `harness:drivable`) Picked the same way the last eight nights were:
+  `## Queue` still has no unblocked build item that does not need Pat — `terms.html` is built and
+  open as #209, the gate meta-test and the dashboard-inventory suite are both one blocked workflow
+  line, the TRUNCATE revoke and the three uncaptured tables are production DDL, the goal deadline
+  and the device classifier are in `## Needs a dedicated session`, and the DST item is a pay
+  figure under the `wage-core` protocol. So the 11-14 band's own search was used verbatim: *find a
+  claim with a number in it, then ask what that number is actually counting.*
+  **The defect.** Invariant 2 is written down as `grep -c 'integrity="sha384-' index.html` → 5,
+  and `check(2, 'SRI on all 5 CDN scripts')` asserted exactly that, then returned the string
+  **`5/5 pinned + hashed`**. The second word was false. Copy a hash from the wrong row, or bump a
+  pin and leave the hash, and the browser fetches the file, the digest disagrees, and the script
+  **never runs** — React or Babel never defines, Invariant 1's watchdog shows the boot error
+  screen to **every visitor**, and Invariant 1's own `Detect` records that as invisible: a device
+  that never boots never fires `app_open` and never flushes its error buffer. Total silent
+  outage, one edit away, and the count still reads 5 because five attributes are still five
+  attributes.
+  **And the suite that BOOTS the app was blind to it by construction** — `buildScratch` strips
+  every `integrity` attribute with a blanket regex (`harness.mjs`:95) and rewrites the five CDN
+  urls to `node_modules`, so the one place the app actually runs is the one place SRI is
+  guaranteed not to be enforced. Same shape as 2026-10-31's pdf.js worker: a thing none of the
+  existing mechanisms *can* see.
+  **`tests/smoke.mjs` §60, 23 assertions, twelve measured breaks, every row covered.** Four of
+  the five pins verify **exactly** against the bytes npm ships (unpkg and cdnjs serve the tarball
+  file unchanged — measured, not assumed). The fifth cannot, and the exemption is asserted rather
+  than taken on trust.
+- [ ] **Why §60 is in the smoke suite and not the gate, which is a CI fact and not a preference**
+  (P2 · source:build · no action) — `ci.yml`'s `gate` job installs **`@babel/standalone` alone**;
+  the `smoke` job vendors all five pins. A digest check in `check_build.mjs` would therefore
+  either fail in CI for want of the files or **shrug at what it cannot read**, which is the hole
+  the 11-14 band named. Both jobs are required status checks, so smoke is exactly as binding. The
+  pre-existing `[harness]` check already resolves CDN url → `node_modules` path and asserts the
+  versions agree, so §60 reuses that table (`CDN_MAP`, exported from `harness.mjs`) rather than
+  keeping a second copy of the pins beside it — one table, two readers. The `const MAP = [`
+  declaration line is deliberately untouched, because that is the anchor `[harness]` looks for.
+- [ ] **One pin genuinely cannot be verified offline, and the EXEMPTION is checked** (P2 ·
+  source:build · no action) — jsDelivr **generates** `supabase.min.js`; the
+  `@supabase/supabase-js@2.45.4` tarball ships only `dist/umd/supabase.js` (plus a 223-byte
+  chunk). So the rule §60 enforces is: exactly one row may be exempt, it must be a jsDelivr
+  `/npm/` url whose basename is the `.min.js` of its local counterpart, **and npm must still not
+  ship that file**. If npm ever starts, §60 fails and the exemption gets re-read instead of
+  outliving its reason — which is the opposite of how the six hardcoded keys sat unexamined for
+  nine weeks. Breaks B7/B8/B9 measure all three clauses.
+- [ ] **The gate's `[2]` SRI check also could not see a SIXTH script without an integrity
+  attribute** (P2 · source:build · no action) — `n === 5` counts attributes, so six remote scripts
+  with five hashes passes. §60 asks it from the tag's end instead (every `<script src="https:…">`
+  must carry one), measured as break B2. The adjacent hole — a sixth script added to neither the
+  CSP nor `CDN_MAP` — was **already** covered, by the `[2]` CSP check and the `[harness]` check's
+  clause (4) respectively, so nothing was duplicated into the gate tonight.
+- [ ] **The anti-vacuity row is labelled a CONTROL, and its break mutates the control** (P3 ·
+  source:build · no action) — §60's last assertion appends one newline to react's real bytes and
+  requires the digest to stop matching react's pinned hash and to collide with no other pin. That
+  is genuine content: a comparison checking a prefix, a length, or a file against itself passes
+  all 22 rows above it and fails only there (break B10, a digest helper that ignores its
+  argument). What it does **not** have is an independent break in the subject — a control never
+  does, and saying so is better than claiming a clause.
+- [ ] **A SECOND SILENT night: `events` is unchanged at 1,802 for the third consecutive groom**
+  (P2 · source:groom · no action) — the table held 1,802 on 11-13, 11-14 and tonight. Newest row
+  is still `2026-11-13 03:31:04`, device `mwef613fbmbk0etdm5d`. Nobody has opened the app in
+  **52.5 hours**. `silence_watch` reads **SILENT_BUT_HEALTHY** — newest event 52.5h against a 48h
+  window, while badgebudget.com serves 576,854 characters with 5 SRI scripts and the `events`
+  insert policy is intact — so the quiet is *nobody came*, not *telemetry broken*, which is the
+  one distinction that script exists for. 8 distinct devices in 7 days. **Do not quote an
+  activation figure off any of it**; the device classifier is still broken.
+- [ ] **`access_watch` reads TIGHT on its third night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged from the first two runs: `ical_subscriptions` RLS on with four
+  `auth.uid() = user_id` policies and `authenticated` the only role in its ACL, `user_data`
+  owner-gated on all four commands, `events`/`feedback` with no SELECT for either role,
+  `ops_admins` at zero policies, five `ops_*` functions `authenticated`+`service_role` only and
+  still SECURITY DEFINER. **Still not a probe** — it reads the catalog, so a policy owner-gated in
+  shape and wrong in logic passes it, and the gate's roll-call correctly still prints
+  *"13: RLS and events are not [gated]"*.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 and 11-14 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data` and
+  the swap tables; the `D` is TRUNCATE, which RLS does not cover. Re-read tonight from
+  `access_watch`'s own output: `events`/`feedback` print
+  `holds INSERT,MAINTAIN,REFERENCES,TRIGGER,TRUNCATE`. The one-line revoke
+  (`revoke truncate on all tables in schema public from anon, authenticated;`) **tightens** access
+  and would merge on its own by tier, but it is production DDL through the Management API and
+  needs a pass over the swap tables rather than a blind sweep. Add the `access_watch` rule in the
+  same commit.
+- [ ] **`feedback` is unchanged for the TWENTY-SIXTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — **18 rows**, newest still Courtney's
+  **2026-10-15 12:30** ("Stop auto syncing with nurse grid"), now **30.8 days** old.
+  `paystub_failed` has **still never fired for any reason**, so the 10-13 item's "read a second
+  device" bar is still not met — do not build a worker mitigation.
+- [ ] **Courtney has not opened the app in 25.4 days** (P2 · housekeeping) — her device
+  `f184ffa5` last filed anything at **2026-10-20 23:02:03** (177 rows lifetime), still predating
+  `d438d58` (the banner switch, 10-21) and `cd77392` (the stepper switch, 10-22).
+  `ics_autosync_pref` **zero rows from any device, ever**. Still **expected** — nobody has been
+  shown either affordance.
+- [ ] **The 11-03 `client_error` fix is 9-for-9** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the tenth groom. No new
+  loads to test it against tonight, so this is a flat reading rather than a fresh pass. The 11-03
+  prediction *"expect this count to stay at 30 and treat 31 as real"* has held on sixteen loads.
+- [ ] **CABINET MISSED fires for the SIXTH night, and the brief is now 14.0 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — the
+  thirteenth instance of this repo's recurring defect, and the one filed for Pat **thirteen
+  times**: **gate the build on an over-age brief, or retire the dead-man's-switch claim.**
+- [ ] **Last night's prediction HELD for the ninth time** (housekeeping) — `deploy_watch` reads
+  **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what the 11-14 note
+  predicted for a `scripts/`- and docs-only merge. `privacy.html` and `ops.html` print the
+  truncation sentence rather than a commit (boundary `71a311b` tonight, was `4edfa33` — **the
+  figure drifts with clone depth, which is why #210 stopped printing it as a deploy fact**).
+  **Tonight's prediction:** tonight's merge touches `tests/`, `scripts/check_build.mjs`,
+  `BACKLOG.md`, `CLAUDE.md` and `docs/cos/inbox.md` — **no publish-set file** — so tomorrow's
+  `deploy_watch` should **still** name `aa53aec` for `index.html`.
+- [ ] **The gate meta-test is STILL not in CI — eighteenth night** (P2 · `harness:unscoped` ·
+  needs the owner) — the suite is **62 assertions / ~130s** and holds the only negative evidence
+  that `[5]`'s eight clauses have teeth. `ci.yml`'s `gate` job still does not call it, and
+  **editing a workflow file is blocked for agent sessions in this sandbox**. Still the same two
+  lines after the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs` and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`. Tonight's build deliberately
+  went into `tests/smoke.mjs` rather than a fourth orphan suite for exactly this reason.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — NINTH night** (P1 · needs the
+  owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **9.3 days**. Tonight
+  branched to `claude/great-feynman-xehmga`, so #209's head is untouched for the ninth run
+  running. The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, and a run that follows it literally still destroys
+  Pat's pending legal review — **that prompt is the one artefact no agent can edit**, so the
+  standing answer is: owner-tier work gets its own branch, and #209 should be merged or closed.
+  Its CI is red on purpose since #214 (the published-link check names `terms.html`), which is the
+  check working. `docs/cos/now.md` goes un-updated for the TENTH night for the same reason (#209
+  rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
+  meant to read still says "Updated 2026-11-02" — thirteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5040,6 +5178,43 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-15 — **Invariant 2's gate counted five `integrity` attributes and printed `hashed`;
+  nothing in this repo had ever read a byte of those five files.** The invariant is written down
+  as `grep -c 'integrity="sha384-' index.html` → 5, and `check(2, 'SRI on all 5 CDN scripts')`
+  asserted exactly that, then returned **`5/5 pinned + hashed`**. Copy a hash from the wrong row,
+  or bump a pin and leave the hash, and the browser fetches the file, the digest disagrees, and
+  the script **never runs**: React or Babel never defines, Invariant 1's watchdog replaces the app
+  with the boot error screen for **every visitor**, and Invariant 1's own `Detect` records that as
+  invisible — a device that never boots never fires `app_open` and never flushes its error buffer.
+  A total silent outage one edit away, with the count still reading 5 because five attributes are
+  still five attributes. **And the suite that boots the app was blind to it by construction:**
+  `buildScratch` strips every `integrity` attribute (`harness.mjs`:95) and rewrites the five CDN
+  urls to `node_modules`, so the one place the app actually runs is the one place SRI is
+  guaranteed not to be enforced — the 2026-10-31 pdf.js-worker shape exactly.
+  **Fix: `tests/smoke.mjs` §60, 23 assertions, in the smoke suite rather than the gate for a CI
+  reason, not a preference** — `ci.yml`'s `gate` job installs `@babel/standalone` alone while the
+  `smoke` job vendors all five pins, so it is the only required check that *has* the bytes; a
+  digest check in `check_build.mjs` would have had to fail in CI or shrug, and shrugging at what
+  it cannot read is the hole the 11-14 band named. It reuses the `[harness]` check's own
+  url→`node_modules` table (`CDN_MAP`, newly exported from `harness.mjs`, with the
+  `const MAP = [` anchor line left byte-identical) rather than keeping a second copy of the pins.
+  **Four of five verify exactly against the bytes npm ships** — unpkg and cdnjs serve the tarball
+  file unchanged, measured. **The fifth cannot, and the exemption is asserted rather than
+  assumed:** jsDelivr *generates* `supabase.min.js`, which the `@supabase/supabase-js@2.45.4`
+  tarball does not contain, so the rule is that exactly one row may be exempt, it must be a
+  jsDelivr `/npm/` url whose basename is the `.min.js` of its local counterpart, and **npm must
+  still not ship that file** — if it ever starts, §60 fails and the exemption gets re-read instead
+  of outliving its reason. §60 also closes a second hole the count could not see: six remote
+  scripts carrying five hashes passed, so every `<script src="https:…">` is now required to carry
+  one, asked from the tag's end. **Twelve measured breaks, every one of the 23 rows covered by at
+  least one**, run against a copied tree: a sixth script (B1), a stripped attribute (B2), a
+  truncated hash (B3), **react and react-dom's hashes swapped — the break this exists for** (B4),
+  a bumped pin with the old hash (B5), a missing vendored file (B6), the exemption dissolved (B7),
+  moved off jsDelivr (B8) and contradicted by npm shipping the `.min.js` (B9), a digest helper
+  that ignores its argument (B10), and `ops.html` losing (B11) or drifting (B12) its copy of the
+  shared supabase pin. The gate's `[2]` row now prints what it actually checks. Suite 962 → 985,
+  roster 58 → 59 sections; all five suites green (gate 21/21, groom-seed 33, core 175,
+  silence-watch 39, deploy-watch 98, smoke 985/0).
 - 2026-11-14 — **Invariant 5's gate was a hardcoded list of six, and the app uses eight keys.**
   The check asserted six key literals were present somewhere in `index.html` and printed
   `6/6 intact` — which reads like completeness and was really "the six I was told about". It
