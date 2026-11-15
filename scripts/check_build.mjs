@@ -102,7 +102,12 @@ check(2, 'SRI on all 5 CDN scripts', () => {
   must(n === 5, `expected 5 integrity="sha384-" attributes, found ${n}`);
   const unpinned = html.match(/<script[^>]+src="https:\/\/[^"]*@latest[^"]*"/g);
   must(!unpinned, `CDN script pinned to @latest: ${unpinned && unpinned[0]}`);
-  return '5/5 pinned + hashed';
+  /* Truth in labelling, 2026-11-15. This used to print `5/5 pinned + hashed`, and the second
+     word was the lie the whole 11-14 band is about: nothing here reads a byte of those files, so
+     a hash copied from the wrong row passes this check and blocks the script in every browser.
+     The bytes are compared in `tests/smoke.mjs` §60, which is the only required check that has
+     them — CI's `gate` job installs @babel/standalone alone, the `smoke` job vendors all five. */
+  return '5 attributes present, none @latest (the HASHES are checked against the bytes in smoke §60)';
 });
 
 /* ---- Invariant 2's sibling: the CSP that decides whether those five scripts run at all --

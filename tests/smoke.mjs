@@ -12,7 +12,8 @@ import { chromium, devices } from 'playwright-core';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY, findChromium, chromiumLaunch } from './harness.mjs';
+import { createHash } from 'node:crypto';
+import { buildScratch, serve, isExpectedNetwork, makeMinimalPdf, SEEDED_STATE, STORAGE_KEY, findChromium, chromiumLaunch, CDN_MAP } from './harness.mjs';
 /* Section 59 drives the access watch's classifier with no browser and no network. The watch
    itself only runs `main()` when it IS the entry point, so importing it here is inert. */
 import {
@@ -110,6 +111,7 @@ const SECTIONS = [
   [56, '"Clear all data" takes the calendar-feed link with it'],
   [57, 'a clean load files no client_error row (the Babel style note)'],
   [59, 'the access watch\u2019s classifier (Invariant 13\u2019s RLS clause)'],
+  [60, 'the SRI hash is compared to the bytes, not counted'],
 ];
 
 /* `ran` is the order sections FIRST ran; `marks` is how many assertions had been recorded when
@@ -424,6 +426,135 @@ const run = async () => {
     ok('59 access: an unreadable catalog is UNREACHABLE with a non-zero exit, not an empty TIGHT',
       dead.verdict === 'UNREACHABLE' && dead.exitCode === 2 && (dead.rules || []).length === 0,
       `${dead.verdict}/${dead.exitCode}`);
+  }
+
+  /* ============== 60: the SRI hash is compared to the BYTES, not counted ==================
+   *
+   * Invariant 2 is written down as `grep -c 'integrity="sha384-' index.html` -> 5, and that is
+   * exactly what `check_build.mjs` asserts. It counts ATTRIBUTES. Nothing in this repo has ever
+   * compared one of those hashes to the file it is supposed to describe — the same shape as
+   * 2026-11-14's `6/6 intact` (a figure that read like completeness) and 2026-10-31's pdf.js
+   * worker (a file nothing had read a byte inside).
+   *
+   * The break is one edit and it is a TOTAL SILENT OUTAGE. Bump a pin and copy the hash from
+   * the wrong row, or bump the url and leave the hash: the browser fetches the file, the digest
+   * does not match, and the script NEVER RUNS. React or Babel never defines, Invariant 1's
+   * watchdog replaces the app with the boot error screen for every visitor, and Invariant 1's
+   * own Detect trailer records that as invisible — a device that never boots never fires
+   * `app_open` and never flushes its error buffer. The gate still prints `5/5 pinned + hashed`,
+   * because five attributes are still five attributes.
+   *
+   * And the suite that BOOTS the app cannot see it either, by construction: `buildScratch`
+   * strips every `integrity` attribute with a blanket regex (harness.mjs:95) and rewrites the
+   * five CDN urls to node_modules. So the one place the app is actually run is the one place SRI
+   * is guaranteed not to be enforced. That is why this section is here rather than in the gate —
+   * and it is also the practical reason: CI's `gate` job installs only @babel/standalone, while
+   * the `smoke` job vendors all five pins, so this is the only required check that HAS the bytes.
+   *
+   * It runs before `chromium.launch` for section 53's reason: a pure-Node failure should print a
+   * FAIL line, not ride out as an exception.
+   *
+   * FOUR of the five are verified against the bytes npm ships, and they match exactly — unpkg
+   * and cdnjs serve the tarball file unchanged. The fifth cannot be, and the exemption is
+   * asserted rather than assumed: jsDelivr GENERATES `supabase.min.js`, which is not in the
+   * @supabase/supabase-js tarball at all (`dist/umd/` holds only `supabase.js`). So the rule is
+   * "exactly one row may be exempt, it must be a jsDelivr url whose basename is the `.min.js` of
+   * its local counterpart, and npm must still not ship that file" — if npm ever starts shipping
+   * it, this fails and the exemption gets re-read instead of outliving its reason. */
+  if (want(60)) {
+    const indexHtml = readFileSync(join(ROOT, 'index.html'), 'utf8');
+    const opsHtml = readFileSync(join(ROOT, 'ops.html'), 'utf8');
+    const sha384 = (file) => `sha384-${createHash('sha384').update(readFileSync(file)).digest('base64')}`;
+
+    /* Attribute order in index.html is crossorigin/integrity/src, so match the TAG and pull the
+       attributes out of it — a src-first regex would silently match nothing. */
+    const tagsOf = (src) => [...src.matchAll(/<script\b[^>]*>/g)]
+      .map((m) => ({
+        tag: m[0],
+        src: (/\ssrc="([^"]+)"/.exec(m[0]) || [])[1],
+        integrity: (/\sintegrity="([^"]+)"/.exec(m[0]) || [])[1],
+      }))
+      .filter((t) => t.src && /^https:/i.test(t.src));
+
+    const remote = tagsOf(indexHtml);
+    ok('60 sri: index.html loads exactly five remote scripts', remote.length === 5,
+      String(remote.length));
+
+    /* The gate counts integrity attributes, which is NOT the same question: a sixth remote script
+       added with no integrity leaves the count at five and passes. Ask it from the tag's end. */
+    ok('60 sri: every remote script tag carries an integrity attribute',
+      remote.length > 0 && remote.every((t) => !!t.integrity),
+      remote.filter((t) => !t.integrity).map((t) => t.src).join(', ') || 'all five');
+
+    /* A truncated or re-wrapped hash is a blocked script just as surely as a wrong one. A sha384
+       digest is 48 bytes, which is exactly 64 base64 characters and no padding. */
+    const malformed = remote.filter((t) => !/^sha384-[A-Za-z0-9+/]{64}$/.test(t.integrity || ''));
+    ok('60 sri: every hash is a full-length sha384 digest', malformed.length === 0,
+      malformed.map((t) => t.integrity || `(none on ${t.src})`).join(', ') || '5 well-formed');
+
+    const byUrl = new Map(CDN_MAP.map(([url, local]) => [url, local]));
+    const verified = [];
+    const exempt = [];
+    for (const t of remote) {
+      const local = byUrl.get(t.src);
+      const label = (local || t.src).split('/').slice(-2).join('/');
+      ok(`60 sri: ${label} resolves to a vendored file`, !!local,
+        local || `${t.src} is in no CDN_MAP row`);
+      if (!local) continue;
+      const file = join(ROOT, 'node_modules', local);
+      ok(`60 sri: node_modules carries ${local}`, existsSync(file), file);
+      if (!existsSync(file)) continue;
+      const cdnName = t.src.split('/').pop();
+      const localName = local.split('/').pop();
+      (cdnName === localName ? verified : exempt).push({ t, local, file, cdnName, localName });
+    }
+
+    for (const v of verified) {
+      ok(`60 sri: ${v.localName} — the pinned hash matches the bytes npm ships`,
+        sha384(v.file) === v.t.integrity, `${v.t.integrity} vs ${sha384(v.file)}`);
+    }
+
+    /* The exemption, checked rather than taken on trust. */
+    ok('60 sri: exactly one pinned script has no byte-identical npm counterpart',
+      exempt.length === 1 && verified.length === 4,
+      `${verified.length} verified / ${exempt.length} exempt`);
+    const x = exempt[0];
+    ok('60 sri: the one exemption is jsDelivr minifying a file npm ships unminified',
+      !!x && /^https:\/\/cdn\.jsdelivr\.net\/npm\//.test(x.t.src)
+        && x.cdnName === x.localName.replace(/\.js$/, '.min.js'),
+      x ? `${x.cdnName} vs ${x.localName}` : 'no exempt row');
+    ok('60 sri: npm still does not ship that .min.js — if it starts, this exemption is wrong',
+      !!x && !existsSync(join(dirname(x.file), x.cdnName)),
+      x ? join(dirname(x.local), x.cdnName) : 'no exempt row');
+
+    /* Anti-vacuity CONTROL, and it is labelled one on purpose: it proves the comparison would
+       catch a MUTATED file rather than merely a present one. One newline appended to react's real
+       bytes must stop matching react's pinned hash, and must not collide with any other pin. A
+       comparison that checked a prefix, or a length, or a file against itself passes every
+       assertion above and fails exactly here. Its own break mutates the control — that is what a
+       control is, and saying so is better than claiming an independent clause. */
+    const react = verified.find((v) => v.localName === 'react.production.min.js');
+    const reactDom = verified.find((v) => v.localName === 'react-dom.production.min.js');
+    const mutant = join(ROOT, '.harness-sri-mutant.js');
+    writeFileSync(mutant, Buffer.concat([readFileSync(react.file), Buffer.from('\n')]));
+    const mutantDigest = sha384(mutant);
+    rmSync(mutant, { force: true });
+    ok('60 sri: control — one appended byte stops the hash matching',
+      !!react && !!reactDom && mutantDigest !== react.t.integrity
+        && !remote.some((t) => t.integrity === mutantDigest),
+      `${mutantDigest.slice(7, 23)}… vs ${react ? react.t.integrity.slice(7, 23) : '?'}…`);
+
+    /* ops.html ships to the same public URL and loads the same supabase-js pin. A hash that
+       drifts on one page only is a blocked script on that page only — the ops console would show
+       the two admins a blank panel while the app kept working. */
+    const opsRemote = tagsOf(opsHtml);
+    ok('60 sri: ops.html loads one remote script and it carries an integrity',
+      opsRemote.length === 1 && !!opsRemote[0].integrity, String(opsRemote.length));
+    const appSupa = remote.find((t) => t.src.includes('supabase-js'));
+    ok('60 sri: the shared supabase-js pin carries the same url and hash on both pages',
+      !!appSupa && !!opsRemote[0] && opsRemote[0].src === appSupa.src
+        && opsRemote[0].integrity === appSupa.integrity,
+      opsRemote[0] ? `${opsRemote[0].src}` : 'no remote script in ops.html');
   }
 
   rmSync(SCRATCH, { recursive: true, force: true });
@@ -7719,8 +7850,8 @@ const run = async () => {
   ok(`roll-call: this run covered what it claims — ${ran.length}/${ONLY.length ? ONLY.length : SECTIONS.length} sections`,
     liveProblems.length === 0, liveProblems.join(' | '));
   if (!ONLY.length) {
-    ok('roll-call: a full run means all 58 sections, counted not assumed',
-      ran.length === SECTIONS.length && SECTIONS.length === 58,
+    ok('roll-call: a full run means all 59 sections, counted not assumed',
+      ran.length === SECTIONS.length && SECTIONS.length === 59,
       `${ran.length} ran / ${SECTIONS.length} declared`);
   }
 
