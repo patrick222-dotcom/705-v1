@@ -1189,11 +1189,15 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   So `ics_autosync_pref`'s zero rows have **stopped being fully expected**: she has been offered
   it once. One load at four seconds is not evidence she declined it — it is barely evidence she
   saw the sheet.
-  (b) **Her feed shrank and her shift count halved**: 125 events on 10-20 → **109** tonight, and
-  `session_end {shifts:}` 112 (10-20) → **69**. Nothing in `events` explains the shift drop —
-  there is no `ics_import_done` and no planner-delete row between the two loads, so either she
-  deleted shifts on a load that filed nothing, or the 10-20 count was already stale. **Unverified**
-  and not worth a build until a second load exists.
+  (b) **Her feed shrank; her shift count did not move at all**: 125 events on 10-20 → **109**
+  tonight, while `session_end {shifts:}` reads **69** on both 10-20 22:26 and tonight (71 earlier
+  that evening, 69 since 10-15). So 26 days passed, her NurseGrid calendar lost 16 events, and
+  **nothing on her BadgeBudget account changed** — no import, no edit, no deletion. The 109 events
+  therefore almost certainly contain real removals she has never been shown, which is the reading
+  the new `removals` prop will settle on her next load.
+  *(An earlier draft of this line claimed her shift count halved from 112. That number came from
+  CLAUDE.md's 10-10 narrative, not from her `session_end` rows, which have said 67–71 throughout
+  — exactly the error the build item above is about, made while writing the build item about it.)*
   (c) **The first proxy call did NOT 422 this time.** Both prior real sessions (09-28 12:26:32,
   09-29 11:53:07) opened with `422 not_a_calendar` and retried 24s later; tonight's sync completed
   **1.36s** after `app_open` with one invoke and no `client_error`. That is the third real
