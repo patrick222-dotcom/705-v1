@@ -1147,6 +1147,126 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat is
   meant to read still says "Updated 2026-11-02" — thirteen days.**
 
+### P1 (new, groom 2026-11-16)
+
+**Why this band sits BELOW the 11-06 through 11-15 bands instead of at the top of `## Queue`:**
+unchanged for the tenth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**`ics_sync_done {events:N}` counts the FEED, and six places read it as the size of the
+  PLAN**~~ — **SHIPPED 2026-11-16**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable`) Picked with the 11-14 band's search, for the tenth night, because `## Queue`
+  still has no unblocked build item that does not need Pat: *find a claim with a number in it,
+  then ask what that number is actually counting.* Tonight the groom handed it over instead of
+  the file audit — **Courtney came back after 26 days** and her one load fired
+  `ics_sync_done {events:109}`, which the 10-20 band would have written down as "a 109-event
+  plan".
+  **The defect.** `events` is `parsed.events.length`. The plan — what she is actually asked to
+  confirm — is the local `pending`, computed four lines earlier and then thrown away. The two are
+  different sets, and the one production load carrying both numbers **disproves** the
+  substitution rather than merely leaving it unestablished: `events:127` on 2026-10-10 against an
+  `ics_import_done {shown:6, skipped:46}` the same morning — **52 items, not 127**, because 75 of
+  the feed's events were already known and unchanged and never reached a card. The plan can also
+  **exceed** the feed, since a removal is a shift the feed does not carry at all.
+  **Why it mattered rather than being a tidy-up.** Every judgement about how heavy the stepper is
+  — the thing the 10-21 banner switch and the 10-22 stepper switch were *both* designed around —
+  was made off a count of the wrong set, and nothing in `events` could tell a 3-change sheet from
+  a 109-change one. Six sites read it that way: CLAUDE.md ×4 (`127-event plan`,
+  `126-event plan`, `125-event confirm sheet`, `125 of them for her feed`) and `index.html` ×6
+  comments. All corrected to say *feed*, and the three claims that were really about plan size now
+  say the number was unknowable until tonight.
+- [ ] **COURTNEY IS BACK — one load, 26 days after the last, and she was gone in 4 seconds**
+  (P1 · source:groom · needs no action yet, and that is a judgement) — device `f184ffa5` filed
+  `app_open` at **2026-11-15 23:23:04**, `ics_sync_done {events:109, nursegrid}` at 23:23:05.59,
+  `ics_sync_result {changes}` 2ms later, and `session_end {secs:4, shifts:69, last:ics_sync_result}`
+  at 23:23:06. Her previous row was **2026-10-20 23:02:03**. So: a cold load, the stepper opened on
+  a plan it found changes for, and she left about one second after the sheet appeared. **Zero**
+  `ics_import_done`, zero `ics_autosync_pref`, zero `ics_resync_dismissed`, zero `client_error`.
+  Three things are new and worth keeping separate from the guesses.
+  (a) **This is the first load of hers on a build that carries either opt-out switch** — her last
+  load predated `d438d58` (banner, 10-21) and `cd77392` (stepper, 10-22). She is now on `aa53aec`.
+  So `ics_autosync_pref`'s zero rows have **stopped being fully expected**: she has been offered
+  it once. One load at four seconds is not evidence she declined it — it is barely evidence she
+  saw the sheet.
+  (b) **Her feed shrank and her shift count halved**: 125 events on 10-20 → **109** tonight, and
+  `session_end {shifts:}` 112 (10-20) → **69**. Nothing in `events` explains the shift drop —
+  there is no `ics_import_done` and no planner-delete row between the two loads, so either she
+  deleted shifts on a load that filed nothing, or the 10-20 count was already stale. **Unverified**
+  and not worth a build until a second load exists.
+  (c) **The first proxy call did NOT 422 this time.** Both prior real sessions (09-28 12:26:32,
+  09-29 11:53:07) opened with `422 not_a_calendar` and retried 24s later; tonight's sync completed
+  **1.36s** after `app_open` with one invoke and no `client_error`. That is the third real
+  occurrence the P2 was waiting on, and it is evidence **against** the HTML-interstitial
+  hypothesis being deterministic. Do not build a retry.
+  **What NOT to do with this.** It is one load from one device. The temptation is to read four
+  seconds as "the 109-item sheet drove her off" and start redesigning the cold-load door; the
+  honest reading is that the one number that would tell you how heavy that sheet was did not
+  exist until tonight's build, and it still will not exist for *her* until she loads again. Wait
+  for a second load on the new build and read `pending` / `cards` off it.
+- [ ] **`silence_watch` is FRESH for the first time in four grooms** (P2 · source:groom · no
+  action) — newest event **8.7h** old against a 48h window, because of the load above. `events`
+  **1,802 → 1,807** (5 rows, all one device). 8 distinct devices in 7 days, unchanged. **Do not
+  quote an activation figure off any of it**; the device classifier is still broken.
+- [ ] **`access_watch` reads TIGHT on its fourth night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies and
+  `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe.**
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 through 11-15 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data`
+  and the swap tables; the `D` is TRUNCATE, which RLS does not cover. The one-line revoke
+  **tightens** access and would merge on its own by tier, but it is production DDL through the
+  Management API and needs a pass over the swap tables rather than a blind sweep. Add the
+  `access_watch` rule in the same commit.
+- [ ] **`feedback` is unchanged for the TWENTY-SEVENTH groom** (housekeeping, re-read at the END
+  of the run with every column as the 10-14 item requires) — **18 rows**, newest still Courtney's
+  **2026-10-15 12:30** ("Stop auto syncing with nurse grid"), now **31.8 days** old. Note she
+  loaded the app last night and filed no new feedback. `paystub_failed` has **still never fired
+  for any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build
+  a worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 10-for-10, and tonight it had a REAL load to survive**
+  (P2 · source:groom · no action) — `client_error` is **30**, newest `2026-11-03 04:04:11`,
+  unchanged for the eleventh groom. The nine grooms before this one were flat readings against no
+  new traffic; last night's load is the first fresh evidence since 11-03 that a clean load files
+  nothing. The 11-03 prediction *"expect this count to stay at 30 and treat 31 as real"* has now
+  held across **seventeen** loads, one of them a real signed-in nurse running a full feed sync.
+- [ ] **CABINET MISSED fires for the SEVENTH night, and the brief is now 15.0 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — the
+  fourteenth instance of this repo's recurring defect, and the one filed for Pat **fourteen
+  times**: **gate the build on an over-age brief, or retire the dead-man's-switch claim.**
+- [ ] **Last night's prediction HELD for the tenth time** (housekeeping) — `deploy_watch` reads
+  **LIVE** with `index.html` serving **`aa53aec` (2026-11-03)**, exactly what the 11-15 note
+  predicted for a `tests/`- and docs-only merge. `privacy.html` and `ops.html` print the
+  truncation sentence rather than a commit (boundary `7aa590a` tonight, was `71a311b` — **the
+  figure drifts with clone depth, which is why #210 stopped printing it as a deploy fact**).
+  **Tonight's prediction:** tonight's merge touches `index.html`, so tomorrow's `deploy_watch`
+  should name **tonight's commit** for `index.html` — the first non-`aa53aec` reading in fourteen
+  nights, and the first chance in that window for the live check to be wrong in the direction
+  that matters.
+- [ ] **The gate meta-test is STILL not in CI — nineteenth night** (P2 · `harness:unscoped` ·
+  needs the owner) — the suite is **62 assertions / ~130s** and holds the only negative evidence
+  that `[5]`'s eight clauses have teeth. `ci.yml`'s `gate` job still does not call it, and
+  **editing a workflow file is blocked for agent sessions in this sandbox**. Still the same two
+  lines after the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs` and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`. Tonight's assertions went
+  into `tests/smoke.mjs` for exactly this reason.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — TENTH night** (P1 · needs the
+  owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **10.3 days**. Tonight
+  branched to `claude/great-feynman-tvjaqn`, so #209's head is untouched for the tenth run
+  running. The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, and a run that follows it literally still destroys
+  Pat's pending legal review — **that prompt is the one artefact no agent can edit**, so the
+  standing answer is: owner-tier work gets its own branch, and #209 should be merged or closed.
+  Its CI is red on purpose since #214 (the published-link check names `terms.html`), which is the
+  check working. `docs/cos/now.md` goes un-updated for the ELEVENTH night for the same reason
+  (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat
+  is meant to read still says "Updated 2026-11-02" — fourteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5178,6 +5298,46 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-16 — **`ics_sync_done {events:N}` counts the FEED; six places in this repo read it as
+  the size of the PLAN.** `events` is `parsed.events.length`. The number anyone actually wants —
+  how many things the import stepper is asking her to confirm — is the local `pending`, computed
+  four lines earlier in `runIcalSync` and then discarded. They are different sets, and the one
+  production load carrying both numbers **disproves** the substitution rather than leaving it
+  merely unestablished: `events:127` on 2026-10-10 against an `ics_import_done {shown:6,
+  skipped:46}` the same morning — **52 items, not 127**, because 75 of that feed's events were
+  already known and unchanged and never reached a card. The plan can also **exceed** the feed,
+  since a removal is a shift the feed does not carry at all.
+  **Why this was worth a build item rather than a correction.** Every judgement about how heavy
+  the stepper is — the thing the 10-21 banner switch and the 10-22 stepper switch were *both*
+  designed around, and the thing last night's 4-second visit from the one real user invites a
+  guess about — was made off a count of the wrong set, and nothing in `events` could tell a
+  3-change sheet from a 109-change one.
+  **Fix:** the row now carries `pending`, `cards` (how many classify cards she taps through —
+  groups collapse same-shape events, which is the figure the "one copy per group" note needed and
+  never had), `classify`, `updates` and `removals`, with **`pending === classify + updates +
+  removals`** so a reader can check the row against itself and a bucket that stops being counted
+  shows up as arithmetic rather than as a plausible smaller number. `events` is deliberately
+  unchanged — months of rows are keyed on it meaning the feed. Counts only: no title, no URL, no
+  date, no wage figure (Invariant 13 + the analytics rules). No new event NAME, so the dashboard
+  inventory and `check_build.mjs`'s `[events]` check are untouched.
+  **`tests/smoke.mjs` §61, 17 assertions, eight measured breaks.** The fixture is built so **no
+  two of the six counts coincide** and so that **`pending` (9) EXCEEDS `events` (4)** — a build
+  reporting the feed count under `pending` then fails on magnitude, not merely on identity. The
+  breaks: the fix reverted (9 rows red), the feed count reported as `pending` (4), the inverse
+  substitution of the plan count under `events` (2), `cards` counting events instead of groups
+  (3), `updates`/`removals` transposed (2), one bucket dropped from `pending` upstream of the
+  track call (4), the feed URL on the row (2, Invariant 13), a title on the row (2). All run
+  against a copy of the tree, never the working one, and the clean build passes under identical
+  settings first. **One break was discarded for lying**: its first form referenced a variable not
+  in scope, so the row never fired at all, the props came back `null`, and the Invariant 13
+  assertion "passed" on an empty object — the `harness` skill's *break behaviour, not presence*
+  rule, met in a new disguise. Four of the 17 rows have no independent break (the invoke-count
+  and page-error controls, the one-row guard, provider continuity) and are named as controls
+  rather than counted as clauses.
+  Also corrected: the six stale readings in `index.html` comments and the four in CLAUDE.md now
+  say *feed*, and the three that were really claims about plan size say the number was unknowable
+  until tonight. Suite 985 → **1,002**, roster 59 → **60** sections. Gate 21/21,
+  core 175, groom-seed 33.
 - 2026-11-15 — **Invariant 2's gate counted five `integrity` attributes and printed `hashed`;
   nothing in this repo had ever read a byte of those five files.** The invariant is written down
   as `grep -c 'integrity="sha384-' index.html` → 5, and `check(2, 'SRI on all 5 CDN scripts')`
