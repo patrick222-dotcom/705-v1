@@ -112,6 +112,7 @@ const SECTIONS = [
   [57, 'a clean load files no client_error row (the Babel style note)'],
   [59, 'the access watch\u2019s classifier (Invariant 13\u2019s RLS clause)'],
   [60, 'the SRI hash is compared to the bytes, not counted'],
+  [61, 'the sync row says how big the PLAN is, not just the feed'],
 ];
 
 /* `ran` is the order sections FIRST ran; `marks` is how many assertions had been recorded when
@@ -7768,6 +7769,158 @@ const run = async () => {
     await ctx.close();
   }
 
+  /* ---- 61. the sync row says how BIG the plan is, not just how big the feed is --------------
+     `ics_sync_done {events:N}` is `parsed.events.length` — the size of the FEED. It has been
+     read as the size of the PLAN (what she is asked to confirm) in five places across CLAUDE.md
+     and index.html: "declined the same 127-event plan three times", "three ics_sync_result
+     {changes} carrying 125 events each", "she met a 125-event confirm sheet", "one copy per
+     group — 125 of them for her feed". Those are different sets, and the one production load
+     where both numbers exist disproves the substitution: `events:127` on 2026-10-10 against an
+     `ics_import_done {shown:6, skipped:46}` the same morning — 52 items, because 75 of the feed's
+     events were already known and unchanged and never reached a card.
+
+     The fixture is built so NO pair of the six counts coincides, and so that `pending` EXCEEDS
+     `events` — which it can, because a removal is a shift the feed does not carry at all. That
+     is what makes the substitution impossible to pass by accident: a build that reports the feed
+     count under a `pending` key fails on magnitude, not just on identity.
+       feed:      3 new (two sharing a shape, one not) + 1 changed            -> events   4
+       plan:      classify 3, cards 2, updates 1, removals 5                  -> pending  9
+     The two same-shape new events are seven days apart so their weekday-ness — part of the group
+     key — matches on every possible run date. */
+  if (want(61)) {
+    const F61 = 'https://app.nursegrid.com/calendars/61/6f1c8e2a-0000-4a11-9c33-aaaaaaaaaaaa';
+    /* Dates are relative to the run date so every event lands inside the parser's
+       60-back..366-forward window, and every removal is dated after today so the feed-reach
+       bound (section 28) proposes it rather than withholding it. */
+    const dk = (n) => {
+      const d = new Date(); d.setDate(d.getDate() + n);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const stamp = (n) => dk(n).replace(/-/g, '');
+    const ve = (uid, n, from, to) => ['BEGIN:VEVENT', `UID:${uid}`,
+      `DTSTART:${stamp(n)}T${from}00Z`, `DTEND:${stamp(n)}T${to}00Z`, 'SUMMARY:ICU', 'END:VEVENT'];
+    const FEED61 = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+      ...ve('ng61-new-a', 7, '1100', '2300'),    // 12h, weekday-ness X
+      ...ve('ng61-new-c', 14, '1100', '2300'),   // 12h, same shape as A (7 days later => same X)
+      ...ve('ng61-new-b', 8, '1200', '2000'),    // 8h -> its own group, whatever the start resolves to
+      ...ve('ng61-chg-1', 9, '1100', '2300'),    // 12h in the feed, 10h on the saved shift
+      'END:VCALENDAR'].join('\r\n');
+    /* Five saved shifts the feed does not carry at all -> five removals, none of which consumes
+       a feed event. This is the half that lets `pending` outrun `events`. */
+    const seed61 = { setupComplete: true, baseRate: 50, shifts: {} };
+    const put = (n, uid, hours) => {
+      seed61.shifts[dk(n)] = [{ id: uid, hours, shiftType: 'day', bonusType: 'none', icsUid: uid }];
+    };
+    put(9, 'ng61-chg-1', 10);
+    [10, 11, 12, 13, 15].forEach((n, i) => put(n, `ng61-gone-${i + 1}`, 12));
+
+    const { ctx, page, errors } = await newPage(browser, url, { seed: seed61 });
+    await page.addInitScript(([body, feedUrl]) => {
+      window.__ev = [];
+      const A = { user: { id: '11111111-1111-4111-8111-111111111111', email: 'a@example.com' },
+        access_token: 'a', refresh_token: 'a' };
+      let real;
+      Object.defineProperty(window, 'supabase', {
+        configurable: true,
+        get() { return real; },
+        set(v) {
+          if (v && v.createClient) {
+            const orig = v.createClient.bind(v);
+            v.createClient = (...a) => {
+              const c = orig(...a);
+              try {
+                c.auth.getSession = async () => ({ data: { session: A }, error: null });
+                c.auth.onAuthStateChange = () => ({ data: { subscription: { unsubscribe() {} } } });
+                c.from = (table) => {
+                  const q = { _op: 'select' };
+                  for (const m of ['select', 'eq', 'order', 'limit', 'maybeSingle', 'single', 'update', 'delete']) q[m] = () => q;
+                  q.insert = (row) => { q._op = 'insert'; if (table === 'events') window.__ev.push(row); return q; };
+                  q.upsert = () => { q._op = 'upsert'; return q; };
+                  q.then = (res, rej) => {
+                    if (q._op !== 'select') return Promise.resolve({ error: null }).then(res, rej);
+                    if (table === 'ical_subscriptions') {
+                      return Promise.resolve({ data: { ical_url: feedUrl, provider: 'nursegrid', last_synced: null }, error: null }).then(res, rej);
+                    }
+                    /* `user_data` must answer "no row" so hydration COMPLETES and the saved blob
+                       above stays the state the plan is built against (section 27's note). */
+                    return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no row' } }).then(res, rej);
+                  };
+                  return q;
+                };
+                /* Own property, not assignment: `functions` is a prototype getter returning a
+                   fresh client per access (section 27). */
+                Object.defineProperty(c, 'functions', {
+                  value: { invoke: async () => { window.__inv61 = (window.__inv61 || 0) + 1; return { data: body, error: null }; } },
+                  configurable: true,
+                });
+              } catch (_) {}
+              return c;
+            };
+          }
+          real = v;
+        },
+      });
+    }, [FEED61, F61]);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.avatar', { timeout: 20000 });
+    await page.waitForFunction(() => (window.__ev || []).some((r) => r && r.name === 'ics_sync_done'),
+      null, { timeout: 15000 }).catch(() => {});
+    const rows61 = await page.evaluate(() => (window.__ev || []).map((r) => ({ name: r.name, props: r.props })));
+    const inv61 = await page.evaluate(() => window.__inv61 || 0);
+    const done61 = rows61.filter((r) => r.name === 'ics_sync_done');
+    const p61 = done61[0] ? done61[0].props : null;
+
+    ok('plan size: the stub actually reached the proxy (the drive is real, not a no-op)',
+      inv61 === 1, String(inv61));
+    ok('plan size: exactly one ics_sync_done row for a sync that found changes',
+      done61.length === 1, JSON.stringify(done61.map((d) => d.props)));
+    /* The unchanged half: months of rows are keyed on this prop meaning the feed. */
+    ok('plan size: `events` still counts the FEED — 4 — so the old series stays comparable',
+      p61 && p61.events === 4, JSON.stringify(p61));
+    /* The defect. Nothing in `events` could say whether she met 3 changes or 109. */
+    ok('plan size: `pending` counts what she is asked to CONFIRM — 9, not the feed\'s 4',
+      p61 && p61.pending === 9, JSON.stringify(p61));
+    /* The magnitude discriminator: a build reporting the feed count under `pending` cannot pass
+       this, because 9 > 4 and no count of feed events can reach it. */
+    ok('plan size: and the plan is BIGGER than the feed here, so the two can never be confused',
+      p61 && p61.pending > p61.events, JSON.stringify(p61));
+    ok('plan size: `classify` is the new events awaiting a yes/no — 3',
+      p61 && p61.classify === 3, JSON.stringify(p61));
+    ok('plan size: `cards` is how many cards she taps through — 2, not 3: same-shape events group',
+      p61 && p61.cards === 2, JSON.stringify(p61));
+    ok('plan size: `cards` is below `classify`, which is the "one copy per group" figure',
+      p61 && p61.cards < p61.classify, JSON.stringify(p61));
+    ok('plan size: `updates` is the rewrites of shifts she already has — 1',
+      p61 && p61.updates === 1, JSON.stringify(p61));
+    ok('plan size: `removals` is the deletions being proposed — 5',
+      p61 && p61.removals === 5, JSON.stringify(p61));
+    /* Decomposable on purpose: a reader can check the row against itself, so a bucket that stops
+       being counted shows up as an arithmetic failure rather than a plausible smaller number. */
+    ok('plan size: pending decomposes exactly — classify + updates + removals',
+      p61 && p61.pending === p61.classify + p61.updates + p61.removals, JSON.stringify(p61));
+    ok('plan size: no two of the six counts coincide, so a swapped prop cannot pass',
+      p61 && new Set([p61.events, p61.pending, p61.classify, p61.cards, p61.updates, p61.removals]).size === 6,
+      JSON.stringify(p61));
+    ok('plan size: the provider still rides the row',
+      p61 && p61.provider === 'nursegrid', JSON.stringify(p61));
+    /* Invariant 13 + the analytics rules: counts only. The feed URL is a bearer credential, the
+       parser keeps no titles, and a wage figure may never ride an event. Asserted over the whole
+       serialised row rather than a key list, so a nested object cannot smuggle one in. */
+    {
+      const blob = JSON.stringify(p61 || {});
+      ok('plan size: the row carries no feed URL, host or scheme (Invariant 13)',
+        !/ical|webcal|basic\.ics|nursegrid\.com|https?:/i.test(blob), blob);
+      ok('plan size: the row carries no title from the feed (Invariant 13: no titles stored)',
+        !/ICU/i.test(blob), blob);
+      ok('plan size: every value is a small integer or the provider string — no dates, no money',
+        p61 && Object.entries(p61).every(([k, v]) => (k === 'provider' ? v === 'nursegrid'
+          : Number.isInteger(v) && v >= 0 && v < 10000)), blob);
+    }
+    const real61 = errors.filter((e) => !isExpectedNetwork(e));
+    ok('plan size: no page errors across section 61', real61.length === 0, real61[0] || '');
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
   rmSync(SCRATCH, { recursive: true, force: true });
@@ -7850,8 +8003,8 @@ const run = async () => {
   ok(`roll-call: this run covered what it claims — ${ran.length}/${ONLY.length ? ONLY.length : SECTIONS.length} sections`,
     liveProblems.length === 0, liveProblems.join(' | '));
   if (!ONLY.length) {
-    ok('roll-call: a full run means all 59 sections, counted not assumed',
-      ran.length === SECTIONS.length && SECTIONS.length === 59,
+    ok('roll-call: a full run means all 60 sections, counted not assumed',
+      ran.length === SECTIONS.length && SECTIONS.length === 60,
       `${ran.length} ran / ${SECTIONS.length} declared`);
   }
 

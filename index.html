@@ -1303,7 +1303,7 @@ function icsPendingSummary(p){
 
 /* An exact digest of everything a pending plan would CHANGE, so "Not now" can mean "not this,
    and don't ask me again" without ever meaning "stop telling me about my schedule".
-   Why it exists: on 2026-10-10 device f184ffa5 was shown the identical 127-event plan three
+   Why it exists: on 2026-10-10 device f184ffa5 was shown the identical plan, from a 127-event feed, three
    times in 47 minutes of ONE page load -- `ics_resync_found` at 07:24:25, 07:41:12 and 07:55:40,
    each dismissed (07:28:12, 07:43:57, 08:08:55), zero `ics_import_done` all day -- because
    "Not now" only cleared the banner's state and the next foreground re-sync rebuilt the same
@@ -3935,7 +3935,7 @@ function App(){
   const [icalBusy,setIcalBusy] = useState(false);    // a save / sync / remove is in flight
   /* true = never fetch the feed on our own; wait for "Sync now". Courtney asked for this twice in
      28 hours (2026-10-14 08:55, 2026-10-15 12:30 -- the second filed 39 seconds after a cold-load
-     sync re-proposed the same 126-event plan she had already declined). Default false, so nobody
+     sync re-proposed the same plan, off a 126-event feed, she had already declined). Default false, so nobody
      else's behaviour changes. */
   const [syncManualOnly,setSyncManualOnly] = useState(false);
   const [hydratedUserId,setHydratedUserId] = useState(null); // flips when a user's cloud data finishes hydrating (drives post-hydrate work)
@@ -4731,7 +4731,7 @@ function App(){
      re-proposes exactly the shift she just rejected, forever. That loop is what the one real
      NurseGrid account reported on 2026-10-14: "Once I deleted shifts that were not coded properly
      on BB, it keeps asking me to approve of the shifts that it's trying to sync" — filed 81
-     seconds after an ics_resync_dismissed, and after declining the same 126-event plan on five
+     seconds after an ics_resync_dismissed, and after declining the same plan, off a 126-event feed, on five
      separate loads without importing once. She asked for a manual-sync switch; this is the bug
      underneath that ask, so it goes first.
      Compared against the closure's `shifts[dateKey]`, not the updater's `prev`: `arr` is derived
@@ -5262,7 +5262,27 @@ function App(){
       }
       else setIcsImport(payload);
       result = 'changes';
-      track('ics_sync_done', {events:parsed.events.length, provider}, user.id);
+      /* `events` is the size of the FEED, and it has been read as the size of the PLAN — the
+         number of things she is actually being asked to confirm — in five places, including
+         CLAUDE.md's "declined the same 127-event plan three times" and "125 of them for her
+         feed". The two are different numbers, and the one row where both exist proves it: on
+         2026-10-10 a sync reporting `events:127` produced an `ics_import_done {shown:6,
+         skipped:46}` — 52 items, not 127, because 75 of the feed's events were already known and
+         unchanged and never reached a card. The plan size can also EXCEED the feed size, since a
+         removal is a shift the feed does not carry at all. So every judgement about how heavy
+         the stepper is — the thing the 10-21 banner switch and the 10-22 stepper switch were
+         both designed around — has been made off a count of the wrong set, with nothing in
+         `events` able to tell a 3-change sheet from a 109-change one.
+         `pending` is that number, lifted from the variable the code already computes and then
+         threw away, and it decomposes exactly: pending === classify + updates + removals.
+         `cards` is how many classify cards she taps through (groups collapse same-shape events),
+         which is the figure the "one copy per group" note needed and did not have.
+         Counts only — no title, no URL, no date, no wage figure (Invariant 13 + the analytics
+         rules). */
+      track('ics_sync_done', {events:parsed.events.length, pending, cards:groups.length,
+        classify:plan.toClassify.length,
+        updates:changedUpdates.length + plan.toUpdateEvents.length,
+        removals:plan.toRemove.length + plan.toRemoveEvents.length, provider}, user.id);
     // The catch logs status + the proxy's own error code, never the URL (Invariant 13) — see
     // icalFailureDetail. Keep console.error as the FIRST statement in the block: council #27
     // pins that shape in tests/smoke.mjs to prove a failed background sync is still recorded.
@@ -5592,7 +5612,7 @@ function App(){
             {/* The switch she asked for twice, offered where she meets the thing she asked to stop.
                 It shipped 2026-10-16 (Settings -> the iCal section, under "Sync now") and the
                 events say she never found it: three loads on 2026-10-20 at 20:15, 22:26 and 23:02
-                UTC, three `ics_sync_result {changes}` carrying 125 events each, zero
+                UTC, three `ics_sync_result {changes}` off a 125-event feed each, zero
                 `ics_import_done` since 2026-10-10, and `ics_autosync_pref` has still never fired
                 from any device. A preference nobody can reach is not a preference.
                 Same state and same event as the Settings switch -- `src` is the only difference,
@@ -6160,7 +6180,7 @@ function IcsImportSheet({state,differentials,onAnswer,onBack,onNext,onConfirm,on
               The banner carried it from 2026-10-21, but the banner fired on ONE of her three
               2026-10-20 loads -- the other two were cold loads, and a cold load opens this
               stepper by design (CLAUDE.md -> Calendar sync). So on two thirds of her visits she
-              met a 125-event confirm sheet with no way to say "stop asking me".
+              met the confirm sheet for a 125-event feed with no way to say "stop asking me".
               Worded IDENTICALLY to the Settings switch and the banner so she meets one setting
               and not three. Same state, same event; `src` is the only difference, and a row with
               no `src` came from Settings.
@@ -7559,7 +7579,7 @@ function Settings(props){
             {/* Courtney, twice in 28 hours: "stop the sync to nurse grid and have the option to
                 only sync when I press the button" (2026-10-14) and "Stop auto syncing with nurse
                 grid. Wait for the user to prompt to sync" (2026-10-15, filed 39 seconds after a
-                cold-load sync re-proposed the 126-event plan she had already declined). Default
+                cold-load sync re-proposed the plan, off a 126-event feed, she had already declined). Default
                 off, so no existing account's behaviour moves. Not a filter and not a disconnect:
                 the link stays saved and "Sync now" is right above it. */}
             {icalSub &&

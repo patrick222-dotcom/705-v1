@@ -7,6 +7,28 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-16 · nightly · **the FIRST item here with a live-user trigger, not a file audit — needs
+  Pat's eyes more than the chief of staff's** — **Courtney loaded the app at 2026-11-15 23:23 UTC,
+  26 days after her last visit, and was gone in 4 seconds.** Cold load, the stepper opened on a
+  feed that found changes (`ics_sync_done {events:109}`), `session_end {secs:4, shifts:69}`, zero
+  imports. Two things make it the first load worth reading rather than counting: (a) it is her
+  **first ever load of a build carrying either sync opt-out switch** (banner 10-21, stepper
+  10-22), so `ics_autosync_pref`'s zero rows have stopped being fully expected; (b) the first
+  proxy call did **not** `422` this time, which is evidence against the HTML-interstitial
+  hypothesis the P2 has been waiting on. · tonight's build is the thing that makes the next such
+  load readable: `ics_sync_done` reported the size of the **feed** and six places in the repo read
+  it as the size of the **plan**, which a 2026-10-10 `ics_import_done {shown:6, skipped:46}`
+  against `events:127` disproves outright — 52 items, not 127. The row now carries
+  `pending`/`cards`/`classify`/`updates`/`removals` (`tests/smoke.mjs` §61, 17 assertions, eight
+  measured breaks). · **three for the chief of staff:** (a) **tenth consecutive night** on the
+  same repo-wide shape — a printed number counting something other than what it is read as — and
+  this is the first time that shape cost a *product* judgement rather than a test claim, which is
+  the argument for naming it as a pattern; (b) resist the temptation to redesign the cold-load
+  door off one 4-second visit — the number that would justify it does not exist for her yet;
+  (c) **CABINET MISSED fires for the seventh night** (`brief.md` 15.0 days) and `now.md` is
+  fourteen days stale because #209 rewrites T2's block — the fourteenth filing of the same
+  decision: gate the build on an over-age brief, or retire the claim. · → **open**
+
 - 2026-11-15 · nightly · **belongs to no thread — park or file as a standing CTO item** —
   Invariant 2's gate counted five `integrity` ATTRIBUTES and printed `5/5 pinned + hashed`;
   nothing had ever read a byte of those five CDN files, and the smoke suite strips every
