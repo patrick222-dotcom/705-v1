@@ -113,6 +113,7 @@ const SECTIONS = [
   [59, 'the access watch\u2019s classifier (Invariant 13\u2019s RLS clause)'],
   [60, 'the SRI hash is compared to the bytes, not counted'],
   [61, 'the sync row says how big the PLAN is, not just the feed'],
+  [62, 'the SIXTH script: the worker\u2019s BYTES are the pinned build\u2019s'],
 ];
 
 /* `ran` is the order sections FIRST ran; `marks` is how many assertions had been recorded when
@@ -556,6 +557,124 @@ const run = async () => {
       !!appSupa && !!opsRemote[0] && opsRemote[0].src === appSupa.src
         && opsRemote[0].integrity === appSupa.integrity,
       opsRemote[0] ? `${opsRemote[0].src}` : 'no remote script in ops.html');
+  }
+
+  /* ---- 62. the SIXTH script: the worker's BYTES are the pinned build's ----------------
+   *
+   * Section 60 established that a pinned `integrity` hash had never been compared to a byte of
+   * the file it names. This is that same question, asked of the one script SRI structurally
+   * cannot answer it for.
+   *
+   * `pdf.worker.min.js` is the app's SIXTH script and the only one served from our own origin.
+   * It is 1,087,212 bytes against index.html's 579,910, so it is 65% of the
+   * executable weight this site serves, and it is the only part of that weight with NO integrity
+   * mechanism of any kind: a worker takes no `integrity` attribute, so SRI cannot cover it; it is
+   * a string assigned to `GlobalWorkerOptions.workerSrc` rather than a tag, so the gate's CSP
+   * walk cannot see it; and the CSP declares no `worker-src`, so `default-src 'self'` is the
+   * whole of what stands behind it -- an origin check, not a content check.
+   *
+   * What DID exist, and what it actually asserts. The gate's `[2]` worker check reads two
+   * substrings out of the file -- pdf.js's own `does not match the Worker version` guard, and the
+   * literal "3.11.174" -- and then prints `3.11.174 pinned, worker agrees`. "Agrees" is doing
+   * more work there than the evidence carries: both are satisfied by two short strings sitting
+   * anywhere inside a megabyte of otherwise arbitrary code. Nothing in this repo had compared the
+   * shipped worker to the build its pin names, which is section 60's finding one file over.
+   *
+   * The demonstration is not hypothetical, and it is deliberately the MUNDANE swap rather than a
+   * malicious one. `pdfjs-dist` ships TWO worker builds at every version: `build/` and the
+   * ES5-transpiled `legacy/build/`. At 3.11.174 they differ by 46,448 bytes, and the legacy file
+   * carries pdf.js's version guard AND the string "3.11.174" -- so it passes both of the gate's
+   * assertions unchanged. It also passes section 10, which drives a real PDF end to end, because
+   * the legacy worker WORKS. So the two mechanisms that touch this file catch a worker that is
+   * broken or a version behind, and neither can tell one 3.11.174 build from another, or either
+   * from a patched copy of one. A hand-copy out of `legacy/` to chase an old-browser bug, a bump
+   * that moves index.html's pin from a different channel than the file, a partial fetch that
+   * still carries both strings -- every one of them keeps the gate printing "worker agrees".
+   *
+   * NO BAD BYTE WAS FOUND. The shipped worker is byte-identical to npm's `pdfjs-dist@3.11.174`
+   * `build/pdf.worker.min.js` today. This is a regression guard on a property nothing had ever
+   * established, the same standing as section 54 -- and the threat model is already written down
+   * in this repo: `isEvalSupported:false` is gated because a paystub PDF is the one input this
+   * app takes from outside itself. That mitigation lives in index.html. The code that does the
+   * parsing is this file.
+   *
+   * Here rather than in `check_build.mjs` for section 60's practical reason, which is a CI fact
+   * and not a preference: the `gate` job installs `@babel/standalone` alone, so it has no
+   * `pdfjs-dist` bytes to compare against, while the `smoke` job vendors all five pins. This is
+   * the only required check that HAS the bytes. It runs before `chromium.launch` for section 53's
+   * reason, so a pure-Node failure prints a FAIL line instead of riding out as an exception.
+   *
+   * Unlike the five CDN pins, `buildScratch` copies this file VERBATIM (harness.mjs:113) rather
+   * than rewriting it, so the browser sections really do run the shipped bytes. That is why a
+   * broken worker is caught today and a substituted one is not. */
+  if (want(62)) {
+    const WORKER = 'pdf.worker.min.js';
+    const sha256 = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
+    const indexSrc = readFileSync(join(ROOT, 'index.html'), 'utf8');
+
+    /* The file this section hashes must be the file the app actually loads, or everything below
+       is a comparison of something nothing serves. The gate asserts workerSrc is same-origin and
+       in the publish set; this ties that name to the bytes being compared here. */
+    const assigned = (/GlobalWorkerOptions\.workerSrc\s*=\s*'([^']*)'/.exec(indexSrc) || [])[1];
+    ok('62 worker: index.html loads the worker this section hashes', assigned === WORKER,
+      assigned || '<no workerSrc assignment>');
+
+    const shipped = join(ROOT, WORKER);
+    ok('62 worker: the publish set carries it', existsSync(shipped), shipped);
+
+    /* Comparing against node_modules only means anything if node_modules holds the PINNED
+       version. PKGS is a string and the gate checks that string against index.html; this checks
+       the INSTALLED tree, which is a different claim and the one the digest below rests on. */
+    const pinnedVer = (/pdf\.js\/([^/]+)\/pdf(?:\.min)?\.js/.exec(indexSrc) || [])[1];
+    const pkgJson = join(ROOT, 'node_modules', 'pdfjs-dist', 'package.json');
+    ok('62 worker: node_modules carries pdfjs-dist at all', existsSync(pkgJson), pkgJson);
+    const installed = existsSync(pkgJson)
+      ? JSON.parse(readFileSync(pkgJson, 'utf8')).version : null;
+    ok('62 worker: the vendored pdfjs-dist is the version index.html pins',
+      !!pinnedVer && installed === pinnedVer,
+      'index.html ' + (pinnedVer || '?') + ' vs installed ' + (installed || '?'));
+
+    const vendored = join(ROOT, 'node_modules', 'pdfjs-dist', 'build', WORKER);
+    ok('62 worker: npm ships build/' + WORKER + ' -- a missing one must FAIL, not pass by omission',
+      existsSync(vendored), vendored);
+
+    /* THE assertion. Everything above exists so that this one cannot be satisfied vacuously. */
+    const shippedDigest = existsSync(shipped) ? sha256(shipped) : null;
+    const vendoredDigest = existsSync(vendored) ? sha256(vendored) : null;
+    ok('62 worker: the shipped worker IS the pinned build, byte for byte',
+      !!shippedDigest && shippedDigest === vendoredDigest,
+      (shippedDigest || '?').slice(0, 16) + '… vs ' + (vendoredDigest || '?').slice(0, 16) + '…');
+
+    /* Two CONTROLS, labelled as such, and the limit of what a control can do is stated rather
+       than papered over: neither can catch a MISWIRING of the assertion above -- a check that
+       hashed one file twice would pass both of these -- so that case is covered by the deliberate
+       breaks recorded in the Done log instead, which is where it belongs.
+       The FIRST control is the evidence that the hole is real, re-established every run against a
+       real artefact rather than a mutation: `pdfjs-dist` ships a same-version legacy build, it
+       sits in node_modules on every CI run, it satisfies BOTH of the gate's substring assertions,
+       and its digest differs. That is the whole case for this section existing.
+       The SECOND is content-sensitivity: one appended byte must change the digest. It is what
+       fails if `sha256` stops reading what it is handed -- a stub, a cached constant, a helper
+       rewritten to hash a fixed path -- which is the one way the comparison above could go green
+       on bytes it never looked at. */
+    const legacy = join(ROOT, 'node_modules', 'pdfjs-dist', 'legacy', 'build', WORKER);
+    ok('62 worker: control -- npm also ships a same-version legacy build', existsSync(legacy), legacy);
+    const legacySrc = existsSync(legacy) ? readFileSync(legacy, 'utf8') : '';
+    const legacyGuard = legacySrc.includes('does not match the Worker version');
+    const legacyVer = !!pinnedVer && legacySrc.includes('"' + pinnedVer + '"');
+    ok('62 worker: control -- the legacy build satisfies BOTH of the gate’s substring checks',
+      legacyGuard && legacyVer, 'guard ' + legacyGuard + ', version ' + legacyVer);
+    ok('62 worker: control -- and its digest differs, which is what the gate cannot see',
+      existsSync(legacy) && sha256(legacy) !== shippedDigest,
+      (existsSync(legacy) ? sha256(legacy).slice(0, 16) : '?') + '… vs ' + (shippedDigest || '?').slice(0, 16) + '…');
+
+    const mutant = join(ROOT, '.harness-worker-mutant.js');
+    writeFileSync(mutant, Buffer.concat([readFileSync(shipped), Buffer.from('\n')]));
+    const mutantDigest = sha256(mutant);
+    rmSync(mutant, { force: true });
+    ok('62 worker: control -- one appended byte changes the digest',
+      mutantDigest !== shippedDigest && mutantDigest !== vendoredDigest,
+      mutantDigest.slice(0, 16) + '… vs ' + (shippedDigest || '?').slice(0, 16) + '…');
   }
 
   rmSync(SCRATCH, { recursive: true, force: true });
@@ -8003,8 +8122,8 @@ const run = async () => {
   ok(`roll-call: this run covered what it claims — ${ran.length}/${ONLY.length ? ONLY.length : SECTIONS.length} sections`,
     liveProblems.length === 0, liveProblems.join(' | '));
   if (!ONLY.length) {
-    ok('roll-call: a full run means all 60 sections, counted not assumed',
-      ran.length === SECTIONS.length && SECTIONS.length === 60,
+    ok('roll-call: a full run means all 61 sections, counted not assumed',
+      ran.length === SECTIONS.length && SECTIONS.length === 61,
       `${ran.length} ran / ${SECTIONS.length} declared`);
   }
 

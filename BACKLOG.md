@@ -1271,6 +1271,141 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page Pat
   is meant to read still says "Updated 2026-11-02" — fourteen days.**
 
+### P1 (new, groom 2026-11-17)
+
+**Why this band sits BELOW the 11-06 through 11-16 bands instead of at the top of `## Queue`:**
+unchanged for the eleventh run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The gate printed `worker agrees` for the sixth script, and "agrees" was two substrings
+  in a megabyte**~~ — **SHIPPED 2026-11-17**, tonight's build (see Done log). (P1 ·
+  source:groom · `harness:drivable`) Picked with the 11-14 band's search for the eleventh night,
+  because `## Queue` still has no unblocked build item that does not need Pat: *find a claim with
+  a number in it, then ask what that number is actually counting.* Last night's §60 asked it of
+  the five SRI pins. Tonight the same question, one file over, found the **last script in this
+  app that ran with no integrity check of any kind**.
+  **The defect.** `pdf.worker.min.js` is the app's sixth script and the only same-origin one. The
+  gate's `[2]` worker check reads **two substrings** out of its 1,087,212 bytes — pdf.js's own
+  `does not match the Worker version` guard, and the literal `"3.11.174"` — and then printed
+  `3.11.174 pinned, worker agrees`. Both are satisfied by two short strings sitting anywhere
+  inside a megabyte of otherwise arbitrary code, and **nothing in this repo had compared the
+  shipped worker to the build its pin names.** Exactly §60's finding: the check counted the
+  evidence it had and printed a word it had not earned.
+  **Why it is demonstrable rather than theoretical, and why the demonstration is MUNDANE.**
+  `pdfjs-dist` ships **two** worker builds at every version — `build/` and the ES5-transpiled
+  `legacy/build/`. At 3.11.174 they differ by **46,448 bytes**, and the legacy file carries
+  *both* strings the gate reads. Measured tonight: copy it over the shipped worker and the gate
+  prints **`All 21 mechanical checks passed`**. It also passes §10, which drives a real PDF end
+  to end, because the legacy worker **works**. So the two mechanisms that touched this file
+  caught a worker that was broken or a version behind, and neither could tell one 3.11.174 build
+  from another, or either from a patched copy of one. The realistic breaks are all of that shape:
+  a hand-copy out of `legacy/` to chase an old-browser bug, a bump that moves index.html's pin
+  from a different channel than the file, a partial fetch that still carries both strings.
+  **Why it matters more than its size suggests.** The worker is **65% of the executable weight
+  this site serves** (1,087,212 bytes against index.html's 579,910) and the only part of that
+  weight with no integrity mechanism at all: SRI structurally cannot cover it (a worker takes no
+  `integrity` attribute), the gate's CSP walk cannot see it (it walks tags; this is a string
+  assigned to `GlobalWorkerOptions.workerSrc`), and the CSP declares no `worker-src`, so
+  `default-src 'self'` is an **origin** check and not a content one. And it is the code that
+  actually parses the one input this app takes from outside itself — a paystub PDF she picks,
+  which is the threat model `isEvalSupported:false` is gated for. That mitigation lives in
+  `index.html`; the parsing lives here.
+  **NO BAD BYTE WAS FOUND**, and saying so is the point: the shipped worker is byte-identical to
+  npm's `pdfjs-dist@3.11.174` `build/pdf.worker.min.js` today. This is a regression guard on a
+  property nothing had established, the same standing as §54, not a fix for an observed swap.
+  Ten assertions in `tests/smoke.mjs` §62, **six measured breaks** — and four of the six leave
+  the gate printing `All 21 mechanical checks passed`, which is the finding stated as evidence.
+  In the smoke suite rather than the gate for §60's CI reason: the `gate` job installs
+  `@babel/standalone` alone and has no `pdfjs-dist` bytes, while the `smoke` job vendors all five
+  pins. The gate now prints which of the two questions it answers.
+- [ ] **The two anti-vacuity rows say what they CANNOT do, which §60's did not** (P3 ·
+  source:build · no action) — §62's controls are labelled controls, and the comment states the
+  limit out loud: **neither catches a miswiring of the assertion above** — a check that hashed
+  one file twice passes both. §60's equivalent comment claims the opposite ("a comparison that
+  checked a prefix, or a length, or a file against itself passes every assertion above and fails
+  exactly here"), and that is **not true** of its control either: appending a byte to react's
+  real bytes cannot see how the comparison is wired. Not corrected tonight, because the sentence
+  is in a comment rather than an assertion and rewriting §60's prose on a night that did not
+  re-measure §60 is the over-claim in the other direction. What the controls DO establish is
+  split and each is checked: the legacy build proves the hole is real on a real artefact every
+  run, and the appended byte proves `sha256` reads what it is handed — break 6 (neuter it to a
+  constant) fails **both**, measured.
+- [ ] **A SILENT night: zero new events in 24 hours, and `events` is unchanged at 1,807** (P2 ·
+  source:groom · no action) — `silence_watch` reads **FRESH** with the newest event **33.3h** old
+  against a 48h window, entirely on the strength of Courtney's 11-15 23:23 load. `rows_24h` is
+  **0**. The 7-day device count fell **8 → 3** purely because the window rolled past the
+  desktop-landing cohort; that is arithmetic, not a decline. **Do not quote an activation figure
+  off any of it** — the device classifier is still broken.
+- [ ] **Courtney's second load has NOT come, so `pending`/`cards` are still unmeasured** (P2 ·
+  carried from 11-16 · no action, and that is the judgement) — device `f184ffa5` has filed
+  nothing since **2026-11-15 23:23:06**. The 11-16 band shipped the props that would say how
+  heavy her cold-load sheet actually was and explicitly said to wait for a second load before
+  reading four seconds as "the sheet drove her off". That wait is unchanged at **1.4 days**.
+  `ics_sync_result` **43**, `ics_sync_done` **28** (both +1 since the 11-15 band, which is her one
+  sync and nothing else); `ics_import_done` **10**, last 2026-10-10. `ics_autosync_pref` and
+  `ics_autosync_off` both **zero rows from any device, ever** — no longer *fully* expected, since
+  she has now been offered the switch once, but one four-second load is not evidence she declined
+  it.
+- [ ] **`access_watch` reads TIGHT on its fifth night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies and
+  `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe.**
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 through 11-16 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data`
+  and the swap tables; the `D` is TRUNCATE, which RLS does not cover. The one-line revoke
+  **tightens** access and would merge on its own by tier, but it is production DDL through the
+  Management API and needs a pass over the swap tables rather than a blind sweep. Add the
+  `access_watch` rule in the same commit.
+- [ ] **`feedback` is unchanged for the TWENTY-EIGHTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **32.8 days** old. `paystub_failed` has **still never fired for any reason**,
+  so the 10-13 item's "read a second device" bar is still not met — do not build a worker
+  mitigation. Note tonight's build is the first thing to read a byte of that worker's *content*
+  against its pin, which is a different question from whether the reader fails for her.
+- [ ] **The 11-03 `client_error` fix is 11-for-11** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the twelfth groom. No new
+  traffic to test it against tonight; the 11-16 groom was the fresh evidence, and it held.
+- [ ] **CABINET MISSED fires for the EIGHTH night, and the brief is now 15.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **fifteenth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the ELEVENTH time, and it was the one that could have
+  been wrong** (housekeeping) — `deploy_watch` reads **LIVE** with `index.html` serving
+  **`a09cabe` (2026-11-16)**, tonight's predecessor merge, which is the **first non-`aa53aec`
+  reading in fourteen nights** and exactly what the 11-16 note staked out. `privacy.html` and
+  `ops.html` print the truncation sentence rather than a commit (boundary `3532234` tonight, was
+  `7aa590a` — the figure drifts with clone depth, which is why #210 stopped printing it as a
+  deploy fact). **Tonight's prediction:** tonight's merge touches `tests/`, `scripts/` and
+  `CLAUDE.md` but **not `index.html`**, so tomorrow's `deploy_watch` should still name
+  **`a09cabe`** for `index.html`. A reading that names tonight's commit instead would mean the
+  publish set copied something it should not have.
+- [ ] **The gate meta-test is STILL not in CI — twentieth night** (P2 · `harness:unscoped` ·
+  needs the owner) — the suite is **62 assertions / ~130s** and re-ran green tonight after the
+  gate's printed string changed. `ci.yml`'s `gate` job still does not call it, and **editing a
+  workflow file is blocked for agent sessions in this sandbox**. Still the same two lines after
+  the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs` and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`. Tonight's ten assertions
+  went into `tests/smoke.mjs` for exactly this reason — CI runs that suite.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — ELEVENTH night** (P1 · needs
+  the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **11.3 days**.
+  Tonight branched to `claude/great-feynman-9barhv`, so #209's head is untouched for the eleventh
+  run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the TWELFTH night for the same reason (#209 rewrites T2's whole block); tonight's line went to
+  `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  fifteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5302,6 +5437,64 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-17 — **The gate printed `worker agrees` for `pdf.worker.min.js`, and "agrees" was two
+  substrings read out of 1,087,212 bytes.** Last night's §60 found that a pinned `integrity` hash
+  had never been compared to a byte of the file it names. The same question, asked one file over,
+  found the **last script in this app that ran with no integrity check of any kind**. The `[2]`
+  worker check reads pdf.js's own `does not match the Worker version` guard and the literal
+  `"3.11.174"`, then printed `3.11.174 pinned, worker agrees` — and both are satisfied by two
+  short strings sitting anywhere inside a megabyte of otherwise arbitrary code. **Nothing in this
+  repo had compared the shipped worker to the build its pin names.**
+  **The demonstration is mundane and it is re-run on every CI pass.** `pdfjs-dist` ships **two**
+  worker builds at every version: `build/` and the ES5-transpiled `legacy/build/`. At 3.11.174
+  they differ by **46,448 bytes**, and the legacy file carries *both* strings the gate reads. Copy
+  it over the shipped worker and the gate prints **`All 21 mechanical checks passed`** (measured).
+  It also passes §10, which drives a real PDF end to end, because the legacy worker **works**. So
+  the two mechanisms that touched this file caught a worker that was broken or a version behind,
+  and neither could tell one 3.11.174 build from another, or either from a patched copy of one.
+  Every realistic break has that shape: a hand-copy out of `legacy/` to chase an old-browser bug,
+  a version bump that moves index.html's pin from a different channel than the file, a partial
+  fetch that still carries both strings.
+  **Why it matters more than its size suggests.** The worker is **65% of the executable weight
+  this site serves** (1,087,212 bytes against index.html's 579,910) and the only part of that
+  weight with no integrity mechanism at all: SRI structurally cannot cover it (a worker takes no
+  `integrity` attribute), the gate's CSP walk cannot see it (it walks tags; this is a string
+  assigned to `GlobalWorkerOptions.workerSrc`), and the CSP declares no `worker-src`, so
+  `default-src 'self'` is an **origin** check rather than a content one. It is also the code that
+  parses the one input this app takes from outside itself — a paystub PDF she picks, which is the
+  threat model `isEvalSupported:false` is gated for. That mitigation lives in `index.html`; the
+  parsing lives in this file.
+  **NO BAD BYTE WAS FOUND**, and that is stated rather than buried: the shipped worker is
+  byte-identical to npm's `pdfjs-dist@3.11.174` `build/pdf.worker.min.js`. This is a regression
+  guard on a property nothing had ever established, the same standing as §54's redaction guard,
+  not a fix for an observed substitution.
+  **`tests/smoke.mjs` §62, ten assertions**, pure Node, running before `chromium.launch` for
+  §53's reason so a failure prints a FAIL line instead of riding out as an exception. In the smoke
+  suite rather than `check_build.mjs` for §60's CI reason, which is a fact and not a preference:
+  the `gate` job installs `@babel/standalone` alone and has no `pdfjs-dist` bytes to compare
+  against, while the `smoke` job vendors all five pins. Four assertions exist so the digest
+  comparison cannot pass vacuously — the file hashed is the one `workerSrc` names, the publish set
+  carries it, the **installed** `pdfjs-dist` is the version `index.html` pins (PKGS is a string;
+  this is the tree), and a missing `build/` worker **fails** rather than passing by omission.
+  **Six deliberate breaks, all measured, and four of the six leave the gate green** — which is
+  the finding restated as evidence: (1) the same-version legacy build swapped in → `byte for
+  byte` fails, **gate prints All 21 passed**; (2) one appended byte → fails, **gate green**;
+  (3) `workerSrc` renamed → the tie assertion fails (the gate catches this one too, on the
+  publish set); (4) the installed `pdfjs-dist` faked to 4.0.379 → the version assertion fails,
+  **gate green**; (5) npm's `build/` worker deleted → the anti-omission assertion fails, **gate
+  green**; (6) `sha256` neutered to a constant → `byte for byte` passes vacuously and **both
+  controls fail**, which is what the controls are for.
+  **The two controls are labelled controls and the comment states what they cannot do**: neither
+  catches a miswiring that hashes one file twice, and that case is covered by the breaks instead.
+  What they do establish is split and separately checked — the legacy build proves the hole is
+  real on a real artefact every run, and the appended byte proves `sha256` reads what it is
+  handed. §60's equivalent comment claims more than that for its own control; filed as a P3 in
+  tonight's band rather than rewritten on a night that did not re-measure §60.
+  **The gate now prints which of the two questions it is answering**:
+  `3.11.174 pinned, worker carries it (BYTES compared in smoke §62), same-origin,
+  isEvalSupported:false`. Suite 1,002 → **1,012**; the roll-call's declared-section count 60 →
+  **61**, which §58 caught on the first full run — intended friction, working. Gate 21/21,
+  meta-test 62/62, core 175, groom-seed 33, dashboard 44, silence 39, deploy-watch 98.
 - 2026-11-16 — **`ics_sync_done {events:N}` counts the FEED; six places in this repo read it as
   the size of the PLAN.** `events` is `parsed.events.length`. The number anyone actually wants —
   how many things the import stepper is asking her to confirm — is the local `pending`, computed
