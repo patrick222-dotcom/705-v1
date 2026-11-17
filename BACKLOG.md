@@ -1319,6 +1319,24 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   In the smoke suite rather than the gate for §60's CI reason: the `gate` job installs
   `@babel/standalone` alone and has no `pdfjs-dist` bytes, while the `smoke` job vendors all five
   pins. The gate now prints which of the two questions it answers.
+- [ ] **§62 compares the REPO's copy; production was checked once, by hand, and matched** (P2 ·
+  source:build · scope note) — the assertion shipped tonight hashes `pdf.worker.min.js` in the
+  working tree against `node_modules`. It never fetches badgebudget.com, so on its own it
+  establishes that the **committed** worker is the pinned build, not that the bytes real users
+  execute are. Those are different claims and the deploy path is what joins them (`deploy.yml`
+  copies the publish set verbatim, which is the same property `deploy_watch` rests on). Closed
+  by hand after tonight's merge, at 09:0x UTC: `curl https://badgebudget.com/pdf.worker.min.js`
+  returned **1,087,212 bytes** whose sha256 is `feabdf309770ed24…`, **identical** to npm's
+  `pdfjs-dist@3.11.174` `build/pdf.worker.min.js`. So the live worker is the pinned build, and
+  the paystub reader on the phone is running the code the pin names.
+  **Scope of that claim, stated the way the NurseGrid line is:** one fetch, one night, one
+  agent's eyes — **not a test, and nothing re-checks it.** Automating it would mean a network
+  fetch in the suite, which is why `tests/equality.mjs` and the three watches are all outside
+  CI; the natural home is `deploy_watch.mjs`, which already fetches the publish set and already
+  hashes it against git blobs, so adding the worker to the files it compares is a small change
+  and a real one. Not done tonight — one build item per run, and the fourth file in that watch
+  needs its own negative tests.
+
 - [ ] **The two anti-vacuity rows say what they CANNOT do, which §60's did not** (P3 ·
   source:build · no action) — §62's controls are labelled controls, and the comment states the
   limit out loud: **neither catches a miswiring of the assertion above** — a check that hashed
