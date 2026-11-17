@@ -291,7 +291,15 @@ check(2, 'pdf.js worker matches its pinned library', () => {
     'this flag is the only thing between a malicious paystub PDF and arbitrary JS in the origin ' +
     'holding user_data and the auth session');
 
-  return `${pinned} pinned, worker agrees, same-origin, isEvalSupported:false`;
+  /* "worker agrees" is what this used to print, and it was the same overstatement the `[2]` SRI
+     row made until 2026-11-15: the two assertions above read TWO SUBSTRINGS out of a megabyte,
+     so they establish that the file is a pdf.js worker carrying this version — not that it is
+     the build the pin names. `pdfjs-dist` ships a same-version `legacy/build/` worker that
+     passes both of them and differs by 46,448 bytes. The digest comparison lives in
+     `tests/smoke.mjs` §62, because CI's `gate` job installs @babel/standalone alone and has no
+     pdfjs-dist bytes to compare against, while the `smoke` job vendors all five pins. Say which
+     of the two this check is. */
+  return `${pinned} pinned, worker carries it (BYTES compared in smoke §62), same-origin, isEvalSupported:false`;
 });
 
 /* ---- Invariant 4: the upsert that silently broke sync for 47 days ---------------------- */

@@ -7,6 +7,28 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-17 · nightly · **the last script in this app that ran with no integrity check of any
+  kind now has one** — the gate printed `worker agrees` for `pdf.worker.min.js`, and "agrees" was
+  **two substrings read out of 1,087,212 bytes**: pdf.js's own version guard and the literal
+  `"3.11.174"`. Nothing in this repo had compared the shipped worker to the build its pin names.
+  `pdfjs-dist` ships a **same-version** `legacy/build/` worker that carries both strings, differs
+  by **46,448 bytes**, and leaves the gate printing `All 21 mechanical checks passed` — measured,
+  not argued, and it passes §10's real-PDF drive too because the legacy worker *works*.
+  `tests/smoke.mjs` §62, ten assertions, six measured breaks, four of which leave the gate green.
+  No bad byte was found: this is a regression guard like §54, not a fix. · **three for the chief
+  of staff:** (a) **eleventh consecutive night** on the one repo-wide shape — a printed number or
+  word that counts less than it claims — and tonight it was the *same* `[2]` check band §60
+  corrected 48 hours earlier, one file over, which is the strongest argument yet that this is a
+  systematic property of how checks get written here rather than a run of coincidences; (b) the
+  queue has had **no unblocked build item that does not need Pat for eleven nights** — every one
+  of those nights has been filled by this audit search, which is productive but is not the plan,
+  and three of the blockers are **one-line workflow edits waiting on one visit** (the gate
+  meta-test, the dashboard-snapshot suite, #209's `cp terms.html _site/`); (c) **CABINET MISSED
+  fires for the eighth night** with the brief at **15.8 days** against an 8-day switch, and
+  `docs/cos/now.md` still says *Updated 2026-11-02* — the one page Pat is meant to read is
+  **fifteen days stale**, un-updated for the twelfth night because #209 rewrites T2's whole block.
+  · → outcome pending
+
 - 2026-11-16 · nightly · **the FIRST item here with a live-user trigger, not a file audit — needs
   Pat's eyes more than the chief of staff's** — **Courtney loaded the app at 2026-11-15 23:23 UTC,
   26 days after her last visit, and was gone in 4 seconds.** Cold load, the stepper opened on a
