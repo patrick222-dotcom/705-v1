@@ -24,9 +24,32 @@
  * shipped no new string, and silently "passes" against the ~162-byte github.io redirect body.
  * Hashing compares everything and can identify WHICH commit is live, not just that it is wrong.
  *
- * Scope: the three HTML files of Invariant 8's publish set. `pdf.worker.min.js` is a megabyte
- * and has never changed; `CNAME` is checked for presence only, because it is the one whose
- * absence is a total outage rather than a stale page.
+ * Scope: four of Invariant 8's five published files. `CNAME` is checked for presence only,
+ * because it is the one whose absence is a total outage rather than a stale page.
+ *
+ * `pdf.worker.min.js` was excluded until 2026-11-18, and the stated reason — "a megabyte, and it
+ * has never changed" — was exactly why nothing in this repo had ever read a byte of the version
+ * real users execute. It is 65% of the executable weight this site serves (1,087,212 bytes
+ * against index.html's 579,910) and the only part of it with no integrity mechanism at all: SRI
+ * structurally cannot cover a worker (no `integrity` attribute), the gate's CSP walk cannot see
+ * it (it walks tags; this is a string assigned to `GlobalWorkerOptions.workerSrc`), and the CSP
+ * declares no `worker-src`, so `default-src 'self'` is an ORIGIN check and not a content one.
+ * `tests/smoke.mjs` §62 (2026-11-17) closed the repo half — the committed worker is byte-identical
+ * to `pdfjs-dist@3.11.174`'s `build/pdf.worker.min.js` — and said in as many words that it never
+ * fetches badgebudget.com, so the live half was one hand-run `curl` on one night. This is that
+ * curl, nightly. The two claims join through the same property the rest of this file rests on:
+ * `deploy.yml` copies the publish set verbatim.
+ *
+ * It is read as BYTES, and so is everything else now. `res.text()` decodes UTF-8, and the hash
+ * was therefore never of the served bytes — it was of a re-encoding of a decode of them. That
+ * round-trip is lossy for anything that is not valid UTF-8 (invalid bytes become U+FFFD), and
+ * the two reads are not the same question even on files that are: measured 2026-11-18, the live
+ * worker is 1,087,212 bytes and 1,087,181 characters, and the live index.html 579,910 bytes and
+ * 578,622 characters. Today they agree, so this fixes nothing observed — and the direction of the
+ * risk is worth stating rather than overstating: a re-encode can only ever MISS a blob it should
+ * have matched, never collide with one it should not, so the failure shape it removes is a
+ * permanent false UNKNOWN_BUILD, not a false LIVE. The decoded string is still what the shape
+ * guards read, because a character floor and an SRI count are questions about text.
  *
  * It fetches the deploy ref itself before judging anything against it, and says so in the report.
  * It did not always: see `applyRefFreshness` for the 2026-10-11 run that printed `LIVE` while
@@ -47,10 +70,17 @@ const SITE_ORIGIN = process.env.DEPLOY_WATCH_ORIGIN || 'https://badgebudget.com'
 const DEPLOY_REF = process.env.DEPLOY_WATCH_REF || 'origin/claude/migrate-to-github-deploy-3F5RD';
 const DEFAULT_LIMIT = 40;
 
-/* The HTML third of the publish set (Invariant 8). `index.html` additionally gets the full
-   silence_watch shape guard on a mismatch, because it is the only one with a known floor and a
-   known SRI count; the other two are graded on "200 and not empty" and then on the hash. */
-export const WATCHED = ['index.html', 'privacy.html', 'ops.html'];
+/* Four of the publish set's five files (Invariant 8); `CNAME` has its own probe. `index.html`
+   additionally gets the full silence_watch shape guard on a mismatch, because it is the only one
+   with a known floor and a known SRI count; the other three are graded on "200 and not empty"
+   and then on the hash, which is where all the work happens anyway. */
+export const WATCHED = ['index.html', 'privacy.html', 'ops.html', 'pdf.worker.min.js'];
+
+/* Fetched and hashed, never decoded. Nothing reads this file as text — the shape guard for it is
+   "200 and not empty" — so a megabyte-long `res.text()` would buy exactly nothing and cost the
+   fidelity the whole check is about. The HTML files are hashed from their bytes too (see the
+   header) and decoded ON TOP, for the floor and the SRI count. */
+export const BYTE_ONLY = new Set(['pdf.worker.min.js']);
 
 /* ---------------------------------------------------------------- pure logic (unit-tested) */
 
@@ -78,8 +108,20 @@ export function matchCommit(liveSha, history) {
  *                   deployed out of band — the two need a human to tell apart.
  *   UNREACHABLE   — the fetch itself failed.
  */
-export function classifyFile({ path, url, status, body, fetchError, history, scanned, truncatedAt }) {
+export function classifyFile({ path, url, status, body, bytes, fetchError, history, scanned, truncatedAt }) {
   const head = Array.isArray(history) && history.length ? history[0] : null;
+
+  /* What gets HASHED, and in what unit it is reported. `bytes` is what the server actually sent;
+     `body` is a decode of it, kept for the shape guards. Prefer the bytes — the git blobs on the
+     other side of the comparison are bytes — and fall back to the string so every pure caller
+     that passes only a body (every unit test here, and this file's own first two years) keeps
+     working unchanged. A declared size is only ever reported in the unit it was measured in:
+     silence_watch already had to be corrected once for printing "bytes" where it meant
+     "characters", and for the worker the two differ by 31. */
+  const payload = Buffer.isBuffer(bytes) ? bytes : (typeof body === 'string' ? body : null);
+  const sized = payload === null
+    ? '0 bytes'
+    : `${payload.length.toLocaleString('en-US')} ${Buffer.isBuffer(payload) ? 'bytes' : 'characters'}`;
 
   /* `truncatedAt` is the sha the walk STOPPED at because the clone does not contain that
      commit's parents — a shallow clone's boundary, which `git log` cannot tell apart from a
@@ -96,7 +138,7 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
     return { path, verdict: 'NOT_THE_APP', detail: gradeable.detail, liveSha: null, head };
   }
 
-  const liveSha = typeof body === 'string' ? sha256(body) : null;
+  const liveSha = payload === null ? null : sha256(payload);
 
   /* Hash first, shape second. A match subsumes every shape check there is — a 162-byte stub
      cannot hash to a 468KB blob — so the floors only ever have to explain a mismatch. */
@@ -122,7 +164,16 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
   }
   const shape = path === 'index.html'
     ? siteVerdict({ url, status, body })
-    : { ok: typeof body === 'string' && body.length > 0, checks: [], chars: (body || '').length, sri: 0 };
+    /* `chars` stays a character count and `bytes` a byte count — the same rule the `sized` string
+       above follows. This object reaches `--json` on a NOT_THE_APP file, and a count labelled with
+       the wrong unit there is the small version of the thing this file keeps correcting. */
+    : {
+      ok: payload !== null && payload.length > 0,
+      checks: [],
+      chars: typeof payload === 'string' ? payload.length : undefined,
+      bytes: Buffer.isBuffer(payload) ? payload.length : undefined,
+      sri: 0,
+    };
   if (!shape.ok) {
     const why = (shape.checks || []).filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join('; ')
       || 'empty body';
@@ -151,7 +202,7 @@ export function classifyFile({ path, url, status, body, fetchError, history, sca
 
   return {
     path, verdict: 'UNKNOWN_BUILD', liveSha, head,
-    detail: `body is plausible (${(body || '').length.toLocaleString('en-US')} characters) but matches no commit `
+    detail: `body is plausible (${sized}) but matches no commit `
       + `in the last ${scanned ?? 0} that touched ${path} — cannot say which build this is`,
   };
 }
@@ -264,11 +315,16 @@ export function render(r) {
 
 /* ------------------------------------------------------------------------------- live probes */
 
+/* One read, two consumers. The response is taken as an ArrayBuffer and hashed from those bytes;
+   the string handed to the shape guards is decoded from the same buffer rather than fetched a
+   second time, so the thing graded and the thing hashed can never be two different downloads of
+   a site mid-deploy. `BYTE_ONLY` paths skip the decode entirely. */
 async function probeFile(origin, path) {
   const url = `${origin}/${path}`;
   try {
     const res = await fetch(`${url}?cb=${Date.now()}`);
-    return { url, status: res.status, body: await res.text() };
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return { url, status: res.status, bytes, body: BYTE_ONLY.has(path) ? undefined : bytes.toString('utf8') };
   } catch (e) {
     return { url, fetchError: String(e.message || e) };
   }

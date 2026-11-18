@@ -10,7 +10,7 @@
  * reporting green for a build that could not be placed at all, and printing one commit's subject
  * beside another commit's sha.
  */
-import { sha256, matchCommit, classifyFile, classifyDeploy, render, parseRef, applyRefFreshness, WATCHED } from './deploy_watch.mjs';
+import { sha256, matchCommit, classifyFile, classifyDeploy, render, parseRef, applyRefFreshness, WATCHED, BYTE_ONLY } from './deploy_watch.mjs';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => { (cond ? pass++ : fail++); console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`); };
@@ -31,9 +31,13 @@ const HISTORY = [
 ];
 const file = (over = {}) => classifyFile({ path: 'index.html', url: URL_INDEX, status: 200, body: HEAD_BODY, history: HISTORY, scanned: HISTORY.length, ...over });
 
-// 1. the publish set this watches is the HTML third of Invariant 8's five files
-ok('scope: watches index.html, privacy.html and ops.html',
-  WATCHED.length === 3 && ['index.html', 'privacy.html', 'ops.html'].every((p) => WATCHED.includes(p)),
+// 1. the publish set this watches is Invariant 8's five files minus CNAME, which has its own
+//    probe. Four since 2026-11-18: `pdf.worker.min.js` had been left out for being "a megabyte
+//    that has never changed", which is the same sentence as "nothing has ever read a byte of the
+//    copy real users execute".
+ok('scope: watches all four hashable published files',
+  WATCHED.length === 4
+  && ['index.html', 'privacy.html', 'ops.html', 'pdf.worker.min.js'].every((p) => WATCHED.includes(p)),
   WATCHED.join(', '));
 
 // 2. sha256 is the whole mechanism — deploy.yml copies the publish set verbatim, so the served
@@ -313,6 +317,105 @@ ok('truncated: a run in a shallow clone still reaches LIVE and exits 0',
   `${truncDeploy.verdict} exit ${truncDeploy.exitCode}`);
 ok('truncated: and the rendered report marks the truncated file [ok], not FAIL',
   /\[ok\] privacy\.html — serving the current bytes/.test(render(truncDeploy)), render(truncDeploy));
+
+// 15. the sixth script, and the first nightly read of the bytes real users execute.
+//     `pdf.worker.min.js` is 65% of the executable weight this site serves and the only part of
+//     it with no integrity mechanism at all — SRI cannot cover a worker, the gate's CSP walk
+//     cannot see a string assigned to `GlobalWorkerOptions.workerSrc`, and the CSP declares no
+//     `worker-src` so `default-src 'self'` grades the ORIGIN and not the content. tests/smoke.mjs
+//     §62 closed the repo half on 2026-11-17 and said in as many words that it never fetches
+//     badgebudget.com; this is the live half, and it is the code that parses the one input this
+//     app takes from outside itself.
+ok('worker: it is read as bytes and never decoded', BYTE_ONLY.has('pdf.worker.min.js'));
+ok('worker: and it is the ONLY byte-only path — the HTML files are still graded as text',
+  BYTE_ONLY.size === 1, [...BYTE_ONLY].join(', '));
+
+const URL_WORKER = 'https://badgebudget.com/pdf.worker.min.js';
+/* Megabyte-shaped, and deliberately NOT valid-UTF8-clean: see 15b. */
+const WORKER_BYTES = Buffer.concat([Buffer.from('/* pdf.js 3.11.174 */'), Buffer.alloc(1_000_000, 0x61), Buffer.from([0xff, 0xfe])]);
+const WORKER_HISTORY = [{ sha: 'eeeeeeeeeeeeeee1', date: '2026-10-11', subject: 'chore: vendor pdf.js 3.11.174', blobSha256: sha256(WORKER_BYTES) }];
+const worker = (over = {}) => classifyFile({
+  path: 'pdf.worker.min.js', url: URL_WORKER, status: 200, bytes: WORKER_BYTES,
+  history: WORKER_HISTORY, scanned: 1, ...over,
+});
+
+const wLive = worker();
+ok('worker: bytes matching the committed blob are LIVE', wLive.verdict === 'LIVE', wLive.detail);
+ok('worker: and 0 behind', wLive.behind === 0);
+
+/* 15a. one byte in a megabyte. The realistic breaks §62 names are all of this shape — a
+   hand-copy out of pdfjs-dist's `legacy/build/` to chase an old-browser bug, a pin bumped from a
+   different channel than the file, a partial upload — and none of them touch the two substrings
+   the gate reads, so the hash is the only thing that can speak. */
+const tampered = Buffer.from(WORKER_BYTES); tampered[500_000] ^= 0x01;
+const wTamper = worker({ bytes: tampered });
+ok('worker: flipping ONE byte in a megabyte is no longer placeable', wTamper.verdict === 'UNKNOWN_BUILD', wTamper.verdict);
+ok('worker: and that does NOT exit 0', classifyDeploy([wTamper], null, FETCH_OK).exitCode === 2);
+ok('worker: the unplaceable detail reports BYTES, not characters — they differ by 31 on the real file',
+  /1,000,023 bytes/.test(String(wTamper.detail)), wTamper.detail);
+
+/* 15b. the load-bearing one, and the defect it encodes. Until 2026-11-18 every file was hashed
+   from `await res.text()`, so the comparison was never of the served bytes — it was of a
+   re-encoding of a decode of them. For anything that is not valid UTF-8 that round trip is
+   LOSSY, and the re-encode can only ever miss a blob it should have matched: a permanent false
+   UNKNOWN_BUILD on a file that is in fact live. These two bytes are what makes this fixture
+   decode-unstable, and the assertion is that the bytes won. */
+ok('worker: the fixture really is decode-unstable, or the next assertion proves nothing',
+  sha256(Buffer.from(WORKER_BYTES.toString('utf8'), 'utf8')) !== sha256(WORKER_BYTES));
+ok('worker: the hash is of the BYTES, not of a re-encoded decode of them',
+  worker().liveSha === sha256(WORKER_BYTES));
+ok('bytes: when both are supplied the bytes win, for every path and not just the worker',
+  classifyFile({ path: 'index.html', url: URL_INDEX, status: 200, bytes: WORKER_BYTES, body: HEAD_BODY, history: WORKER_HISTORY, scanned: 1 }).liveSha
+  === sha256(WORKER_BYTES));
+ok('bytes: a string-only caller still hashes the string, so every pure caller is unchanged',
+  file().liveSha === sha256(HEAD_BODY));
+ok('bytes: and a string-only caller still reports its size in characters',
+  /400,114 characters/.test(String(file({ body: appBody('NOT-IN-HISTORY') }).detail)),
+  file({ body: appBody('NOT-IN-HISTORY') }).detail);
+
+/* 15c. the worker is graded like privacy.html and ops.html, not like index.html: "200 and not
+   empty", then the hash. Holding a megabyte of minified JS to a 50,000-character floor would
+   pass by accident, and to a 5-SRI count would fail every single run. */
+const wEmpty = worker({ bytes: Buffer.alloc(0) });
+ok('worker: an EMPTY 200 is NOT_THE_APP, not an unplaceable build', wEmpty.verdict === 'NOT_THE_APP', wEmpty.detail);
+/* The realistic 404 carries a 404 page, not the file: a 404 whose body still hashed to the
+   committed blob would be reported LIVE, because this file grades the hash before the shape and
+   a byte-exact match subsumes every shape check there is. */
+ok('worker: a size on its shape object is labelled bytes and never chars',
+  wEmpty.shape.bytes === 0 && wEmpty.shape.chars === undefined, JSON.stringify(wEmpty.shape));
+ok('bytes: and a text file keeps reporting chars on the same object',
+  privEmpty.shape.chars === 0 && privEmpty.shape.bytes === undefined, JSON.stringify(privEmpty.shape));
+ok('worker: a 404 is NOT_THE_APP — the shape of it dropping out of the publish set',
+  worker({ status: 404, bytes: Buffer.from('<!DOCTYPE html><title>404</title>') }).verdict === 'NOT_THE_APP');
+ok('worker: a failed fetch is UNREACHABLE and establishes nothing',
+  worker({ bytes: undefined, fetchError: 'socket hang up' }).verdict === 'UNREACHABLE');
+ok('worker: github.io is refused for it too, even when the bytes match',
+  worker({ url: 'https://patrick222-dotcom.github.io/705-v1/pdf.worker.min.js' }).verdict === 'NOT_THE_APP');
+
+/* 15d. the path this file will ACTUALLY take every night. The worker's last real change is
+   2026-10-11, below the shallow boundary these containers clone at, so its walk returns one
+   entry — the boundary, carrying the tip's blob — exactly like privacy.html and ops.html. The
+   verdict must still be LIVE and the attribution must still refuse to name that commit. */
+const wTrunc = worker({ truncatedAt: 'eeeeeeeeeeeeeee1' });
+ok('worker: a match on the shallow boundary is still LIVE', wTrunc.verdict === 'LIVE', wTrunc.verdict);
+ok('worker: and it does not name the boundary as the commit that last changed it',
+  !/serving eeeeeee \(/.test(String(wTrunc.detail)) && /cannot be named/.test(String(wTrunc.detail)),
+  wTrunc.detail);
+
+/* 15e. and it has to be able to FAIL the run, or adding it was decoration. A stale worker beside
+   three current HTML files is the live shape of a pin bumped in index.html with the file left
+   behind — which kills the paystub reader outright, because pdf.js compares the two versions
+   itself and throws. */
+const wBehindHistory = [
+  { sha: 'eeeeeeeeeeeeeee2', date: '2026-11-18', subject: 'chore: bump pdf.js', blobSha256: sha256('newer worker') },
+  ...WORKER_HISTORY,
+];
+const wBehind = worker({ history: wBehindHistory, scanned: 2 });
+ok('worker: older bytes with a newer blob in history are BEHIND', wBehind.verdict === 'BEHIND', wBehind.detail);
+const wDeploy = classifyDeploy([live, priv, wBehind], { ok: true, detail: 'ok' }, FETCH_OK);
+ok('worker: a stale worker beside three live HTML files makes the whole deploy BEHIND',
+  wDeploy.verdict === 'BEHIND' && wDeploy.exitCode === 1, `${wDeploy.verdict} exit ${wDeploy.exitCode}`);
+ok('worker: and the rendered report names it', /\[FAIL\] pdf\.worker\.min\.js/.test(render(wDeploy)), render(wDeploy));
 
 console.log(`\n==== deploy_watch tests: ${pass} passed / ${fail} failed ====`);
 process.exit(fail === 0 ? 0 : 1);

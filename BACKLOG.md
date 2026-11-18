@@ -1424,6 +1424,143 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   fifteen days.**
 
+### P1 (new, groom 2026-11-18)
+
+**Why this band sits BELOW the 11-06 through 11-17 bands instead of at the top of `## Queue`:**
+unchanged for the twelfth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**§62 hashes the worker in the repo; nothing hashed the one real users execute**~~ —
+  **SHIPPED 2026-11-18**, tonight's build (see Done log). (P1 · source:build, filed by last
+  night's own band · `harness:drivable`) This is the one item last night deferred by name —
+  *"the natural home is `deploy_watch.mjs`, which already fetches the publish set and already
+  hashes it against git blobs, so adding the worker to the files it compares is a small change
+  and a real one. Not done tonight — one build item per run."* It was also the twelfth night
+  running that `## Queue` held no unblocked build item that does not need Pat.
+  **The defect, in the form this repo keeps finding it.** `deploy_watch.mjs` carried a scope
+  line — *"`pdf.worker.min.js` is a megabyte and has never changed"* — which is the same
+  sentence as "nothing has ever read a byte of the copy real users execute". §62 (11-17) closed
+  the repo half and said in as many words that it never fetches badgebudget.com; the live half
+  was **one hand-run `curl` on one night, by one agent, with nothing re-checking it**. Both
+  claims were true and neither was the one that matters: the chain is npm's pinned build = the
+  committed file = the bytes production serves, and only the first link was in CI.
+  **What shipped.** `pdf.worker.min.js` is the fourth file the watch hashes against its git
+  blob, graded like `privacy.html` and `ops.html` (200, not empty, then the hash). In this
+  container its last real change — `440d58d`, 2026-10-11 — is the shallow boundary, so it takes
+  the truncation path #210 built and prints the current-bytes sentence rather than naming a
+  commit. **Measured live tonight:** 1,087,212 bytes, sha256 `feabdf309770ed24…`, identical to
+  the committed blob and to npm's `pdfjs-dist@3.11.174` `build/pdf.worker.min.js`. So **no bad
+  byte was found again** — this is a nightly regression guard on a property that had been
+  established once by hand, not a fix for an observed swap.
+  **And it can fail the run, which is the whole difference from decoration.** A pin bumped in
+  `index.html` with the file left beside it kills the paystub reader outright — pdf.js compares
+  the two versions itself and throws — and `paystub_failed` has never fired for any reason, so
+  nothing would report it. That is now a `BEHIND` and an exit 1.
+  **A second finding fell out of it: the hash was never of the served bytes.** Every file was
+  read with `await res.text()`, so what got compared to a git blob was a *re-encoding of a
+  decode* of the response. Measured 2026-11-18: the live worker is **1,087,212 bytes against
+  1,087,181 characters**, and the live `index.html` **579,910 against 578,622** — the two reads
+  were never the same question even on the nights they agreed. All four files are hashed from
+  bytes now, with the decoded string kept for the shape guards, because a character floor and
+  an SRI count are questions about text. **Stated in the direction it actually runs:** a
+  re-encode can only ever *miss* a blob it should have matched, never collide with one it should
+  not, so what this removes is a permanent false `UNKNOWN_BUILD`, **not** a false `LIVE`. Saying
+  otherwise would be the over-claim this file keeps correcting.
+  **23 assertions** in `scripts/test_deploy_watch.mjs` (98 → **121**), which is in CI — the
+  right home, not a fourth orphan suite. **Eight measured breaks**, every clause covered: the
+  worker dropped from `WATCHED` (1 fail), read as text again (2), the pre-11-18 string-only
+  reader (11), **a decode hashed instead of the bytes (10)** — the subtle one, and the only
+  break the byte-fidelity assertion catches alone — the size unit flattened to "characters" (1),
+  a byte count relabelled `chars` on the shape object (1), and an empty payload accepted by the
+  shape guard (2). The eighth is the control, negative-tested the other way: soften the fixture
+  to valid UTF-8 and the control itself goes red rather than letting the byte-fidelity row pass
+  vacuously.
+- [ ] **What this still does NOT establish, named rather than implied** (P3 · source:build · no
+  action) — the watch proves the served bytes are the *committed* bytes; §62 proves the
+  committed bytes are *npm's*. The joint claim holds only while both run, and the watch is **not
+  in CI** (it needs network, like `tests/equality.mjs` and the other two watches), so the live
+  link is re-established once a night by the nightly and by nothing else. A night the loop does
+  not run is a night nobody checked. That is the same standing as `silence_watch` and
+  `access_watch` and it is acceptable; what would not be acceptable is reading tonight's green
+  as a gate.
+- [ ] **A SILENT night: zero new events in 24 hours, and `events` is unchanged at 1,807** (P2 ·
+  source:groom · no action) — `silence_watch` reads **SILENT_BUT_HEALTHY**: the newest event is
+  **56.7h** old against a 48h window, so the window has now rolled past Courtney's 11-15 23:23
+  load and the verdict flipped from FRESH without a single thing changing. All five health checks
+  pass — 578,622 characters served, 5 SRI scripts, the `events` insert policy intact — so this is
+  *nobody came*, not *telemetry is dead*, which is the one distinction this script exists to
+  make. `rows_24h` is **0** for the second night. The 7-day device count holds at **3** and they
+  are last night's three. **Do not quote an activation figure off any of it** — the device
+  classifier is still broken.
+- [ ] **Courtney's second load still has not come — `pending`/`cards` unmeasured for the third
+  night** (P2 · carried from 11-16 and 11-17 · no action, and that is still the judgement) —
+  device `f184ffa5` has filed nothing since **2026-11-15 23:23:06**, now **2.4 days**. The
+  11-16 band shipped the props that would say how heavy her cold-load sheet actually was, and
+  said to wait for a second load before reading four seconds as "the sheet drove her off".
+  `ics_sync_result` **43**, `ics_sync_done` **28**, `ics_import_done` **10** (last 2026-10-10) —
+  all three unchanged. `ics_autosync_pref` and `ics_autosync_off` both **zero rows from any
+  device, ever**; she has been offered the switch once, and one four-second load is not evidence
+  she declined it.
+- [ ] **`access_watch` reads TIGHT on its sixth night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies and
+  `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe**
+  — a policy owner-gated in shape and wrong in logic passes it.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 through 11-17 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data`
+  and the swap tables; the `D` is TRUNCATE, which RLS does not cover. The one-line revoke
+  **tightens** access and would merge on its own by tier, but it is production DDL through the
+  Management API and needs a pass over the swap tables rather than a blind sweep. Add the
+  `access_watch` rule in the same commit.
+- [ ] **`feedback` is unchanged for the TWENTY-NINTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, newest still Courtney's **2026-10-15 12:30** ("Stop auto syncing with
+  nurse grid"), now **33.8 days** old. `paystub_failed` has **still never fired for any reason**,
+  so the 10-13 item's "read a second device" bar is still not met — do not build a worker
+  mitigation. Tonight's build is about the worker's *identity*, which is a different question
+  from whether the reader fails for her.
+- [ ] **The 11-03 `client_error` fix is 12-for-12** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the thirteenth groom. No
+  new traffic to test it against: a silent night cannot disprove a filter.
+- [ ] **CABINET MISSED fires for the NINTH night, and the brief is now 16.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **sixteenth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the TWELFTH time** (housekeeping) — `deploy_watch` reads
+  **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-17 band
+  staked out: that merge touched `tests/`, `scripts/` and `CLAUDE.md` and not `index.html`.
+  `privacy.html`, `ops.html` and now `pdf.worker.min.js` all print the truncation sentence
+  (boundary `440d58d` tonight for all three). **Tonight's prediction:** tonight's merge again
+  touches `scripts/`, `CLAUDE.md` and `BACKLOG.md` but **not `index.html`**, so tomorrow's watch
+  should still name **`a09cabe`** — and `pdf.worker.min.js` should read `[ok]` with the
+  truncation sentence rather than a commit, because its last real change is below the boundary in
+  every container this loop gets. A reading that names a commit for it would mean the clone came
+  down deeper, not that anything deployed.
+- [ ] **The gate meta-test is STILL not in CI — twenty-first night** (P2 · `harness:unscoped` ·
+  needs the owner) — the suite is **62 assertions / ~130s** and re-ran green tonight. `ci.yml`'s
+  `gate` job still does not call it, and **editing a workflow file is blocked for agent sessions
+  in this sandbox**. Still the same two lines after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`. Tonight's 21 assertions went into a suite CI already runs, for the same
+  reason.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — TWELFTH night** (P1 · needs
+  the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **12.3 days**.
+  Tonight branched to `claude/great-feynman-fg5qh9`, so #209's head is untouched for the twelfth
+  run running. The loop prompt's step 3 still says `git checkout -B claude/clause-md-review-9tqlj8
+  origin/…` followed by `--force-with-lease`, and a run that follows it literally still destroys
+  Pat's pending legal review — **that prompt is the one artefact no agent can edit**, so the
+  standing answer is: owner-tier work gets its own branch, and #209 should be merged or closed.
+  Its CI is red on purpose since #214 (the published-link check names `terms.html`), which is the
+  check working. `docs/cos/now.md` goes un-updated for the THIRTEENTH night for the same reason
+  (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page
+  Pat is meant to read still says "Updated 2026-11-02" — sixteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5455,6 +5592,42 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-18 — **`tests/smoke.mjs` §62 hashes the worker in the repo; nothing hashed the one real
+  users execute.** Last night's build established that the *committed* `pdf.worker.min.js` is
+  byte-identical to `pdfjs-dist@3.11.174`'s `build/` file, and said in as many words that it never
+  fetches badgebudget.com. The live half was **one hand-run `curl`, on one night, with nothing
+  re-checking it** — and `deploy_watch.mjs`, which exists to hash the publish set against the
+  deploy branch's git blobs, had excluded that file from the start behind a scope line reading
+  *"a megabyte, and it has never changed"*. That is the same sentence as "nothing has ever read a
+  byte of the copy production serves". The chain that matters is **npm's pinned build = the
+  committed file = the bytes badgebudget.com serves**, and only the first link was in CI.
+  **Shipped:** `pdf.worker.min.js` is the fourth file the watch hashes, graded like `privacy.html`
+  and `ops.html` — 200, not empty, then the hash, which is where all the work is. Its last real
+  change (`440d58d`, 2026-10-11) sits at the shallow boundary these containers clone at, so it
+  takes the truncation path #210 built: `[ok]` with the current-bytes sentence rather than a
+  commit name. **Measured live tonight:** 1,087,212 bytes, sha256 `feabdf309770ed24…`, identical
+  to the committed blob and to npm's. **No bad byte was found** — a nightly regression guard on a
+  property established once by hand, not a fix for an observed swap. It can also **fail** the run,
+  which is the difference from decoration: a pin bumped in `index.html` with the file left behind
+  kills the paystub reader outright (pdf.js compares the versions itself and throws) and
+  `paystub_failed` has never fired for any reason, so nothing would report it.
+  **A second finding fell out of it: the hash was never of the served bytes.** Every file was read
+  with `await res.text()`, so what was compared to a git blob was a re-encoding of a decode of the
+  response. Measured: the live worker is **1,087,212 bytes against 1,087,181 characters** and the
+  live `index.html` **579,910 against 578,622** — not the same question even on the nights they
+  agreed. All four files are hashed from bytes now; the decoded string still feeds the shape
+  guards, because a character floor and an SRI count are questions about text. **Direction stated
+  honestly:** a re-encode can only ever *miss* a blob it should have matched, so this removes a
+  permanent false `UNKNOWN_BUILD`, **not** a false `LIVE`.
+  **23 assertions** in `scripts/test_deploy_watch.mjs` (98 → **121**), a suite CI already runs.
+  **Eight measured breaks**, every clause covered: the worker dropped from `WATCHED` (1 fail),
+  read as text again (2), the pre-tonight string-only reader (11), a decode hashed instead of the
+  bytes (10 — the subtle one), the size unit flattened to "characters" (1), a byte count
+  relabelled `chars` on the shape object (1), an empty payload accepted by the shape guard (2),
+  and the control negative-tested the other way: soften the fixture to valid UTF-8 and the
+  control goes red rather than letting the byte-fidelity row pass vacuously. Gate: 21/21
+  mechanical, core 175, groom-seed 33, silence-watch 39, dashboard-snapshot 44, deploy-watch 121,
+  smoke 1012 on iPhone 13. `deploy_watch` LIVE.
 - 2026-11-17 — **The gate printed `worker agrees` for `pdf.worker.min.js`, and "agrees" was two
   substrings read out of 1,087,212 bytes.** Last night's §60 found that a pinned `integrity` hash
   had never been compared to a byte of the file it names. The same question, asked one file over,

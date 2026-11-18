@@ -7,6 +7,28 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-18 · nightly · **the worker check now covers the bytes production serves, not just the
+  ones in the repo** — last night's §62 proved the *committed* `pdf.worker.min.js` is npm's pinned
+  build and stated plainly that it never fetches badgebudget.com; the live half was **one hand-run
+  `curl`, one night, nothing re-checking it**. `deploy_watch.mjs` had excluded that file since it
+  was written, behind a scope line reading *"a megabyte, and it has never changed"* — the same
+  sentence as "nothing has read a byte of the copy real users execute". It is the fourth hashed
+  file now, so the chain **npm's build = the committed file = what production serves** is closed
+  at both ends on every nightly. Measured live: 1,087,212 bytes, identical, no bad byte. A second
+  finding fell out: every file was hashed from `await res.text()`, so the comparison was of a
+  **re-encoding of a decode** of the response (live worker 1,087,212 bytes vs 1,087,181
+  characters; index.html 579,910 vs 578,622) — all four read as bytes now, and the risk that
+  removes is a false `UNKNOWN_BUILD`, never a false `LIVE`. 23 assertions in a suite CI runs
+  (98 → 121), eight measured breaks. · **three for the chief of staff:** (a) **twelfth
+  consecutive night** on the one repo-wide shape — a printed word that counts less than it claims
+  — and tonight's was *last night's own deferral*, which is the queue working rather than a new
+  coincidence; (b) the queue has had **no unblocked build item that does not need Pat for twelve
+  nights**, and three of the blockers are still **one-line workflow edits waiting on one visit**
+  (the gate meta-test, the dashboard-snapshot suite, #209's `cp terms.html _site/`); (c)
+  **CABINET MISSED fires for the ninth night** with the brief at **16.8 days** against an 8-day
+  switch, and `docs/cos/now.md` still says *Updated 2026-11-02* — **sixteen days**, un-updated
+  for the thirteenth night because #209 rewrites T2's whole block. · → outcome pending
+
 - 2026-11-17 · nightly · **the last script in this app that ran with no integrity check of any
   kind now has one** — the gate printed `worker agrees` for `pdf.worker.min.js`, and "agrees" was
   **two substrings read out of 1,087,212 bytes**: pdf.js's own version guard and the literal
