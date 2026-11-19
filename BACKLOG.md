@@ -1561,6 +1561,165 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   (#209 rewrites T2's whole block); tonight's line went to `docs/cos/inbox.md`. **The one page
   Pat is meant to read still says "Updated 2026-11-02" — sixteen days.**
 
+### P1 (new, groom 2026-11-19)
+
+**Why this band sits BELOW the 11-06 through 11-18 bands instead of at the top of `## Queue`:**
+unchanged for the thirteenth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**`privacy.html self-contained` was two attribute spellings of one scheme**~~ —
+  **SHIPPED 2026-11-19**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked with the 11-14 band's search for the thirteenth
+  night, because `## Queue` still holds no unblocked build item that does not need Pat: *find a
+  claim with a number in it, then ask what that number is actually counting.* §60 asked it of
+  the five SRI pins, §62 of the worker's megabyte, 11-18 of the copy production serves. Tonight
+  the same question of a claim with **no** number in it, which is the weaker kind — a WORD.
+  **The defect.** The gate's `[2]` CSP check ends by asserting privacy.html is self-contained,
+  which is the whole reason that page ships with **no CSP at all** and the reason it can be said
+  to make no third-party requests. The clause was
+  `/\b(?:src|href)="https?:\/\/[^"]+"/` — two attribute spellings of one scheme — and it printed
+  `privacy.html self-contained`, a claim about the page's content. The page's own header comment
+  makes the same claim in words ("no fonts, scripts, or styles from anywhere else") and **nothing
+  held it**.
+  **Measured against the OLD clause before anything was written, which is why this is evidence
+  and not prose.** Four realistic edits, and all four left the gate printing
+  `All 21 mechanical checks passed` **and** `privacy.html self-contained`:
+  (1) `@font-face{src:url(https://fonts.gstatic.com/…woff2)}` inside the `<style>` block — the
+  likeliest edit of all, because matching the app's type is the obvious polish and a CSS `url()`
+  is not an attribute; (2) `@import url("https://fonts.googleapis.com/css2?family=Inter")`, a
+  whole third-party stylesheet; (3) `<script src='https://plausible.io/js/script.js'>` —
+  **single-quoted**, which is the whole reason the regex missed it, and the bad one: an analytics
+  script on the privacy notice, on a page with no CSP to block it; (4)
+  `<img src="//tracker.example.com/pixel.gif">`, protocol-relative, so there is no `https?:` to
+  match at all. A tracking pixel is exactly that shape.
+  **Why it is worse than a doc nit.** This page backs the URL on the Google OAuth consent screen
+  (Invariant 8), it ships with no CSP, and *"it cannot break when a CDN does"* is the stated
+  reason it needs none. One remote reference makes that false in both directions at once: the
+  page can now break, and it hands a third party the visitor's IP and the referring URL — which
+  **is** the privacy notice — while explaining what BadgeBudget does not collect.
+  **What shipped.** The question is asked of the content, in four clauses: (a) every attribute
+  the browser **fetches** while rendering must be local, any quoting, any scheme, `srcset`
+  candidate lists split — with `<a href>`/`<area href>` **exempt and the exemption named**,
+  because a link is a navigation the reader chooses and not a request the page makes; (b) every
+  `url(…)` and `@import` in a `<style>` block or a `style=""` attribute must be local, which is
+  the half with no attributes at all; (c) **no `<script>`, `<iframe>`, `<object>` or `<embed>`
+  tag of any kind, inline included** — an inline script has no `src` for (a) to read and can
+  fetch whatever it likes at runtime; (d) the walk must find tags **and** at least one reference,
+  so an empty or unreadable page fails rather than sweeping clean. The gate now prints what it
+  read: `76 tags, 1 refs, 0 css urls, no script`.
+  **The false positive it must NOT have, which is the design constraint.** The favicon is a
+  `data:` URI whose SVG payload contains the literal `http://www.w3.org/2000/svg` — an XML
+  namespace identifier, never a fetch. A blanket grep for `http` fails on today's clean page, and
+  the repair anyone would reach for (exempt w3.org) is worse than the hole it closed. So a URL is
+  classified by how its value **starts**, never by searching inside it.
+  **Six deliberate breaks in `scripts/test_check_build.mjs` (62 → 70 assertions), one per route,
+  and TWO new controls in the direction this suite had never asked about.** Every assertion in
+  that file asked "does a break go red?"; a check can be wrong the other way, and one false
+  positive on an ordinary edit gets the check **weakened** by whoever meets it. So a `GREENS`
+  block now asserts two edits leave the gate green. The first earns its place on a measurement,
+  not an argument: an implementation that counts `<a href>` as a fetch **passes today's clean
+  page** (measured — `All 21 mechanical checks passed`, because the live notice links only to a
+  mailto: and `/`), so the clean-baseline assertion cannot see it, and it goes red the first time
+  anyone links out to the IRS. That is the only row in the suite that catches it.
+  **Falsifiable in both directions, both measured tonight:** neuter the new walk and **all seven**
+  privacy breaks go red while both controls stay green (63 passed / 7 failed) — and the
+  empty-page break then fails `[8]` instead of `[2]`, which the label pin caught and reported as
+  a wrong-row failure rather than a win, which is what that pin is for. Over-reject instead and
+  the two controls go red (66 / 4).
+  **No remote reference was found**: privacy.html is clean under every one of the four clauses
+  today. Regression guard, the same standing as §54 and §62 — not a fix for an observed leak.
+- [ ] **The gate's check count did NOT move, and that was the choice** (P3 · source:build · no
+  action) — the new clauses were folded into the existing `[2] CSP covers every host the pages
+  load` check rather than split into a twenty-second, for the 11-14 precedent's reason exactly:
+  it is one question asked from both ends, and the misleading output was *that check's own*. So
+  the roster stays at 21, the gate's self-roll-call and the meta-test's roster need no edit, and
+  the six new breaks pin the `CSP` label like the fourteen `[2]` breaks before them. A reader
+  looking for "what changed tonight" should read the check's summary string, not its count.
+- [ ] **What this still does NOT check, named rather than implied** (P3 · source:build · no
+  action) — three things, deliberately: (a) `index.html` and `ops.html` are **not** walked for
+  CSS `url()` or inline scripts, because they have a CSP and the forward-direction rule already
+  gates their tag hosts; widening the walk there would collide with `img-src https:` being
+  wholesale and `connect-src` carrying hosts no tag reveals. (b) An `<a href>` to a third party
+  is allowed by design. (c) None of this is a **runtime** check — a page that fetches nothing
+  per the source but is served through something that injects a tag would pass. `deploy_watch`
+  hashing `privacy.html` against its git blob is what covers that, nightly, and it is not in CI.
+- [ ] **A THIRD silent night: zero new events in 24 hours, `events` unchanged at 1,807** (P2 ·
+  source:groom · no action) — `silence_watch` reads **SILENT_BUT_HEALTHY**, newest event
+  **80.7h** old against a 48h window. All five health checks pass — 578,622 characters served, 5
+  SRI scripts, the `events` insert policy intact — so this is *nobody came*, not *telemetry is
+  dead*, which is the one distinction that script exists to make. `rows_24h` **0** for the third
+  night; `rows_7d` **10** across **2** devices (`f184ffa5`, `mwef613f`), the 7-day count down
+  from 3 purely because the window rolled past `24dd458a`'s 11-11 load — arithmetic, not a
+  decline. **Do not quote an activation figure off any of it** — the device classifier is still
+  broken.
+- [ ] **Courtney's second load still has not come — `pending`/`cards` unmeasured for the fourth
+  night** (P2 · carried from 11-16 through 11-18 · no action, and that is still the judgement) —
+  device `f184ffa5` has filed nothing since **2026-11-15 23:23:06**, now **3.4 days**.
+  `ics_sync_result` **43**, `ics_sync_done` **28**, `ics_import_done` **10** (last 2026-10-10) —
+  all three unchanged for a fourth groom. `ics_autosync_pref` and `ics_autosync_off` both **zero
+  rows from any device, ever**; she has been offered the switch once, and one four-second load is
+  not evidence she declined it.
+- [ ] **`access_watch` reads TIGHT on its seventh night, 16/16** (P2 · source:groom · no action)
+  — every rule unchanged: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies
+  and `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe**
+  — a policy owner-gated in shape and wrong in logic passes it.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 through 11-18 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data`
+  and the swap tables; the `D` is TRUNCATE, which RLS does not cover. The one-line revoke
+  **tightens** access and would merge on its own by tier, but it is production DDL through the
+  Management API and needs a pass over the swap tables rather than a blind sweep. Add the
+  `access_watch` rule in the same commit.
+- [ ] **`feedback` is unchanged for the THIRTIETH groom** (housekeeping, re-read at the END of the
+  run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, 18 with contact, 17 with a `user_id`, newest still Courtney's
+  **2026-10-15 12:30** ("Stop auto syncing with nurse grid"), now **34.8 days** old.
+  `paystub_failed` has **still never fired for any reason**, so the 10-13 item's "read a second
+  device" bar is still not met — do not build a worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 13-for-13** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the fourteenth groom. No
+  new traffic to test it against: a silent night cannot disprove a filter.
+- [ ] **CABINET MISSED fires for the TENTH night, and the brief is now 18.3 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **seventeenth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the THIRTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-18
+  band staked out: that merge touched `scripts/`, `tests/`, `CLAUDE.md` and `BACKLOG.md` and not
+  `index.html`. `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation
+  sentence, boundary **`81c1954`** tonight (was `440d58d`) — the figure drifts with clone depth,
+  which is exactly why #210 stopped printing it as a deploy fact. **Tonight's prediction:**
+  tonight's merge touches `scripts/`, `CLAUDE.md` and `BACKLOG.md` but **not `index.html`**, so
+  tomorrow's watch should still name **`a09cabe`**, and all three of the others should still read
+  `[ok]` with the truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-second night, and tonight it is 70
+  assertions** (P2 · `harness:unscoped` · needs the owner) — the suite re-ran green tonight at
+  **70 / ~130s**, and tonight's eight new rows all went into it, which means **tonight's work is
+  behind the half of the gate CI does not run**. That is a change from the last few nights and it
+  is stated rather than glossed: the clause itself is in `check_build.mjs`, which **is** a
+  required check, so a privacy.html that grows a tracker fails CI tonight; what is not in CI is
+  the proof that the clause has teeth. Still the same two lines after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs` and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — THIRTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **13.3 days**.
+  Tonight branched to `claude/great-feynman-qlgvl7`, so #209's head is untouched for the
+  thirteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the FOURTEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  seventeen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5592,6 +5751,51 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-19 — **`privacy.html self-contained` was two attribute spellings of one scheme.** The
+  gate's `[2]` CSP check ends by asserting that privacy.html is self-contained — the property
+  that is the whole reason that page ships with **no CSP at all**, and the reason it can be said
+  to make no third-party requests. The clause was `/\b(?:src|href)="https?:\/\/[^"]+"/`, and it
+  printed `privacy.html self-contained`: a claim about the page's content, held by a regex that
+  read two attribute spellings of one scheme. The page's own header comment makes the same claim
+  in words — *"no fonts, scripts, or styles from anywhere else"* — and nothing held that either.
+  **Measured against the old clause first, which is why this is evidence rather than prose:** four
+  realistic edits all left the gate printing `All 21 mechanical checks passed` **and**
+  `privacy.html self-contained` — a `@font-face` webfont through CSS `url()`, an `@import` of a
+  third-party stylesheet, a **single-quoted** `<script src='https://plausible.io/…'>`, and a
+  protocol-relative `<img src="//tracker.example.com/pixel.gif">`. The third is the bad one: an
+  analytics script on the privacy notice, on a page with no CSP to block it. This page backs the
+  URL on the Google OAuth consent screen (Invariant 8), and *"it cannot break when a CDN does"* is
+  the stated reason it needs no CSP — one remote reference makes that false in both directions,
+  and hands a third party the visitor's IP and the referring URL, which **is** the privacy notice.
+  **Shipped:** the question is asked of the content, in four clauses — (a) every attribute the
+  browser *fetches* while rendering must be local, any quoting, any scheme, `srcset` lists split,
+  with `<a href>`/`<area href>` exempt and the exemption named (a link is a navigation, not a
+  request); (b) every `url(…)` and `@import` in a `<style>` block or `style=""` attribute must be
+  local, the half with no attributes at all; (c) **no `<script>`, `<iframe>`, `<object>` or
+  `<embed>` tag of any kind, inline included**, because an inline script has no `src` to read and
+  can fetch anything at runtime; (d) the walk must find tags *and* at least one reference, so an
+  empty page fails rather than sweeping clean. The gate now prints what it read: `76 tags, 1 refs,
+  0 css urls, no script`. The false positive it must not have is the design constraint: the
+  favicon is a `data:` URI whose payload contains the literal `http://www.w3.org/2000/svg`, an XML
+  namespace that is never fetched, so a URL is classified by how its value **starts** and never by
+  searching inside it.
+  **`scripts/test_check_build.mjs` 62 → 70.** Six deliberate breaks, one per route, all pinning
+  the `CSP` label like the fourteen `[2]` breaks before them — and **two controls in a direction
+  this suite had never asked about.** Every assertion in it asked "does a break go red?"; a check
+  can be wrong the other way, and one false positive on an ordinary edit gets the check *weakened*
+  by whoever meets it. A `GREENS` block now asserts two edits leave the gate green, and the first
+  earns its place on a measurement rather than an argument: an implementation that counts
+  `<a href>` as a fetch **passes today's clean page**, so the clean-baseline assertion cannot see
+  it, and it goes red the first time anyone links out to the IRS.
+  **Falsifiable in both directions, both measured:** neuter the walk and all **seven** privacy
+  breaks go red with both controls still green (63 / 7) — and the empty-page break then fails
+  `[8]` instead of `[2]`, which the label pin caught and reported as a wrong-row failure instead
+  of a win, which is what that pin is for. Over-reject instead and the two controls go red (66 /
+  4). Folded into the existing `[2]` check rather than split into a twenty-second, for 11-14's
+  reason: one question asked from both ends, and the misleading output was that check's own. **No
+  remote reference was found** — privacy.html is clean under all four clauses today, so this is a
+  regression guard like §54 and §62, not a fix for an observed leak. Gate 21/21, meta-test 70/0,
+  groom-seed 33/0, core 175/0, dashboard 44/0, smoke **1012/0** (61/61 sections).
 - 2026-11-18 — **`tests/smoke.mjs` §62 hashes the worker in the repo; nothing hashed the one real
   users execute.** Last night's build established that the *committed* `pdf.worker.min.js` is
   byte-identical to `pdfjs-dist@3.11.174`'s `build/` file, and said in as many words that it never

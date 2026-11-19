@@ -202,13 +202,118 @@ check(2, 'CSP covers every host the pages load', () => {
   }
 
   /* privacy.html: no CSP by design, so the property that replaces one is that there is nothing
-     to constrain. Its favicon is a data: URI and its only links are a mailto: and "/". */
-  const remote = (read('privacy.html').match(/\b(?:src|href)="https?:\/\/[^"]+"/g) || []);
-  must(!remote.length,
-    `privacy.html is published with no CSP because it is self-contained, and it now references ` +
-    `${remote.length} remote URL(s): ${remote[0]} — either drop it or give that page a CSP`);
+     to constrain — and until 2026-11-19 that question was asked of TWO ATTRIBUTE SPELLINGS OF
+     ONE SCHEME. The clause was `/\b(?:src|href)="https?:\/\/[^"]+"/`, and it printed
+     `privacy.html self-contained`, which is a claim about the page's content rather than about
+     double-quoted http(s) attributes. The page's own comment makes the same claim in words —
+     "no fonts, scripts, or styles from anywhere else" — and nothing held it.
 
-  return `${gated} tag hosts permitted, privacy.html self-contained`;
+     Four realistic edits were measured against the old clause on 2026-11-19, and all four left
+     the gate printing `All 21 mechanical checks passed` and `privacy.html self-contained`:
+
+       1. `@font-face{src:url(https://fonts.gstatic.com/…woff2)}` inside the <style> block — the
+          likeliest edit of all, because matching the app's type is the obvious polish, and a
+          CSS url() is not an attribute.
+       2. `@import url("https://fonts.googleapis.com/css2?family=Inter")` — a whole stylesheet
+          from a third party, same reason.
+       3. `<script src='https://plausible.io/js/script.js'></script>` — SINGLE-QUOTED, so the
+          regex misses it. This is the bad one: an analytics script on the privacy notice, on a
+          page with no CSP to block it.
+       4. `<img src="//tracker.example.com/pixel.gif">` — protocol-relative, so there is no
+          `https?:` to match. A tracking pixel is exactly this shape.
+
+     Why it matters more than a doc nit: this page backs the URL on the Google OAuth consent
+     screen, it ships with no CSP at all, and "it cannot break when a CDN does" is the stated
+     reason it needs none. One remote reference makes that false in both directions — the page
+     hands a third party the visitor's IP and the referring URL (which is the privacy notice),
+     while explaining what BadgeBudget does not collect.
+
+     So the question is asked of the content, in four parts, each with its own break:
+
+     (a) Every attribute the browser FETCHES while rendering must be local. Any quoting, any
+         scheme, `srcset` candidate lists split. `<a href>` and `<area href>` are deliberately
+         EXEMPT and the exemption is named: a link is a navigation the reader chooses, not a
+         request the page makes, and failing one would invent a rule the claim does not make.
+     (b) Every `url(…)` and `@import` in a <style> block or a style="" attribute must be local.
+     (c) No `<script>`, `<iframe>`, `<object>` or `<embed>` tag AT ALL. (a) covers a remote
+         script's src; this covers an INLINE script, which can fetch anything at runtime and
+         which no static attribute walk can see. There is no reason for one on this page.
+     (d) The walk must find something. A page that yields no tags, or no local reference at all,
+         fails rather than passing by omission — the same rule Invariant 5's derivation and
+         Invariant 13's parser whitelist take.
+
+     The false positive this must NOT have: the favicon is a `data:` URI whose SVG payload
+     contains the literal `http://www.w3.org/2000/svg`. That is an XML namespace identifier and
+     is never fetched, so a URL is classified by how its value STARTS, never by searching for
+     `http` inside it. A blanket grep would fail on today's clean page, and the obvious repair —
+     exempting w3.org — would be worse than the hole it closed. */
+  const priv = read('privacy.html');
+  /* Local: a relative path, a fragment, or a scheme that does not reach the network as a page
+     resource. Remote: http(s), protocol-relative `//host`, or any other scheme (`webcal:`,
+     `ftp:`) — unknown schemes fail loudly rather than being waved through. */
+  const isRemote = (raw) => {
+    const v = String(raw || '').trim();
+    if (!v) return false;
+    if (/^(?:data:|mailto:|tel:|#)/i.test(v)) return false;
+    if (/^\/\//.test(v)) return true;                 /* protocol-relative */
+    if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return true;  /* any explicit scheme */
+    return false;                                      /* "/", "page.html", "./x" */
+  };
+  const privTags = priv.match(/<[a-zA-Z][^>]*>/g) || [];
+  must(privTags.length > 0,
+    'privacy.html yielded no tags to walk — this check cannot pass by finding nothing');
+
+  /* (a) fetch-on-load attributes, on the tags that fetch them. */
+  const FETCHERS = /^<(script|link|img|image|iframe|object|embed|video|audio|source|track|input|use)\b/i;
+  const ATTRS = /\b(src|srcset|href|poster|data|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  const privRefs = [];
+  for (const tag of privTags) {
+    if (!FETCHERS.test(tag)) continue;   /* <a href> / <area href> navigate; they do not fetch */
+    for (const m of tag.matchAll(ATTRS)) {
+      const name = m[1].toLowerCase();
+      const value = m[2] ?? m[3] ?? m[4] ?? '';
+      const parts = name === 'srcset'
+        ? value.split(',').map((c) => c.trim().split(/\s+/)[0])
+        : [value];
+      for (const p of parts) privRefs.push({ name, value: p, tag: tag.slice(0, 60) });
+    }
+  }
+  const privRemote = privRefs.filter((r) => isRemote(r.value));
+  must(!privRemote.length,
+    `privacy.html is published with no CSP because it is self-contained, and a tag now fetches ` +
+    `${privRemote.length} remote URL(s): ${privRemote[0] && privRemote[0].value} ` +
+    `(${privRemote[0] && privRemote[0].tag}…) — either drop it or give that page a CSP`);
+
+  /* (b) CSS, which carries no attributes at all: url() and @import, in <style> and in style="". */
+  const privCss = [
+    ...(priv.match(/<style\b[^>]*>([\s\S]*?)<\/style>/gi) || []),
+    ...[...priv.matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)].map((m) => m[1] ?? m[2] ?? ''),
+  ].join('\n');
+  const cssRefs = [
+    ...[...privCss.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\)/gi)]
+      .map((m) => (m[1] ?? m[2] ?? m[3] ?? '').trim()),
+    ...[...privCss.matchAll(/@import\s+(?:url\(\s*)?(?:"([^"]*)"|'([^']*)')/gi)]
+      .map((m) => (m[1] ?? m[2] ?? '').trim()),
+  ];
+  const cssRemote = cssRefs.filter(isRemote);
+  must(!cssRemote.length,
+    `privacy.html's CSS reaches a third party: ${cssRemote[0]} — a webfont or an @import is a ` +
+    'remote request the old attribute-only clause could never see, and this page ships with no CSP');
+
+  /* (c) no executable or embedding tag, inline included. */
+  const privExec = privTags.filter((t) => /^<(script|iframe|object|embed)\b/i.test(t));
+  must(!privExec.length,
+    `privacy.html carries a ${privExec[0]}… tag — it is published with no CSP and no script of ` +
+    'any kind, inline included: inline JS can fetch whatever it likes at runtime, which no ' +
+    'attribute walk can see');
+
+  /* (d) the page really is referencing things locally, so (a) is reading something. */
+  must(privRefs.length > 0,
+    'privacy.html yielded no fetchable attributes at all — the self-containment walk found ' +
+    'nothing to check, which is not the same as finding nothing wrong');
+
+  return `${gated} tag hosts permitted, privacy.html self-contained `
+    + `(${privTags.length} tags, ${privRefs.length} refs, ${cssRefs.length} css urls, no script)`;
 });
 
 /* ---- Invariant 2's sixth script: the one the app loads from its OWN origin ---------------
