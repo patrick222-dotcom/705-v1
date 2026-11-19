@@ -7,6 +7,29 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-19 · nightly · **the gate printed the word `self-contained` for `privacy.html`, and the
+  word was a regex over two attribute spellings of one scheme** — that property is the whole
+  reason the page ships with **no CSP at all**, and it backs the URL on the Google OAuth consent
+  screen. Four realistic edits were measured against the old clause and all four left the gate
+  printing `All 21 mechanical checks passed`: a `@font-face` webfont through CSS `url()`, an
+  `@import` of a third-party stylesheet, a **single-quoted** `<script src='https://plausible.io/…'>`
+  — an analytics script on the privacy notice, with no CSP to block it — and a protocol-relative
+  tracking pixel. It now walks the content: every attribute the browser fetches (any quoting, any
+  scheme; `<a href>` exempt, because a link is a navigation), every `url()`/`@import` in its CSS,
+  no `<script>`/`<iframe>`/`<object>`/`<embed>` tag at all, and an anti-vacuity floor. No remote
+  reference was found, so it is a regression guard. · **three for the chief of staff:** (a)
+  **thirteenth consecutive night** on the one repo-wide shape — a printed claim that covers less
+  than it says — and tonight's instance had no number in it at all, just a word, which is the
+  cheaper kind to let stand; (b) the meta-test gained its **first two GREENS**: assertions that an
+  ordinary edit must leave the gate *green*, because a false positive gets a check **weakened** by
+  whoever meets it, and the first is justified on a measurement (a walk that counts `<a href>` as
+  a fetch passes today's clean page, so the clean baseline cannot see it) — worth copying to the
+  other suites; (c) **CABINET MISSED fires for the tenth night** with the brief at **18.3 days**
+  against an 8-day switch, `docs/cos/now.md` still says *Updated 2026-11-02* — **seventeen
+  days** — and the queue has had no unblocked build item that does not need Pat for **thirteen**
+  nights, three blockers still being one-line workflow edits waiting on one visit. · → outcome
+  pending
+
 - 2026-11-18 · nightly · **the worker check now covers the bytes production serves, not just the
   ones in the repo** — last night's §62 proved the *committed* `pdf.worker.min.js` is npm's pinned
   build and stated plainly that it never fetches badgebudget.com; the live half was **one hand-run

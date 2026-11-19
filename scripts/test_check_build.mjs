@@ -23,6 +23,10 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
+ *   GREENS  — two edits that must leave the gate GREEN (added 2026-11-19). TEETH only ever asks
+ *             "does a break go red?", and a check can be wrong in the other direction: one false
+ *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
+ *             GREENS block at the foot of this file for what each one guards.
  *
  * The breaks are applied to a COPY (`.gate-scratch/`), never the working tree — the same rule
  * `cos_check.mjs` takes its optional `root` argument for, and the rule the `harness` skill states
@@ -218,6 +222,30 @@ const BREAKS = [
   /* privacy.html has no CSP by design; the property that replaces one is that it fetches nothing. */
   ['[2] privacy.html grows a third-party request', 'privacy.html',
     (s) => s.replace('<link rel="icon"', '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X">\n<link rel="icon"'), '2', CSP],
+  /* privacy.html's self-containment, rewritten 2026-11-19. The clause it replaced was
+     `/\b(?:src|href)="https?:\/\/[^"]+"/` — two attribute spellings of one scheme — and it
+     printed `privacy.html self-contained`. All SIX of these breaks were measured against the old
+     clause first and all six left the gate printing `All 21 mechanical checks passed`, which is
+     the finding stated as evidence rather than as prose. One break per route, because the routes
+     are different regexes and a group of them broken as a group only proves that one has teeth. */
+  ['[2] privacy.html loads a webfont through CSS url()', 'privacy.html',
+    (s) => s.replace('  *{box-sizing:border-box}',
+      '  @font-face{font-family:Inter;src:url(https://fonts.gstatic.com/s/inter/v13/x.woff2) format("woff2")}\n  *{box-sizing:border-box}'), '2', CSP],
+  ['[2] privacy.html @imports a third-party stylesheet', 'privacy.html',
+    (s) => s.replace('<style>', '<style>\n  @import url("https://fonts.googleapis.com/css2?family=Inter");'), '2', CSP],
+  /* The bad one: an analytics script on the privacy notice, on a page with no CSP to block it.
+     SINGLE-QUOTED, which is the whole reason the old clause could not see it. */
+  ['[2] privacy.html grows a single-quoted remote script', 'privacy.html',
+    (s) => s.replace('</head>', "<script src='https://plausible.io/js/script.js'></script>\n</head>"), '2', CSP],
+  ['[2] privacy.html grows a protocol-relative tracking pixel', 'privacy.html',
+    (s) => s.replace('</body>', '<img src="//tracker.example.com/pixel.gif" alt="">\n</body>'), '2', CSP],
+  /* Clause (c) on its own: an INLINE script has no src, so the attribute walk above cannot see
+     it, and it can fetch whatever it likes at runtime. */
+  ['[2] privacy.html grows an inline script with no src', 'privacy.html',
+    (s) => s.replace('</body>', '<script>fetch("https://x.example.com/?r="+document.referrer)</script>\n</body>'), '2', CSP],
+  /* Anti-vacuity: a page with nothing in it must FAIL rather than sweep clean. */
+  ['[2] privacy.html stops yielding anything to walk', 'privacy.html',
+    () => 'privacy notice text only, no markup at all\n', '2', CSP],
   /* No tag names a woff2, so this is the one derived assertion — and the one whose breakage is
      invisible rather than fatal: the webfont falls back and the layout moves. */
   ['[2] font-src stops permitting fonts.gstatic.com', 'index.html',
@@ -440,6 +468,53 @@ for (const [name, file, fn, expect, label] of BREAKS) {
   ok(`teeth: ${name}`, red && named,
     !red ? 'gate PASSED on a deliberately broken tree'
          : named ? '' : `exited ${r.code} but did not fail [${expect}]${label ? ` ${label}` : ''}: ${r.out.slice(-300)}`);
+}
+
+rmSync(SCRATCH, { recursive: true, force: true });
+
+/* ---- GREENS: the direction a false positive hides in -----------------------------------
+   Added 2026-11-19 with the privacy.html self-containment rewrite. Every assertion above asks
+   "does a break go red?", and a check can be wrong in the other direction too: one false positive
+   on an ordinary edit gets the check WEAKENED by whoever meets it, which is how a mechanism with
+   teeth acquires a carve-out. Two edits that must leave the gate GREEN, both of them things the
+   new walk could plausibly have flagged:
+
+     1. An outbound link. A privacy notice linking to a third party's page is normal and makes no
+        request — `<a href>` fetches nothing, and the exemption is named in the check's comment.
+        Flagging it would invent a rule the claim "makes no third-party requests" does not make.
+     2. A `data:` URI whose PAYLOAD contains an absolute URL. The live favicon already carries
+        `http://www.w3.org/2000/svg` as an XML namespace, which is an identifier and never a
+        fetch, so a blanket grep for `http` would fail on today's clean page — and the repair
+        someone would reach for, exempting w3.org, is worse than the hole it closed. The rule is
+        that a URL is classified by how its value STARTS; this adds a second such URI so the
+        favicon is not passing by some accident of its own position.
+
+   Both were negative-tested, and the first one earns its place on a measurement rather than on
+   the argument: an implementation that counts `<a href>` as a fetch PASSES today's clean page
+   (measured 2026-11-19 — `All 21 mechanical checks passed`, because the live notice links only to
+   a mailto: and "/"), so the `teeth: clean scratch copy passes` baseline cannot see it, and it
+   goes red the first time anyone links out to the IRS. Green 1 is the only row in this suite that
+   catches that. Green 2's own over-reject — a blanket `https?:` test on the whole value — is
+   coarser and fails the baseline too, which is why it is labelled a control and not a clause.
+
+   What neither control can do: catch a walk wired to the wrong file, or one that reads an empty
+   string and reports a clean sweep. The breaks above cover both. */
+const GREENS = [
+  ['privacy.html links out to a third party with <a href>', 'privacy.html',
+    (s) => s.replace('</body>', '<p><a href="https://www.irs.gov/publications/p15">IRS Pub 15</a></p>\n</body>')],
+  ['privacy.html carries a data: image whose payload names a remote host', 'privacy.html',
+    (s) => s.replace('</body>',
+      '<img alt="" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3Ctitle%3Ehttps://example.com%3C/title%3E%3C/svg%3E">\n</body>')],
+];
+
+for (const [name, file, fn] of GREENS) {
+  buildScratch();
+  let greenPatched = true;
+  try { patch(file, fn); } catch (e) { greenPatched = false; ok(`greens: ${name}`, false, e.message); }
+  if (!greenPatched) continue;
+  const g = runGate();
+  ok(`greens: ${name} — the gate stays green`, g.code === 0,
+    g.code === 0 ? '' : `exited ${g.code}: ${(g.out.match(/\u2717 .*/) || ['no red row'])[0].slice(0, 180)}`);
 }
 
 rmSync(SCRATCH, { recursive: true, force: true });
