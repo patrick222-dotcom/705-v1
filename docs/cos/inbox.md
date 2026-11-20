@@ -7,6 +7,20 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-20 · nightly · **the publish set ships six SRI-pinned scripts and the gate counted
+  five** — `ops.html` loads supabase-js with its own `integrity` attribute, a second copy of the
+  app's pin on the same origin, and nothing read it. Three of four measured edits left the gate
+  green, including **deleting the attribute outright**, which is the one that fails open: a third
+  party's JavaScript then executes unverified in the origin that holds `user_data` and the auth
+  session. Gated as identity against `index.html`'s row (url + hash), five breaks, a third GREEN,
+  no bad hash found. **Also tonight, and the bigger item for the committee:** Courtney's second
+  load landed 11-19 18:13 and gave the first production reading of #219's sync-plan counts —
+  feed **107**, plan **50**, **7 cards**. Every judgement in the repo about how heavy that sheet
+  is was made off the feed count and was off by one to two orders of magnitude. She spent 41
+  seconds on a seven-tap sheet and imported nothing, for the fourth load running, and still has
+  not taken either sync opt-out. That is a product question, not a nightly one — belongs with T3
+  or a dedicated session.
+
 - 2026-11-19 · nightly · **the gate printed the word `self-contained` for `privacy.html`, and the
   word was a regex over two attribute spellings of one scheme** — that property is the whole
   reason the page ships with **no CSP at all**, and it backs the URL on the Google OAuth consent

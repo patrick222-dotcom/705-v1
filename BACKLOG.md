@@ -1720,6 +1720,170 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   seventeen days.**
 
+### P1 (new, groom 2026-11-20)
+
+**Why this band sits BELOW the 11-06 through 11-19 bands instead of at the top of `## Queue`:**
+unchanged for the fourteenth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The publish set ships a SIXTH pinned script and the gate counted five**~~ —
+  **SHIPPED 2026-11-20**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked with the 11-14 band's search for the fourteenth
+  night, because `## Queue` still holds no unblocked build item that does not need Pat: *find a
+  claim with a number in it, then ask what that number is actually counting.* §60 asked it of
+  the five SRI pins, §62 of the worker's megabyte, 11-18 of the copy production serves, 11-19 of
+  a claim with no number at all. Tonight the **same claim as §60**, asked of a different file —
+  which is the uncomfortable part, because §60 was five nights ago and read the right number in
+  the wrong scope.
+  **The defect.** Invariant 2 is "SRI on all 5 CDN scripts", the gate's check was labelled that,
+  and its first line is `html.match(/integrity="sha384-/g).length === 5` where `html` is
+  `index.html`. The publish set contains **six** SRI-bearing remote scripts: `ops.html` loads
+  supabase-js from jsDelivr with its own `integrity` attribute, a second copy of the app's pin in
+  a different file. CLAUDE.md's `ops.html` row said *"same SRI pin as the app"* and nothing held
+  it. Same shape as the harness's second copy of the five pins, gated 2026-11-01, and as the
+  storage-key list that read `6/6 intact` while the app used eight.
+  **Measured against the OLD clause before anything was written, which is why this is evidence
+  and not prose.** Four edits to `ops.html`, and **three** left the gate printing
+  `All 21 mechanical checks passed`: (1) one character changed in its hash; (2) React's hash —
+  a valid sha384 copied verbatim from `index.html` — pasted into its row, which is the realistic
+  one, because the edit that produces it is *bump supabase-js in `index.html`, update its hash,
+  forget the console's copy*; (3) its `integrity` attribute **deleted outright**. The fourth, a
+  version bump in its url, did fail — but incidentally, through the harness-pin check, which
+  reads that url only because `buildOpsScratch` finds the row by substring. **The url was held
+  by a check that does not care about it and the hash was held by nobody.**
+  **Why the missing attribute is worse than the wrong one.** SRI fails closed: a wrong hash
+  blocks the script, so the console dies for its two admins and someone notices. A *missing*
+  attribute fails **open** — jsDelivr's bytes execute unverified on a public URL in the origin
+  that holds `user_data` and the auth session, which is Invariant 2's own written blast radius
+  ("a CDN compromise runs arbitrary JS with the whole `user_data` blob in reach") arriving on the
+  one page in the publish set the count never covered. `ops.html` is same-origin **on purpose**,
+  so that it can borrow the app's session instead of carrying its own auth; that is exactly what
+  makes an unpinned script there reach the same blob an unpinned script in the app would.
+  **What shipped.** Identity, not a second byte check: every remote `<script>` in `ops.html` must
+  carry a sha384 pin, and must be a row `index.html` also ships — **same url and same hash**.
+  That closes the chain at both ends without duplicating work, because `tests/smoke.mjs` §60
+  already proves `index.html`'s five hashes match the bytes and the gate now proves the console
+  carries one of those five verbatim. Deliberately strict in one direction: a library only the
+  console needs would have to be pinned here on purpose, the same intended friction the publish
+  set and the storage-key set take, and the failure message says so. Plus an anti-vacuity floor —
+  a walk that finds no remote script **fails** rather than reporting a clean sweep.
+  **The label changed, and that was the point.** `SRI on all 5 CDN scripts` →
+  **`SRI on every CDN script the publish set loads`**. Leaving a number in the label that counts
+  the wrong set *is* the defect being fixed; the roster in `check_build.mjs` and in the meta-test
+  both carry the new string. The check count stays at **21** — one question asked of one more
+  file, folded in per the 11-14 and 11-19 precedent.
+  **Five deliberate breaks (70 → 76 assertions, one of the eight being the third GREEN), and
+  falsifiable in both directions, both measured tonight:** neuter the ops half and all five go
+  red while all three controls stay green (**71 passed / 5 failed**) — and that run is the
+  *third* time the label pin earned itself, reporting the no-remote-script break as a **wrong-row
+  failure** rather than a win, because with the walk gone that break fails `[harness]` instead of
+  `[2]`. Swap the url+hash comparison for a whole-tag string match instead and the new GREEN goes
+  red while all five breaks still pass (**75 / 1**). That GREEN exists because the obvious
+  implementation *is* a whole-tag string match, which is green today only because both files
+  happen to write `crossorigin integrity src` in that order, and red the first time anyone
+  reformats either one. It is the only row in the suite that catches it.
+  **No bad hash was found**: the two copies agree today. Regression guard, same standing as §54,
+  §62 and 11-19 — not a fix for an observed break.
+- [ ] **COURTNEY'S SECOND LOAD CAME, and the sync-plan counts are measured for the first time —
+  the plan is a THIRD of what every judgement about it assumed** (P1 · source:groom · the finding
+  of the night) — device `f184ffa5` loaded **2026-11-19 18:13:18**, 3.8 days after 11-15, and
+  the first `ics_sync_done` in production carrying #219's counts reads:
+  `{events:107, pending:50, classify:50, updates:0, removals:0, cards:7, provider:'nursegrid'}`.
+  Four things that were guesses until tonight:
+  (a) **The substitution the 11-16 build was built on is confirmed on a second, independent
+  load.** The feed carries **107** events and the plan is **50** — 57 of the feed's events were
+  already known and unchanged and never reached a card. Every sentence written about "how heavy
+  the stepper is" before #219 read the feed count: this file and `index.html` said 125/126/127
+  where the number she was actually asked to confirm was never recorded. The one prior load
+  carrying both figures (2026-10-10, `events:127` against 52 shown+skipped) was a single
+  disproof; this is the second, and it is a *larger* gap — 107 → 50.
+  (b) **`cards:7` is the number that actually matters, and it is the one nothing could have
+  guessed.** 50 classify items collapse into **seven** cards. The 10-22 note explaining why the
+  stepper's sync opt-out renders on the confirm card only said the group count "was unknowable
+  until `cards` shipped" — it is now known, and it is 7, not 50 and not 107. The stepper she met
+  tonight was a seven-tap sheet. Every estimate of that burden in this file was off by one to two
+  orders of magnitude.
+  (c) **The row checks out against itself.** `pending === classify + updates + removals` →
+  50 === 50 + 0 + 0, the self-consistency property §61's fixture was built to pin, holding on
+  real data on its first production outing.
+  (d) **Zero updates and zero removals**, against 128 updates on 2026-10-08. So the 10-09
+  before→after disclosure, built for that case, had nothing to show tonight; nothing to conclude
+  from one load, but it is the first evidence that 10-08's 128 was an event and not a steady
+  state.
+  **What she did with it: nothing, for the fourth time running.** 41 seconds, `last:
+  'ics_sync_result'`, `shifts:69` unchanged, **no `ics_import_done`** (still 10, still
+  2026-10-10) and **still no `ics_autosync_pref` row from any device, ever** — so she met the
+  stepper's opt-out, the one shipped 10-22 for exactly this, and took neither it nor the plan. The
+  41 seconds is itself new: her 11-15 load was **4**. She looked this time. **Unverified and NOT
+  for the nightly:** why a seven-card plan is still declined is a product question, and the
+  honest reading of one load is that we now know the ask is small and still unwanted.
+- [ ] **`silence_watch` is FRESH again after three silent nights** (P2 · source:groom · no
+  action) — **FRESH**, newest event **13.8h** old against a 48h window; `events` **1,811** against
+  1,807 for three grooms. All four new rows are Courtney's 11-19 load above. `rows_24h` **4**,
+  `rows_7d` **9** across **1** device. **Do not quote an activation figure off it** — the device
+  classifier is still broken, and one returning device is not a cohort.
+- [ ] **`access_watch` reads TIGHT on its eighth night, 16/16** (P2 · source:groom · no action) —
+  every rule unchanged: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies and
+  `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe.**
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  11-13 through 11-19 · needs a dedicated session · thread T2) — `anon=arwdDxtm` on `user_data`
+  and the swap tables; the `D` is TRUNCATE, which RLS does not cover. The one-line revoke
+  **tightens** access and would merge on its own by tier, but it is production DDL through the
+  Management API and needs a pass over the swap tables rather than a blind sweep. Add the
+  `access_watch` rule in the same commit.
+- [ ] **`feedback` is unchanged for the THIRTY-FIRST groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **35.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation. Worth noting against tonight's sync rows: the one piece of feedback this
+  user has ever filed is about the thing she again declined tonight.
+- [ ] **The 11-03 `client_error` fix is 14-for-14** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the fifteenth groom. And
+  tonight it is no longer a silent night that cannot disprove the filter: a real load ran the app
+  end to end and filed **zero** `client_error` rows, which is the first positive evidence the
+  Babel-note filter works in production rather than only in §57.
+- [ ] **CABINET MISSED fires for the ELEVENTH night, and the brief is now 19.3 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **eighteenth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the FOURTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-19
+  band staked out: that merge touched `scripts/`, `tests/`, `CLAUDE.md` and `BACKLOG.md` and not
+  `index.html`. `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation
+  sentence, boundary **`017cb1f`** tonight (was `81c1954`) — the figure drifts with clone depth,
+  which is why #210 stopped printing it as a deploy fact. **Tonight's prediction:** tonight's
+  merge touches `scripts/`, `CLAUDE.md` and `BACKLOG.md` but **not `index.html`**, so tomorrow's
+  watch should still name **`a09cabe`**, and all three of the others should still read `[ok]`
+  with the truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-third night, and tonight it is 76
+  assertions** (P2 · `harness:unscoped` · needs the owner) — the suite re-ran green tonight at
+  **76 / ~130s**, and tonight's eight new rows all went into it, so **tonight's proof is behind
+  the half of the gate CI does not run** — the clause itself is in `check_build.mjs`, which *is*
+  a required check, so an `ops.html` that loses its pin fails CI tonight; what is not in CI is
+  the proof that the clause has teeth. Still the same two lines after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs` and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — FOURTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **14.7 days**.
+  Tonight branched to `claude/great-feynman-jkz5bg`, so #209's head is untouched for the
+  fourteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the FIFTEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  eighteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5751,6 +5915,40 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-20 — **The publish set ships a SIXTH pinned script and the gate counted five.**
+  Invariant 2 is "SRI on all 5 CDN scripts", the gate's check was labelled that, and its first
+  line counts `integrity="sha384-` attributes in `index.html`. `ops.html` loads supabase-js from
+  jsDelivr with its own `integrity` attribute — a second copy of the app's pin, in a different
+  file, on the **same origin**, which is why the console can borrow the app's session instead of
+  carrying its own auth. CLAUDE.md's `ops.html` row said *"same SRI pin as the app"* and nothing
+  held it. Measured against the old clause before anything was written: of four edits to
+  `ops.html`, **three** left the gate printing `All 21 mechanical checks passed` — one character
+  changed in its hash, React's hash (a valid sha384, copied verbatim from `index.html`) pasted
+  into its row, and its `integrity` attribute **deleted outright**. The fourth, a version bump in
+  its url, failed only incidentally, via the harness-pin check, which reads that url because
+  `buildOpsScratch` finds the row by substring: the url was held by a check that does not care
+  about it and the hash was held by nobody. The deletion is the one that matters, because it is
+  the only one that fails **open** — a wrong hash blocks the script and kills the console for two
+  admins, a missing one executes jsDelivr's bytes unverified in the origin holding `user_data`
+  and the auth session, which is this invariant's own written blast radius on the one page in the
+  publish set the count never covered. Gated as **identity, not a second byte check**: every
+  remote `<script>` in `ops.html` must carry a sha384 pin and must be a row `index.html` also
+  ships, same url and same hash, so `tests/smoke.mjs` §60 (bytes vs. the app's five) and the gate
+  (the console carries one of those five verbatim) close the chain at both ends without
+  duplicating work. Plus an anti-vacuity floor: a walk that finds no remote script fails rather
+  than sweeping clean. Label changed `SRI on all 5 CDN scripts` → **`SRI on every CDN script the
+  publish set loads`**, because a number in the label that counts the wrong set is the defect
+  itself; check count stays 21, folded in per the 11-14 and 11-19 precedent. Five deliberate
+  breaks (70 → 76), falsifiable both ways and both measured: neutering the ops half turns all
+  five red with all three controls green (**71 / 5**, and the label pin caught the
+  no-remote-script break failing `[harness]` instead of `[2]` and reported it as a wrong-row
+  failure, the third time that pin has earned itself), while a whole-tag string match instead of
+  url+hash turns the new **third GREEN** red with all five breaks still passing (**75 / 1**) —
+  that GREEN exists because the obvious implementation *is* a whole-tag match, green today only
+  because both files happen to order the attributes identically. **No bad hash was found**; the
+  two copies agree today. Regression guard, same standing as §54 and §62. All suites green:
+  gate 21/21, meta-test 76/0, groom-seed 33, core 175, dashboard 44, deploy-watch 121,
+  silence-watch 39, smoke **1012/0**.
 - 2026-11-19 — **`privacy.html self-contained` was two attribute spellings of one scheme.** The
   gate's `[2]` CSP check ends by asserting that privacy.html is self-contained — the property
   that is the whole reason that page ships with **no CSP at all**, and the reason it can be said
