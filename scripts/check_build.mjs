@@ -96,18 +96,65 @@ check(1, 'Boot hardening intact', () => {
   return 'watchdog + null-guard + 4s getSession race + error buffer';
 });
 
-/* ---- Invariant 2: SRI on all five CDN scripts ------------------------------------------ */
-check(2, 'SRI on all 5 CDN scripts', () => {
+/* ---- Invariant 2: SRI on every CDN script the publish set loads ------------------------
+   The label used to say "all 5 CDN scripts" and this check counted `integrity=` attributes in
+   `index.html`. The publish set ships a SIXTH, in `ops.html`: the same supabase-js pin, on the
+   same origin, enforced by the same browser. Nothing read it.
+
+   Measured 2026-11-20 against the clause below, before any of this was written. Three edits to
+   `ops.html` left the gate printing `All 21 mechanical checks passed`: corrupting its hash,
+   pasting React's hash into its row, and DELETING its `integrity` attribute outright. Only a
+   version bump in its url failed, and incidentally — the harness-pin check reads that url
+   because `buildOpsScratch` finds the row by substring, so the url was held by a check that does
+   not care about it and the hash was held by nobody.
+
+   The missing-attribute case is the one that matters. ops.html borrows the app's session from
+   the same origin, so an unpinned script there reaches the same `user_data` blob and the same
+   auth token as an unpinned script in the app — which is Invariant 2's own stated blast radius,
+   on the one page in the publish set the count never covered. A WRONG hash fails closed (dead
+   console, two admins); a MISSING one fails open.
+
+   The rule is identity, not a second byte check: every remote script `ops.html` loads must be a
+   row `index.html` also ships, same url and same hash. That is deliberately strict — a library
+   only the console needs would have to be pinned here on purpose, the same intended friction the
+   publish set and the storage-key set take. It also closes the chain at both ends without
+   duplicating work: `tests/smoke.mjs` §60 proves index.html's five hashes match the bytes, and
+   this proves ops.html carries one of those five verbatim. */
+check(2, 'SRI on every CDN script the publish set loads', () => {
   const n = (html.match(/integrity="sha384-/g) || []).length;
   must(n === 5, `expected 5 integrity="sha384-" attributes, found ${n}`);
   const unpinned = html.match(/<script[^>]+src="https:\/\/[^"]*@latest[^"]*"/g);
   must(!unpinned, `CDN script pinned to @latest: ${unpinned && unpinned[0]}`);
-  /* Truth in labelling, 2026-11-15. This used to print `5/5 pinned + hashed`, and the second
-     word was the lie the whole 11-14 band is about: nothing here reads a byte of those files, so
-     a hash copied from the wrong row passes this check and blocks the script in every browser.
-     The bytes are compared in `tests/smoke.mjs` §60, which is the only required check that has
-     them — CI's `gate` job installs @babel/standalone alone, the `smoke` job vendors all five. */
-  return '5 attributes present, none @latest (the HASHES are checked against the bytes in smoke §60)';
+
+  /* The rows index.html ships, as (url -> hash). Attribute order varies, so read each tag's
+     attributes rather than matching the tag as a string. */
+  const rowsOf = (page) => [...page.matchAll(/<script\b[^>]*\bsrc="(https:\/\/[^"]+)"[^>]*>/g)]
+    .map((m) => ({ tag: m[0], url: m[1], sri: (m[0].match(/\bintegrity="([^"]*)"/) || [])[1] }));
+  const appRows = new Map(rowsOf(html).map((r) => [r.url, r.sri]));
+
+  const opsRows = rowsOf(ops);
+  /* Anti-vacuity: a walk that finds nothing must fail rather than report a clean sweep. ops.html
+     loads supabase-js and nothing else; a zero here means the tag moved or the walk broke, and
+     either way this clause stopped asking its question. */
+  must(opsRows.length > 0,
+    'found no remote <script> in ops.html — the console loads supabase-js, so either the tag '
+    + 'changed shape or this walk is broken; a sweep that reads nothing must not pass');
+  for (const r of opsRows) {
+    must(r.sri && r.sri.startsWith('sha384-'),
+      `ops.html loads ${r.url} with no integrity attribute. ops.html ships to a public URL and `
+      + "borrows the app's session from the same origin, so an unpinned script there reaches the "
+      + 'same user_data blob and auth token an unpinned script in the app would');
+    must(appRows.has(r.url),
+      `ops.html pins ${r.url}, which index.html does not load. Every remote script in the publish `
+      + 'set must be a row index.html also ships, so smoke §60 checks its hash against the bytes; '
+      + 'a library only the console needs has to be pinned here on purpose');
+    must(appRows.get(r.url) === r.sri,
+      `ops.html and index.html pin ${r.url} with DIFFERENT hashes (ops: ${r.sri}, app: `
+      + `${appRows.get(r.url)}). One of the two blocks the script in every browser, and the url `
+      + 'being identical is what makes this invisible to every other check');
+  }
+  return `index.html 5 attributes, none @latest; ops.html ${opsRows.length} pinned, all matching `
+    + 'the app row by url+hash (the HASHES are checked against the bytes in smoke §60)';
 });
 
 /* ---- Invariant 2's sibling: the CSP that decides whether those five scripts run at all --
@@ -1162,7 +1209,7 @@ check('cos', 'Operating-committee caps', () => {
    establish its own teeth; that suite is what does. */
 check('gate', 'Every check this gate claims is still here', () => {
   const self = read('scripts/check_build.mjs');
-  const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on all 5 CDN scripts',
+  const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on every CDN script the publish set loads',
     'CSP covers every host the pages load',
     'pdf.js worker matches its pinned library',
     "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',

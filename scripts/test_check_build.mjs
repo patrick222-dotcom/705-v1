@@ -23,7 +23,8 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
- *   GREENS  — two edits that must leave the gate GREEN (added 2026-11-19). TEETH only ever asks
+ *   GREENS  — three edits that must leave the gate GREEN (added 2026-11-19, a third 2026-11-20).
+ *             TEETH only ever asks
  *             "does a break go red?", and a check can be wrong in the other direction: one false
  *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
  *             GREENS block at the foot of this file for what each one guards.
@@ -54,7 +55,7 @@ const ok = (name, cond, detail = '') => {
 const ROSTER = [
   ['build', 'JSX block parses'],
   [1, 'Boot hardening intact'],
-  [2, 'SRI on all 5 CDN scripts'],
+  [2, 'SRI on every CDN script the publish set loads'],
   [2, 'CSP covers every host the pages load'],
   [2, 'pdf.js worker matches its pinned library'],
   [4, "saveToSupabase upserts on {onConflict:'user_id'}"],
@@ -189,6 +190,7 @@ const PDFW = 'pdf.js worker matches its pinned library';
    row would have been counted as a win for the CNAME break. That is the same hole the 2026-10-30
    run fixed for `[2]` and the 2026-11-10 run fixed for `[events]`, still open in a third band.
    All five `[8]` breaks now pin the label. */
+const SRI = 'SRI on every CDN script the publish set loads';
 const PUBSET = 'Publish set is exactly the intended files';
 const OPSPAGE = 'Ops console ships nothing it should not';
 const LINKS = 'Published pages link only to published files';
@@ -205,7 +207,38 @@ const BREAKS = [
      passed a "break" that broke nothing. The no-op guard cannot see that one — only the
      expected-failure assertion did. */
   ['[2] one SRI hash dropped', 'index.html',
-    (s) => s.replace('integrity="sha384-', 'data-sri="sha384-'), '2', 'SRI on all 5 CDN scripts'],
+    (s) => s.replace('integrity="sha384-', 'data-sri="sha384-'), '2', SRI],
+  /* The ops.html clauses, added 2026-11-20. The publish set ships a SIXTH SRI-bearing script and
+     the count above never covered it. All four of these were measured against the OLD clause
+     first; THREE of them left the gate printing `All 21 mechanical checks passed`, which is the
+     finding as evidence rather than prose. (The fourth, a version bump in the url, already
+     failed — but via the harness-pin check, which reads that url only because buildOpsScratch
+     finds the row by substring. The url was held by a check that does not care about it; the
+     hash was held by nobody.) One break per clause, because a group of musts broken as a group
+     only proves that one of them has teeth. */
+  ['[2] ops.html and index.html pin the same url with different hashes', 'ops.html',
+    (s) => s.replace('sha384-GFr3yTh5', 'sha384-AAAAyTh5'), '2', SRI],
+  /* The copied-from-the-wrong-row shape, and the realistic one: bump supabase-js in index.html,
+     update its hash, and leave the console's second copy of the pin alone. The hash below is
+     React's, taken verbatim from index.html, so it is a VALID sha384 in the right syntax — a
+     break that only malformed the string would not prove the comparison runs. */
+  ['[2] ops.html carries a real hash from the wrong row', 'ops.html',
+    (s) => s.replace('sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug',
+      'sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8'), '2', SRI],
+  /* The one that fails OPEN. A wrong hash blocks the script and kills the console for two
+     admins; a missing attribute loads a third party's JavaScript unverified into the origin that
+     holds user_data and the auth session. */
+  ['[2] ops.html drops its integrity attribute entirely', 'ops.html',
+    (s) => s.replace(/ integrity="sha384-[^"]*"/, ''), '2', SRI],
+  ['[2] ops.html pins a script index.html does not load', 'ops.html',
+    (s) => s.replace('<script crossorigin', '<script crossorigin="anonymous" integrity="sha384-'
+      + 'tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8" '
+      + 'src="https://cdn.jsdelivr.net/npm/left-pad@1.3.0/index.js"></script>\n<script crossorigin'), '2', SRI],
+  /* Anti-vacuity: the walk must find a tag. With the script gone there is nothing to disagree
+     with index.html about, so every clause above is trivially satisfied and a check that only
+     asked them would sweep clean on a console that loads nothing. */
+  ['[2] ops.html loads no remote script at all', 'ops.html',
+    (s) => s.replace(/<script\b[^>]*\bsrc="https:[^>]*><\/script>/, ''), '2', SRI],
   /* The CSP clause, added 2026-10-30. Five breaks because there are five separate ways it dies,
      and a group of musts negative-tested as a group only proves ONE of them has teeth. */
   ['[2] a sixth script arrives from a host the CSP does not permit', 'index.html',
@@ -476,7 +509,7 @@ rmSync(SCRATCH, { recursive: true, force: true });
    Added 2026-11-19 with the privacy.html self-containment rewrite. Every assertion above asks
    "does a break go red?", and a check can be wrong in the other direction too: one false positive
    on an ordinary edit gets the check WEAKENED by whoever meets it, which is how a mechanism with
-   teeth acquires a carve-out. Two edits that must leave the gate GREEN, both of them things the
+   teeth acquires a carve-out. Three edits that must leave the gate GREEN, each of them something the
    new walk could plausibly have flagged:
 
      1. An outbound link. A privacy notice linking to a third party's page is normal and makes no
@@ -489,8 +522,17 @@ rmSync(SCRATCH, { recursive: true, force: true });
         that a URL is classified by how its value STARTS; this adds a second such URI so the
         favicon is not passing by some accident of its own position.
 
-   Both were negative-tested, and the first one earns its place on a measurement rather than on
-   the argument: an implementation that counts `<a href>` as a fetch PASSES today's clean page
+     3. ops.html writing its script attributes in a different order (added 2026-11-20 with the
+        ops.html SRI clauses). The tempting implementation of "the console's pin is a row the app
+        also ships" is a string match on the whole tag, which is green today because both files
+        happen to write `crossorigin integrity src` in that order, and red the first time anyone
+        reformats either one. It was negative-tested the opposite way from the other two: swap
+        the comparison for `html.includes(r.tag)` and this row goes red while all five ops.html
+        breaks still pass (measured 2026-11-20, 75 passed / 1 failed). This is the only row in
+        the suite that catches it.
+
+   All three were negative-tested, and the first one earns its place on a measurement rather than
+   on the argument: an implementation that counts `<a href>` as a fetch PASSES today's clean page
    (measured 2026-11-19 — `All 21 mechanical checks passed`, because the live notice links only to
    a mailto: and "/"), so the `teeth: clean scratch copy passes` baseline cannot see it, and it
    goes red the first time anyone links out to the IRS. Green 1 is the only row in this suite that
@@ -500,6 +542,14 @@ rmSync(SCRATCH, { recursive: true, force: true });
    What neither control can do: catch a walk wired to the wrong file, or one that reads an empty
    string and reports a clean sweep. The breaks above cover both. */
 const GREENS = [
+  /* Added 2026-11-20 with the ops.html SRI clauses. Those compare index.html's row to ops.html's
+     by url and hash, and the tempting implementation is a string match on the whole tag — which
+     would be green today (both files write the attributes in the same order) and red the first
+     time anyone reformats one of the two. So the rows are read attribute by attribute, and this
+     is the only row in the suite that says so: `src` moved to the front, same url, same hash. */
+  ['ops.html writes its script attributes in a different order', 'ops.html',
+    (s) => s.replace(/<script crossorigin="anonymous" integrity="(sha384-[^"]*)" src="([^"]*)">/,
+      '<script src="$2" integrity="$1" crossorigin="anonymous">')],
   ['privacy.html links out to a third party with <a href>', 'privacy.html',
     (s) => s.replace('</body>', '<p><a href="https://www.irs.gov/publications/p15">IRS Pub 15</a></p>\n</body>')],
   ['privacy.html carries a data: image whose payload names a remote host', 'privacy.html',
