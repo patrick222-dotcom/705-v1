@@ -194,6 +194,10 @@ const SRI = 'SRI on every CDN script the publish set loads';
 const PUBSET = 'Publish set is exactly the intended files';
 const OPSPAGE = 'Ops console ships nothing it should not';
 const LINKS = 'Published pages link only to published files';
+/* The one line in ops.html that renders a public-authored string. Every HTML-sink break below
+   rewrites exactly this line, so a break that stops matching it is a no-op and `patch()` throws
+   rather than scoring a silent win. */
+const OPS_SAFE_WRITE = '    if (text != null) n.textContent = text;   // never innerHTML: this is public-authored text';
 const BREAKS = [
   ['[build] JSX stops parsing', 'index.html', (s) => {
     const open = s.indexOf('<script type="text/babel" data-presets="react">');
@@ -369,8 +373,44 @@ const BREAKS = [
     (s) => s.replace("'UID:scrubpay-'+dateKey+'-'+safeId(ev.id)", "'UID:badgebudget-'+dateKey+'-'+safeId(ev.id)"), '6'],
   ['[8] CNAME dropped from the publish set', '.github/workflows/deploy.yml',
     (s) => s.split('cp CNAME _site/').join('# cp CNAME _site/'), '8', PUBSET],
+  /* The HTML-injection clause, rewritten as a walk 2026-11-21. This break predates the rewrite
+     and is kept because it is the only one that adds a SECOND inline script: a walk wired to
+     `inline[0]` would pass it. */
   ['[8] ops.html assigns innerHTML', 'ops.html',
     (s) => s.replace('</body>', '<script>document.body.innerHTML = "x";</script></body>'), '8', OPSPAGE],
+  /* Six breaks, one per detector, and all six were MEASURED against the old one-spelling regex
+     first: every one of them left the gate printing `All 21 mechanical checks passed`
+     (2026-11-21). They are kept in that measured order.
+
+     The anchor is the one line in ops.html that renders public-authored text — `el()`'s
+     `n.textContent = text`. Each break turns that single safe write into an unsafe one, which is
+     the edit this clause exists to stop, rather than appending a contrived script somewhere. */
+  ['[8] ops.html appends with .innerHTML += (one character past the old regex)', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, '    if (text != null) n.innerHTML += text;'), '8', OPSPAGE],
+  ['[8] ops.html assigns outerHTML', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, '    if (text != null) n.outerHTML = text;'), '8', OPSPAGE],
+  ['[8] ops.html calls insertAdjacentHTML', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, "    if (text != null) n.insertAdjacentHTML('beforeend', text);"), '8', OPSPAGE],
+  ['[8] ops.html reaches innerHTML through a computed property', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, "    if (text != null) n['innerHTML'] = text;"), '8', OPSPAGE],
+  ['[8] ops.html calls document.write', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, '    if (text != null) document.write(text);'), '8', OPSPAGE],
+  /* No member assignment anywhere in this one: Object.assign reaches the same setter through an
+     object key, so a walk that only inspects AssignmentExpressions passes it. */
+  ['[8] ops.html sets innerHTML through an object key', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, '    if (text != null) Object.assign(n, { innerHTML: text });'), '8', OPSPAGE],
+  /* The two anti-vacuity floors. A clause that reads an empty string reports a clean sweep, which
+     is the failure mode shared by checks 2, 5 and 13 — and by this one, since the regex it
+     replaced would also have passed a page with no script at all. */
+  ['[8] ops.html ships no inline script at all', 'ops.html', (s) => {
+    const a = s.indexOf('<script>\n(function');
+    const b = s.indexOf('</script>', a) + '</script>'.length;
+    return s.slice(0, a) + s.slice(b);
+  }, '8', OPSPAGE],
+  ['[8] the ops walk resolves no property assignment', 'ops.html', (s) => {
+    const a = s.indexOf('<script>\n(function');
+    return s.slice(0, a + '<script>'.length) + '\nvar x = 1;\n' + s.slice(s.indexOf('</script>', a));
+  }, '8', OPSPAGE],
   /* The published-link clause, added 2026-11-11. Four breaks, one per `must()`, because a group of
      musts negative-tested as a group only proves that ONE of them has teeth.
 
@@ -550,6 +590,22 @@ const GREENS = [
   ['ops.html writes its script attributes in a different order', 'ops.html',
     (s) => s.replace(/<script crossorigin="anonymous" integrity="(sha384-[^"]*)" src="([^"]*)">/,
       '<script src="$2" integrity="$1" crossorigin="anonymous">')],
+  /* Added 2026-11-21 with the ops.html HTML-sink walk. Both guard the same false positive from
+     two sides: the tempting repair for "the regex only knew one spelling" is a wider regex, and
+     a wider regex reads PROSE. The clean baseline cannot catch that — ops.html already says
+     "never innerHTML" in a `//` comment on the very line being guarded, so a naive grep is red
+     before either of these edits exists. What it cannot see is a grep that strips `//` comments
+     first, which is green today and red on both of these. An AST sees neither. */
+  ['ops.html documents the rule in a block comment naming every sink', 'ops.html',
+    (s) => s.replace('  function el(tag, cls, text) {',
+      '  /* Renders with textContent only: never innerHTML, never outerHTML, never\n'
+      + '     insertAdjacentHTML, never document.write. */\n  function el(tag, cls, text) {')],
+  /* The StringLiteral detector is the one most likely to over-reject, because it is the only one
+     that reads a value rather than a shape. It is anchored for exactly this: a sink NAME standing
+     alone can index into the setter, a sentence mentioning one cannot. */
+  ['ops.html shows a visible note whose text mentions innerHTML', 'ops.html',
+    (s) => s.replace("sub.textContent = '';",
+      "sub.textContent = '';\n    main.appendChild(el('p', 'empty', 'rendered with textContent, never innerHTML'));")],
   ['privacy.html links out to a third party with <a href>', 'privacy.html',
     (s) => s.replace('</body>', '<p><a href="https://www.irs.gov/publications/p15">IRS Pub 15</a></p>\n</body>')],
   ['privacy.html carries a data: image whose payload names a remote host', 'privacy.html',

@@ -7,6 +7,24 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-21 · nightly · **every HTML-injection sink in the ops console except one spelling passed
+  the gate** — `ops.html` renders rows typed by the public into a feedback box, and the clause
+  standing for its own header (*"NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML"*) was a
+  regex for `.innerHTML =`. Six realistic edits were measured against it and **all six** left the
+  gate green, including `n.innerHTML += text` — one character past the regex, and the likeliest
+  edit on an inbox page. The blast radius is not defence-in-depth: `is_ops_admin()` decides who
+  may read the rows, not what a row may do once read, and `ops.html` is same-origin *on purpose*,
+  so injected script runs in the origin holding `user_data` and the auth token, in front of the
+  two admins, from a string anyone on the internet can insert. Replaced with a parsed walk (four
+  detectors, two anti-vacuity floors), eight breaks, **two new GREENS**, no live sink found. ·
+  **two for the chief of staff:** (a) **fifteenth consecutive night** on the one repo-wide shape —
+  a printed claim that covers less than it says — and the second in a row where the claim was a
+  *word* rather than a number, which is the cheaper kind to let stand; (b) the GREENS earned
+  themselves tonight rather than being carried: the repair anyone would reach for here (widen the
+  regex) is **green on the clean baseline**, so the two new GREENS are the only rows in the suite
+  that catch it. That is now twice in three nights that the false-positive direction, not the
+  break direction, was the load-bearing half. · → _no outcome yet_
+
 - 2026-11-20 · nightly · **the publish set ships six SRI-pinned scripts and the gate counted
   five** — `ops.html` loads supabase-js with its own `integrity` attribute, a second copy of the
   app's pin on the same origin, and nothing read it. Three of four measured edits left the gate
