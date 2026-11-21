@@ -1884,6 +1884,140 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   eighteen days.**
 
+### P1 (new, groom 2026-11-21)
+
+**Why this band sits BELOW the 11-06 through 11-20 bands instead of at the top of `## Queue`:**
+unchanged for the fifteenth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Every HTML-injection sink in the ops console except one spelling passed the gate**~~ —
+  **SHIPPED 2026-11-21**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked with the 11-14 band's search for the fifteenth night,
+  because `## Queue` still holds no unblocked build item that does not need Pat: *find a claim
+  with a number in it, then ask what that number is actually counting.* Tonight the claim had no
+  number — it had a **word**, which is the 11-19 shape: the gate printed `no innerHTML` and
+  CLAUDE.md printed "never assigns `innerHTML`" for a property the page itself states much more
+  broadly.
+  **The defect.** `ops.html`'s own header says *"NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS
+  HTML. Every value that came out of the database was typed by a member of the public into a
+  feedback box."* The clause holding that was `!/\.innerHTML\s*=/.test(ops)` — one spelling of
+  one sink.
+  **Measured against the OLD clause before anything was written, which is why this is evidence
+  and not prose: six realistic edits, SIX left the gate printing `All 21 mechanical checks
+  passed`.** Each one rewrites the single line in `el()` that renders a public-authored string:
+  (1) `n.innerHTML += text` — **one character** past the regex, and the likeliest edit this page
+  will ever see, because appending a row is what an inbox does; (2) `n.outerHTML = text`;
+  (3) `n.insertAdjacentHTML('beforeend', text)`; (4) `n['innerHTML'] = text`, the same setter
+  through a computed property; (5) `document.write(text)`; (6) `Object.assign(n, {innerHTML:
+  text})`, which reaches the setter with no assignment expression anywhere in the diff.
+  **Why it is a P1 and not a tidy-up.** The blast radius is **Invariant 2's own, arriving by the
+  one door nothing covered**. `ops.html` is same-origin *on purpose* so it can borrow the app's
+  session rather than carry a second auth path, so script injected there runs in the origin that
+  holds `user_data` and the auth token. Its two readers are the two admins — the highest-value
+  session that exists here — and the injected string is attacker-supplied **by design**: the
+  `feedback` insert policy is open to `anon`, so anyone on the internet can put a row in the
+  table this page renders. The three sibling clauses in the same check (`noindex`, no
+  `service_role`, unlinked) are defence in depth behind the Postgres gate; this one is not,
+  because `is_ops_admin()` decides *who may read the rows*, not *what the rows may do once read*.
+  **What shipped.** A walk of every inline `<script>`, parsed, over four detectors — a sink
+  property assigned under **any** operator, a sink method called, a sink as an object key, and a
+  **bare** sink name as a string (anchored, so a sentence mentioning one is not a hit) — plus two
+  anti-vacuity floors, because the regex it replaced would also have passed a page with no script
+  at all: no inline script found fails, and a walk resolving zero property assignments fails.
+  The summary line now says what it checked: `1 inline script: no HTML sink among 34 property
+  assignments`.
+  **The tempting repair is red on today's clean page, and that is why two GREENS came with it.**
+  Widening the regex to the other sink words fails the baseline immediately — `ops.html` already
+  says "never innerHTML" in a `//` comment *on the very line being guarded*. The version that
+  survives that, and is therefore the one someone would actually ship, strips `//` comments
+  first; it is green today and red the first time anyone documents the rule in a block comment or
+  shows a note that mentions a sink. Those are the two new GREENS, and they are the only rows in
+  the suite that catch it.
+  **Eight deliberate breaks (76 → 86 assertions, two of the ten being GREENS), falsifiable in
+  both directions, both measured tonight:** neuter the sink half and all **nine** `[8]`-ops rows
+  go red — the eight new ones plus the pre-existing innerHTML break — while all five GREENS stay
+  green (**77 passed / 9 failed**); swap the walk for the comment-stripping regex and **exactly**
+  the two new GREENS go red while all 76 breaks stay green (**84 / 2**).
+  **No live sink was found**: the page renders through `textContent` today. Regression guard, same
+  standing as §54, §62 and 11-19/11-20 — not a fix for an observed break. Scope is `ops.html`
+  deliberately: `index.html`:748–749 writes `splash.innerHTML` on purpose, with its own `esc()`
+  helper, for the boot watchdog, so this is not a rule the app could take and claiming it for both
+  files would repeat the over-reach being fixed.
+- [ ] **A new device landed and stopped on screen 0 — the thirteenth of exactly that shape** (P2 ·
+  source:groom · no action) — `events` **1,814** against 1,811 last night. All three new rows are
+  one device, `266ac5ef`, at **2026-11-21 06:18:46**: `app_open {fresh:true}` + `ob_step {step:0}`
+  on the same timestamp, `ob_view {screen:'landing'}`, **no `session_end`**, nothing past screen 0.
+  That is the cohort shape recorded unbroken since 10-29. `rows_24h` **3**, `rows_7d` **12**,
+  **2** distinct devices in 7 days. **Do not quote an activation figure off it** — the device
+  classifier is still broken and CLAUDE.md records every activation figure since 2026-09-07 as
+  inflated by exactly this cohort.
+- [ ] **`silence_watch` is FRESH; `access_watch` reads TIGHT on its ninth night, 16/16** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **1.8h** old against a 48h window. Access
+  posture unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe.**
+- [ ] **Courtney's 11-19 sync-plan row is the one read last night; nothing new tonight** (P2 ·
+  housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **1.5 days** ago,
+  so the `{events:107, pending:50, classify:50, updates:0, removals:0, cards:7}` row the 11-20
+  band read is still the newest sync evidence there is. `ics_import_done` **10** (last
+  2026-10-10), `ics_sync_result` **44**, `ics_sync_done` **29**. `ics_autosync_pref` and
+  `ics_autosync_off` both **zero rows from any device, ever** — still expected, and the 11-20
+  reading stands: she met the stepper's opt-out and took neither it nor the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-SECOND groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **36.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation. One line against tonight's build: thirty-two grooms of a flat `feedback`
+  table is also thirty-two grooms in which the ops console rendered **nothing new at all**, which
+  is the honest reason no live sink was found there and not evidence that the clause was safe.
+- [ ] **The 11-03 `client_error` fix is 15-for-15** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the sixteenth groom.
+  Tonight's one new load filed **zero** rows, which is the second load of positive evidence (the
+  11-19 one being the first) rather than another silent night that cannot disprove the filter.
+- [ ] **CABINET MISSED fires for the TWELFTH night, and the brief is now 20.3 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **nineteenth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the FIFTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-20
+  band staked out: that merge touched `scripts/`, `CLAUDE.md` and `BACKLOG.md` and not
+  `index.html`. `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation
+  sentence, boundary **`b90aa07`** tonight (was `017cb1f`) — the figure drifts with clone depth,
+  which is why #210 stopped printing it as a deploy fact. **Tonight's prediction:** tonight's
+  merge touches `scripts/`, `CLAUDE.md` and `BACKLOG.md` but **not `index.html`** and **not
+  `ops.html`**, so tomorrow's watch should still name **`a09cabe`**, and all three of the others
+  should still read `[ok]` with the truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-fourth night, and tonight it is 86
+  assertions** (P2 · `harness:unscoped` · needs the owner) — the suite re-ran green tonight at
+  **86 / ~140s**, and tonight's ten new rows all went into it, so **tonight's proof is behind the
+  half of the gate CI does not run** — the clause itself is in `check_build.mjs`, which *is* a
+  required check, so an `ops.html` that grows an HTML sink fails CI tonight; what is not in CI is
+  the proof that the clause has teeth, and tonight that proof is load-bearing in a way it has not
+  been before, because the two new GREENS are the only thing standing between this clause and the
+  repair that looks right. Still the same two lines after the existing `Deploy-watch classifier
+  suite` step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — FIFTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **15.7 days**.
+  Tonight branched to `claude/great-feynman-07dggy`, so #209's head is untouched for the
+  fifteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the SIXTEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  nineteen days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -5915,6 +6049,36 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-21 — **Every HTML-injection sink in the ops console except one spelling passed the
+  gate.** `ops.html` ships to a public URL and renders rows typed by the public into a feedback
+  box; its own header says *"NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML."* The clause
+  holding that was `!/\.innerHTML\s*=/.test(ops)` — one spelling of one sink — while the gate
+  printed `no innerHTML` and CLAUDE.md printed "never assigns `innerHTML`". Measured against the
+  old clause before anything was written: **six** realistic rewrites of the one line in `el()`
+  that renders a public-authored string, and **all six** left the gate printing `All 21
+  mechanical checks passed` — `n.innerHTML += text` (one character past the regex, and the
+  likeliest edit on this page, because appending a row is what an inbox does), `n.outerHTML =
+  text`, `n.insertAdjacentHTML('beforeend', text)`, `n['innerHTML'] = text`,
+  `document.write(text)` and `Object.assign(n, {innerHTML: text})`. The blast radius is Invariant
+  2's own by the one door nothing covered: `ops.html` is same-origin *on purpose* so it can
+  borrow the app's session, so script injected there runs in the origin holding `user_data` and
+  the auth token, its two readers are the two admins, and the string is attacker-supplied by
+  design — the `feedback` insert policy is open to `anon`. Replaced with a parsed walk of every
+  inline `<script>` over four detectors (a sink property assigned under **any** operator, a sink
+  method called, a sink as an object key — `Object.assign` reaches the setter with no assignment
+  expression at all — and a **bare** sink name as a string, anchored so a sentence is not a hit)
+  plus two anti-vacuity floors, because the regex would also have passed a page with no script.
+  The check's summary now says what it checked. Scope is `ops.html` deliberately:
+  `index.html`:748–749 writes `splash.innerHTML` on purpose for the boot watchdog, with its own
+  `esc()`. Eight deliberate breaks (`scripts/test_check_build.mjs` 76 → 86) and **two new
+  GREENS**, because the tempting repair — widen the regex — is red on today's clean page (the
+  file says "never innerHTML" in a comment on the guarded line), so the version someone would
+  actually ship strips `//` comments first, and that one is green today and red on an ordinary
+  block comment or a visible note. Falsifiable both ways, measured: neutering the sink half turns
+  all nine `[8]`-ops rows red with all five GREENS green (77 / 9); the comment-stripping regex
+  turns exactly the two new GREENS red with all 76 breaks green (84 / 2). **No live sink was
+  found** — regression guard, not a fix. Gate 21 green, meta-test 86, groom-seed 33, core 175,
+  dashboard 44, deploy-watch 121, smoke 1012.
 - 2026-11-20 — **The publish set ships a SIXTH pinned script and the gate counted five.**
   Invariant 2 is "SRI on all 5 CDN scripts", the gate's check was labelled that, and its first
   line counts `integrity="sha384-` attributes in `index.html`. `ops.html` loads supabase-js from

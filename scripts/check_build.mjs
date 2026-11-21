@@ -645,18 +645,111 @@ check(8, 'Publish set is exactly the intended files', () => {
 
 /* ---- Invariant 8: ops.html is published, so what it contains is a public question ---------
    It sits on the open internet at a guessable URL. The gate that makes that safe lives in
-   Postgres (ops_feedback_inbox raises 42501), but three things about the page itself would
-   turn a safe design into a leak, and all three are mechanically checkable. */
+   Postgres (ops_feedback_inbox raises 42501), but four things about the page itself would
+   turn a safe design into a leak, and all four are mechanically checkable.
+
+   The fourth is the HTML-injection clause, and until 2026-11-21 it was the regex
+   `!/\.innerHTML\s*=/.test(ops)` while the summary line printed `no innerHTML` and
+   CLAUDE.md printed "never assigns innerHTML". The page's own header states the real
+   property: "NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML. Every value that came out
+   of the database was typed by a member of the public into a feedback box." That property is
+   "no HTML-injection sink", and the check named one spelling of one of them.
+
+   SIX realistic edits were measured against the old clause before any of this was written, and
+   ALL SIX left the gate printing `All 21 mechanical checks passed` (2026-11-21):
+     (1) `n.innerHTML += text`      — one character away from the spelling the regex names, and
+                                      the single likeliest edit on this page: appending a row.
+     (2) `n.outerHTML = text`
+     (3) `n.insertAdjacentHTML('beforeend', text)`
+     (4) `n['innerHTML'] = text`    — the same setter through a computed property.
+     (5) `document.write(text)`
+     (6) `Object.assign(n, { innerHTML: text })`
+   The blast radius is this invariant's own, arriving by the door the count never covered:
+   ops.html is same-origin ON PURPOSE so it can borrow the app's session, so script injected
+   here runs in the origin holding `user_data` and the auth token — and its two readers are the
+   two admins, i.e. the highest-value session there is. The injected string is attacker-supplied
+   by design: anyone on the internet can POST to `feedback`.
+
+   So the clause is a WALK of every inline script, parsed, not grepped. The tempting repair is
+   to widen the regex to the other sink words, and that is why one of the GREENS in
+   `scripts/test_check_build.mjs` adds a comment naming them: a text grep is RED on today's
+   clean page, which already says "never innerHTML" twice in prose. An AST sees code.
+
+   Scope is ops.html, deliberately. index.html:748-749 writes `splash.innerHTML` on purpose —
+   the boot watchdog's error screen, with its own `esc()` helper — so this is not a rule the app
+   could take, and claiming it for both files would be the same over-reach being fixed here. */
 check(8, 'Ops console ships nothing it should not', () => {
   must(/name="robots"[^>]*noindex/.test(ops),
     'ops.html lost its noindex — an admin console in Google results is not an admin console');
   must(!/service_role/.test(ops) && !/"role":"service_role"/.test(ops),
     'ops.html contains a service_role key — that key bypasses RLS entirely and must never ship');
-  must(!/\.innerHTML\s*=/.test(ops),
-    'ops.html assigns innerHTML — every string it renders was typed by the public into a feedback box');
   must(!html.includes('ops.html'),
     'the app links to ops.html — it must stay unreferenced so nurses never discover it exists');
-  return 'noindex, no service_role, no innerHTML, unlinked';
+
+  /* Every property, method and object key that hands a string to the HTML parser. `write` and
+     `writeln` are matched on the property name alone rather than on `document.write`: blunt in
+     the same direction, and for the same reason, as Invariant 13's CREDENTIAL pattern — a
+     false positive here is a line in a failure message asking for a deliberate narrowing, and
+     a false negative is public-authored HTML in an admin's session. */
+  const SINKS = /^(innerHTML|outerHTML|srcdoc|insertAdjacentHTML|setHTMLUnsafe|createContextualFragment|parseFromString|write|writeln)$/;
+  const Babel = require('@babel/standalone');
+  /* Inline only: a `src=` script is the SRI check's subject, not this one. Locating the tags is
+     a regex because that is an HTML question; everything inside them is an AST question. A tag
+     shape that moves out from under this pattern fails the floor below rather than sweeping
+     clean — the rule checks 2, 5 and 13 all take. */
+  const inline = [...ops.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  must(inline.length > 0,
+    'found no inline <script> in ops.html — the console renders the feedback inbox in plain JS, ' +
+    'so either the tag shape moved and this walk is reading nothing, or the renderer left. ' +
+    'Either way this clause is answering a question about an empty string');
+  const nameOf = (n) => !n ? null
+    : n.type === 'Identifier' ? n.name
+    : n.type === 'StringLiteral' ? n.value : null;
+  const hits = [];
+  let assigns = 0;
+  for (const src of inline) {
+    Babel.transform(src, { sourceType: 'script', code: false, ast: false,
+      plugins: [() => ({ visitor: {
+        AssignmentExpression(p) {
+          if (p.node.left.type !== 'MemberExpression') return;
+          const k = nameOf(p.node.left.property);
+          if (!k) return;
+          assigns++;
+          /* ANY operator: `+=` is how a row gets appended, and it is the one the old regex
+             missed by a single character. */
+          if (SINKS.test(k)) hits.push(`${k} ${p.node.operator} … (assignment)`);
+        },
+        CallExpression(p) {
+          if (p.node.callee.type !== 'MemberExpression') return;
+          const k = nameOf(p.node.callee.property);
+          if (k && SINKS.test(k)) hits.push(`${k}() (call)`);
+        },
+        /* Object.assign(n, {innerHTML: s}) and React-style prop bags reach the same setter
+           without ever writing a member assignment. */
+        ObjectProperty(p) {
+          const k = nameOf(p.node.key);
+          if (k && SINKS.test(k)) hits.push(`{ ${k}: … } (object key)`);
+        },
+        /* `n[prop] = s` where `prop` is held in a variable is unresolvable by shape, so the
+           NAME is caught instead, wherever it is spelled. Exact and anchored, so a sentence
+           mentioning a sink is not a hit — only the bare string that could index into one. */
+        StringLiteral(p) {
+          if (SINKS.test(p.node.value)) hits.push(`the bare string '${p.node.value}' (computed property)`);
+        },
+      } })] });
+  }
+  must(assigns > 0,
+    'the walk resolved no property assignment at all in ops.html — the page sets textContent in ' +
+    'el() and in stamp(), so zero means this clause is not reading the renderer and would report ' +
+    'a clean sweep over anything');
+  must(!hits.length,
+    `ops.html hands a string to the HTML parser: ${hits.join('; ')} — every value this page ` +
+    'renders was typed by the public into a feedback box, and this page is same-origin with the ' +
+    "app's auth session. Render it with textContent, or narrow this list on purpose with a line " +
+    'saying why');
+
+  return `noindex, no service_role, unlinked, ${inline.length} inline script` +
+    `${inline.length === 1 ? '' : 's'}: no HTML sink among ${assigns} property assignments`;
 });
 
 /* ---- Invariant 8: a published page may only link to a published file -------------------
