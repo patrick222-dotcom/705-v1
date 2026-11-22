@@ -58,7 +58,7 @@ const ROSTER = [
   [2, 'SRI on every CDN script the publish set loads'],
   [2, 'CSP covers every host the pages load'],
   [2, 'pdf.js worker matches its pinned library'],
-  [4, "saveToSupabase upserts on {onConflict:'user_id'}"],
+  [4, 'Every write to user_data carries a conflict target'],
   [5, 'Storage keys unrenamed'],
   [6, '@scrubpay .ics sentinel, both halves'],
   [8, 'Publish set is exactly the intended files'],
@@ -319,8 +319,84 @@ const BREAKS = [
     (s) => s.split('GlobalWorkerOptions.workerSrc').join('GlobalWorkerOptions.wSrc'), '2', PDFW],
   ['[2] the getDocument call is renamed away', 'index.html',
     (s) => s.split('getDocument({data:buf').join('openDocument({data:buf'), '2', PDFW],
+  /* Invariant 4, rewritten as a derivation 2026-11-22. Until then this check was ONE regex over
+     the whole file and ONE break — the row immediately below. Measured against that old clause
+     before anything was written, SIX realistic edits, every one of them 23505-forever, left the
+     gate printing `All 21 mechanical checks passed`: both halves of the raw keepalive POST's
+     guard (breaks `[4] raw …` below), two new supabase-js write paths, a new raw POST, and
+     `saveToSupabase` renamed out from under a check whose own label named it. Two of the six are
+     caught at runtime by `tests/smoke.mjs` §33, which intercepts the unload flush's real
+     request; the other four were caught by nothing.
+
+     ELEVEN breaks now, one per `must()` and one per detector feeding the shared one — the rule
+     the ops.html sink walk took, because a group of detectors broken as a group only proves that
+     one of them has teeth. No label pin on any of them: `[4]` is a tag held by a single check.
+
+     One clause has deliberately no break here: the "expected 2 inline scripts" floor is the same
+     one the storage-key derivation holds, it is broken there, and the same edit reds both rows —
+     a second copy would prove nothing this suite does not already know. */
   ['[4] the user_data upsert loses onConflict', 'index.html',
     (s) => s.replace("{onConflict:'user_id'}", '{}'), '4'],
+  /* The conflict target is PRESENT and wrong, which is the subtler half of the same must(): the
+     table's PK is a generated `id`, so targeting it generates a fresh id, fires no conflict, and
+     degrades to exactly the INSERT that 23505s. A check testing only for the option's presence
+     would pass this. */
+  ['[4] onConflict targets the PK instead of user_id', 'index.html',
+    (s) => s.replace("{onConflict:'user_id'}", "{onConflict:'id'}"), '4'],
+  /* The raw keepalive path, which Invariant 4's own text names as the second write path and the
+     old regex could not see at all. Its success is unobservable by construction — the document is
+     gone — so a 23505 here is silent even to the error ring buffer. §33 asserts these two off the
+     intercepted request at runtime; the gate now asserts them at the source, which is the one
+     place every write path shares. */
+  ['[4] raw POST url loses ?on_conflict=user_id', 'index.html',
+    (s) => s.replace("'/rest/v1/user_data?on_conflict=user_id'", "'/rest/v1/user_data'"), '4'],
+  ['[4] raw POST Prefer header loses resolution=merge-duplicates', 'index.html',
+    (s) => s.replace("Prefer: 'return=minimal,resolution=merge-duplicates'",
+      "Prefer: 'return=minimal'"), '4'],
+  /* The three NEW write paths. These are the shape the derivation exists for: the question moved
+     from "is the one upsert we know about still right?" to "is every write to this table right?",
+     and none of these three touches the line the old regex read. */
+  ['[4] a second supabase-js upsert to user_data with no options argument', 'index.html',
+    (s) => s.replace('async function saveToSupabase(userId, data){',
+      "async function saveMeta(userId, data){\n  return supabase.from('user_data')"
+      + '.upsert({user_id:userId, data});\n}\nasync function saveToSupabase(userId, data){'), '4'],
+  ['[4] a second write path uses .insert, which takes no conflict target', 'index.html',
+    (s) => s.replace('async function saveToSupabase(userId, data){',
+      "async function saveMeta(userId, data){\n  return supabase.from('user_data')"
+      + '.insert({user_id:userId, data});\n}\nasync function saveToSupabase(userId, data){'), '4'],
+  ['[4] a second raw POST to user_data carrying neither guard', 'index.html',
+    (s) => s.replace('function beaconSaveUserData(userId, data){',
+      "function beaconV2(userId, data){\n  fetch(SUPABASE_URL + '/rest/v1/user_data', "
+      + "{method:'POST', keepalive:true, headers:{apikey:SUPABASE_ANON_KEY}, "
+      + 'body:JSON.stringify({user_id:userId, data})}).catch(()=>{});\n}\n'
+      + 'function beaconSaveUserData(userId, data){'), '4'],
+  /* Pass by omission, the rule check 13 takes for a renamed serializeState. Under the old regex
+     this edit was INVISIBLE: the upsert line moved with the rename and still matched, so the
+     check kept passing while the function its label named no longer existed. */
+  ['[4] saveToSupabase is renamed away', 'index.html',
+    (s) => s.split('saveToSupabase').join('persistBlob'), '4'],
+  /* No regex fallback: a table name this walk cannot read could be user_data, and a check that
+     shrugs at what it cannot read is the hole (the storage-key derivation's identical rule). */
+  ['[4] the table name stops being a literal', 'index.html',
+    (s) => s.replace(".from('user_data')\n      .upsert(",
+      '.from(tableFor(userId))\n      .upsert('), '4'],
+  /* Three anti-vacuity floors, one per path and one for the client binding. The old regex would
+     also have passed a file with no user_data write in it at all, and a derivation that resolves
+     nothing must FAIL rather than report a clean sweep. The client floor is what stops
+     `.from()` being read as a table selector everywhere: without it `Array.from({length:n})`
+     reads as an unresolvable table name, and with the binding unresolved every real write
+     becomes invisible. */
+  ['[4] the supabase-js upsert to user_data is gone', 'index.html',
+    (s) => s.replace("{onConflict:'user_id'});", ");").replace(
+      '.upsert({user_id:userId, data, updated_at:updatedAt}, ', ".select('user_id'"), '4'],
+  ['[4] the raw POST to user_data is gone', 'index.html',
+    (s) => s.replace("'/rest/v1/user_data?on_conflict=user_id'", "'/rest/v1/events'"), '4'],
+  ['[4] no createClient binding resolves', 'index.html',
+    (s) => s.replace('const supabase = (window.supabase && window.supabase.createClient)\n'
+      + '  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)\n  : null;',
+      'function makeSb(){ return (window.supabase && window.supabase.createClient)\n'
+      + '  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)\n  : null; }\n'
+      + 'const supabase = makeSb();'), '4'],
   ['[5] a storage key renamed', 'index.html',
     (s) => s.split('scrubpay_anon_id').join('badgebudget_anon_id'), '5'],
   /* The derivation clause, added 2026-11-14. SEVEN more breaks, one per `must()`, because
@@ -606,6 +682,33 @@ const GREENS = [
   ['ops.html shows a visible note whose text mentions innerHTML', 'ops.html',
     (s) => s.replace("sub.textContent = '';",
       "sub.textContent = '';\n    main.appendChild(el('p', 'empty', 'rendered with textContent, never innerHTML'));")],
+  /* Added 2026-11-22 with the Invariant 4 derivation. The first two are the false positives the
+     OLD clause actually had: its regex pinned the upsert payload's property ORDER and the
+     options object's exact spacing, so both of these edits — which change no behaviour at all —
+     turned the gate red with the message "the user_data upsert lost {onConflict:'user_id'}".
+     That is the direction that gets a check weakened: anyone who formats this file meets a false
+     accusation about the one invariant with a live production signal, and the obvious repair is
+     to loosen the pattern. Negative-tested the opposite way: put the old regex back and both of
+     these go red while ten of the eleven `[4]` breaks go green. The clean baseline cannot see
+     either of them, which is the whole reason they are rows. */
+  ['the user_data upsert payload writes its keys in a different order', 'index.html',
+    (s) => s.replace('.upsert({user_id:userId, data, updated_at:updatedAt}',
+      '.upsert({updated_at:updatedAt, data, user_id:userId}')],
+  ['the upsert options are written with ordinary spacing', 'index.html',
+    (s) => s.replace("{onConflict:'user_id'}", "{ onConflict: 'user_id' }")],
+  /* A raw REST READ of user_data. The tempting shortcut for the raw half is "any fetch whose url
+     mentions /rest/v1/user_data must carry ?on_conflict=user_id", which is green today because
+     the only raw call this app makes to that table is the keepalive POST — so the baseline
+     cannot see it, and it would go red the first time anyone reads the row over raw REST (which
+     the hydrate path has reason to: supabase-js cannot be trusted inside an unload handler, and
+     the same argument applies to a cold-load race). A conflict target is a property of a WRITE;
+     the method is what decides. */
+  ['user_data is READ over raw REST with no conflict target', 'index.html',
+    (s) => s.replace('function beaconSaveUserData(userId, data){',
+      'function peekUserData(){\n'
+      + "  return fetch(SUPABASE_URL + '/rest/v1/user_data?select=updated_at', "
+      + '{headers:{apikey:SUPABASE_ANON_KEY}});\n}\n'
+      + 'function beaconSaveUserData(userId, data){')],
   ['privacy.html links out to a third party with <a href>', 'privacy.html',
     (s) => s.replace('</body>', '<p><a href="https://www.irs.gov/publications/p15">IRS Pub 15</a></p>\n</body>')],
   ['privacy.html carries a data: image whose payload names a remote host', 'privacy.html',

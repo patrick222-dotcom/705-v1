@@ -455,10 +455,274 @@ check(2, 'pdf.js worker matches its pinned library', () => {
 });
 
 /* ---- Invariant 4: the upsert that silently broke sync for 47 days ---------------------- */
-check(4, "saveToSupabase upserts on {onConflict:'user_id'}", () => {
-  must(/\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/.test(html),
-    "the user_data upsert lost {onConflict:'user_id'} — every save after the first will 23505");
-  return 'present';
+check(4, 'Every write to user_data carries a conflict target', () => {
+  /* This check was ONE regex over the whole file, and it printed the word `present`:
+   *
+   *   /\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/
+   *
+   * It answered "does a string of this exact shape appear ANYWHERE in index.html?" — and the
+   * label said `saveToSupabase upserts on {onConflict:'user_id'}`, which is a claim about one
+   * named function, and the invariant says something broader still. Invariant 4's own text names
+   * TWO write paths to `user_data`: the supabase-js upsert in `saveToSupabase`, and the raw
+   * keepalive POST in `beaconSaveUserData` (`?on_conflict=user_id` + `Prefer:
+   * resolution=merge-duplicates`, added 2026-10-05, "or it is a plain INSERT and 23505s forever").
+   * The regex could not see the second one at all, and could not see a THIRD if one were added.
+   *
+   * Measured against the old clause before this was written — six realistic edits, every one of
+   * them 23505-forever, and SIX left the gate printing `All 21 mechanical checks passed`:
+   *   (1) the raw beacon's url loses `?on_conflict=user_id`;
+   *   (2) its `Prefer` header loses `resolution=merge-duplicates`;
+   *   (3) a second supabase-js write path, `.from('user_data').upsert({…})` with no options arg;
+   *   (4) a second path using `.insert(…)`, which cannot carry a conflict target at all;
+   *   (5) `saveToSupabase` renamed — the regex matched the moved line, so the check kept passing
+   *       while the function its own label named no longer existed (pass by omission);
+   *   (6) a second raw POST to `/rest/v1/user_data` with neither the query param nor the header.
+   * (1) and (2) are caught at runtime by `tests/smoke.mjs` §33, which intercepts the unload
+   * flush's real request, so production was never exposed on those two. (3)–(6) were caught by
+   * NOTHING: §33 asserts the one request it drives, so a write path it does not drive is unseen.
+   *
+   * And it was wrong in the other direction too, which is the half that gets a check WEAKENED
+   * rather than bypassed. The regex pins the payload's property ORDER (`user_id: userId, data,`)
+   * and the options object's exact spacing, so two edits that change no behaviour whatsoever turn
+   * the gate RED with the message "the user_data upsert lost {onConflict:'user_id'}": reordering
+   * the payload's keys, and writing `{ onConflict: 'user_id' }` with ordinary spaces. Anyone who
+   * formats this file meets a false accusation, and the obvious repair is to loosen the regex.
+   * Both are GREENS in `scripts/test_check_build.mjs` now.
+   *
+   * So the set is DERIVED instead of declared, the same shape Invariant 5's check took on
+   * 2026-11-14 and for the same reason: a hardcoded pattern answers "is this one still here?"
+   * and can never answer "are these all of them?". This invariant is the one that most deserves
+   * the second question — it is the only one of the thirteen with a live production signal, and
+   * it earned that signal by running 47 days undetected across every signed-in user.
+   *
+   * `[4]` is held by this check alone, so the breaks below need no label pin.
+   *
+   * Scope is `user_data` only. `ical_subscriptions` and `swap_profiles` are both upserted
+   * elsewhere in this file and neither is Invariant 4's table: both have `user_id` as their
+   * PRIMARY KEY, so PostgREST infers the conflict target and a bare upsert is correct (checked
+   * against the live catalog 2026-11-22). `user_data` is the only one whose PK is a generated
+   * `id` with `user_id` carrying a separate UNIQUE — which is the whole mechanism of the outage. */
+
+  const Babel = require('@babel/standalone');
+
+  /* Pass-by-omission guard, clause (5) above and the rule Invariant 13's check follows: the
+     function this invariant is written about must be FOUND, not merely echoed by a line that
+     happens to survive a rename. */
+  must(/async function saveToSupabase\(/.test(html),
+    'saveToSupabase is gone or renamed — Invariant 4 is written about that function by name, and ' +
+    'a check that only greps for the upsert line keeps passing while the function does not exist');
+
+  /* Both inline scripts, for the same reason the storage-key derivation reads both: today every
+     user_data write is in the Babel block, and a write moved into the boot script must not land
+     somewhere this walk cannot see. */
+  const inline = [];
+  for (let at = html.indexOf('<script'); at !== -1; at = html.indexOf('<script', at + 1)) {
+    const tagEnd = html.indexOf('>', at);
+    const tag = html.slice(at, tagEnd + 1);
+    if (/\ssrc=/.test(tag)) continue;              // the 5 CDN scripts — Invariant 2's business
+    inline.push(html.slice(tagEnd + 1, html.indexOf('</script>', tagEnd)));
+  }
+  must(inline.length === 2,
+    `expected 2 inline scripts, found ${inline.length} — this check reads both, so a third would ` +
+    'be scanned by nothing');
+
+  /* The names the supabase-js client is bound to, derived from createClient() rather than
+     assumed to be `supabase`. Without this, `.from()` matches `Array.from({length:n})` and
+     every one of those reads as a table name this check cannot resolve. */
+  const clients = new Set();
+  for (const body of inline) {
+    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+      plugins: [() => ({ visitor: {
+        VariableDeclarator(p) {
+          if (p.node.id.type !== 'Identifier' || !p.node.init) return;
+          const src = body.slice(p.node.init.start, p.node.init.end);
+          if (/\bcreateClient\s*\(/.test(src)) clients.add(p.node.id.name);
+        },
+      } })] });
+  }
+  must(clients.size >= 1,
+    'no supabase-js client binding found — this check reads .from() calls on the names bound from ' +
+    'createClient(), so with none resolved every table write would be invisible to it');
+
+  const upserts = [];       // supabase-js upserts to user_data, with their options
+  const rawPosts = [];      // raw PostgREST POSTs to user_data
+  const otherOps = [];      // selects, deletes, updates — not 23505 risks, counted so the output says so
+  const unresolved = [];    // anything this walk cannot read: a hole, so it throws
+
+  /* A string an expression resolves to, or null. Handles the two shapes this file uses: a bare
+     literal, and `SUPABASE_URL + '/rest/v1/…'` — a `+` chain whose literal parts are what matter,
+     since the host is irrelevant to which table and which query params are in play. */
+  const literalParts = (node, bound) => {
+    if (!node) return null;
+    if (node.type === 'StringLiteral') return node.value;
+    if (node.type === 'Identifier') return bound.has(node.name) ? bound.get(node.name) : null;
+    if (node.type === 'TemplateLiteral') return node.quasis.map((q) => q.value.cooked).join('\u0000');
+    if (node.type === 'BinaryExpression' && node.operator === '+') {
+      const l = literalParts(node.left, bound);
+      const r = literalParts(node.right, bound);
+      if (l === null && r === null) return null;
+      return (l === null ? '\u0000' : l) + (r === null ? '\u0000' : r);
+    }
+    return null;
+  };
+
+  /* The string value of an object property, when it is a plain literal. */
+  const propString = (obj, name, bound) => {
+    if (!obj || obj.type !== 'ObjectExpression') return undefined;
+    for (const pr of obj.properties) {
+      if (pr.type !== 'ObjectProperty') continue;
+      const k = pr.key.name || pr.key.value;
+      if (k !== name) continue;
+      const v = literalParts(pr.value, bound);
+      return v === null ? null : v;     // null = present but unresolvable, undefined = absent
+    }
+    return undefined;
+  };
+
+  for (const body of inline) {
+    const bound = new Map();
+    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+      plugins: [() => ({ visitor: {
+        VariableDeclarator(p) {
+          if (p.node.id.type !== 'Identifier') return;
+          const v = p.node.init;
+          if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
+        },
+      } })] });
+
+    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
+      plugins: [() => ({ visitor: {
+        CallExpression(p) {
+          const callee = p.node.callee;
+
+          /* ---- (a) the supabase-js route: supabase.from('user_data').<verb>(…) ---------- */
+          if (callee.type === 'MemberExpression'
+              && (callee.property.name || callee.property.value) === 'from'
+              && callee.object.type === 'Identifier' && clients.has(callee.object.name)) {
+            const arg = p.node.arguments[0];
+            const table = literalParts(arg, bound);
+            if (table === null) {
+              /* A table name this walk cannot read could be user_data, and there is deliberately
+                 no fallback — see the storage-key derivation's identical rule. */
+              unresolved.push(`.from(<${arg ? arg.type : 'no argument'}>) — table is not a literal`);
+              return;
+            }
+            if (table !== 'user_data') return;
+
+            /* Walk the fluent chain forward collecting its verbs, so `.upsert(…)` is found
+               whether it is first or buried behind `.select().eq()`. */
+            const verbs = [];
+            let cur = p;
+            for (;;) {
+              const mem = cur.parentPath;
+              if (!mem || !mem.isMemberExpression() || mem.node.object !== cur.node) break;
+              const call = mem.parentPath;
+              if (!call || !call.isCallExpression() || call.node.callee !== mem.node) break;
+              verbs.push({ name: mem.node.property.name || mem.node.property.value, path: call });
+              cur = call;
+            }
+            const write = verbs.find((v) => /^(upsert|insert|update)$/.test(String(v.name)));
+            if (!write) {
+              otherOps.push(verbs.map((v) => v.name).join('.') || '(no verb)');
+              return;
+            }
+            if (write.name !== 'upsert') {
+              /* `.insert()` takes no conflict target, so it IS the 47-day outage. `.update()`
+                 cannot 23505 but silently no-ops when the row is absent, which is a different
+                 bug reaching the same place; both are rejected on purpose, so a save path that
+                 stops being an upsert is a deliberate edit to this check. */
+              upserts.push({ bad: `.${write.name}() to user_data`, why:
+                `user_data is written with .${write.name}(), not .upsert() — the table's PK is a ` +
+                'generated id with user_id merely UNIQUE, so an INSERT violates ' +
+                'user_data_user_id_key on every save after the first (23505, forever)' });
+              return;
+            }
+            const opts = write.path.node.arguments[1];
+            if (!opts) {
+              upserts.push({ bad: 'upsert with no options argument', why:
+                "the user_data upsert has no second argument, so it carries no onConflict — " +
+                'PostgREST targets the PK, a fresh id is generated, no conflict fires, and the ' +
+                'statement degrades to the INSERT that 23505s forever' });
+              return;
+            }
+            const oc = propString(opts, 'onConflict', bound);
+            if (oc === undefined || oc === null || oc !== 'user_id') {
+              upserts.push({ bad: `onConflict is ${oc === undefined ? 'absent' : JSON.stringify(oc)}`, why:
+                "the user_data upsert's onConflict is not 'user_id' — that option is the whole " +
+                'fix for the 2026-07-07 to 2026-08-23 outage; without it every save after the ' +
+                'first fails with 23505, silently, for every signed-in user' });
+              return;
+            }
+            upserts.push({ ok: true, verbs: verbs.map((v) => v.name).join('.') });
+            return;
+          }
+
+          /* ---- (b) the raw PostgREST route: fetch(SUPABASE_URL + '/rest/v1/user_data…') --- */
+          if (callee.type === 'Identifier' && callee.name === 'fetch') {
+            const url = literalParts(p.node.arguments[0], bound);
+            if (url === null) {
+              unresolved.push('fetch(<unresolvable url>) — a url this check cannot read could be '
+                + 'a user_data write');
+              return;
+            }
+            if (!url.includes('/rest/v1/user_data')) return;
+            const init = p.node.arguments[1];
+            const method = String(propString(init, 'method', bound) || 'GET').toUpperCase();
+            if (method !== 'POST') { otherOps.push(`fetch ${method} user_data`); return; }
+            if (init && init.type !== 'ObjectExpression') {
+              unresolved.push(`fetch POST to user_data with a <${init.type}> init — this check `
+                + 'cannot read its headers');
+              return;
+            }
+            const missing = [];
+            if (!/[?&]on_conflict=user_id(&|$)/.test(url)) missing.push('?on_conflict=user_id in the url');
+            const headers = (init ? init.properties : []).find(
+              (pr) => pr.type === 'ObjectProperty' && (pr.key.name || pr.key.value) === 'headers');
+            const prefer = headers ? propString(headers.value, 'Prefer', bound) : undefined;
+            if (prefer === null) {
+              unresolved.push('fetch POST to user_data with an unresolvable Prefer header');
+              return;
+            }
+            if (!/resolution=merge-duplicates/.test(String(prefer || ''))) {
+              missing.push('resolution=merge-duplicates in the Prefer header');
+            }
+            if (missing.length) {
+              rawPosts.push({ bad: `raw POST to user_data missing ${missing.join(' and ')}`, why:
+                'a POST to /rest/v1/user_data without both of those is a plain INSERT: it ' +
+                'violates user_data_user_id_key and 23505s on every unload flush after the ' +
+                "first, forever. Invariant 4's own text names this as the raw-PostgREST spelling " +
+                'of the same rule, and the unload path is the one whose success is unobservable' });
+              return;
+            }
+            rawPosts.push({ ok: true });
+            return;
+          }
+        },
+      } })] });
+  }
+
+  must(!unresolved.length,
+    `user_data write sites this check cannot resolve: ${unresolved.join('; ')} — there is ` +
+    'deliberately no regex fallback, because a check that shrugs at what it cannot read is the ' +
+    'hole. Name the table or the url through a string constant, or add its shape here on purpose.');
+
+  const broken = [...upserts, ...rawPosts].filter((w) => w.bad);
+  must(!broken.length, broken.map((w) => `${w.bad} — ${w.why}`).join(' // '));
+
+  /* Anti-vacuity floors, one per write path, because a walk that resolves NOTHING must fail
+     rather than report a clean sweep — the old regex would also have passed a file with no
+     user_data write in it at all. Both paths are named in Invariant 4, so losing either is a
+     deliberate edit that belongs here and in CLAUDE.md. */
+  must(upserts.length >= 1,
+    'no supabase-js upsert to user_data found — that write is what Invariant 4 was written ' +
+    'about, so a walk that cannot see it would pass this check by omission');
+  must(rawPosts.length >= 1,
+    'no raw PostgREST POST to user_data found — the keepalive unload flush (beaconSaveUserData, ' +
+    '2026-10-05) is the SECOND write path this invariant names, and it is the one whose success ' +
+    'cannot be observed at runtime');
+
+  return `${upserts.length} supabase-js upsert (onConflict:'user_id'), ${rawPosts.length} raw POST ` +
+    `(on_conflict + merge-duplicates), ${otherOps.length} non-write user_data ops`;
 });
 
 /* ---- Invariant 5: storage keys are data, not branding ---------------------------------- */
@@ -1305,7 +1569,7 @@ check('gate', 'Every check this gate claims is still here', () => {
   const LABELS = ['JSX block parses', 'Boot hardening intact', 'SRI on every CDN script the publish set loads',
     'CSP covers every host the pages load',
     'pdf.js worker matches its pinned library',
-    "saveToSupabase upserts on {onConflict:'user_id'}", 'Storage keys unrenamed',
+    'Every write to user_data carries a conflict target', 'Storage keys unrenamed',
     '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
     'Ops console ships nothing it should not',
     'Published pages link only to published files',
