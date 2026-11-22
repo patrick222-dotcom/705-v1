@@ -7,6 +7,16 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-22 · nightly · **Invariant 4's gate check was one unanchored regex printing the word
+  `present`** — the only invariant here with a live production signal, and it earned that signal
+  by breaking cloud sync for every signed-in user for 47 silent days. Its check read one known
+  line; the invariant names **two** write paths to `user_data`. Six realistic 23505-forever edits
+  were measured against the old clause and **six** left the gate green (two of them covered at
+  runtime by smoke §33, four by nothing at all), while two behaviour-neutral formatting edits
+  turned it **red** — it pinned the payload's property order and the options object's spacing.
+  The write-site set is derived now, 12 breaks + 3 GREENS, falsifiable both ways. No live defect.
+  Belongs to no live thread; the gate-hardening band this is the sixteenth of has no seat.
+
 - 2026-11-21 · nightly · **every HTML-injection sink in the ops console except one spelling passed
   the gate** — `ops.html` renders rows typed by the public into a feedback box, and the clause
   standing for its own header (*"NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML"*) was a

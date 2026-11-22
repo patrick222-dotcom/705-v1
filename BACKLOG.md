@@ -2018,6 +2018,126 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   nineteen days.**
 
+### P1 (new, groom 2026-11-22)
+
+**Why this band sits BELOW the 11-06 through 11-21 bands instead of at the top of `## Queue`:**
+unchanged for the sixteenth run — PR #209 (the `terms.html` draft, open for Pat since 2026-11-06)
+inserts its own `### P1` band at line 29, and another insert at that hunk hands him a merge
+conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 4's gate check was one unanchored regex printing the word `present`**~~ —
+  **SHIPPED 2026-11-22**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level)) Picked with the 11-14 band's search for the sixteenth night,
+  because `## Queue` still holds no unblocked build item that does not need Pat: *find a claim
+  with a number in it, then ask what that number is actually counting.* Tonight the claim was a
+  **word** again — `present` — and the number was hiding in the label: `saveToSupabase upserts on
+  {onConflict:'user_id'}` is a claim about **one** write path, and Invariant 4 has **two**.
+  **Why this one and not another gate clause.** Invariant 4 is the only one of the thirteen with
+  a live production signal, and it earned it the hard way: the missing option broke cloud sync
+  for every signed-in user for **47 days** with nothing observable changing. Three lines below
+  its own title the invariant names the second write path — the keepalive unload POST, where the
+  rule is spelled `?on_conflict=user_id` + `Prefer: resolution=merge-duplicates`, *"or it is a
+  plain INSERT and 23505s forever"* — and the gate had never read that sentence.
+  **Measured both directions before anything was written.** Six realistic 23505-forever edits,
+  **six** left the gate printing `All 21 mechanical checks passed`; and two edits that change no
+  behaviour at all — reordering the upsert payload's keys, writing `{ onConflict: 'user_id' }`
+  with ordinary spaces — turned it **red** with the message *"the user_data upsert lost
+  {onConflict:'user_id'}"*, because the regex pinned property order and spacing. The second half
+  is the one that gets a check weakened: a false accusation about this invariant, met by whoever
+  next formats `index.html`.
+  Twelve breaks (86 → 100 in `scripts/test_check_build.mjs`) and three new GREENS; neuter the
+  check and all twelve stop failing (88 / 12), restore the old regex and **exactly** the two
+  formatting GREENS go red while nine of the twelve breaks go green (89 / 11). Gate still 21
+  checks, so CI's required count does not move. No live defect was found: both paths are correct
+  today.
+- [ ] **`events` did not move at all — zero new rows in the ~26 hours since last night's groom**
+  (P2 · source:groom · no action) — `events` holds **1,814**, byte-identical to the 11-21 groom.
+  The newest row is still that groom's own subject: device `266ac5ef` at **2026-11-21 06:18:46**,
+  `app_open {fresh:true}` + `ob_step {step:0}` on the same timestamp, `ob_view
+  {screen:'landing'}`, no `session_end`, nothing past screen 0 — the cohort shape recorded
+  unbroken since 10-29. `rows_24h` **0**, `rows_7d` **12**, **2** distinct devices in 7 days.
+  **Do not quote an activation figure off it** — the device classifier is still broken and
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort.
+- [ ] **`silence_watch` is FRESH; `access_watch` reads TIGHT on its tenth night, 16/16** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **25.8h** old against a 48h window, which
+  is the honest shape of a night with no new rows: fresh, not healthy-and-busy. Access posture
+  unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id` policies
+  and `authenticated` the only role in its ACL, `user_data` owner-gated on all four commands,
+  `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies, five `ops_*`
+  functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still not a probe.**
+- [ ] **Tonight's build read the live catalog, and it confirmed the scope the check assumes**
+  (P2 · source:groom · no action) — `pg_constraint` says `user_data` is the only one of the three
+  tables this app upserts whose PK is **not** `user_id`: `user_data_pkey PRIMARY KEY (id)` plus a
+  separate `user_data_user_id_key UNIQUE (user_id)`, while `ical_subscriptions_pkey` and
+  `swap_profiles_pkey` are both `PRIMARY KEY (user_id)`. That is why `swap_profiles` is upserted
+  **with no `onConflict` at all** (`index.html`:3289) and is **not** a latent 23505 — PostgREST
+  infers the target from the PK. Worth writing down because it looks exactly like the 47-day
+  defect and is not one, and because the obvious over-reach for tonight's check ("every upsert in
+  the file must carry `onConflict`") is red on today's clean page for precisely that reason.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence; the 11-16 counts are
+  now field-confirmed by comparison** (P2 · housekeeping) — her device `f184ffa5` last filed at
+  **2026-11-19 18:13:57**, **2.6 days** ago. Its `ics_sync_done {events:107, pending:50,
+  classify:50, updates:0, removals:0, cards:7}` sits four days after her **11-15** row, which
+  reads `{events:109, provider:'nursegrid'}` and **nothing else** — the pre-#215 shape. So the
+  two rows together are the field proof that the sync-plan counts shipped and are populating: the
+  same feed, same size, and the newer row says **50 pending across 7 cards** where the older one
+  could only say 109. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **44**,
+  `ics_sync_done` **29**. `ics_autosync_pref` and `ics_autosync_off` both **zero rows from any
+  device, ever** — still expected, and the 11-20 reading stands: she met the stepper's opt-out
+  and took neither it nor the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-THIRD groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **37.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 16-for-16** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the seventeenth groom.
+  Tonight adds **no** load at all, so unlike 11-19 and 11-21 this is a silent night that cannot
+  disprove the filter either way. Say that rather than counting it as evidence.
+- [ ] **CABINET MISSED fires for the THIRTEENTH night, and the brief is now 20.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twentieth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the SIXTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-21
+  band staked out: that merge touched `scripts/`, `CLAUDE.md` and `BACKLOG.md` and not
+  `index.html`. `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation
+  sentence, boundary **`7aaccbd`** tonight (was `b90aa07`) — the figure drifts with clone depth,
+  which is why #210 stopped printing it as a deploy fact. **Tonight's prediction:** tonight's
+  merge touches `scripts/`, `CLAUDE.md` and `BACKLOG.md` but **not `index.html`** and **not
+  `ops.html`**, so tomorrow's watch should still name **`a09cabe`**, and all three of the others
+  should still read `[ok]` with the truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-fifth night, and tonight it is 100
+  assertions and ~8 minutes** (P2 · `harness:unscoped` · needs the owner) — the suite re-ran
+  green tonight at **100 / 0**, and tonight's fourteen new rows all went into it, so **tonight's
+  proof is behind the half of the gate CI does not run** — the clause itself is in
+  `check_build.mjs`, which *is* a required check, so a `user_data` write without a conflict target
+  fails CI tonight; what is not in CI is the proof that the clause has teeth. **One thing changed
+  tonight that the owner should weigh**: the suite has crossed from ~140s to **~8 minutes**,
+  because every assertion rebuilds a scratch tree holding the 1MB pdf.js worker. At 100 rows that
+  is no longer a "one line after the existing step" ask without also thinking about CI minutes —
+  the cheap fix is to copy the worker **once** and symlink it per break, which is a build item a
+  later run can take without the owner. Still the same two lines when he is in the file:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs` and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — SIXTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **16.7 days**.
+  Tonight branched to `claude/great-feynman-8jmcjl`, so #209's head is untouched for the
+  sixteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the SEVENTEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6049,6 +6169,55 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-22 — **Invariant 4's gate check was one unanchored regex printing the word `present`,
+  and it was wrong in both directions.** Invariant 4 is the only one of the thirteen with a live
+  production signal, and it earned that signal by running **47 days** undetected across every
+  signed-in user. Its check was
+  `/\.upsert\(\s*\{\s*user_id:\s*userId,\s*data,[^)]*\},\s*\{onConflict:'user_id'\}\s*\)/`
+  over the whole file, labelled `saveToSupabase upserts on {onConflict:'user_id'}`.
+  **Measured against the old clause before anything was written: six realistic edits, every one
+  of them 23505-forever, and SIX left the gate printing `All 21 mechanical checks passed`** —
+  (1) the raw keepalive POST's url losing `?on_conflict=user_id`; (2) its `Prefer` header losing
+  `resolution=merge-duplicates`; (3) a second `.from('user_data').upsert({…})` with no options
+  argument; (4) a second path using `.insert()`, which takes no conflict target at all; (5) a
+  second raw POST carrying neither guard; (6) **`saveToSupabase` renamed**, where the regex
+  matched the moved line and the check kept passing while the function its own label named no
+  longer existed. (1) and (2) are asserted at runtime by `tests/smoke.mjs` §33 off the
+  intercepted request, so production was never exposed on those two; (3)–(6) were covered by
+  **nothing** — §33 asserts the one request it drives, and a write path it does not drive is
+  unseen. The invariant's own text, three lines below the title, names the raw POST and says
+  *"or it is a plain INSERT and 23505s forever"*; the gate had never read it.
+  **And the same clause was a false-positive machine, which is the half that gets a check
+  weakened rather than bypassed**: it pinned the upsert payload's property ORDER and the options
+  object's exact spacing, so reordering the payload's keys, or writing
+  `{ onConflict: 'user_id' }` with ordinary spaces, turned the gate **red** with the message
+  *"the user_data upsert lost {onConflict:'user_id'}"*. Anyone who formats `index.html` met a
+  false accusation about this invariant, and the obvious repair is to loosen the pattern.
+  **What shipped.** The set of write sites is DERIVED — the Invariant 5 shape from 11-14, asked
+  of the invariant that most deserves it. The walk resolves the supabase-js client from
+  `createClient()` rather than assuming the name `supabase` (without that, `Array.from({length:n})`
+  reads as a table name it cannot resolve — measured, fourteen of them), then requires every
+  `.from('user_data')` write to be an `upsert` carrying `onConflict:'user_id'`, with `.insert()`
+  and `.update()` rejected on purpose, and every raw POST to `/rest/v1/user_data` to carry both
+  guards. Method decides: a conflict target is a property of a WRITE, so a GET or a PATCH needs
+  neither. Three anti-vacuity floors (one per write path, one for the client binding), and
+  anything unresolvable **throws** — no regex fallback. Scope is `user_data` alone, and that is
+  read off the live catalog rather than assumed: `ical_subscriptions` and `swap_profiles` are
+  both upserted in this file and neither is this invariant's table, because both have `user_id`
+  as their PRIMARY KEY so PostgREST infers the target; `user_data` is the only one whose PK is a
+  generated `id` with `user_id` merely UNIQUE, which is the entire mechanism of the outage.
+  The check now prints what it checked: `1 supabase-js upsert (onConflict:'user_id'), 1 raw POST
+  (on_conflict + merge-duplicates), 2 non-write user_data ops`.
+  **No live defect was found** — both paths are correct today, so this is a regression guard like
+  §54 and §62, not a fix. **Twelve deliberate breaks** (`scripts/test_check_build.mjs` 86 → 100)
+  and **three new GREENS**, falsifiable in both directions and both measured: neuter the check and
+  all twelve breaks stop failing while the three GREENS stay green (**88 passed / 12 failed**);
+  restore the old regex and **exactly** the two formatting GREENS go red while **nine of the
+  twelve** breaks go green (**89 / 11**). That second run is the whole argument for having GREENS
+  — the old clause is green on today's clean page, so no other row in the suite can see it come
+  back. `[4]` stays a tag held by one check, so none of the breaks needs a label pin. Gate still
+  21 checks, so CI's required count does not move. (P1 · source:groom · `harness:drivable`
+  (script-level))
 - 2026-11-21 — **Every HTML-injection sink in the ops console except one spelling passed the
   gate.** `ops.html` ships to a public URL and renders rows typed by the public into a feedback
   box; its own header says *"NOTHING HERE IS TRUSTED TO BE SAFE TO RENDER AS HTML."* The clause
