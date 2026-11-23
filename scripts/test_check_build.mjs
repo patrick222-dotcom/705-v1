@@ -23,11 +23,14 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
- *   GREENS  — three edits that must leave the gate GREEN (added 2026-11-19, a third 2026-11-20).
+ *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, nine of them now).
  *             TEETH only ever asks
  *             "does a break go red?", and a check can be wrong in the other direction: one false
  *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
- *             GREENS block at the foot of this file for what each one guards.
+ *             GREENS block at the foot of this file for what each one guards. A row may also
+ *             carry a predicate over the gate's OUTPUT, for a claim a green exit does not settle:
+ *             the 2026-11-23 row requires a figure to stay put, because the defect it guards is
+ *             a gate that passes while printing a number nothing reads.
  *
  * The breaks are applied to a COPY (`.gate-scratch/`), never the working tree — the same rule
  * `cos_check.mjs` takes its optional `root` argument for, and the rule the `harness` skill states
@@ -169,6 +172,24 @@ ok('teeth: clean scratch copy passes', base.code === 0, base.code === 0 ? '' : b
 ok('teeth: clean copy reports the declared count',
   base.out.includes(`All ${ROSTER.length} mechanical checks passed.`),
   (base.out.match(/All \d+ mechanical checks passed\./) || ['no "All N passed" line'])[0]);
+
+/* 4c. The shared-AST cache, asserted rather than trusted (2026-11-23). Ten of the gate's checks
+   are AST walks and each one used to call `Babel.transform(body, {presets:['react'], plugins:[…]})`
+   for its own tree — a full parse AND a full JSX transform of the same 512KB inline script, ~550ms
+   apiece, 15 times. That put the gate at ~6.0s, and THIS SUITE runs the gate once per deliberate
+   break, so it multiplied by 88 and put the run at ~8 minutes — which is what turned "add one line
+   to CI" into a question about CI minutes. There are three distinct sources (index.html's boot
+   script, its Babel block, and ops.html's inline script), so three parses is the floor and
+   anything above it is the cache not working.
+   It is asserted on the EXACT pair, not a bound: `parses` rising to 15 is the regression this
+   guards, and `walks` falling is a walk that quietly stopped running — which the breaks would
+   also catch, but only for whichever check lost it. A wall-clock assertion was the obvious
+   alternative and is rejected on purpose: it would be flaky on a loaded runner and would report
+   a slow machine as a broken cache. */
+const parseLine = (base.out.match(/(\d+) AST parse\(s\) shared by (\d+) walk\(s\)\./) || []);
+ok('teeth: clean copy parses each source once and shares it across every walk',
+  parseLine[1] === '3' && parseLine[2] === '15',
+  parseLine[0] || 'the gate printed no parse/walk line at all');
 
 /* One deliberate break per check, and one per clause where a check holds several. `expect` is the
    invariant tag the gate must print on the failing row, so a break that fails the WRONG check — or
@@ -487,6 +508,16 @@ const BREAKS = [
     const a = s.indexOf('<script>\n(function');
     return s.slice(0, a + '<script>'.length) + '\nvar x = 1;\n' + s.slice(s.indexOf('</script>', a));
   }, '8', OPSPAGE],
+  /* Added 2026-11-23 with the shared-AST walk. ops.html is parsed as PLAIN JavaScript — no `jsx`
+     plugin — and that is a guard rather than an implementation detail: this page's only remote
+     script is supabase-js, so it loads no Babel, and a JSX element in here is a SyntaxError the
+     two admins' browsers hit at load, after which the feedback inbox renders nothing at all. The
+     page has no suite of its own and the harness only republishes a copy of it, so the gate is
+     the only thing that would ever say so. Before the walk shared one AST per source this was
+     unreachable: every walk ran `presets:['react']`, so JSX here PARSED and the gate passed. */
+  ['[8] ops.html grows a JSX element, which it loads no Babel to transform', 'ops.html',
+    (s) => s.replace(OPS_SAFE_WRITE, '    const badge = <span>ops</span>;\n' + OPS_SAFE_WRITE),
+    '8', OPSPAGE],
   /* The published-link clause, added 2026-11-11. Four breaks, one per `must()`, because a group of
      musts negative-tested as a group only proves that ONE of them has teeth.
 
@@ -714,9 +745,41 @@ const GREENS = [
   ['privacy.html carries a data: image whose payload names a remote host', 'privacy.html',
     (s) => s.replace('</body>',
       '<img alt="" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3Ctitle%3Ehttps://example.com%3C/title%3E%3C/svg%3E">\n</body>')],
+  /* Added 2026-11-23 with the shared-AST walk, and this one guards a FIGURE rather than a verdict.
+     Every walk in the gate used to get its tree from `Babel.transform(…, presets:['react'])`, and
+     under that preset a call inside a JSX attribute is visited TWICE — once in the JSX tree, once
+     again after the transform re-inserts the same expression as an argument to
+     `React.createElement`. Invariant 5's check tallied visitor invocations, so it printed
+     `45 sites` for the eight nights after the derivation shipped while index.html holds exactly
+     35 (`grep -cE '(localStorage|sessionStorage)\.(getItem|setItem|removeItem)\(' index.html`
+     → 35). Nothing could see it: the figure is not a verdict, the gate passed either way, and no
+     row in this suite read it.
+     The fix is not "parse without the preset" — that would make the number right today and leave
+     it one preset away from wrong again. Sites are keyed on their node's own offset, so the count
+     is right however many passes a future walk makes. This row proves exactly that: it puts the
+     old react-preset transform BACK inside walk(), which restores the double-visit, and requires
+     the figure to stay 35. Measured 2026-11-23 — under the pre-fix tally this same edit printed
+     45. The clean baseline cannot see any of it, which is why it is a row. */
+  ['walk() goes back to a react-preset transform, double-visiting every JSX attribute',
+    'scripts/check_build.mjs',
+    /* The whole helper goes back, because the double-visit is caused by the visitor being
+       registered AS A BABEL PLUGIN during the transform — the preset's passes then run it again
+       over the nodes the JSX transform rewrote. Traversing a transformed AST separately does NOT
+       reproduce it, and a first draft of this row did exactly that and passed with the fix
+       reverted, which is the kind of unfalsifiable assertion this file exists to refuse. */
+    (s) => s.replace(
+      /const walk = \(code, visitor, plugins = \['jsx'\]\) => \{[\s\S]*?\n\};/,
+      "const walk = (code, visitor, plugins = ['jsx']) => {\n"
+      + "  require('@babel/standalone').transform(code, { sourceType: 'script', code: false,\n"
+      + "    ast: false, presets: plugins.includes('jsx') ? ['react'] : [],\n"
+      + "    plugins: [() => ({ visitor })] });\n"
+      + "  parses += 1;\n  walks += 1;\n};"),
+    { claim: 'the storage-site figure stays 35, so it counts sites and not visits',
+      row: /\[5\].*$/m,
+      test: (out) => /\[5\][^\n]*\b35 sites\b/.test(out) }],
 ];
 
-for (const [name, file, fn] of GREENS) {
+for (const [name, file, fn, also] of GREENS) {
   buildScratch();
   let greenPatched = true;
   try { patch(file, fn); } catch (e) { greenPatched = false; ok(`greens: ${name}`, false, e.message); }
@@ -724,6 +787,11 @@ for (const [name, file, fn] of GREENS) {
   const g = runGate();
   ok(`greens: ${name} — the gate stays green`, g.code === 0,
     g.code === 0 ? '' : `exited ${g.code}: ${(g.out.match(/\u2717 .*/) || ['no red row'])[0].slice(0, 180)}`);
+  /* A green exit is not always the whole claim. Where an edit must also leave a FIGURE alone,
+     the row carries a predicate over the gate's output: "it still passed" would be satisfied by
+     a gate that passed while printing a number nothing reads. */
+  if (also) ok(`greens: ${name} — ${also.claim}`, also.test(g.out),
+    (g.out.match(also.row) || ['that row was not printed'])[0].trim().slice(0, 160));
 }
 
 rmSync(SCRATCH, { recursive: true, force: true });

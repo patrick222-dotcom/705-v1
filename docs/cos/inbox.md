@@ -7,6 +7,19 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-23 · nightly · **the 8-minute gate meta-test was blamed on a 1MB file copy; it was 15
+  redundant Babel transforms, and one had been printing a wrong number for eight nights** — last
+  night named the symlink fix as owner-free work, so this run measured it first: the file copy is
+  **6 ms** per break (0.1% of the run) while the gate subprocess is **6,018 ms**. Cause was ten
+  AST walks each running their own `Babel.transform(…, presets:['react'])` on the same 512KB
+  script, 15 times. The walks were also reading 69% synthesized nodes, and a plugin visitor
+  double-fires inside JSX attributes, so Invariant 5's check printed `45 sites` against a true
+  **35**. One shared AST per source; sites keyed on node offset. Gate 6.03s → 2.65s, meta-test
+  ~8min → 4m7s, 100 → 104 assertions. No live defect in any invariant.
+  Belongs to no live thread; the gate-hardening band this is the seventeenth of has no seat.
+  Worth a decision: this band has now run seventeen nights because `## Queue` holds nothing
+  unblocked that does not need Pat.
+
 - 2026-11-22 · nightly · **Invariant 4's gate check was one unanchored regex printing the word
   `present`** — the only invariant here with a live production signal, and it earned that signal
   by breaking cloud sync for every signed-in user for 47 silent days. Its check read one known

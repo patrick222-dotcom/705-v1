@@ -2138,6 +2138,145 @@ conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   twenty days.**
 
+### P1 (new, groom 2026-11-23)
+
+**Why this band sits BELOW the 11-06 through 11-22 bands instead of at the top of `## Queue`:**
+unchanged for the seventeenth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The 8-minute meta-test was blamed on a 1MB file copy; it was 15 redundant Babel
+  transforms, and one of them had been printing a wrong number for eight nights**~~ —
+  **SHIPPED 2026-11-23**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level))
+  **Taken because last night's band named it as the one build item a later run could take without
+  the owner** — *"the cheap fix is to copy the worker once and symlink it per break"* — and the
+  first thing this run did was measure that claim with the 11-14 band's question: *find a claim
+  with a number in it, then ask what that number is actually counting.* Tonight the claim was a
+  **cause**, and it was wrong.
+  **Measured before anything was written.** `buildScratch()` — the function that copies the 1MB
+  `pdf.worker.min.js`, which last night's note blames — is **6 ms** per break: 0.5s across all 88,
+  **0.1%** of the run. `runGate()` is **6,018 ms**, and 88 × 6.018s = 530s ≈ the observed 8
+  minutes. So the named fix addressed a tenth of a percent of the problem, and the symlink would
+  have been built, measured as no help, and written up as a mystery.
+  **The real cause.** Ten of the gate's checks are AST walks, and each called
+  `Babel.transform(body, {presets:['react'], plugins:[{visitor}]})` for its own tree — a full
+  parse *and* a full JSX transform of the same 512KB inline script, ~550ms apiece, **15 times**
+  across the loops. That is 5.5 of the gate's 6.0 seconds spent re-deriving a tree it already had.
+  **And it was not only slow — it was reading the wrong tree.** `presets:['react']` rewrites every
+  JSX element into a `React.createElement` call *before* a plugin visitor runs, so the walks saw
+  **11,090** CallExpressions where the source has **3,482**: 69% of every node they visited was
+  Babel's output rather than the app's code. Worse, a visitor registered as a plugin fires
+  **twice** on anything inside a JSX attribute — once in the JSX tree, once after the transform
+  re-inserts the same expression as a `createElement` argument. Invariant 5's check tallied
+  invocations, so it printed **`45 sites`** from 2026-11-14 while `index.html` holds exactly
+  **35**, confirmed independently
+  (`grep -cE '(localStorage|sessionStorage)\.(getItem|setItem|removeItem)\(' index.html` → 35).
+  The ten extra were the ten storage calls living in JSX attributes.
+  **Nothing in this repo could have caught that figure**, and the reason generalises: a figure is
+  not a verdict. The gate passed on either number, the anti-vacuity floor (`>= 25`) was met by
+  both, and the 88 breaks only ever ask *"does a break go red?"*. The derived *keys* were always
+  correct — they go into a Set, which dedupes — so the clause had teeth the whole time and only
+  its output lied.
+  **The fix is the dedupe, deliberately not the parser choice.** Sites are keyed on the node's own
+  offset, so the count is right however many passes a future walk makes; "parse without the
+  preset" would be correct today and one preset away from wrong again. Gate **6.03s → 2.65s**,
+  meta-test **~8min → 4m7s**, and the summary now prints `3 AST parse(s) shared by 15 walk(s)` so
+  the cache is asserted instead of claimed.
+  **One new break, one new GREEN, one new baseline row (100 → 104), negative-tested three ways —
+  and the third caught a bad assertion of this run's own.** Neuter the cache: the parse row goes
+  red alone (103 / 1, `15 AST parse(s)`). Revert the dedupe to a tally: **only** the ninth GREEN
+  goes red at `45 sites`, while the clean baseline still reads 35 — the clean page cannot see this
+  one, which is the whole reason it is a row. Take the tempting repair for the new `[8]` break
+  (parse `ops.html` *with* the jsx plugin) and that break passes a deliberately broken tree.
+  **The caught mistake:** the GREEN's first draft reverted `walk()` to a transform and then
+  traversed the result *separately*, which does not reproduce the double-visit — it passed with
+  the fix reverted. The double-visit needs the visitor registered **as a Babel plugin**.
+  An assertion that only ever passes is what that file exists to refuse, and it nearly shipped one.
+  **A property `ops.html` had no check for fell out of it.** Its script is now parsed as plain
+  JavaScript, no `jsx` plugin — which is a guard, because the console loads **no Babel** (its only
+  remote script is supabase-js), so JSX in there is a `SyntaxError` the two admins hit at load and
+  the inbox renders nothing. The page has no suite of its own and the harness only republishes a
+  copy of it. Before tonight this was unreachable: every walk ran `presets:['react']`, so JSX here
+  parsed and the gate passed.
+  **No live defect in any invariant** — every check's verdict is byte-identical to last night's on
+  the clean tree; the only two output changes are `45 sites` → `35 sites` and the new parse line.
+  Gate still 21 checks, so CI's required count does not move.
+- [ ] **The CI-minutes objection to the gate meta-test is now largely paid down, and the ask is
+  unchanged** (P2 · `harness:unscoped` · needs the owner) — last night's band raised a new
+  obstacle to the twenty-five-night-old request: at 100 assertions the suite had crossed to ~8
+  minutes, so "one line in CI" had become a question about CI minutes. It is **4m7s** tonight at
+  104 assertions, and the saving came from the gate itself (6.03s → 2.65s), which also makes CI's
+  *existing* required `gate` job faster on every PR. The two lines are still Pat's, still after
+  the existing `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs`, and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`. Worth saying plainly: the
+  symlink idea last night proposed should **not** be built — it was measured at 6ms per break,
+  0.1% of the run, and the thing it was meant to fix is fixed.
+- [ ] **A device arrived by QR and stopped on screen 0 — the fourteenth of exactly that shape**
+  (P2 · source:groom · no action) — `events` **1,818** against 1,814 last night. All four new rows
+  are one device, `3f5e1bf4`, at **2026-11-22 20:59:15–18**: `app_open {via:'qr', fresh:true}` +
+  `ob_step {step:0}` on the same timestamp, `ob_view {screen:'landing'}`, then `session_end
+  {secs:4, shifts:0, setup:false, last:'ob_view'}`. `via:'qr'` is the one new detail — it is the
+  first row in a week that says how the device arrived — but it stopped where all thirteen before
+  it did. `rows_24h` **4**, `rows_7d` **11**, **3** distinct devices in 7 days. **Do not quote an
+  activation figure off it** — the device classifier is still broken and CLAUDE.md records every
+  activation figure since 2026-09-07 as inflated by exactly this cohort.
+- [ ] **`silence_watch` is FRESH; `access_watch` reads TIGHT on its eleventh night, 16/16** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **11.1h** old against a 48h window. Access
+  posture unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe.**
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — fourth night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **3.7 days**
+  ago, so the `{events:107, pending:50, classify:50, updates:0, removals:0, cards:7}` row the
+  11-20 band read is still the newest. `ics_import_done` **10** (last 2026-10-10),
+  `ics_sync_result` **44**, `ics_sync_done` **29** — all three identical for three grooms.
+  `ics_autosync_pref` and `ics_autosync_off` both **zero rows from any device, ever** — still
+  expected, and the 11-20 reading stands: she met the stepper's opt-out and took neither it nor
+  the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-FOURTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **38.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 17-for-17** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the eighteenth groom.
+  Tonight's one new load (the QR device above) filed **zero** rows, which is the third load of
+  positive evidence rather than a silent night that cannot disprove the filter.
+- [ ] **CABINET MISSED fires for the FOURTEENTH night, and the brief is now 21.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twenty-first** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the SEVENTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-22
+  band staked out: that merge (#226) touched `BACKLOG.md`, `CLAUDE.md`, `docs/cos/inbox.md`,
+  `scripts/check_build.mjs` and `scripts/test_check_build.mjs` — no publish-set file.
+  `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation sentence, boundary
+  **`97f8e86`** tonight (was `7aaccbd`) — the figure drifts with clone depth, which is why #210
+  stopped printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches
+  `scripts/`, `CLAUDE.md`, `BACKLOG.md` and `docs/cos/inbox.md` but **not `index.html`** and
+  **not `ops.html`**, so tomorrow's watch should still name **`a09cabe`**, and all three of the
+  others should still read `[ok]` with the truncation sentence.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — SEVENTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **17.7 days**.
+  Tonight branched to `claude/great-feynman-amur2x`, so #209's head is untouched for the
+  seventeenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the EIGHTEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty-one days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6169,6 +6308,62 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-23 — **The 8-minute gate meta-test was blamed on a 1MB file copy. It was 15 redundant
+  Babel transforms — and one of them had been printing a wrong number for eight nights.**
+  Last night's band named the one build item a later run could take without the owner: *"the cheap
+  fix is to copy the worker once and symlink it per break."* **Measured first, and the cause was
+  wrong.** `buildScratch()` — the function that copies `pdf.worker.min.js` — is **6 ms** per
+  break: 0.5s across all 88, **0.1%** of the run. `runGate()` is **6,018 ms**, and 88 × 6.018s =
+  530s ≈ the observed 8 minutes. The symlink would have been built, measured as no help, and
+  written up as a mystery.
+  **Cause:** ten of the gate's twenty-one checks are AST walks, and each one called
+  `Babel.transform(body, { presets:['react'], plugins:[{visitor}] })` to get its own tree — a full
+  parse *and* a full JSX transform of the same 512,477-byte inline script, ~550ms apiece, **15
+  times** across the loops. 5.5 of the gate's 6.0 seconds re-derived a tree it already had.
+  **The walks were also reading the wrong tree, and that is the half with a consequence.**
+  `presets:['react']` rewrites every JSX element into a `React.createElement` call before a plugin
+  visitor runs, so the walks saw **11,090** CallExpressions where the source has **3,482** — 69%
+  of every node visited was Babel's output, not the app's code. And a visitor registered as a
+  plugin fires **twice** on anything inside a JSX attribute: once in the JSX tree, once again
+  after the transform re-inserts the same expression as a `createElement` argument (reproduced in
+  a 4-line fixture). Invariant 5's check tallied invocations, so from 2026-11-14 it printed
+  **`45 sites`** while `index.html` holds exactly **35**, confirmed independently with
+  `grep -cE '(localStorage|sessionStorage)\.(getItem|setItem|removeItem)\(' index.html` → 35. The
+  ten extra were the ten storage calls that live in JSX attributes.
+  **Nothing here could have caught it, and the reason generalises: a figure is not a verdict.**
+  The gate passed on either number, the anti-vacuity floor (`>= 25`) was met by both, and the 88
+  deliberate breaks only ever ask *"does a break go red?"*. The derived **keys** were always right
+  — they go into a Set, which dedupes — so the clause had teeth throughout and only its output
+  lied. Same shape as the last four nights' findings, one layer in: not a claim about the app, a
+  claim the gate was making about itself.
+  **Shipped.** One `walk(code, visitor, plugins)` helper caching one AST per (source, options),
+  replacing all ten transform sites; `parses`/`walks` printed in the summary
+  (`3 AST parse(s) shared by 15 walk(s)`) so the cache is asserted, not claimed; Invariant 5's
+  sites keyed on each node's own offset. **The fix is the dedupe, deliberately not the parser
+  choice** — "parse without the preset" is right today and one preset away from wrong again. The
+  `build` check keeps its real `transform` and pays the full cost once, because its whole job is
+  to prove the JSX *transforms* under the exact Babel build the browser loads. Gate **6.03s →
+  2.65s**; meta-test **~8min → 4m7s** at 104 assertions.
+  **A property `ops.html` had no check for fell out of it:** its script is parsed as plain
+  JavaScript, no `jsx` plugin. That is a guard — the console loads **no Babel** (its only remote
+  script is supabase-js), so JSX in there is a `SyntaxError` the two admins hit at load, after
+  which the inbox renders nothing, and the page has no suite of its own. Unreachable before
+  tonight: every walk ran `presets:['react']`, so JSX here parsed and the gate passed.
+  **100 → 104** in `scripts/test_check_build.mjs` (88 breaks, 9 GREENS, the ninth pinning a
+  FIGURE rather than a verdict), **negative-tested three ways, and the third caught a bad
+  assertion of this run's own**: neuter the cache → the parse row goes red alone (103 / 1,
+  `15 AST parse(s)`); revert the dedupe to a tally → **only** the ninth GREEN goes red at
+  `45 sites` while the clean baseline still reads 35 (103 / 1); parse `ops.html` *with* the jsx
+  plugin → the new `[8]` break passes a deliberately broken tree (103 / 1). **The caught
+  mistake:** that GREEN's first draft reverted `walk()` to a transform and then traversed the
+  result *separately*, which does not reproduce the double-visit — it passed with the fix
+  reverted. An assertion that only ever passes is what that file exists to refuse, and it nearly
+  shipped one.
+  **No live defect in any invariant.** Every check's verdict is byte-identical to the previous
+  night's on the clean tree; the only two output changes are `45 sites` → `35 sites` and the new
+  parse line. Gate still 21 checks, so CI's required count does not move. Suites: gate 21/21,
+  meta-test 104/0, smoke 1012/0 (61/61 sections), core 175/0, groom-seed 33/0, dashboard 44/0,
+  deploy-watch 121/0, silence-watch 39/0. `index.html` untouched.
 - 2026-11-22 — **Invariant 4's gate check was one unanchored regex printing the word `present`,
   and it was wrong in both directions.** Invariant 4 is the only one of the thirteen with a live
   production signal, and it earned that signal by running **47 days** undetected across every
