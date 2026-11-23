@@ -52,6 +52,48 @@ const check = (invariant, label, fn) => {
 };
 const must = (cond, msg) => { if (!cond) throw new Error(msg); };
 
+/* ---- one AST per source, shared by every walking check --------------------------------------
+   Ten of the checks below are AST WALKS, and each one used to call
+   `Babel.transform(body, { presets:['react'], plugins:[{visitor}] })` to get its tree. That is
+   a full parse AND a full JSX transform per check, of the same 512KB inline script, measured at
+   ~550ms each — so the gate spent ~5.5 of its 6.0 seconds re-deriving a tree it already had.
+   `scripts/test_check_build.mjs` runs the gate once per deliberate break, so that multiplied by
+   88 and put the gate's own meta-test at ~8 minutes, which is the figure that turned "add one
+   line to CI" into a question about CI minutes.
+
+   Parsing once and traversing the cached tree is not only cheaper, it is more HONEST about what
+   these checks walk. `presets:['react']` rewrites every JSX element into a `React.createElement`
+   call before the visitor runs, so the old trees carried 11,090 CallExpressions where the source
+   has 3,482 — 69% of the nodes every walk visited were Babel's output, not the app's source.
+   That is harmless today (a synthesized `createElement` call does not look like
+   `localStorage.getItem` or `.from('user_data')`), but several of these checks count nodes as an
+   anti-vacuity floor, and a floor that counts synthesized nodes is a floor that can be met by
+   JSX alone. The walks now see the file as written.
+
+   NOT used by the `build` check above, deliberately: its whole job is to prove the JSX really
+   TRANSFORMS under the exact Babel build the browser loads, so it must stay a real `transform`
+   and pay the full cost once. A parse-only check there would pass on JSX that parses and then
+   fails to transform in front of a visitor.
+
+   The cache is keyed on the source AND the parser options, because a future walk that needs a
+   different plugin set must not be handed this one's tree. `parses` is printed in the summary so
+   the saving is asserted rather than claimed — `test_check_build.mjs` pins it. */
+let parses = 0, walks = 0;
+const astCache = new Map();
+const walk = (code, visitor, plugins = ['jsx']) => {
+  const key = `${plugins.join(',')}\u0000${code}`;
+  let ast = astCache.get(key);
+  if (!ast) {
+    const { parser } = require('@babel/standalone').packages;
+    ast = parser.parse(code, { sourceType: 'script', plugins, errorRecovery: false });
+    astCache.set(key, ast);
+    parses += 1;
+  }
+  const traverse = require('@babel/standalone').packages.traverse;
+  (traverse.default || traverse)(ast, visitor);
+  walks += 1;
+};
+
 /* ---- the one that actually stops a bad deploy: does the JSX parse? ---------------------- */
 check('build', 'JSX block parses', () => {
   const open = html.indexOf('<script type="text/babel" data-presets="react">');
@@ -503,7 +545,6 @@ check(4, 'Every write to user_data carries a conflict target', () => {
    * against the live catalog 2026-11-22). `user_data` is the only one whose PK is a generated
    * `id` with `user_id` carrying a separate UNIQUE — which is the whole mechanism of the outage. */
 
-  const Babel = require('@babel/standalone');
 
   /* Pass-by-omission guard, clause (5) above and the rule Invariant 13's check follows: the
      function this invariant is written about must be FOUND, not merely echoed by a line that
@@ -531,14 +572,13 @@ check(4, 'Every write to user_data carries a conflict target', () => {
      every one of those reads as a table name this check cannot resolve. */
   const clients = new Set();
   for (const body of inline) {
-    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-      plugins: [() => ({ visitor: {
-        VariableDeclarator(p) {
-          if (p.node.id.type !== 'Identifier' || !p.node.init) return;
-          const src = body.slice(p.node.init.start, p.node.init.end);
-          if (/\bcreateClient\s*\(/.test(src)) clients.add(p.node.id.name);
-        },
-      } })] });
+    walk(body, {
+      VariableDeclarator(p) {
+        if (p.node.id.type !== 'Identifier' || !p.node.init) return;
+        const src = body.slice(p.node.init.start, p.node.init.end);
+        if (/\bcreateClient\s*\(/.test(src)) clients.add(p.node.id.name);
+      },
+    });
   }
   must(clients.size >= 1,
     'no supabase-js client binding found — this check reads .from() calls on the names bound from ' +
@@ -581,124 +621,122 @@ check(4, 'Every write to user_data carries a conflict target', () => {
 
   for (const body of inline) {
     const bound = new Map();
-    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-      plugins: [() => ({ visitor: {
-        VariableDeclarator(p) {
-          if (p.node.id.type !== 'Identifier') return;
-          const v = p.node.init;
-          if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
-        },
-      } })] });
+    walk(body, {
+      VariableDeclarator(p) {
+        if (p.node.id.type !== 'Identifier') return;
+        const v = p.node.init;
+        if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
+      },
+    });
 
-    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-      plugins: [() => ({ visitor: {
-        CallExpression(p) {
-          const callee = p.node.callee;
+    walk(body, {
+      CallExpression(p) {
+        const callee = p.node.callee;
 
-          /* ---- (a) the supabase-js route: supabase.from('user_data').<verb>(…) ---------- */
-          if (callee.type === 'MemberExpression'
-              && (callee.property.name || callee.property.value) === 'from'
-              && callee.object.type === 'Identifier' && clients.has(callee.object.name)) {
-            const arg = p.node.arguments[0];
-            const table = literalParts(arg, bound);
-            if (table === null) {
-              /* A table name this walk cannot read could be user_data, and there is deliberately
-                 no fallback — see the storage-key derivation's identical rule. */
-              unresolved.push(`.from(<${arg ? arg.type : 'no argument'}>) — table is not a literal`);
-              return;
-            }
-            if (table !== 'user_data') return;
-
-            /* Walk the fluent chain forward collecting its verbs, so `.upsert(…)` is found
-               whether it is first or buried behind `.select().eq()`. */
-            const verbs = [];
-            let cur = p;
-            for (;;) {
-              const mem = cur.parentPath;
-              if (!mem || !mem.isMemberExpression() || mem.node.object !== cur.node) break;
-              const call = mem.parentPath;
-              if (!call || !call.isCallExpression() || call.node.callee !== mem.node) break;
-              verbs.push({ name: mem.node.property.name || mem.node.property.value, path: call });
-              cur = call;
-            }
-            const write = verbs.find((v) => /^(upsert|insert|update)$/.test(String(v.name)));
-            if (!write) {
-              otherOps.push(verbs.map((v) => v.name).join('.') || '(no verb)');
-              return;
-            }
-            if (write.name !== 'upsert') {
-              /* `.insert()` takes no conflict target, so it IS the 47-day outage. `.update()`
-                 cannot 23505 but silently no-ops when the row is absent, which is a different
-                 bug reaching the same place; both are rejected on purpose, so a save path that
-                 stops being an upsert is a deliberate edit to this check. */
-              upserts.push({ bad: `.${write.name}() to user_data`, why:
-                `user_data is written with .${write.name}(), not .upsert() — the table's PK is a ` +
-                'generated id with user_id merely UNIQUE, so an INSERT violates ' +
-                'user_data_user_id_key on every save after the first (23505, forever)' });
-              return;
-            }
-            const opts = write.path.node.arguments[1];
-            if (!opts) {
-              upserts.push({ bad: 'upsert with no options argument', why:
-                "the user_data upsert has no second argument, so it carries no onConflict — " +
-                'PostgREST targets the PK, a fresh id is generated, no conflict fires, and the ' +
-                'statement degrades to the INSERT that 23505s forever' });
-              return;
-            }
-            const oc = propString(opts, 'onConflict', bound);
-            if (oc === undefined || oc === null || oc !== 'user_id') {
-              upserts.push({ bad: `onConflict is ${oc === undefined ? 'absent' : JSON.stringify(oc)}`, why:
-                "the user_data upsert's onConflict is not 'user_id' — that option is the whole " +
-                'fix for the 2026-07-07 to 2026-08-23 outage; without it every save after the ' +
-                'first fails with 23505, silently, for every signed-in user' });
-              return;
-            }
-            upserts.push({ ok: true, verbs: verbs.map((v) => v.name).join('.') });
+        /* ---- (a) the supabase-js route: supabase.from('user_data').<verb>(…) ---------- */
+        if (callee.type === 'MemberExpression'
+            && (callee.property.name || callee.property.value) === 'from'
+            && callee.object.type === 'Identifier' && clients.has(callee.object.name)) {
+          const arg = p.node.arguments[0];
+          const table = literalParts(arg, bound);
+          if (table === null) {
+            /* A table name this walk cannot read could be user_data, and there is deliberately
+               no fallback — see the storage-key derivation's identical rule. */
+            unresolved.push(`.from(<${arg ? arg.type : 'no argument'}>) — table is not a literal`);
             return;
           }
+          if (table !== 'user_data') return;
 
-          /* ---- (b) the raw PostgREST route: fetch(SUPABASE_URL + '/rest/v1/user_data…') --- */
-          if (callee.type === 'Identifier' && callee.name === 'fetch') {
-            const url = literalParts(p.node.arguments[0], bound);
-            if (url === null) {
-              unresolved.push('fetch(<unresolvable url>) — a url this check cannot read could be '
-                + 'a user_data write');
-              return;
-            }
-            if (!url.includes('/rest/v1/user_data')) return;
-            const init = p.node.arguments[1];
-            const method = String(propString(init, 'method', bound) || 'GET').toUpperCase();
-            if (method !== 'POST') { otherOps.push(`fetch ${method} user_data`); return; }
-            if (init && init.type !== 'ObjectExpression') {
-              unresolved.push(`fetch POST to user_data with a <${init.type}> init — this check `
-                + 'cannot read its headers');
-              return;
-            }
-            const missing = [];
-            if (!/[?&]on_conflict=user_id(&|$)/.test(url)) missing.push('?on_conflict=user_id in the url');
-            const headers = (init ? init.properties : []).find(
-              (pr) => pr.type === 'ObjectProperty' && (pr.key.name || pr.key.value) === 'headers');
-            const prefer = headers ? propString(headers.value, 'Prefer', bound) : undefined;
-            if (prefer === null) {
-              unresolved.push('fetch POST to user_data with an unresolvable Prefer header');
-              return;
-            }
-            if (!/resolution=merge-duplicates/.test(String(prefer || ''))) {
-              missing.push('resolution=merge-duplicates in the Prefer header');
-            }
-            if (missing.length) {
-              rawPosts.push({ bad: `raw POST to user_data missing ${missing.join(' and ')}`, why:
-                'a POST to /rest/v1/user_data without both of those is a plain INSERT: it ' +
-                'violates user_data_user_id_key and 23505s on every unload flush after the ' +
-                "first, forever. Invariant 4's own text names this as the raw-PostgREST spelling " +
-                'of the same rule, and the unload path is the one whose success is unobservable' });
-              return;
-            }
-            rawPosts.push({ ok: true });
+          /* Walk the fluent chain forward collecting its verbs, so `.upsert(…)` is found
+             whether it is first or buried behind `.select().eq()`. */
+          const verbs = [];
+          let cur = p;
+          for (;;) {
+            const mem = cur.parentPath;
+            if (!mem || !mem.isMemberExpression() || mem.node.object !== cur.node) break;
+            const call = mem.parentPath;
+            if (!call || !call.isCallExpression() || call.node.callee !== mem.node) break;
+            verbs.push({ name: mem.node.property.name || mem.node.property.value, path: call });
+            cur = call;
+          }
+          const write = verbs.find((v) => /^(upsert|insert|update)$/.test(String(v.name)));
+          if (!write) {
+            otherOps.push(verbs.map((v) => v.name).join('.') || '(no verb)');
             return;
           }
-        },
-      } })] });
+          if (write.name !== 'upsert') {
+            /* `.insert()` takes no conflict target, so it IS the 47-day outage. `.update()`
+               cannot 23505 but silently no-ops when the row is absent, which is a different
+               bug reaching the same place; both are rejected on purpose, so a save path that
+               stops being an upsert is a deliberate edit to this check. */
+            upserts.push({ bad: `.${write.name}() to user_data`, why:
+              `user_data is written with .${write.name}(), not .upsert() — the table's PK is a ` +
+              'generated id with user_id merely UNIQUE, so an INSERT violates ' +
+              'user_data_user_id_key on every save after the first (23505, forever)' });
+            return;
+          }
+          const opts = write.path.node.arguments[1];
+          if (!opts) {
+            upserts.push({ bad: 'upsert with no options argument', why:
+              "the user_data upsert has no second argument, so it carries no onConflict — " +
+              'PostgREST targets the PK, a fresh id is generated, no conflict fires, and the ' +
+              'statement degrades to the INSERT that 23505s forever' });
+            return;
+          }
+          const oc = propString(opts, 'onConflict', bound);
+          if (oc === undefined || oc === null || oc !== 'user_id') {
+            upserts.push({ bad: `onConflict is ${oc === undefined ? 'absent' : JSON.stringify(oc)}`, why:
+              "the user_data upsert's onConflict is not 'user_id' — that option is the whole " +
+              'fix for the 2026-07-07 to 2026-08-23 outage; without it every save after the ' +
+              'first fails with 23505, silently, for every signed-in user' });
+            return;
+          }
+          upserts.push({ ok: true, verbs: verbs.map((v) => v.name).join('.') });
+          return;
+        }
+
+        /* ---- (b) the raw PostgREST route: fetch(SUPABASE_URL + '/rest/v1/user_data…') --- */
+        if (callee.type === 'Identifier' && callee.name === 'fetch') {
+          const url = literalParts(p.node.arguments[0], bound);
+          if (url === null) {
+            unresolved.push('fetch(<unresolvable url>) — a url this check cannot read could be '
+              + 'a user_data write');
+            return;
+          }
+          if (!url.includes('/rest/v1/user_data')) return;
+          const init = p.node.arguments[1];
+          const method = String(propString(init, 'method', bound) || 'GET').toUpperCase();
+          if (method !== 'POST') { otherOps.push(`fetch ${method} user_data`); return; }
+          if (init && init.type !== 'ObjectExpression') {
+            unresolved.push(`fetch POST to user_data with a <${init.type}> init — this check `
+              + 'cannot read its headers');
+            return;
+          }
+          const missing = [];
+          if (!/[?&]on_conflict=user_id(&|$)/.test(url)) missing.push('?on_conflict=user_id in the url');
+          const headers = (init ? init.properties : []).find(
+            (pr) => pr.type === 'ObjectProperty' && (pr.key.name || pr.key.value) === 'headers');
+          const prefer = headers ? propString(headers.value, 'Prefer', bound) : undefined;
+          if (prefer === null) {
+            unresolved.push('fetch POST to user_data with an unresolvable Prefer header');
+            return;
+          }
+          if (!/resolution=merge-duplicates/.test(String(prefer || ''))) {
+            missing.push('resolution=merge-duplicates in the Prefer header');
+          }
+          if (missing.length) {
+            rawPosts.push({ bad: `raw POST to user_data missing ${missing.join(' and ')}`, why:
+              'a POST to /rest/v1/user_data without both of those is a plain INSERT: it ' +
+              'violates user_data_user_id_key and 23505s on every unload flush after the ' +
+              "first, forever. Invariant 4's own text names this as the raw-PostgREST spelling " +
+              'of the same rule, and the unload path is the one whose success is unobservable' });
+            return;
+          }
+          rawPosts.push({ ok: true });
+          return;
+        }
+      },
+    });
   }
 
   must(!unresolved.length,
@@ -771,7 +809,6 @@ check(5, 'Storage keys unrenamed', () => {
 
   /* (b) derivation. Both inline scripts, because the keys are split across them: the boot script
      owns `scrubpayErrors` (ERR_KEY, ~index.html:671) and the Babel block owns the other seven. */
-  const Babel = require('@babel/standalone');
   const inline = [];
   for (let at = html.indexOf('<script'); at !== -1; at = html.indexOf('<script', at + 1)) {
     const tagEnd = html.indexOf('>', at);
@@ -788,60 +825,67 @@ check(5, 'Storage keys unrenamed', () => {
   const builders = [];             // BACKUP_KEY(uid) and friends
   const authPurges = [];           // supabase-js's own sb-…auth-token keys
   const unresolved = [];           // anything else: a hole, so it throws
-  let sites = 0;
+  /* Distinct CALL SITES, keyed on the node's own offset within its script — never a tally of
+     visitor invocations. This printed `45 sites` for the eight nights after the derivation
+     shipped (2026-11-14) while the file holds exactly 35, because the old walk ran the visitor
+     through `Babel.transform(…, presets:['react'])` and a storage call inside a JSX attribute is
+     visited TWICE: once in the JSX tree, once again after the transform re-inserts that same
+     expression as an argument to `React.createElement`. The ten extra were the ten such calls.
+     Keying on position makes the figure independent of how many passes any future walk makes,
+     which is the property `test_check_build.mjs` pins rather than the number 35. */
+  const siteAt = new Set();
 
-  for (const { body } of inline) {
+  for (const [idx, { body }] of inline.entries()) {
     /* String literals bound to a name at any scope, which is how every key in this app is
        written (`const STORE_KEY = 'nursingWagePlannerData'`). Collected first so a call site can
        resolve a bare identifier regardless of declaration order. */
     const bound = new Map();
-    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-      plugins: [() => ({ visitor: {
-        VariableDeclarator(p) {
-          if (p.node.id.type !== 'Identifier') return;
-          const v = p.node.init;
-          if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
-        },
-      } })] });
+    walk(body, {
+      VariableDeclarator(p) {
+        if (p.node.id.type !== 'Identifier') return;
+        const v = p.node.init;
+        if (v && v.type === 'StringLiteral') bound.set(p.node.id.name, v.value);
+      },
+    });
 
-    Babel.transform(body, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-      plugins: [() => ({ visitor: {
-        CallExpression(p) {
-          const callee = p.node.callee;
-          if (callee.type !== 'MemberExpression') return;
-          if (callee.object.type !== 'Identifier') return;
-          if (!/^(localStorage|sessionStorage)$/.test(callee.object.name)) return;
-          const method = callee.property.name || callee.property.value;
-          if (!/^(getItem|setItem|removeItem)$/.test(String(method))) return;
-          sites += 1;
-          const arg = p.node.arguments[0];
-          if (!arg) { unresolved.push(`${method}() with no key argument`); return; }
-          if (arg.type === 'StringLiteral') { seen.add(arg.value); return; }
-          if (arg.type === 'Identifier') {
-            if (bound.has(arg.name)) { seen.add(bound.get(arg.name)); return; }
-            /* An identifier with no string binding is a parameter. Exactly one such site is
-               legitimate: `clearAuthStorage` purges supabase-js's OWN persisted auth token by
-               scanning for the `sb-` prefix (index.html:~4397). Those keys belong to the client
-               library, not to this app, so they are not Invariant 5's to name — but the shape is
-               recognised explicitly rather than skipped, so a second dynamic removeItem cannot
-               hide behind it. */
-            const owner = p.findParent((q) => q.isVariableDeclarator() || q.isFunctionDeclaration());
-            const text = owner ? body.slice(owner.node.start, owner.node.end) : '';
-            if (text.includes("'sb-'") && text.includes('auth-token')) { authPurges.push(arg.name); return; }
-            unresolved.push(`${method}(${arg.name}) — identifier with no string binding`);
-            return;
-          }
-          if (arg.type === 'CallExpression' && arg.callee.type === 'Identifier') {
-            builders.push(arg.callee.name);
-            return;
-          }
-          unresolved.push(`${method}(<${arg.type}>)`);
-        },
-      } })] });
+    walk(body, {
+      CallExpression(p) {
+        const callee = p.node.callee;
+        if (callee.type !== 'MemberExpression') return;
+        if (callee.object.type !== 'Identifier') return;
+        if (!/^(localStorage|sessionStorage)$/.test(callee.object.name)) return;
+        const method = callee.property.name || callee.property.value;
+        if (!/^(getItem|setItem|removeItem)$/.test(String(method))) return;
+        siteAt.add(`${idx}:${p.node.start}`);
+        const arg = p.node.arguments[0];
+        if (!arg) { unresolved.push(`${method}() with no key argument`); return; }
+        if (arg.type === 'StringLiteral') { seen.add(arg.value); return; }
+        if (arg.type === 'Identifier') {
+          if (bound.has(arg.name)) { seen.add(bound.get(arg.name)); return; }
+          /* An identifier with no string binding is a parameter. Exactly one such site is
+             legitimate: `clearAuthStorage` purges supabase-js's OWN persisted auth token by
+             scanning for the `sb-` prefix (index.html:~4397). Those keys belong to the client
+             library, not to this app, so they are not Invariant 5's to name — but the shape is
+             recognised explicitly rather than skipped, so a second dynamic removeItem cannot
+             hide behind it. */
+          const owner = p.findParent((q) => q.isVariableDeclarator() || q.isFunctionDeclaration());
+          const text = owner ? body.slice(owner.node.start, owner.node.end) : '';
+          if (text.includes("'sb-'") && text.includes('auth-token')) { authPurges.push(arg.name); return; }
+          unresolved.push(`${method}(${arg.name}) — identifier with no string binding`);
+          return;
+        }
+        if (arg.type === 'CallExpression' && arg.callee.type === 'Identifier') {
+          builders.push(arg.callee.name);
+          return;
+        }
+        unresolved.push(`${method}(<${arg.type}>)`);
+      },
+    });
   }
 
   /* Pass-by-omission guard, the rule check 3 and Invariant 13's clause both follow: a walk that
      resolves nothing must FAIL, not report a clean sweep. 30+ sites exist today. */
+  const sites = siteAt.size;
   must(sites >= 25,
     `found only ${sites} localStorage call sites — the walk is reading the wrong thing, and a ` +
     'derivation that sees nothing would pass this check by omission');
@@ -956,7 +1000,6 @@ check(8, 'Ops console ships nothing it should not', () => {
      false positive here is a line in a failure message asking for a deliberate narrowing, and
      a false negative is public-authored HTML in an admin's session. */
   const SINKS = /^(innerHTML|outerHTML|srcdoc|insertAdjacentHTML|setHTMLUnsafe|createContextualFragment|parseFromString|write|writeln)$/;
-  const Babel = require('@babel/standalone');
   /* Inline only: a `src=` script is the SRI check's subject, not this one. Locating the tags is
      a regex because that is an HTML question; everything inside them is an AST question. A tag
      shape that moves out from under this pattern fails the floor below rather than sweeping
@@ -972,35 +1015,47 @@ check(8, 'Ops console ships nothing it should not', () => {
   const hits = [];
   let assigns = 0;
   for (const src of inline) {
-    Babel.transform(src, { sourceType: 'script', code: false, ast: false,
-      plugins: [() => ({ visitor: {
-        AssignmentExpression(p) {
-          if (p.node.left.type !== 'MemberExpression') return;
-          const k = nameOf(p.node.left.property);
-          if (!k) return;
-          assigns++;
-          /* ANY operator: `+=` is how a row gets appended, and it is the one the old regex
-             missed by a single character. */
-          if (SINKS.test(k)) hits.push(`${k} ${p.node.operator} … (assignment)`);
-        },
-        CallExpression(p) {
-          if (p.node.callee.type !== 'MemberExpression') return;
-          const k = nameOf(p.node.callee.property);
-          if (k && SINKS.test(k)) hits.push(`${k}() (call)`);
-        },
-        /* Object.assign(n, {innerHTML: s}) and React-style prop bags reach the same setter
-           without ever writing a member assignment. */
-        ObjectProperty(p) {
-          const k = nameOf(p.node.key);
-          if (k && SINKS.test(k)) hits.push(`{ ${k}: … } (object key)`);
-        },
-        /* `n[prop] = s` where `prop` is held in a variable is unresolvable by shape, so the
-           NAME is caught instead, wherever it is spelled. Exact and anchored, so a sentence
-           mentioning a sink is not a hit — only the bare string that could index into one. */
-        StringLiteral(p) {
-          if (SINKS.test(p.node.value)) hits.push(`the bare string '${p.node.value}' (computed property)`);
-        },
-      } })] });
+    /* Parsed as PLAIN JavaScript — no `jsx` plugin, deliberately. ops.html loads no Babel (its
+       only remote script is supabase-js), so a JSX element in here is not a style choice, it is
+       a SyntaxError the two admins' browsers hit at load and the inbox never renders. The gate
+       is the only thing that would say so: this page has no test suite of its own, and the
+       harness only publishes a copy of it. A parse failure is therefore the finding, not noise,
+       so it is rethrown with what it means instead of leaving Babel's bare message in the row. */
+    try {
+      walk(src, {
+      AssignmentExpression(p) {
+        if (p.node.left.type !== 'MemberExpression') return;
+        const k = nameOf(p.node.left.property);
+        if (!k) return;
+        assigns++;
+        /* ANY operator: `+=` is how a row gets appended, and it is the one the old regex
+           missed by a single character. */
+        if (SINKS.test(k)) hits.push(`${k} ${p.node.operator} … (assignment)`);
+      },
+      CallExpression(p) {
+        if (p.node.callee.type !== 'MemberExpression') return;
+        const k = nameOf(p.node.callee.property);
+        if (k && SINKS.test(k)) hits.push(`${k}() (call)`);
+      },
+      /* Object.assign(n, {innerHTML: s}) and React-style prop bags reach the same setter
+         without ever writing a member assignment. */
+      ObjectProperty(p) {
+        const k = nameOf(p.node.key);
+        if (k && SINKS.test(k)) hits.push(`{ ${k}: … } (object key)`);
+      },
+      /* `n[prop] = s` where `prop` is held in a variable is unresolvable by shape, so the
+         NAME is caught instead, wherever it is spelled. Exact and anchored, so a sentence
+         mentioning a sink is not a hit — only the bare string that could index into one. */
+      StringLiteral(p) {
+        if (SINKS.test(p.node.value)) hits.push(`the bare string '${p.node.value}' (computed property)`);
+      },
+      }, []);
+    } catch (e) {
+      throw new Error(`ops.html's inline script does not parse as plain JavaScript: ${e.message} — ` +
+        'this page loads no Babel, so whatever this is does not run in the admins\' browsers at ' +
+        'all and the feedback inbox renders nothing. If a transform step is genuinely wanted here, ' +
+        'say so in this check; do not add the plugin to make the message go away');
+    }
   }
   must(assigns > 0,
     'the walk resolved no property assignment at all in ops.html — the page sets textContent in ' +
@@ -1148,7 +1203,6 @@ check('events', 'Event inventory sees every name that reaches events', () => {
      keepalive POST inside `beaconInsert` (the only sender that survives the tab going away).
      Both are fed by `eventRow`, which exists so the two row shapes cannot drift. Asserted as a
      shape rather than grepped, because the failing edit is an ordinary-looking one. */
-  const Babel = require('@babel/standalone');
   const open = html.indexOf('<script type="text/babel" data-presets="react">');
   const start = html.indexOf('>', open) + 1;
   const src = html.slice(start, html.indexOf('</script>', start));
@@ -1160,25 +1214,24 @@ check('events', 'Event inventory sees every name that reaches events', () => {
   };
   let supaWrites = 0, beaconWrites = 0;
   const inline = [];
-  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-    plugins: [() => ({ visitor: {
-      CallExpression(p) {
-        const c = p.node.callee, where = `line ${(p.node.loc && p.node.loc.start.line) || '?'}`;
-        /* supabase.from('events').insert(row) */
-        const isSupa = c && c.type === 'MemberExpression' && c.property.name === 'insert'
-          && c.object && c.object.type === 'CallExpression'
-          && c.object.callee && c.object.callee.type === 'MemberExpression'
-          && c.object.callee.property.name === 'from'
-          && c.object.arguments.length === 1
-          && (c.object.arguments[0].value === 'events');
-        const isBeacon = c && c.type === 'Identifier' && c.name === 'beaconInsert';
-        if (!isSupa && !isBeacon) return;
-        if (isSupa) supaWrites += 1; else beaconWrites += 1;
-        if (!builtByEventRow(p.node.arguments[0])) {
-          inline.push(`${isSupa ? "from('events').insert" : 'beaconInsert'} at ${where} (${(p.node.arguments[0] || {}).type || 'no argument'})`);
-        }
-      },
-    } })] });
+  walk(src, {
+    CallExpression(p) {
+      const c = p.node.callee, where = `line ${(p.node.loc && p.node.loc.start.line) || '?'}`;
+      /* supabase.from('events').insert(row) */
+      const isSupa = c && c.type === 'MemberExpression' && c.property.name === 'insert'
+        && c.object && c.object.type === 'CallExpression'
+        && c.object.callee && c.object.callee.type === 'MemberExpression'
+        && c.object.callee.property.name === 'from'
+        && c.object.arguments.length === 1
+        && (c.object.arguments[0].value === 'events');
+      const isBeacon = c && c.type === 'Identifier' && c.name === 'beaconInsert';
+      if (!isSupa && !isBeacon) return;
+      if (isSupa) supaWrites += 1; else beaconWrites += 1;
+      if (!builtByEventRow(p.node.arguments[0])) {
+        inline.push(`${isSupa ? "from('events').insert" : 'beaconInsert'} at ${where} (${(p.node.arguments[0] || {}).type || 'no argument'})`);
+      }
+    },
+  });
   must(supaWrites > 0,
     "no supabase.from('events').insert(…) call was found — the app's main analytics writer was "
     + 'renamed or moved, so this clause is inspecting nothing and a row built outside eventRow '
@@ -1337,7 +1390,6 @@ check('core', 'Extracted core in sync with index.html', () => {
    union answer, a funnel answer or the preset table. Each name must also be FOUND: a renamed
    function that silently drops out of this list would turn the check into a pass by omission. */
 check(3, 'Pay math never reads the persona', () => {
-  const Babel = require('@babel/standalone');
   const open = html.indexOf('<script type="text/babel" data-presets="react">');
   const start = html.indexOf('>', open) + 1;
   const src = html.slice(start, html.indexOf('</script>', start));
@@ -1368,15 +1420,14 @@ check(3, 'Pay math never reads the persona', () => {
       StringLiteral(p) { if (/^(healthcare|other|court|callback|report)$/.test(p.node.value) || FORBIDDEN.test(p.node.value)) hits.push(`${name} -> '${p.node.value}'`); },
     });
   };
-  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-    plugins: [() => ({ visitor: {
-      FunctionDeclaration(p) { if (WAGE.includes(p.node.id && p.node.id.name)) scan(p.node.id.name, p); },
-      VariableDeclarator(p) { if (p.node.id.type === 'Identifier' && WAGE.includes(p.node.id.name)) scan(p.node.id.name, p); },
-      ObjectProperty(p) {
-        const k = p.node.key && (p.node.key.name || p.node.key.value);
-        if (WAGE.includes(k) && isFn(p.node.value)) scan(k, p);
-      },
-    } })] });
+  walk(src, {
+    FunctionDeclaration(p) { if (WAGE.includes(p.node.id && p.node.id.name)) scan(p.node.id.name, p); },
+    VariableDeclarator(p) { if (p.node.id.type === 'Identifier' && WAGE.includes(p.node.id.name)) scan(p.node.id.name, p); },
+    ObjectProperty(p) {
+      const k = p.node.key && (p.node.key.name || p.node.key.value);
+      if (WAGE.includes(k) && isFn(p.node.value)) scan(k, p);
+    },
+  });
   const missing = WAGE.filter((n) => !found.has(n));
   must(!missing.length, `wage-core definitions not found (renamed? update this list): ${missing.join(', ')}`);
   must(!hits.length, `the pay math reads the persona — a persona may only set starting values: ${hits.join('; ')}`);
@@ -1407,7 +1458,6 @@ check(13, 'iCal feed URL: out of the blob, the log and the parser', () => {
      omission (check 3's rule, for the same reason).
      `tests/smoke.mjs` §33 scans the outgoing keepalive body for the same pattern at runtime. That
      covers one path with real bytes; this covers every path from the one place they share. */
-  const Babel = require('@babel/standalone');
   const open = html.indexOf('<script type="text/babel" data-presets="react">');
   const start = html.indexOf('>', open) + 1;
   const src = html.slice(start, html.indexOf('</script>', start));
@@ -1419,18 +1469,17 @@ check(13, 'iCal feed URL: out of the blob, the log and the parser', () => {
      line saying why. Do not delete the guard to make a name read nicer. */
   const CREDENTIAL = /ical|webcal|feed|basic\.ics/i;
   let keys = null;
-  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-    plugins: [() => ({ visitor: {
-      VariableDeclarator(p) {
-        if (!(p.node.id.type === 'Identifier' && p.node.id.name === 'serializeState')) return;
-        const found = [];
-        p.traverse({ ObjectProperty(q) {
-          const k = q.node.key && (q.node.key.name || q.node.key.value);
-          if (k) found.push(String(k));
-        } });
-        keys = found;
-      },
-    } })] });
+  walk(src, {
+    VariableDeclarator(p) {
+      if (!(p.node.id.type === 'Identifier' && p.node.id.name === 'serializeState')) return;
+      const found = [];
+      p.traverse({ ObjectProperty(q) {
+        const k = q.node.key && (q.node.key.name || q.node.key.value);
+        if (k) found.push(String(k));
+      } });
+      keys = found;
+    },
+  });
   must(keys && keys.length > 5,
     'serializeState was not found as a variable holding an object literal — if the single ' +
     'serializer moved or was renamed, this check is reading nothing and Invariant 13 just lost ' +
@@ -1472,55 +1521,54 @@ check(13, 'iCal feed URL: out of the blob, the log and the parser', () => {
   const EVENT_KEYS = ['dateKey', 'start', 'hours', 'uid', 'offHint'];
   let sawParser = false, sawOff = false;
   const extraKeys = [], loose = [], returns = [];
-  Babel.transform(src, { sourceType: 'script', code: false, ast: false, presets: ['react'],
-    plugins: [() => ({ visitor: {
-      FunctionDeclaration(p) {
-        const name = p.node.id && p.node.id.name;
-        if (name === 'parseICSSchedule') {
-          sawParser = true;
-          p.traverse({
-            /* Every object literal handed to a .push() inside the parser is a candidate event. */
-            CallExpression(q) {
-              const callee = q.node.callee;
-              if (!(callee.type === 'MemberExpression' && callee.property.name === 'push')) return;
-              const arg = q.node.arguments[0];
-              if (!arg || arg.type !== 'ObjectExpression') return;
-              for (const prop of arg.properties) {
-                const k = prop.key && (prop.key.name || prop.key.value);
-                if (k && !EVENT_KEYS.includes(String(k))) extraKeys.push(String(k));
-              }
-            },
-            /* A text-bearing VEVENT property may only be read as an argument to icsLooksOff.
-               Hoisting it into a local first — `const t = props.SUMMARY.value` — is exactly how
-               it starts being kept, so that shape must fail even before anything stores it. */
-            MemberExpression(q) {
-              const k = q.node.property && (q.node.property.name || q.node.property.value);
-              if (!k || !TEXT_PROPS.test(String(k))) return;
-              const inOff = q.findParent((a) => a.isCallExpression()
-                && a.node.callee.type === 'Identifier' && a.node.callee.name === 'icsLooksOff');
-              if (!inOff) loose.push(String(k));
-            },
-          });
-        }
-        if (name === 'icsLooksOff') {
-          sawOff = true;
-          /* `offHint` IS stored, so the one thing that keeps (b) honest is this function
-             returning a boolean. `return title` or `return props.SUMMARY.value` would put the
-             title into every parsed event while matching the key whitelist exactly. Allowed node
-             types are the boolean-valued ones; a future helper call (`isOffTitle(t)`) trips this
-             on purpose — widen it with a line saying why, do not delete it. */
-          p.traverse({ ReturnStatement(q) {
-            const a = q.node.argument;
-            if (!a) return;
-            const okType = a.type === 'BooleanLiteral' || a.type === 'UnaryExpression'
-              || a.type === 'LogicalExpression' || a.type === 'BinaryExpression'
-              || (a.type === 'CallExpression' && a.callee && a.callee.type === 'MemberExpression'
-                  && a.callee.property.name === 'test');
-            if (!okType) returns.push(a.type);
-          } });
-        }
-      },
-    } })] });
+  walk(src, {
+    FunctionDeclaration(p) {
+      const name = p.node.id && p.node.id.name;
+      if (name === 'parseICSSchedule') {
+        sawParser = true;
+        p.traverse({
+          /* Every object literal handed to a .push() inside the parser is a candidate event. */
+          CallExpression(q) {
+            const callee = q.node.callee;
+            if (!(callee.type === 'MemberExpression' && callee.property.name === 'push')) return;
+            const arg = q.node.arguments[0];
+            if (!arg || arg.type !== 'ObjectExpression') return;
+            for (const prop of arg.properties) {
+              const k = prop.key && (prop.key.name || prop.key.value);
+              if (k && !EVENT_KEYS.includes(String(k))) extraKeys.push(String(k));
+            }
+          },
+          /* A text-bearing VEVENT property may only be read as an argument to icsLooksOff.
+             Hoisting it into a local first — `const t = props.SUMMARY.value` — is exactly how
+             it starts being kept, so that shape must fail even before anything stores it. */
+          MemberExpression(q) {
+            const k = q.node.property && (q.node.property.name || q.node.property.value);
+            if (!k || !TEXT_PROPS.test(String(k))) return;
+            const inOff = q.findParent((a) => a.isCallExpression()
+              && a.node.callee.type === 'Identifier' && a.node.callee.name === 'icsLooksOff');
+            if (!inOff) loose.push(String(k));
+          },
+        });
+      }
+      if (name === 'icsLooksOff') {
+        sawOff = true;
+        /* `offHint` IS stored, so the one thing that keeps (b) honest is this function
+           returning a boolean. `return title` or `return props.SUMMARY.value` would put the
+           title into every parsed event while matching the key whitelist exactly. Allowed node
+           types are the boolean-valued ones; a future helper call (`isOffTitle(t)`) trips this
+           on purpose — widen it with a line saying why, do not delete it. */
+        p.traverse({ ReturnStatement(q) {
+          const a = q.node.argument;
+          if (!a) return;
+          const okType = a.type === 'BooleanLiteral' || a.type === 'UnaryExpression'
+            || a.type === 'LogicalExpression' || a.type === 'BinaryExpression'
+            || (a.type === 'CallExpression' && a.callee && a.callee.type === 'MemberExpression'
+                && a.callee.property.name === 'test');
+          if (!okType) returns.push(a.type);
+        } });
+      }
+    },
+  });
   must(sawParser, 'parseICSSchedule was not found — the .ics parser is where a feed\'s titles ' +
     'enter the app, so a renamed or moved parser turns this clause into a pass by omission ' +
     '(check 3\'s rule, and (a)\'s)');
@@ -1606,4 +1654,9 @@ if (failed.length) {
   console.error(`${failed.length} of ${results.length} checks FAILED — do not deploy.\n`);
   process.exit(1);
 }
-console.log(`All ${results.length} mechanical checks passed.\n`);
+console.log(`All ${results.length} mechanical checks passed.`);
+/* Printed so the shared-AST cache is ASSERTED and not merely claimed: ten of the checks above
+   are walks and they share this many parses between them. `test_check_build.mjs` pins it, so
+   losing the cache (back to one parse per walk) fails that suite instead of just getting slow
+   again — which is how the 8-minute meta-test happened in the first place. */
+console.log(`${parses} AST parse(s) shared by ${walks} walk(s).\n`);
