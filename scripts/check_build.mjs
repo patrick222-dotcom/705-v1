@@ -1129,10 +1129,189 @@ check(8, 'Published pages link only to published files', () => {
   return `${pages.length} pages, ${refs} same-origin refs, all published`;
 });
 
+/* ---- Invariant 9: the deploy branch still triggers a deploy -------------------------------
+   This check was ONE unanchored `deploy.includes('claude/migrate-to-github-deploy-3F5RD')` over
+   the whole workflow file, and it printed the word `present`. The same shape as Invariant 4's
+   clause before 2026-11-22: a substring standing in for a structural property, reporting a word
+   that reads like a verdict.
+
+   Measured against that clause before any of this was written. FIVE realistic edits that stop
+   every deploy left the gate printing `All 21 mechanical checks passed`:
+
+     A. the branch line COMMENTED OUT — `# - claude/migrate-to-github-deploy-3F5RD`. The likeliest
+        edit by far: commenting a YAML list entry is how anyone cautiously "removes" one, and the
+        comment sitting directly above it in this very file instructs the reader to "Remove it
+        from this list once work is merged into main."
+     B. `branches:` -> `branches-ignore:`. The name is still there and is now explicitly
+        EXCLUDED, so this one does not merely fail to deploy — it inverts the trigger. It is also
+        the only case that fails OPEN in the dangerous direction: the gate reports the branch as
+        triggering a deploy while the workflow states the opposite.
+     C. the `push:` trigger changed to `pull_request:`, branch list untouched — a merge stops
+        deploying while every PR still runs the job.
+     D. a `paths:` filter added under `push:` that no publish-set file matches.
+     E. the whole `on:` block gutted to `workflow_dispatch:`, the branch name surviving in a
+        job-level `if: github.ref == …`.
+
+   Only the sixth — deleting the line outright — was caught, which is the one case the old clause
+   was written for (Invariant 9's own history: "removing it first stopped all deploys once").
+
+   Blast radius is Invariant 9's own, and this repo has already served it: everything merged after
+   the break sits unshipped while looking merged. Its `Detect` is "derivable but unwatched" — the
+   signal is an empty Actions tab — and `deploy_watch.mjs` only sees it AFTER a merge has failed
+   to ship. This gate is the only thing that reads the triggers themselves.
+
+   So the triggers are READ rather than grepped: the `on:` block is parsed, and the branch must be
+   a real sequence entry under `on.push.branches`. A comment is not an entry, `branches-ignore` is
+   not `branches`, and `pull_request` is not `push`.
+
+   The FOURTH clause is a property nothing in this repo has ever read. `cancel-in-progress: true`
+   on the `pages` concurrency group is what Pat set by hand on 2026-10-09 (`f1aa7a6`, #162) to end
+   the four-night Pages stall, and CLAUDE.md -> Deployment records it as "a standing property of
+   this repo's deploy path" that is "Invariant 9's blast shape arriving by a different door".
+   Flipped back to `false`, one stuck run again blocks every deploy behind it forever — which is
+   exactly the 72-hour, nine-commit outage of 2026-10-06..09 — and nothing anywhere would say so.
+   It is one word in the file only Pat can edit, held by nobody until now.
+
+   Anything unresolvable THROWS. There is deliberately no substring fallback: a check that shrugs
+   at a workflow it cannot read is the hole this replaces, and `on:` written in a form this cannot
+   parse must be classified on purpose rather than waved through. */
 check(9, 'Deploy branch still triggers a deploy', () => {
-  must(deploy.includes('claude/migrate-to-github-deploy-3F5RD'),
-    'the de facto default branch was removed from the push triggers — this stops ALL deploys');
-  return 'claude/migrate-to-github-deploy-3F5RD present';
+  const BRANCH = 'claude/migrate-to-github-deploy-3F5RD';
+
+  /* A minimal block-YAML reader, scoped to the two top-level blocks this check actually reads:
+     `on:` and `concurrency:`. Both hold only nested mappings and `- ` scalar sequences. `jobs:`
+     is deliberately NOT descended into — it holds sequences of mappings and `run: |` block
+     scalars, and this check makes no claim about them, so reading them could only produce false
+     accusations about a file it does not otherwise judge.
+
+     Comments are stripped OUTSIDE quotes only, so `group: "pages"` survives and a commented-out
+     `# - branch` never becomes an entry — which is break A, the likeliest edit of the five.
+     Flow style (`{`/`[`) is reported as unresolvable rather than guessed at. */
+  const lines = [];
+  deploy.split('\n').forEach((raw, i) => {
+    let s = '', q = null;
+    for (let c = 0; c < raw.length; c++) {
+      const ch = raw[c];
+      if (q) { s += ch; if (ch === q) q = null; continue; }
+      if (ch === '"' || ch === "'") { q = ch; s += ch; continue; }
+      if (ch === '#') break;
+      s += ch;
+    }
+    if (s.trim()) lines.push({ indent: s.match(/^ */)[0].length, text: s.trim(), line: i + 1 });
+  });
+
+  /* The region of `lines` belonging to one top-level key, as [start, end). The key is compared
+     after its quotes are stripped, because `on` is a YAML 1.1 boolean and linters suggest
+     writing it as `"on":` — a spelling that must not read as a missing trigger block. */
+  const topLevel = (name) => {
+    const at = lines.findIndex((l) => {
+      if (l.indent !== 0) return false;
+      const m = l.text.match(/^([^:]+):/);
+      return !!m && m[1].trim().replace(/^['"]|['"]$/g, '') === name;
+    });
+    if (at < 0) return null;
+    let end = at + 1;
+    while (end < lines.length && lines[end].indent > 0) end++;
+    return { at, end };
+  };
+
+  const parseRegion = (region, what) => {
+    let pos = region.at + 1;
+    const node = (indent) => {
+      if (pos < region.end && lines[pos].indent === indent && lines[pos].text.startsWith('- ')) {
+        const seq = [];
+        while (pos < region.end && lines[pos].indent === indent && lines[pos].text.startsWith('- ')) {
+          seq.push(lines[pos].text.slice(2).trim().replace(/^['"]|['"]$/g, ''));
+          pos++;
+        }
+        return { seq };
+      }
+      const map = {};
+      while (pos < region.end && lines[pos].indent === indent) {
+        const { text: t, line } = lines[pos];
+        const m = t.match(/^([^:]+):(.*)$/);
+        must(m, `cannot read line ${line} of the deploy workflow's \`${what}\` block as a mapping key: "${t}"`);
+        const key = m[1].trim().replace(/^['"]|['"]$/g, '');
+        const rest = m[2].trim();
+        pos++;
+        if (rest) {
+          must(!/^[[{]/.test(rest),
+            `the deploy workflow writes \`${key}\` in flow style (${rest.slice(0, 40)}) — this check `
+            + 'reads block style only, so classify it here deliberately rather than letting it pass');
+          map[key] = rest.replace(/^['"]|['"]$/g, '');
+        } else if (pos < region.end && lines[pos].indent > indent) {
+          map[key] = node(lines[pos].indent);
+        } else {
+          map[key] = null; // a key with no value, e.g. `workflow_dispatch:`
+        }
+      }
+      return map;
+    };
+    const out = region.at + 1 < region.end ? node(lines[region.at + 1].indent) : null;
+    must(pos === region.end,
+      `the deploy workflow's \`${what}\` block has content this check could not place (line `
+      + `${lines[pos] && lines[pos].line}) — an unparsed region could hold the push triggers, so `
+      + 'this fails rather than guessing');
+    return out;
+  };
+
+  /* Anti-vacuity: `on:` must be found at top level — bare or quoted, since YAML 1.1 reads a bare
+     `on` as the boolean true and linters suggest quoting it. Its ABSENCE fails rather than
+     sweeping clean. */
+  const onRegion = topLevel('on');
+  must(onRegion, 'the deploy workflow has no top-level `on:` key at all — nothing can be said '
+    + 'about what triggers a deploy, so this fails rather than passing by omission');
+  const on = parseRegion(onRegion, 'on');
+  must(on && typeof on === 'object' && !on.seq,
+    'the deploy workflow has no readable `on:` block mapping — without one nothing can be said '
+    + 'about what triggers a deploy, so this fails rather than passing by omission');
+
+  const push = on.push;
+  must(push !== undefined,
+    'the deploy workflow has no `push:` trigger — a merge to the deploy branch would no longer '
+    + 'deploy anything, which is Invariant 9 exactly: everything merged sits unshipped while '
+    + 'looking merged');
+
+  /* `push:` with no body means "every branch", which does include this one. */
+  let where = 'every branch (push: carries no branch filter)';
+  if (push !== null) {
+    must(!push.seq, 'the deploy workflow\'s `push:` trigger is a sequence, not a mapping — unreadable here');
+    must(push['branches-ignore'] === undefined,
+      'the deploy workflow uses `branches-ignore:` under `push:` — the deploy branch being NAMED '
+      + 'there is the opposite of it triggering a deploy, and the old substring check reported '
+      + 'exactly that case as "present"');
+    const branches = push.branches;
+    must(branches && branches.seq,
+      'the deploy workflow\'s `push.branches` is not a readable list of branches');
+    must(branches.seq.includes(BRANCH),
+      `the de facto default branch is not a \`push.branches\` entry — this stops ALL deploys. `
+      + `Found [${branches.seq.join(', ')}]. A COMMENTED-OUT entry is not an entry: Invariant 9 `
+      + `says add \`main\` to the triggers BEFORE removing this branch, never in the same commit`);
+    must(push.paths === undefined && push['paths-ignore'] === undefined,
+      'the deploy workflow\'s `push:` trigger has gained a paths filter — a publish-set file that '
+      + 'does not match it stops shipping silently. Adding one is deliberate friction: classify '
+      + 'it here on purpose, the same way the publish set and the storage-key set are');
+    where = `push.branches [${branches.seq.join(', ')}]`;
+  }
+
+  /* The structural half of the 2026-10-06..09 Pages stall: 72 hours, nine merged commits
+     unshipped, because one orphaned run held the `pages` concurrency group and `false` let it
+     hold the group forever. Read by nothing until now. */
+  const concRegion = topLevel('concurrency');
+  must(concRegion, 'the deploy workflow has no top-level `concurrency:` key — the `pages` group '
+    + 'and its cancel-in-progress setting are what bound how long a stuck run blocks every deploy '
+    + 'behind it, and this check will not infer a default');
+  const conc = parseRegion(concRegion, 'concurrency');
+  must(conc && typeof conc === 'object' && !conc.seq,
+    'the deploy workflow has no readable `concurrency:` block — the `pages` group and its '
+    + 'cancel-in-progress setting are what bound how long a stuck run blocks every deploy behind it');
+  must(String(conc['cancel-in-progress']) === 'true',
+    'the `pages` concurrency group is back to cancel-in-progress: false — one run that cannot '
+    + 'start then blocks every deploy behind it FOREVER, which is the 2026-10-06..09 stall: 72 '
+    + 'hours, nine merged green commits unshipped, cleared only by the owner cancelling the run '
+    + 'by hand. The owner set it true on 2026-10-09 (f1aa7a6, #162)');
+
+  return `${BRANCH} in ${where}; cancel-in-progress: true`;
 });
 
 /* ---- the analytics contract: telemetry that only ever passes proves nothing -------------

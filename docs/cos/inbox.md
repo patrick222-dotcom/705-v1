@@ -7,6 +7,18 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-24 · nightly · **Invariant 9's gate check was one unanchored `includes()` printing
+  `present`; five realistic `deploy.yml` edits that stop EVERY deploy left the gate green** —
+  the branch line commented out, `branches:` turned into `branches-ignore:` (the one that fails
+  *open*), `push:` turned into `pull_request:`, a `paths:` filter, and the `on:` block gutted to
+  `workflow_dispatch:` with the name surviving in a job `if:`. All measured before the rewrite.
+  The `on:` and `concurrency:` blocks are parsed now, and a fourth clause holds
+  `cancel-in-progress: true` — the structural fix for the 72-hour nine-commit October stall that
+  CLAUDE.md calls a standing property of this deploy path and that **nothing in this repo had
+  ever read** (`grep -rn cancel-in-progress scripts/ tests/` → nothing). No live defect: the
+  workflow is correct today, so this is a regression guard, not a fix. 16 breaks (15 new), 8
+  GREENS, falsifiable both ways (neuter the check: 0 breaks still red, 8/8 greens green). Sixth consecutive night of this repo's recurring defect, in a sixth
+  file. · → park: shipped; belongs to no live thread.
 - 2026-11-23 · nightly · **the 8-minute gate meta-test was blamed on a 1MB file copy; it was 15
   redundant Babel transforms, and one had been printing a wrong number for eight nights** — last
   night named the symlink fix as owner-free work, so this run measured it first: the file copy is
