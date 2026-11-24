@@ -2277,6 +2277,172 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   twenty-one days.**
 
+### P1 (new, groom 2026-11-24)
+
+**Why this band sits BELOW the 11-06 through 11-23 bands instead of at the top of `## Queue`:**
+unchanged for the eighteenth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 9's gate check was one unanchored `includes()` printing `present`, and five
+  realistic edits that stop EVERY deploy left it green**~~ — **SHIPPED 2026-11-24**, tonight's
+  build (see Done log). (P1 · source:groom · `harness:drivable` (script-level))
+  **Taken because the Queue held no fresh build item and the groom found this one the way the
+  last five nights found theirs** — the 11-14 band's question, *find a claim with a number or a
+  property-word in it, then ask what it is actually testing.* Here the word was `present`, which
+  is the same word Invariant 4's clause printed before it was derived on 2026-11-22. This is the
+  **sixth consecutive night** the recurring defect turned up in a sixth file.
+  **Measured before anything was written.** The check was
+  `must(deploy.includes('claude/migrate-to-github-deploy-3F5RD'), …)` — one substring over the
+  whole workflow file. Six edits were applied to a scratch copy and the gate run against each.
+  **Five left it printing `All 21 mechanical checks passed`:**
+  (a) the branch line **commented out** — `# - claude/migrate-to-github-deploy-3F5RD`. The
+      likeliest of the six by a distance: commenting a YAML list entry is how anyone cautiously
+      "removes" one, and the comment sitting directly above that line in the real file instructs
+      the reader to *"Remove it from this list once work is merged into main."*
+  (b) `branches:` turned into **`branches-ignore:`** — the name still in the file and now
+      explicitly EXCLUDED. The only one of the five that fails **open** in the dangerous
+      direction: the gate reported the branch as triggering a deploy while the workflow stated
+      the opposite.
+  (c) `push:` turned into `pull_request:` — a merge stops deploying while every PR still runs
+      the job, so the Actions tab stays busy and looks healthy.
+  (d) a `paths:` filter added under `push:` that no publish-set file matches.
+  (e) the whole `on:` block gutted to `workflow_dispatch:`, the branch name surviving in a
+      job-level `if: github.ref == …` — which is precisely what the old `includes()` keyed on.
+  Only the sixth, deleting the line outright, was caught — and that is the one case the clause
+  was written for, because it is the one that happened (Invariant 9's own text: *"removing it
+  first stopped all deploys once"*).
+  **Blast radius is Invariant 9's own, and this repo has already served the sentence**:
+  everything merged after the break sits unshipped while looking merged. Its `Detect` is
+  "derivable but unwatched" — the signal is an empty Actions tab — and `deploy_watch.mjs` sees it
+  only **after** a merge has already failed to ship. Nothing but this gate reads the triggers
+  themselves, and `deploy.yml` is a file **agent sessions cannot edit**, so the only hand that
+  touches it is Pat's.
+  **A fourth clause fell out of it, and it guards a property NOTHING in this repo had ever
+  read:** `cancel-in-progress: true` on the `pages` concurrency group. The owner set it by hand
+  on 2026-10-09 (`f1aa7a6`, #162) to end the four-night Pages stall, and CLAUDE.md → Deployment
+  records it as *"a standing property of this repo's deploy path"* and as *"Invariant 9's blast
+  shape arriving by a different door"* — yet `grep -rn cancel-in-progress` over `scripts/` and
+  `tests/` returns **nothing but `deploy.yml` itself**. Flipped back to `false`, one stuck run
+  again blocks every deploy behind it forever: 72 hours, nine merged green commits unshipped,
+  cleared only by the owner cancelling a run by hand. The word was load-bearing and unread.
+  **The fix reads the workflow instead of grepping it.** The `on:` and `concurrency:` blocks are
+  parsed, so a comment is not an entry, `branches-ignore` is not `branches`, and `pull_request`
+  is not `push`. `jobs:` is deliberately **not** descended into — it holds sequences-of-mappings
+  and `run: |` block scalars this check makes no claim about. Anything unresolvable **throws**:
+  no substring fallback, because a check that shrugs at a workflow it cannot read is the hole
+  being replaced. A `paths` filter is the same intended friction the publish set and the
+  storage-key set take. The row now prints what it read —
+  `claude/migrate-to-github-deploy-3F5RD in push.branches [main, master, claude/…];
+  cancel-in-progress: true` — instead of the word `present`.
+  **Sixteen breaks (fifteen new), eight GREENS, falsifiable in both directions and both
+  measured.** At least one break per each of the check's fourteen `must()` calls, because a group
+  broken as a group only proves that *one* of them has teeth; `[9]` is held by a single check, so
+  no break needs a label pin. Neuter the check and **all sixteen breaks stop failing while all
+  eight GREENS stay green** (0 still red, 8/8 green) — so every break was failing because of
+  this check rather than incidentally. The GREENS are the half that matters
+  more here, because the clause they replace was a bare `includes()` and therefore green on
+  literally every edit — a structural read can be wrong in the other direction, and that is the
+  direction that gets a check weakened by whoever meets it. The most valuable is #4: the obvious
+  way to hold `cancel-in-progress: true` is `deploy.includes('cancel-in-progress: true')`, which
+  goes red the moment anyone **quotes** the value, and quoting a YAML boolean is what a linter
+  suggests.
+  **GREEN #7 is earned by a measurement taken in this session rather than by an argument**, which
+  is the bar this file sets: the first draft of the rewritten check parsed the whole file from the
+  root and went **RED on the real, unedited workflow**, because `jobs:` holds shapes it makes no
+  claim about. Scoping the parse to the two blocks fixed it. Once fixed, the clean baseline can
+  never see that class of mistake again — this row can.
+  **No live defect in any invariant.** The workflow is correct today: the branch is a real
+  `push.branches` entry, there is no paths filter, and `cancel-in-progress` is `true`. So this is
+  a regression guard like §54 and §62, not a fix — and it is worth saying plainly that it found
+  nothing wrong rather than dressing it as a save. Gate still 21 checks, so CI's required count
+  does not move.
+- [ ] **Two more landing-screen arrivals, and NEITHER filed a `session_end`** (P2 · source:groom ·
+  no action) — `events` **1,824** against 1,818 last night. Both new loads are single devices that
+  stopped on screen 0: `6ffe2269` at **2026-11-23 12:40:51** and `4c9689dc` at **17:29:15**, three
+  rows each (`app_open {fresh:true}` + `ob_step {step:0}` + `ob_view {screen:'landing'}`, all on
+  the same timestamp), plain uuids, **no `via`** — so last night's `via:'qr'` row is still the only
+  one that has ever said how a device arrived. These are the fifteenth and sixteenth of exactly
+  this shape. `rows_24h` **6**, `rows_7d` **17**, **5** distinct devices in 7 days.
+  **The one new detail worth a line:** the 11-22 QR device filed a `session_end {secs:4}`; these
+  two filed **none**, so two of the last three bounces have no exit row. That is consistent with
+  the keepalive beacon not firing on a fast bounce and equally consistent with a tab left open —
+  **unverified either way**, and it is not worth a build item on two rows. Re-read it if a third
+  lands. **Do not quote an activation figure off any of this**: the device classifier is still
+  broken and CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly
+  this cohort.
+- [ ] **`silence_watch` is FRESH; `access_watch` reads TIGHT on its twelfth night, 16/16** (P2 ·
+  source:groom · no action) — **FRESH**, newest event **14.6h** old against a 48h window. Access
+  posture unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe** — it reads the catalog and never connects as `anon`, so a policy owner-gated in
+  shape and wrong in logic passes.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  2026-11-13 · needs the owner) — `anon` still holds TRUNCATE on `events`, `feedback` and
+  `user_data`, visible in tonight's `access_watch` output, and TRUNCATE is the one verb RLS does
+  not cover. It is not reachable over PostgREST, which is why this has stayed P2 for eleven
+  nights rather than becoming a P0, but it is a grant nothing needs. Revoking it is a migration,
+  so it is not nightly work.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — fifth night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **4.6 days**
+  ago, so the `{events:107, pending:50, classify:50, updates:0, removals:0, cards:7}` row the
+  11-20 band read is still the newest. `ics_import_done` **10** (last 2026-10-10),
+  `ics_sync_result` **44**, `ics_sync_done` **29** — all three identical for four grooms.
+  `ics_autosync_pref` and `ics_autosync_off` both **zero rows from any device, ever** — still
+  expected, and the 11-20 reading stands: she met the stepper's opt-out and took neither it nor
+  the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-FIFTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **40.0 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 18-for-18** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the nineteenth groom.
+  Tonight's two new loads filed **zero** rows, which is the fourth and fifth loads of positive
+  evidence rather than a silent night that cannot disprove the filter.
+- [ ] **CABINET MISSED fires for the FIFTEENTH night, and the brief is now 22.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twenty-second** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the EIGHTEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-23
+  band staked out: that merge (#227) touched `BACKLOG.md`, `CLAUDE.md`, `docs/cos/inbox.md`,
+  `scripts/check_build.mjs` and `scripts/test_check_build.mjs` — no publish-set file.
+  `privacy.html`, `ops.html` and `pdf.worker.min.js` all print the truncation sentence, boundary
+  **`d27c398`** tonight (was `97f8e86`) — the figure drifts with clone depth, which is why #210
+  stopped printing it as a deploy fact. **Tonight's prediction:** tonight's merge touches
+  `scripts/`, `CLAUDE.md`, `BACKLOG.md` and `docs/cos/inbox.md` but **not `index.html`** and
+  **not `ops.html`**, so tomorrow's watch should still name **`a09cabe`**, and all three of the
+  others should still read `[ok]` with the truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twentieth night, and tonight it grew again** (P2 ·
+  `harness:unscoped` · needs the owner) — the suite is **127** assertions now (104 last night;
+  tonight added fifteen breaks and eight GREENS). The 11-23 band paid down the CI-minutes
+  objection — the gate went 6.03s → 2.65s, so the suite runs in minutes rather than ~8 — and the
+  ask is unchanged and still Pat's, still after the existing `Deploy-watch classifier suite`
+  step: `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs`, and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`. Tonight's build sharpens the irony by one turn: the check that now
+  guards `deploy.yml` lives in a suite CI does not run, and the file it guards is the one agents
+  cannot edit.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — EIGHTEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **18.3 days**.
+  Tonight branched to `claude/great-feynman-d5784h`, so #209's head is untouched for the
+  eighteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the NINETEENTH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty-two days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6308,6 +6474,85 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-24 — **Invariant 9's gate check was one unanchored `includes()` printing the word
+  `present`. Five realistic edits to `deploy.yml` that stop EVERY deploy left the gate green —
+  and a property CLAUDE.md calls a standing part of this deploy path had never been read by
+  anything.**
+  The Queue held no fresh build item, so the groom found this one the way the last five nights
+  found theirs: take a claim with a number or a property-word in it and ask what it is actually
+  testing. The word was `present`, the same word Invariant 4's clause printed until it was
+  derived on 2026-11-22. **Sixth consecutive night, sixth file.**
+  **Measured before anything was written.** The check was
+  `must(deploy.includes('claude/migrate-to-github-deploy-3F5RD'), …)` — one substring over the
+  whole workflow file. Six edits, each applied to a scratch copy with the gate run against it;
+  **five printed `All 21 mechanical checks passed`:** (a) the branch line **commented out**
+  (`# - claude/…`) — the likeliest of the six, because commenting a YAML list entry is how
+  anyone cautiously "removes" one and the comment directly above that line tells the reader to
+  *"Remove it from this list once work is merged into main"*; (b) `branches:` →
+  **`branches-ignore:`**, the name still present and now explicitly EXCLUDED, which is the only
+  one that fails **open** — the gate reported the branch as triggering a deploy while the
+  workflow said the opposite; (c) `push:` → `pull_request:`, so a merge stops deploying while
+  every PR still runs the job and the Actions tab looks busy; (d) a `paths:` filter under
+  `push:` that no publish-set file matches; (e) the `on:` block gutted to `workflow_dispatch:`
+  with the branch name surviving in a job-level `if: github.ref == …`, which is exactly what the
+  old `includes()` keyed on. Only the sixth — deleting the line outright — was caught, and that
+  is the one case the clause was written for, because it is the one that happened.
+  **Blast radius is Invariant 9's own and this repo has served the sentence:** everything merged
+  after the break sits unshipped while looking merged. Its `Detect` is *"derivable but
+  unwatched"*, the signal is an empty Actions tab, and `deploy_watch.mjs` sees it only **after** a
+  merge has already failed to ship. Nothing but this gate reads the triggers themselves, and
+  `deploy.yml` is a file agent sessions cannot edit — the only hand that touches it is Pat's.
+  **A fourth clause, on a property nothing in this repo had ever read.**
+  `cancel-in-progress: true` on the `pages` concurrency group is what the owner set by hand on
+  2026-10-09 (`f1aa7a6`, #162) to end the four-night Pages stall. CLAUDE.md → Deployment calls it
+  *"a standing property of this repo's deploy path"* and *"Invariant 9's blast shape arriving by a
+  different door"* — and `grep -rn cancel-in-progress scripts/ tests/` returns **nothing but
+  `deploy.yml` itself**. Back at `false`, one stuck run again blocks every deploy behind it
+  forever: 72 hours, nine merged green commits unshipped, cleared only by the owner cancelling a
+  run by hand.
+  **The fix reads the workflow instead of grepping it.** The `on:` and `concurrency:` blocks are
+  parsed, so a comment is not an entry, `branches-ignore` is not `branches`, and `pull_request`
+  is not `push`. `jobs:` is deliberately **not** descended into — it holds sequences-of-mappings
+  and `run: |` block scalars this check makes no claim about. Anything unresolvable **throws**;
+  there is no substring fallback, because a check that shrugs at a workflow it cannot read is the
+  hole being replaced. A `paths` filter is the same intended friction the publish set and the
+  storage-key set take. The row prints what it read —
+  `claude/migrate-to-github-deploy-3F5RD in push.branches [main, master, claude/…];
+  cancel-in-progress: true` — instead of `present`.
+  **Sixteen breaks (fifteen new), eight GREENS, falsifiable in both directions, both measured.**
+  At least one break per each of the check's fourteen `must()` calls, because a group broken as a
+  group only proves that one of them has teeth; `[9]` is held by a single check, so no break needs
+  a label pin. Neuter the check and **all sixteen breaks stop failing while all eight GREENS stay
+  green** (0 still red, 8/8 green), so every break was failing because of this check. The GREENS carry more weight here than
+  usual, because the clause they replace was a bare `includes()` and so was green on literally
+  every edit — a structural read can be wrong in the other direction, and that is the direction
+  that gets a check weakened by whoever meets it. The most valuable is #4: the obvious way to
+  hold `cancel-in-progress: true` is `deploy.includes('cancel-in-progress: true')`, red the
+  moment anyone **quotes** the value, which is what a YAML linter suggests.
+  **GREEN #7 is earned by a measurement rather than an argument**, which is this file's bar: the
+  first draft of the rewritten check parsed the whole file from the root and went **RED on the
+  real, unedited workflow**, because `jobs:` holds shapes it makes no claim about. Scoping the
+  parse to the two blocks fixed it; once fixed, the clean baseline can never see that class of
+  mistake again, and this row can.
+  **Two mistakes of this run's own, both caught by the mechanisms rather than by reading.**
+  (1) The meta-test's first run came back **120 passed / 7 failed**, every failure the same
+  message: `BR is not defined`. The branch constant existed in the throwaway measurement script
+  and was never declared in `scripts/test_check_build.mjs`, so seven rows **threw instead of
+  asserting** — which is precisely the unfalsifiable assertion that file exists to refuse, and it
+  surfaced as a loud red rather than a quiet pass only because every row must name the invariant
+  it expects. `BR` is declared once at the top now, beside the label constants, because several
+  rows build a `deploy.yml` line out of it and two spellings would mean a break that patches one
+  line and asserts about another.
+  (2) The first draft of the check compared each top-level line with
+  `startsWith('on:')` after stripping only the outer quotes, so a linter-suggested `"on":` became
+  `on":`, matched nothing, and would have reported a perfectly good workflow as having no
+  triggers at all. Found in review, fixed by comparing the parsed key, and pinned as the eighth
+  GREEN — `on` is a YAML 1.1 boolean and yamllint's `truthy` rule really does suggest quoting it,
+  so this was a false positive waiting for the first person to run a linter over the file.
+  **No live defect in any invariant.** The branch is a real `push.branches` entry, there is no
+  paths filter, and `cancel-in-progress` is `true`. A regression guard like §54 and §62, not a
+  fix — worth saying plainly rather than dressing up as a save. Gate still 21 checks, so CI's
+  required count does not move.
 - 2026-11-23 — **The 8-minute gate meta-test was blamed on a 1MB file copy. It was 15 redundant
   Babel transforms — and one of them had been printing a wrong number for eight nights.**
   Last night's band named the one build item a later run could take without the owner: *"the cheap

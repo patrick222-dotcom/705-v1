@@ -23,7 +23,7 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
- *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, nine of them now).
+ *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, seventeen of them now).
  *             TEETH only ever asks
  *             "does a break go red?", and a check can be wrong in the other direction: one false
  *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
@@ -206,6 +206,10 @@ const UNLOAD = 'Unload telemetry intact';
 const NEUTRAL = 'Harness cannot write to production';
 const INVENTORY = 'Event inventory sees every name that reaches events';
 const PDFW = 'pdf.js worker matches its pinned library';
+/* The deploy branch, used by the sixteen `[9]` rows and eight of the GREENS. Spelled once:
+   several rows build a `deploy.yml` line out of it, and two spellings would mean a break that
+   patches one line and asserts about another. */
+const BR = 'claude/migrate-to-github-deploy-3F5RD';
 /* `[8]` became a shared tag the moment a third check joined it (2026-11-11) — and it had ALREADY
    been shared by two since 2026-09-13 with neither break pinning a label, so `✗ [8]` from the ops
    row would have been counted as a win for the CNAME break. That is the same hole the 2026-10-30
@@ -542,8 +546,69 @@ const BREAKS = [
      shape moves out from under the regex must FAIL, not pass for having nothing left to walk. */
   ['[8] a published page stops yielding attributes this walk can see', 'privacy.html',
     (s) => s.replace(/\b(href|src)="([^"]*)"/g, "$1='$2'"), '8', LINKS],
-  ['[9] deploy branch removed from the triggers', '.github/workflows/deploy.yml',
+  /* ---- Invariant 9, rewritten 2026-11-24 ------------------------------------------------
+     The check was ONE unanchored `deploy.includes('claude/migrate-to-github-deploy-3F5RD')` over
+     the whole workflow file, printing the word `present`, and this suite held ONE break against
+     it: rename the branch everywhere. Measured against that clause before the rewrite, FIVE
+     realistic edits that stop every deploy left the gate printing `All 21 mechanical checks
+     passed` — the branch line commented out, `branches:` turned into `branches-ignore:`, `push:`
+     turned into `pull_request:`, a `paths:` filter added, and the `on:` block gutted to
+     `workflow_dispatch:` with the name surviving in a job-level `if:`. Only the sixth, deleting
+     the line outright, was caught, which is the one case the clause was written for.
+
+     Fifteen breaks now, one per `must()` in the rewritten check, because a group of musts broken
+     as a group only proves that ONE of them has teeth. `[9]` is held by a single check, so no
+     break needs a label pin. Four of the fifteen are shapes the parser must REFUSE rather than
+     guess at: there is deliberately no substring fallback, so an `on:` block written in a form
+     this cannot read fails and gets classified on purpose. */
+  ['[9] deploy branch renamed throughout the workflow', '.github/workflows/deploy.yml',
     (s) => s.split('claude/migrate-to-github-deploy-3F5RD').join('claude/some-other-branch'), '9'],
+  /* The likeliest edit of all fifteen, and the old clause's worst miss: commenting a YAML list
+     entry is how anyone cautiously "removes" one, and the comment directly above this line in the
+     real file tells the reader to "Remove it from this list once work is merged into main." */
+  ['[9] branch line commented out rather than deleted', '.github/workflows/deploy.yml',
+    (s) => s.replace(`      - ${BR}`, `      # - ${BR}`), '9'],
+  /* The only one that fails OPEN in the dangerous direction: the name is still in the file and is
+     now explicitly EXCLUDED, so the old clause reported a branch as triggering a deploy while the
+     workflow said the opposite. */
+  ['[9] branches: becomes branches-ignore:', '.github/workflows/deploy.yml',
+    (s) => s.replace('    branches:', '    branches-ignore:'), '9'],
+  ['[9] push trigger becomes pull_request', '.github/workflows/deploy.yml',
+    (s) => s.replace('  push:\n', '  pull_request:\n'), '9'],
+  /* The break that proves the check no longer reads the branch name from ANYWHERE in the file:
+     the triggers are gone and the name survives in a job-level `if:`, which is exactly what the
+     old `includes()` keyed on. */
+  ['[9] on: gutted to workflow_dispatch, name surviving in a job if:', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^on:\n[\s\S]*?  workflow_dispatch:\n/m, 'on:\n  workflow_dispatch:\n')
+      .replace('    runs-on: ubuntu-latest', `    if: github.ref == 'refs/heads/${BR}'\n    runs-on: ubuntu-latest`), '9'],
+  ['[9] a paths filter added under push', '.github/workflows/deploy.yml',
+    (s) => s.replace(`      - ${BR}\n`, `      - ${BR}\n    paths:\n      - 'src/**'\n`), '9'],
+  ['[9] push.branches keeps its key but loses every entry', '.github/workflows/deploy.yml',
+    (s) => s.replace(/    branches:\n(      [-#].*\n)+/, '    branches:\n'), '9'],
+  ['[9] push: becomes a sequence instead of a mapping', '.github/workflows/deploy.yml',
+    (s) => s.replace(/  push:\n(    .*\n|      .*\n)+/, '  push:\n    - main\n'), '9'],
+  /* Anti-omission, the rule every derived check in this gate takes: a missing subject FAILS, it
+     never passes for having nothing left to read. */
+  ['[9] the on: key removed entirely', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^on:\n([ ].*\n)+/m, ''), '9'],
+  ['[9] on: written as a scalar this check will not guess at', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^on:\n([ ].*\n)+/m, 'on: push\n'), '9'],
+  ['[9] a branch list written in flow style', '.github/workflows/deploy.yml',
+    (s) => s.replace(/    branches:\n(      [-#].*\n)+/, `    branches: [main, ${BR}]\n`), '9'],
+  ['[9] a line in the on: block that is not a mapping key', '.github/workflows/deploy.yml',
+    (s) => s.replace('  workflow_dispatch:', '  garbage\n  workflow_dispatch:'), '9'],
+  ['[9] content in the on: block at an indent this walk cannot place',
+    '.github/workflows/deploy.yml',
+    (s) => s.replace(`      - ${BR}\n`, `      - ${BR}\n     stray: value\n`), '9'],
+  /* The structural half of the 2026-10-06..09 Pages stall — 72 hours, nine merged green commits
+     unshipped — and the property NOTHING in this repo read until tonight. */
+  ['[9] pages concurrency back to cancel-in-progress: false', '.github/workflows/deploy.yml',
+    (s) => s.replace('cancel-in-progress: true', 'cancel-in-progress: false'), '9'],
+  ['[9] the concurrency block deleted', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^concurrency:\n(  .*\n)+/m, ''), '9'],
+  ['[9] concurrency written as a scalar, so cancel-in-progress is unreadable',
+    '.github/workflows/deploy.yml',
+    (s) => s.replace(/^concurrency:\n(  .*\n)+/m, 'concurrency: pages\n'), '9'],
   /* THREE checks share the `events` tag as of 2026-11-10, so every break below pins the label
      too — the same rule the fourteen `[2]` breaks follow, and for the same reason: `✗ [events]`
      alone would credit an inventory break to the keepalive check and count a break that failed
@@ -689,6 +754,49 @@ rmSync(SCRATCH, { recursive: true, force: true });
    What neither control can do: catch a walk wired to the wrong file, or one that reads an empty
    string and reports a clean sweep. The breaks above cover both. */
 const GREENS = [
+  /* ---- Invariant 9's seven, added 2026-11-24 ---------------------------------------------
+     The clause these replaced was a bare `includes()`, so it was green on literally every edit;
+     a structural read can be wrong in the OTHER direction, and that is the direction that gets a
+     check weakened by whoever meets it. Each row below is a behaviour-neutral edit to the deploy
+     workflow that an obvious implementation of this check would have flagged.
+
+     Row 4 is the most valuable: the obvious way to hold `cancel-in-progress: true` is
+     `deploy.includes('cancel-in-progress: true')`, which is red the moment anyone quotes the
+     value — and quoting a YAML boolean is exactly what a linter suggests.
+
+     Row 7 is earned by a MEASUREMENT taken in this session rather than by an argument: the first
+     draft of the rewritten check parsed the whole file from the root and went RED on the real,
+     unedited workflow, because `jobs:` holds sequences-of-mappings and `run: |` block scalars it
+     makes no claim about. The fix was to scope the parse to the `on:` and `concurrency:` regions.
+     The clean baseline above cannot see that class of mistake once it is fixed; this row can. */
+  ['the branch list is reordered', '.github/workflows/deploy.yml',
+    (s) => s.replace(/    branches:\n      - main\n      - master\n((?:      #.*\n)*)      - claude\/migrate-to-github-deploy-3F5RD\n/,
+      `    branches:\n      - ${BR}\n      - main\n      - master\n`)],
+  ['the branch name is quoted', '.github/workflows/deploy.yml',
+    (s) => s.replace(`      - ${BR}`, `      - '${BR}'`)],
+  /* The inverse of the commented-out break: a comment INSIDE the list is ordinary, and a walk
+     that counted comment lines as entries — or read entries by line offset — would flag it. */
+  ['a comment is added inside the branch list', '.github/workflows/deploy.yml',
+    (s) => s.replace('    branches:\n', '    branches:\n      # deploy targets, longest-lived first\n')],
+  ['cancel-in-progress is written as a quoted boolean', '.github/workflows/deploy.yml',
+    (s) => s.replace('cancel-in-progress: true', 'cancel-in-progress: "true"')],
+  ['the concurrency block is moved above the on: block', '.github/workflows/deploy.yml',
+    (s) => {
+      const blk = s.match(/^concurrency:\n(?:  .*\n)+/m)[0];
+      return s.replace(blk, '').replace(/^on:/m, blk + '\non:');
+    }],
+  ['an unrelated top-level key is added to the workflow', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^permissions:/m, 'env:\n  TZ: UTC\n\npermissions:')],
+  ['a step is added to the jobs: block', '.github/workflows/deploy.yml',
+    (s) => s.replace('      - name: Upload artifact',
+      '      - name: Echo\n        run: echo hi\n\n      - name: Upload artifact')],
+  /* `on` is a YAML 1.1 boolean, so yamllint's `truthy` rule suggests writing it as `"on":`. A
+     check that looked for the literal line `on:` would read that as a workflow with no triggers
+     at all and fail on a file that deploys perfectly well. Caught in review of this very
+     rewrite: the first version compared the whole line with `startsWith('on:')` after stripping
+     only the outer quotes, so `"on":` became `on":` and did not match. */
+  ['the on: key is quoted, as a YAML linter suggests', '.github/workflows/deploy.yml',
+    (s) => s.replace(/^on:/m, '"on":')],
   /* Added 2026-11-20 with the ops.html SRI clauses. Those compare index.html's row to ops.html's
      by url and hash, and the tempting implementation is a string match on the whole tag — which
      would be green today (both files write the attributes in the same order) and red the first
