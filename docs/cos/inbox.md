@@ -7,6 +7,23 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-25 · nightly · **Invariant 1's gate check was five substrings printing four
+  property-words, and it was wrong in BOTH directions: seven realistic app-breaking edits left
+  the gate green, three behaviour-neutral edits turned it red** — the invariant with
+  `Detect: none` and a blast radius of every WebKit device, iPhone Chrome included. Measured
+  before the rewrite: `withTimeout` neutered to the identity function (one line, removes the
+  WebKit race from every call site at once), `return;` atop the watchdog callback (restores the
+  infinite spinner verbatim), `createClient` unguarded with the guard left as a **comment**,
+  `__logClientError` no-opped, `__bootError` assignments removed, the watchdog bumped to 30s with
+  an unrelated 8s timer elsewhere, and the getSession race dropped at the call site — all green.
+  Red on hoisting either timeout to a named constant and on `window.supabase?.createClient`.
+  Both inline scripts are parsed now; `withTimeout` must BE a race, and the watchdog is
+  identified by the error screen it writes rather than by its delay. No live defect: all three
+  mechanisms are intact today, so this is a regression guard, not a fix. 22 breaks (one per
+  `must()`), 3 GREENS, falsifiable both ways (neuter the check: 0 breaks still red, 21/21 greens
+  green). One new row caught a vacuous assertion of its own before it shipped — second time in
+  three nights. Seventh consecutive night of this repo's recurring defect, in a seventh file.
+  · → park: shipped; belongs to no live thread.
 - 2026-11-24 · nightly · **Invariant 9's gate check was one unanchored `includes()` printing
   `present`; five realistic `deploy.yml` edits that stop EVERY deploy left the gate green** —
   the branch line commented out, `branches:` turned into `branches-ignore:` (the one that fails

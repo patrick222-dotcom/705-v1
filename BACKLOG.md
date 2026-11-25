@@ -2443,6 +2443,158 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   twenty-two days.**
 
+### P1 (new, groom 2026-11-25)
+
+**Why this band sits BELOW the 11-06 through 11-24 bands instead of at the top of `## Queue`:**
+unchanged for the nineteenth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**Invariant 1's gate check was five substrings printing four property-words, and it was
+  wrong in BOTH directions — seven app-breaking edits green, three behaviour-neutral edits
+  red**~~ — **SHIPPED 2026-11-25**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level))
+  **Taken because the Queue held no fresh build item and the groom found this one the way the
+  last six nights found theirs** — the 11-14 band's question, *find a claim with a number or a
+  property-word in it, then ask what it is actually testing.* Here there were **four** words in
+  one label: `watchdog + null-guard + 4s getSession race + error buffer`. **Seventh consecutive
+  night, seventh file** — and this one is **Invariant 1**, whose `Detect` is `none` and whose
+  blast radius is every WebKit device including iPhone Chrome, app unusable and silent.
+  **Measured before anything was written, and the result is the worst shape available:** seven
+  realistic edits left the gate printing `All 21 mechanical checks passed`, and **three
+  behaviour-neutral edits turned it RED**. Green on every edit that breaks the app, red on every
+  edit that does not. The red half matters as much as the green one, because a false positive on
+  an ordinary edit is what gets a check *weakened* by whoever meets it.
+  The seven that passed:
+  (a) **`withTimeout` neutered to `(p, ms, label) => p`.** One line, the shape anyone reaches
+      for while debugging, and it removes the race from `getSession()` **and all thirty-odd
+      other call sites at once**. The old regex matched the *call*, so it still matched; the
+      WebKit deadlock the race exists to bound was simply gone. The most dangerous of the seven.
+  (b) **`return;` at the top of the watchdog callback.** The 8s timer still fires, `}, 8000);`
+      still matches, and the splash is never replaced — the infinite iPhone spinner this
+      invariant was created to fix, restored verbatim with the gate green.
+  (c) **`createClient` called unguarded, the guard left behind as a comment.** Three of the five
+      clauses were `includes()`/regex over the whole 580KB file, so a **comment** satisfied them.
+      The app now hard-fails whenever the CDN does, which is the one thing the null-guard is for.
+  (d) **`window.__logClientError` no-opped with a leading `return`.** CLAUDE.md names this exact
+      edit as the dangerous direction for this very mirror — *"a mirror that drops categories of
+      message is how the 47-day sync outage stayed invisible"* — and the gate could not see it.
+  (e) **`window.__bootError`'s assignments removed**, the name surviving in a comment.
+  (f) **the watchdog bumped to 30s with an unrelated 8-second timer added elsewhere.**
+      `/\}, 8000\);/` is unanchored over the whole document, so it never cared *which* timer it
+      found; any future 8s toast re-arms the clause permanently.
+  (g) **the getSession race dropped at the call site**, its shape surviving in a comment.
+  The three false positives: hoisting the watchdog delay to a named constant, writing the guard
+  as `window.supabase?.createClient` (the modern spelling of that exact guard), and hoisting the
+  4s timeout to a constant. A linter suggests all three.
+  **The fix reads the two inline scripts' ASTs.** A comment cannot satisfy an AST walk, which is
+  most of it; the rest is that each property is asserted where it lives. `withTimeout` must **BE**
+  a race. The watchdog is identified by **the error screen it writes** rather than by its delay,
+  so the delay is then resolved through a constant binding and compared — which is precisely what
+  makes the hoisting edits green and the 30s edit red. Every `createClient` must sit inside the
+  guard and every `getSession()` inside a 4s `withTimeout`, so a *second* unguarded call added
+  later fails too. Anything unresolvable **throws**. The row prints what it read instead of four
+  words.
+  **No live defect in any invariant** — all three mechanisms are intact today, so this is a
+  regression guard like §54 and §62, not a save, and it is worth saying so plainly.
+  **Twenty-two breaks, three GREENS, falsifiable both ways and both measured:** neuter the check
+  and all twenty-two breaks stop failing while all twenty-one GREENS stay green (0 still red,
+  21/21). **One row caught a bad assertion of its own before it shipped** — second time in three
+  nights: the first draft asserted `bootErrReads >= 1` over the whole boot script, and the break
+  for it **passed a deliberately broken tree**, because two of the three reads are the
+  `if(!window.__bootError)` guards in the listeners. Vacuous in exactly the direction that
+  mattered; scoped to the watchdog callback now. Gate still 21 checks, so CI's required count
+  does not move.
+- [ ] **A `session_end` arrived from a device with NO other rows — the inverse of the last two
+  nights** (P2 · source:groom · no action) — `events` **1,831** against 1,824. Two of the seven
+  new rows are the seventeenth and eighteenth landing-screen bounce of the established shape
+  (`478b8ad4` and `ec9d4f75`, both **2026-11-24 13:40:0x**, one second apart, both
+  `app_open {fresh:true}` + `ob_step {step:0}` + `ob_view {screen:'landing'}`, both plain uuids,
+  no `via`). The seventh is the interesting one: `38a672a5` filed
+  `session_end {n:3, ob:0, last:'ob_view', secs:2, shifts:0}` at **17:47:45** and has **no other
+  row in the table at all**. Its own payload says three events were tracked in that session and
+  none of them is there. That is consistent with the documented asymmetry rather than with
+  anything new — `track()` goes through supabase-js and an ordinary fetch is cancelled as the
+  document is discarded, while `session_end` rides `beaconInsert()`'s keepalive — so on a
+  2-second bounce the keepalive row is the one that survives. The 11-24 band read two bounces
+  with **no** `session_end`; tonight is one `session_end` with **nothing else**. Both are the
+  same race seen from opposite ends. **Unverified and deliberately not a build item**: the
+  deferred-events key (`scrubpay_events_pending`, Invariant 5) exists exactly for this and
+  retries on the next load, which for a bounce never comes. Re-read if a device ever files a
+  `session_end` whose `n` is large. **Do not quote an activation figure off any of this** — the
+  device classifier is still broken and CLAUDE.md records every activation figure since
+  2026-09-07 as inflated by exactly this cohort.
+- [ ] **`silence_watch` is FRESH; `access_watch` reads TIGHT on its thirteenth night, 16/16**
+  (P2 · source:groom · no action) — **FRESH**, newest event **14.3h** old against a 48h window.
+  Access posture unchanged rule for rule: `ical_subscriptions` RLS on with four
+  `auth.uid() = user_id` policies and `authenticated` the only role in its ACL, `user_data`
+  owner-gated on all four commands, `events`/`feedback` with no SELECT for either role,
+  `ops_admins` at zero policies, five `ops_*` functions `authenticated`+`service_role` only and
+  still SECURITY DEFINER. **Still not a probe** — it reads the catalog and never connects as
+  `anon`, so a policy owner-gated in shape and wrong in logic passes.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  2026-11-13 · needs the owner) — `anon` still holds TRUNCATE on `events`, `feedback` and
+  `user_data`, visible in tonight's `access_watch` output, and TRUNCATE is the one verb RLS does
+  not cover. Not reachable over PostgREST, which is why this has stayed P2 for twelve nights
+  rather than becoming a P0, but it is a grant nothing needs. Revoking it is a migration, so it
+  is not nightly work.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — sixth night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **5.6 days**
+  ago, so the `{events:107, pending:50, classify:50, updates:0, removals:0, cards:7}` row the
+  11-20 band read is still the newest. `ics_import_done` **10** (last 2026-10-10),
+  `ics_sync_result` **44**, `ics_sync_done` **29** — all three identical for five grooms.
+  `ics_autosync_pref` and `ics_autosync_off` both **zero rows from any device, ever** — still
+  expected, and the 11-20 reading stands: she met the stepper's opt-out and took neither it nor
+  the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-SIXTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **41.0 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 20-for-20** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the twentieth groom.
+  Tonight's three new loads filed **zero** rows.
+- [ ] **CABINET MISSED fires for the SIXTEENTH night, and the brief is now 23.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twenty-third** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the NINETEENTH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-24
+  band staked out: that merge (#228) touched `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` — no publish-set file. `privacy.html`, `ops.html` and `pdf.worker.min.js`
+  all print the truncation sentence, boundary **`8d21e19`** tonight (was `d27c398`) — the figure
+  drifts with clone depth, which is why #210 stopped printing it as a deploy fact.
+  **Tonight's prediction:** tonight's merge touches `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` but **not `index.html`** and **not `ops.html`**, so tomorrow's watch should
+  still name **`a09cabe`**, and all three of the others should still read `[ok]` with the
+  truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-first night, and tonight it grew again**
+  (P2 · `harness:unscoped` · needs the owner) — the suite is **151** assertions now (127 last
+  night; tonight added twenty-two breaks and three GREENS). Runtime ~4m10s, unchanged in order of
+  magnitude because the 11-23 shared-AST work took the gate to 2.7s. The ask is unchanged and
+  still Pat's, still after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs`, and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`. Tonight's build makes the gap concrete in a new way: the twenty-two
+  breaks that now hold **Invariant 1** — the invariant with `Detect: none` and a blast radius of
+  every WebKit device — all live in the half CI does not run.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — NINETEENTH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **19.3 days**.
+  Tonight branched to `claude/great-feynman-yriykl`, so #209's head is untouched for the
+  nineteenth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the TWENTIETH night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty-three days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6474,6 +6626,56 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-25 — **Invariant 1's gate check was five substrings standing in for the three
+  mechanisms that make the app boot at all, and it was wrong in BOTH directions: seven realistic
+  app-breaking edits left the gate green, and three behaviour-neutral edits turned it red.**
+  The Queue held no fresh build item, so the groom used the 11-14 question again — take a claim
+  with a number or a property-word in it and ask what it is actually testing. This label carried
+  **four** words: `watchdog + null-guard + 4s getSession race + error buffer`. **Seventh
+  consecutive night, seventh file**, and this time it is **Invariant 1**: `Detect: none`, blast
+  radius every WebKit device including iPhone Chrome, app unusable and silent.
+  **Measured before anything was written.** Ten edits, each applied to a scratch copy with the
+  gate run against it. **Seven printed `All 21 mechanical checks passed`:** (a) `withTimeout`
+  neutered to `(p, ms, label) => p` — one line, removes the WebKit race from `getSession()` and
+  all thirty-odd other call sites at once, and the old regex matched the *call* so it still
+  matched; (b) `return;` at the top of the watchdog callback — the 8s timer still fires,
+  `}, 8000);` still matches, the splash is never replaced, which is the infinite iPhone spinner
+  this invariant was created to fix, restored verbatim; (c) `createClient` called unguarded with
+  the guard left behind as a **comment** — three of the five clauses were `includes()` over the
+  whole 580KB file, so a comment satisfied them; (d) `window.__logClientError` no-opped with a
+  leading `return`, the edit CLAUDE.md names as the dangerous direction for this very mirror;
+  (e) `window.__bootError`'s assignments removed, the name left in comments; (f) the watchdog
+  bumped to 30s with an unrelated 8-second timer added elsewhere — the regex was unanchored over
+  the whole document and never cared which timer carried 8000; (g) the getSession race dropped at
+  the call site. **Three turned it RED, all behaviour-neutral:** hoisting the watchdog delay to a
+  named constant, writing the guard as `window.supabase?.createClient`, and hoisting the 4s
+  timeout to a constant. A linter suggests all three, and a false positive on an ordinary edit is
+  what gets a check weakened by whoever meets it.
+  **The fix reads both inline scripts' ASTs.** A comment cannot satisfy an AST walk; beyond that,
+  each property is asserted where it lives. `withTimeout` must **be** a race (a `Promise.race`
+  inside its own declaration). The watchdog is identified by **the error screen it writes**, not
+  by its delay — which is what lets the delay then be resolved through a constant binding and
+  compared, making the hoisting edits green and the 30s edit red. Every `createClient` call must
+  sit inside the guarded conditional and every `getSession()` inside a 4s `withTimeout`, so a
+  second unguarded call added later fails too. Anything unresolvable throws: no substring
+  fallback. The row prints what it read.
+  **No live defect** — all three mechanisms are intact today, so this is a regression guard like
+  §54 and §62, not a save.
+  **Twenty-two deliberate breaks (one per `must()`) and three GREENS**, falsifiable both ways and
+  both measured: neuter the check and all twenty-two breaks stop failing while all twenty-one
+  GREENS stay green (0 still red, 21/21 green). That run also exercised the 11-23 parse-count row
+  for the second time — it reported `3 AST parse(s) shared by 15 walk(s)` because the neutered
+  check took eight walks with it, a figure no break and no GREEN would have noticed.
+  **One new row caught a bad assertion of its own before it shipped**, the second time in three
+  nights: the first draft asserted `bootErrReads >= 1` over the whole boot script, and its break —
+  deleting the watchdog screen's own read of `window.__bootError` — **passed a deliberately broken
+  tree**, because two of the three reads are the `if(!window.__bootError)` guards in the two
+  listeners, which exist only to keep the first error. Vacuous in exactly the direction that
+  mattered, invisible to the clean baseline, and now scoped to the watchdog callback.
+  Gate still 21 checks (CI's required count does not move); meta-test 127 -> **151**; the gate's
+  shared-AST summary 15 -> **23 walks**, parses still **3**.
+  Suites: gate 21/21, meta-test 151/151, groom-seed 33/33, core 175/175, smoke **1012/1012**
+  (61/61 sections), dashboard-snapshot 44/44, deploy-watch 121/121, silence-watch 39/39.
 - 2026-11-24 — **Invariant 9's gate check was one unanchored `includes()` printing the word
   `present`. Five realistic edits to `deploy.yml` that stop EVERY deploy left the gate green —
   and a property CLAUDE.md calls a standing part of this deploy path had never been read by

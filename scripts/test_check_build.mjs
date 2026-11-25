@@ -188,7 +188,7 @@ ok('teeth: clean copy reports the declared count',
    a slow machine as a broken cache. */
 const parseLine = (base.out.match(/(\d+) AST parse\(s\) shared by (\d+) walk\(s\)\./) || []);
 ok('teeth: clean copy parses each source once and shares it across every walk',
-  parseLine[1] === '3' && parseLine[2] === '15',
+  parseLine[1] === '3' && parseLine[2] === '23',
   parseLine[0] || 'the gate printed no parse/walk line at all');
 
 /* One deliberate break per check, and one per clause where a check holds several. `expect` is the
@@ -231,6 +231,110 @@ const BREAKS = [
   }, 'build'],
   ['[1] boot watchdog error capture removed', 'index.html',
     (s) => s.split('window.__bootError').join('window.__NOT_bootError'), '1'],
+  /* ---- Invariant 1's twenty-two, added 2026-11-25 ----------------------------------------
+     The clause these replaced was five substrings over the whole 580KB file, and it was measured
+     before the rewrite: SEVEN realistic edits left the gate printing `All 21 mechanical checks
+     passed` while THREE behaviour-neutral ones turned it RED. Green on every edit that breaks the
+     app, red on every edit that does not. One break per `must()`, because a group of musts broken
+     as a group only proves that one of them has teeth; `[1]` is held by a single check, so no row
+     needs a label pin.
+
+     Seven of the rows below are those seven measured edits. They are marked MEASURED, and that
+     word means it: each one was applied to a scratch copy and the gate run against it, with the
+     old clause in place, before any of this was written. */
+  ['[1] ring buffer entry point renamed', 'index.html',
+    (s) => s.split('window.__logClientError').join('window.__NOT_logClientError'), '1'],
+  ['[1] a third inline script appears, which this check would not read', 'index.html',
+    (s) => s.replace('<div id="root"></div>', '<div id="root"></div>\n<script>/* analytics shim */</script>'), '1'],
+  /* Anti-vacuity: no setTimeout in the boot script at all. A walk that resolves nothing must fail
+     rather than report a clean sweep — the rule Invariant 5's derivation and the ops.html sink
+     walk both take. */
+  ['[1] the watchdog setTimeout is gone entirely', 'index.html',
+    (s) => s.replace('  setTimeout(function(){\n    var root = document.getElementById(\'root\');',
+      '  void (function(){\n    var root = document.getElementById(\'root\');'), '1'],
+  /* The timer survives and no longer writes the error screen, so there is no watchdog to find.
+     This is why the watchdog is identified by the screen it writes and not by its delay. */
+  ['[1] the watchdog stops writing the error screen', 'index.html',
+    (s) => s.replace('    splash.innerHTML =\n', '    splash.textContent =\n'), '1'],
+  /* The upper bound on the same must(): TWO timers that write a screen, so the check can no
+     longer say which one is the watchdog. A `>= 1` test would pass this. */
+  ['[1] a second screen-writing timer makes the watchdog ambiguous', 'index.html',
+    (s) => s.replace("  setTimeout(function(){\n    var root = document.getElementById('root');",
+      "  setTimeout(function(){\n    var slow = document.getElementById('splash');\n    if(slow) slow.innerHTML = '<em>still loading…</em>';\n  }, 4000);\n  setTimeout(function(){\n    var root = document.getElementById('root');"), '1'],
+  /* MEASURED (b). The timer fires, `}, 8000);` still matches, and the splash is never replaced —
+     the infinite iPhone spinner this invariant was created to fix, restored verbatim. */
+  ['[1] the watchdog callback returns before writing the screen', 'index.html',
+    (s) => s.replace("    var root = document.getElementById('root');\n    var splash = document.getElementById('splash');",
+      "    return;\n    var root = document.getElementById('root');\n    var splash = document.getElementById('splash');"), '1'],
+  /* MEASURED (f). The old regex was unanchored over the whole document, so it never cared WHICH
+     timer carried 8000 — any future 8-second toast re-arms it permanently. */
+  ['[1] watchdog bumped to 30s with an unrelated 8s timer elsewhere', 'index.html',
+    (s) => s.replace('  }, 8000);', '  }, 30000);')
+      .replace('const sleepMs = ms => new Promise(r=>setTimeout(r, ms));',
+        'const autoDismissToast = (fn) => setTimeout(() => {\n  fn();\n}, 8000);\nconst sleepMs = ms => new Promise(r=>setTimeout(r, ms));'), '1'],
+  /* Anti-vacuity on the client half: no createClient call to guard. */
+  ['[1] createClient is spelled some other way', 'index.html',
+    (s) => s.replace('  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)',
+      '  ? window.supabase.makeClient(SUPABASE_URL, SUPABASE_ANON_KEY)'), '1'],
+  /* MEASURED (c). Three of the five old clauses were substring tests over the whole file, so a
+     COMMENT satisfied them. The app now hard-fails whenever the CDN does. */
+  ['[1] createClient called unguarded, the guard left as a comment', 'index.html',
+    (s) => s.replace("const supabase = (window.supabase && window.supabase.createClient)\n  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)\n  : null;",
+      "/* was: (window.supabase && window.supabase.createClient) ? … : null */\nconst supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);"), '1'],
+  /* A conditional that is not a null-guard: shaped right, testing the wrong thing. */
+  ['[1] the client guard tests something other than window.supabase', 'index.html',
+    (s) => s.replace('const supabase = (window.supabase && window.supabase.createClient)',
+      "const supabase = (typeof SUPABASE_URL === 'string')"), '1'],
+  ['[1] the client guard falls back to undefined instead of null', 'index.html',
+    (s) => s.replace('  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)\n  : null;',
+      '  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)\n  : undefined;'), '1'],
+  /* The guard stays perfect and a SECOND call is added outside it — the shape a feature takes
+     when it needs its own client, and invisible to any check that only inspects the guard. */
+  ['[1] a second createClient call sits outside the guard', 'index.html',
+    (s) => s.replace('  : null;\n',
+      '  : null;\nconst supabaseAlt = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);\n', 1), '1'],
+  ['[1] the withTimeout helper is renamed', 'index.html',
+    (s) => s.replace('const withTimeout = (p, ms, label) => Promise.race([',
+      'const raceWithTimeout = (p, ms, label) => Promise.race(['), '1'],
+  /* MEASURED (a), and the most dangerous of the seven: one line, the shape anyone reaches for
+     while debugging, and it removes the race from getSession AND every other call site at once.
+     The old regex matched the CALL, so it still matched. */
+  ['[1] withTimeout neutered to the identity function', 'index.html',
+    (s) => s.replace('const withTimeout = (p, ms, label) => Promise.race([',
+      'const withTimeout = (p, ms, label) => p;\nconst __unusedWithTimeout = (p, ms, label) => Promise.race(['), '1'],
+  ['[1] getSession is spelled some other way', 'index.html',
+    (s) => s.replace("await withTimeout(supabase.auth.getSession(), 4000, 'auth check')",
+      "await withTimeout(supabase.auth.fetchSession(), 4000, 'auth check')"), '1'],
+  /* MEASURED (g). */
+  ['[1] the getSession race dropped at the call site, shape left in a comment', 'index.html',
+    (s) => s.replace("        const {data:{session}} = await withTimeout(supabase.auth.getSession(), 4000, 'auth check');",
+      "        /* was withTimeout(supabase.auth.getSession(), 4000, 'auth check') */\n        const {data:{session}} = await supabase.auth.getSession();"), '1'],
+  ['[1] __logClientError assigned something that is not a function', 'index.html',
+    (s) => s.replace('  window.__logClientError = function(msg, src, line, stack){',
+      '  var noopLogger = function(msg, src, line, stack){')
+      .replace('  /* console.error mirror.', '  window.__logClientError = noopLogger;\n  /* console.error mirror.'), '1'],
+  /* MEASURED (d). CLAUDE.md names this exact edit as the dangerous direction for the console
+     mirror — "a mirror that drops categories of message is how the 47-day sync outage stayed
+     invisible" — and the old clause could not see it. */
+  ['[1] __logClientError no-opped with a leading return', 'index.html',
+    (s) => s.replace('  window.__logClientError = function(msg, src, line, stack){',
+      '  window.__logClientError = function(msg, src, line, stack){ return; /* too noisy */'), '1'],
+  /* It accepts every message and persists none, so the buffer is empty on the next load — which
+     is how the 2026-08-23 sync investigation opened with an empty error log. */
+  ['[1] __logClientError stops persisting the buffer', 'index.html',
+    (s) => s.replace('      localStorage.setItem(ERR_KEY, JSON.stringify(buf));',
+      '      void JSON.stringify(buf);'), '1'],
+  /* MEASURED (e). */
+  ['[1] __bootError assignments removed, the name left in comments', 'index.html',
+    (s) => s.replace("    if(!window.__bootError) window.__bootError = e.message || String(e.error||'');",
+      '    /* window.__bootError no longer set here */')
+      .replace('    if(!window.__bootError) window.__bootError = m;',
+        '    /* window.__bootError no longer set here either */'), '1'],
+  /* Written and never read: the watchdog screen silently degrades to "Unknown startup error."
+     for every failed boot, which is the one string a nurse would be asked to report. */
+  ['[1] nothing reads __bootError any more', 'index.html',
+    (s) => s.replace("(window.__bootError || 'Unknown startup error.')",
+      "('Unknown startup error.')"), '1'],
   /* The replacement must not itself contain `integrity="sha384-`: a first draft used
      `data-was-integrity="…"`, which still held the substring, so the count stayed 5 and the gate
      passed a "break" that broke nothing. The no-op guard cannot see that one — only the
@@ -885,6 +989,23 @@ const GREENS = [
     { claim: 'the storage-site figure stays 35, so it counts sites and not visits',
       row: /\[5\].*$/m,
       test: (out) => /\[5\][^\n]*\b35 sites\b/.test(out) }],
+  /* ---- Invariant 1's three, added 2026-11-25 ---------------------------------------------
+     All three are MEASURED false positives of the clause this check replaced: each one is
+     behaviour-neutral and each one turned the old gate RED. That is the direction that gets a
+     check weakened by whoever meets it, and a linter will suggest all three. */
+  ['the boot watchdog delay is hoisted to a named constant', 'index.html',
+    (s) => s.replace('  window.__bootError = null;', '  window.__bootError = null;\n  var BOOT_WATCHDOG_MS = 8000;')
+      .replace('  }, 8000);', '  }, BOOT_WATCHDOG_MS);')],
+  /* Optional chaining is the modern spelling of this exact guard, and behaviour-identical here:
+     `window.supabase?.createClient` is falsy by the same two routes the `&&` form is. */
+  ['the client null-guard is written with optional chaining', 'index.html',
+    (s) => s.replace('const supabase = (window.supabase && window.supabase.createClient)',
+      'const supabase = (window.supabase?.createClient)')],
+  ['the 4s getSession timeout is hoisted to a named constant', 'index.html',
+    (s) => s.replace('const sleepMs = ms => new Promise(r=>setTimeout(r, ms));',
+      'const AUTH_CHECK_TIMEOUT_MS = 4000;\nconst sleepMs = ms => new Promise(r=>setTimeout(r, ms));')
+      .replace("withTimeout(supabase.auth.getSession(), 4000, 'auth check')",
+        "withTimeout(supabase.auth.getSession(), AUTH_CHECK_TIMEOUT_MS, 'auth check')")],
 ];
 
 for (const [name, file, fn, also] of GREENS) {
