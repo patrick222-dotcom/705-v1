@@ -94,6 +94,22 @@ const walk = (code, visitor, plugins = ['jsx']) => {
   walks += 1;
 };
 
+/* ---- the two inline scripts, sliced identically everywhere ------------------------------------
+   `index.html` holds exactly two: the plain-JS boot script (Invariant 1's watchdog, null-guard
+   and ring buffer) and the Babel-transformed JSX block. Three checks need them, and they must be
+   sliced the same way by all three — the AST cache above is keyed on the source STRING, so a
+   second spelling of this loop would silently double the parse count the summary asserts. */
+const inlineScripts = () => {
+  const inline = [];
+  for (let at = html.indexOf('<script'); at !== -1; at = html.indexOf('<script', at + 1)) {
+    const tagEnd = html.indexOf('>', at);
+    const tag = html.slice(at, tagEnd + 1);
+    if (/\ssrc=/.test(tag)) continue;              // the 5 CDN scripts — Invariant 2's business
+    inline.push({ tag, body: html.slice(tagEnd + 1, html.indexOf('</script>', tagEnd)) });
+  }
+  return inline;
+};
+
 /* ---- the one that actually stops a bad deploy: does the JSX parse? ---------------------- */
 check('build', 'JSX block parses', () => {
   const open = html.indexOf('<script type="text/babel" data-presets="react">');
@@ -127,15 +143,291 @@ check('build', 'JSX block parses', () => {
 });
 
 /* ---- Invariant 1: boot hardening ------------------------------------------------------- */
+/* ---- Invariant 1: boot hardening, READ rather than grepped -------------------------------
+   This check was five substrings standing in for the four properties that make the app boot at
+   all, and its label printed all four as words: `watchdog + null-guard + 4s getSession race +
+   error buffer`. Invariant 1 is the one with `Detect: none` — a device that never boots never
+   fires `app_open` and never flushes the error buffer, so the iPhone spinner these three
+   mechanisms were written to kill was invisible in analytics for its entire life — and its blast
+   radius is every WebKit device, iPhone Chrome included, app unusable and silent.
+
+   Measured 2026-11-25 against the old clause, before any of this was written. SEVEN realistic
+   edits left the gate printing `All 21 mechanical checks passed`, and THREE behaviour-neutral
+   ones turned it RED. That is the worst available shape — green on every edit that breaks the
+   app, red on every edit that does not — and the red half is the half that gets a check
+   weakened by whoever meets it.
+
+   The seven that passed:
+   (a) `withTimeout` neutered to `(p, ms, label) => p`. One line, the shape anyone reaches for
+       while debugging, and it removes the race from getSession AND from all 30-odd other call
+       sites at once. The old regex matched the CALL, so it still matched; the WebKit deadlock it
+       exists to bound was simply gone. The single most dangerous of the seven.
+   (b) `return;` at the top of the watchdog callback. The 8s timer still fires, `}, 8000);` still
+       matches, and the splash is never replaced — which is the infinite spinner this invariant
+       was created to fix, restored verbatim with the gate green.
+   (c) `createClient` called unguarded with the old guard left behind as a comment. Three of the
+       five clauses were `includes()`/regex over the whole 580KB file, so a COMMENT satisfied
+       them: the app now hard-fails whenever the CDN does, which is the degradation the
+       null-guard is the entire defence against.
+   (d) `window.__logClientError` no-opped with a leading `return`. The substring still matched the
+       assignment. CLAUDE.md names this exact edit as the dangerous direction for the console
+       mirror — "a mirror that drops categories of message is how the 47-day sync outage stayed
+       invisible" — and the gate could not see it.
+   (e) `window.__bootError`'s assignments removed, the name surviving in a comment.
+   (f) the watchdog bumped to 30s with an unrelated 8-second timer added elsewhere in the file.
+       `/\}, 8000\);/` is unanchored over the whole document, so it never cared WHICH timer it
+       found; any future 8s toast re-arms the clause permanently.
+   (g) the getSession race dropped at the call site, its shape surviving in a comment.
+
+   The three that failed, all behaviour-neutral: hoisting the watchdog delay to a named constant,
+   writing the null-guard as `window.supabase?.createClient`, and hoisting the 4s timeout to a
+   named constant. Optional chaining is the modern spelling of that exact guard and a linter will
+   suggest all three.
+
+   So the four properties are read from the two inline scripts' ASTs instead. A comment cannot
+   satisfy an AST walk, which is most of the fix; the rest is that each property is now asserted
+   where it actually lives. `withTimeout` must BE a race, not merely be called. The watchdog is
+   identified by the error screen it writes rather than by its delay, so the delay can then be
+   resolved through a constant binding and compared. Anything unresolvable THROWS: there is no
+   substring fallback, because a check that shrugs at a boot script it cannot read is the hole
+   being replaced.
+
+   The two cheap presence tests are KEPT on purpose, ahead of the walks: they are substring tests
+   over the whole file and they fire even if the derivation below is defeated by a shape it
+   cannot read. They are not what holds the invariant any more, and the label no longer implies
+   they are. */
 check(1, 'Boot hardening intact', () => {
+  /* (0) presence — unchanged, deliberately a substring test, and no longer load-bearing. */
   must(html.includes('window.__bootError'), 'boot watchdog error capture (__bootError) is gone');
-  must(/\}, 8000\);/.test(html), '8s boot watchdog timer is gone');
-  must(/window\.supabase && window\.supabase\.createClient/.test(html),
-    'Supabase client creation is no longer null-guarded — the app will hard-fail when the CDN does');
-  must(/withTimeout\(\s*supabase\.auth\.getSession\(\)\s*,\s*4000/.test(html),
-    'getSession() is no longer raced against a 4s timeout (WebKit deadlock -> iPhone spinner)');
   must(html.includes('window.__logClientError'), 'client error ring buffer is gone');
-  return 'watchdog + null-guard + 4s getSession race + error buffer';
+
+  const inline = inlineScripts();
+  must(inline.length === 2,
+    `expected 2 inline scripts (the boot script and the Babel block), found ${inline.length} — ` +
+    'this check reads both, so a third would be scanned by nothing');
+  const boot = inline[0].body;
+  const app = inline[1].body;
+
+  /* Numeric bindings per script, so hoisting a delay to a named constant stays behaviour-neutral
+     — two of the three false positives above were exactly that edit. */
+  const numbersIn = (code) => {
+    const nums = new Map();
+    walk(code, {
+      VariableDeclarator(p) {
+        const { id, init } = p.node;
+        if (id.type === 'Identifier' && init && init.type === 'NumericLiteral') nums.set(id.name, init.value);
+      },
+    });
+    return nums;
+  };
+  const resolveNum = (node, nums) => {
+    if (!node) return null;
+    if (node.type === 'NumericLiteral') return node.value;
+    if (node.type === 'Identifier' && nums.has(node.name)) return nums.get(node.name);
+    return null;
+  };
+  /* Offsets, so containment is a range test instead of a nested traversal. */
+  const within = (node, range) => node.start >= range.start && node.end <= range.end;
+
+  /* ---- (a) the 8s watchdog ----------------------------------------------------------------
+     Identified by the error screen it WRITES (an assignment to `.innerHTML`), never by its
+     delay — identifying it by the delay is what let break (f) re-arm the clause with an
+     unrelated timer. Once it is identified, the delay is resolved and compared. */
+  const bootNums = numbersIn(boot);
+  let timers = 0;
+  const watchdogs = [];
+  walk(boot, {
+    CallExpression(p) {
+      const c = p.node;
+      if (!(c.callee.type === 'Identifier' && c.callee.name === 'setTimeout')) return;
+      timers += 1;
+      const fn = c.arguments[0];
+      if (!fn || (fn.type !== 'FunctionExpression' && fn.type !== 'ArrowFunctionExpression')) return;
+      if (fn.body.type !== 'BlockStatement') return;
+      let writesScreen = false;
+      p.traverse({
+        AssignmentExpression(q) {
+          const l = q.node.left;
+          if (l.type === 'MemberExpression' && l.property.type === 'Identifier'
+            && l.property.name === 'innerHTML') writesScreen = true;
+        },
+      });
+      if (!writesScreen) return;
+      /* An unconditional `return` among the callback's own statements makes the write
+         unreachable — break (b). The real callback's two returns are consequents of `if`s, so
+         they are not direct children of this block. */
+      const deadAt = fn.body.body.findIndex((s) => s.type === 'ReturnStatement');
+      watchdogs.push({ delay: resolveNum(c.arguments[1], bootNums), raw: c.arguments[1],
+        dead: deadAt !== -1, body: { start: fn.start, end: fn.end } });
+    },
+  });
+  must(timers > 0, 'the boot script contains no setTimeout at all — this walk resolved nothing, '
+    + 'so it cannot report the watchdog as intact');
+  must(watchdogs.length === 1,
+    `expected exactly 1 boot watchdog (a setTimeout whose callback writes the error screen), found `
+    + `${watchdogs.length} — the 8s watchdog that replaces the spinner is gone, or there are now two `
+    + 'and this check cannot say which one is it');
+  const [wd] = watchdogs;
+  must(!wd.dead, 'the boot watchdog callback returns before it writes the error screen — the timer '
+    + 'still fires and the splash is never replaced, which is the infinite iPhone spinner this '
+    + 'invariant exists to fix');
+  must(wd.delay === 8000,
+    'the boot watchdog no longer fires at 8s (CLAUDE.md: "8s watchdog error screen") — resolved to '
+    + `${wd.delay === null ? `an expression this check cannot read (${(wd.raw || {}).type})` : wd.delay}`);
+
+  /* ---- (b) the Supabase client null-guard -------------------------------------------------
+     Every `createClient` call must sit inside the guarded conditional, so break (c) — an
+     unguarded call with the guard left behind as a comment — fails on the call rather than on
+     the presence of the guard's text. */
+  let guard = null;
+  const createCalls = [];
+  const appNums = numbersIn(app);
+  walk(app, {
+    VariableDeclarator(p) {
+      if (p.node.id.type === 'Identifier' && p.node.id.name === 'supabase') guard = p.node;
+    },
+    CallExpression(p) {
+      const ce = p.node.callee;
+      if (ce.type === 'MemberExpression' && ce.property.type === 'Identifier'
+        && ce.property.name === 'createClient') createCalls.push(p.node);
+    },
+  });
+  must(createCalls.length > 0,
+    'no createClient() call found in the app script — the Supabase client is built somewhere this '
+    + 'check cannot see, so the null-guard is held by nobody');
+  must(guard, 'the module-scope `supabase` binding is gone — a rename must fail here rather than '
+    + 'turn this clause into a pass by omission');
+  must(guard.init && guard.init.type === 'ConditionalExpression',
+    'Supabase client creation is no longer a guarded conditional — the app will hard-fail when the '
+    + `CDN does (init is ${(guard.init || {}).type || 'absent'})`);
+  let guardReadsWindowSupabase = false;
+  const testRange = { start: guard.init.test.start, end: guard.init.test.end };
+  walk(app, {
+    MemberExpression(p) {
+      const m = p.node;
+      if (!within(m, testRange)) return;
+      if (m.object.type === 'Identifier' && m.object.name === 'window'
+        && m.property.type === 'Identifier' && m.property.name === 'supabase') guardReadsWindowSupabase = true;
+    },
+  });
+  must(guardReadsWindowSupabase,
+    'the Supabase client guard no longer tests window.supabase — it cannot be a null-guard against '
+    + 'the CDN script failing to load');
+  must(guard.init.alternate.type === 'NullLiteral',
+    'the Supabase client guard no longer falls back to null — the app degrades to localStorage-only '
+    + 'by the `supabase` binding being null, so a different fallback changes boot '
+    + `(got ${guard.init.alternate.type})`);
+  const consequent = { start: guard.init.consequent.start, end: guard.init.consequent.end };
+  const unguarded = createCalls.filter((c) => !within(c, consequent));
+  must(!unguarded.length,
+    `${unguarded.length} of ${createCalls.length} createClient() call(s) sit OUTSIDE the null-guard `
+    + '— the app will hard-fail when the CDN does, whatever the guard beside them still says');
+
+  /* ---- (c) the 4s getSession race ---------------------------------------------------------
+     TWO halves, because the old clause only had the second. `withTimeout` must BE a race: break
+     (a) neutered it to `(p, ms) => p` in one line, which removes the WebKit bound from every
+     call site while leaving every call text intact. */
+  let withTimeoutDecl = null;
+  const raceCalls = [];
+  const getSessionCalls = [];
+  const timeoutCalls = [];
+  walk(app, {
+    VariableDeclarator(p) {
+      if (p.node.id.type === 'Identifier' && p.node.id.name === 'withTimeout') withTimeoutDecl = p.node;
+    },
+    CallExpression(p) {
+      const c = p.node;
+      const ce = c.callee;
+      if (ce.type === 'MemberExpression' && ce.object.type === 'Identifier' && ce.object.name === 'Promise'
+        && ce.property.type === 'Identifier' && ce.property.name === 'race') raceCalls.push(c);
+      if (ce.type === 'MemberExpression' && ce.property.type === 'Identifier'
+        && ce.property.name === 'getSession') getSessionCalls.push(c);
+      if (ce.type === 'Identifier' && ce.name === 'withTimeout') timeoutCalls.push(c);
+    },
+  });
+  must(withTimeoutDecl && withTimeoutDecl.init,
+    'the `withTimeout` helper is gone — every Supabase call in this app is bounded by it, starting '
+    + 'with the getSession() race that stops the WebKit deadlock');
+  const wtRange = { start: withTimeoutDecl.init.start, end: withTimeoutDecl.init.end };
+  must(raceCalls.some((c) => within(c, wtRange)),
+    'withTimeout no longer races its promise against a timeout (no Promise.race in its body) — it '
+    + 'returns the un-bounded promise, so getSession() can deadlock on WebKit exactly as it did '
+    + 'before this invariant existed, with every call site still reading as if it were timed out');
+  must(getSessionCalls.length > 0,
+    'no getSession() call found in the app script — the auth check this clause bounds is gone or '
+    + 'is spelled in a way this check cannot read');
+  const unraced = getSessionCalls.filter((g) => !timeoutCalls.some((t) => {
+    const first = t.arguments[0];
+    return first && within(g, { start: first.start, end: first.end })
+      && resolveNum(t.arguments[1], appNums) === 4000;
+  }));
+  must(!unraced.length,
+    `${unraced.length} of ${getSessionCalls.length} getSession() call(s) are not raced against a `
+    + '4s timeout (WebKit deadlock -> iPhone spinner)');
+
+  /* ---- (d) the error ring buffer ----------------------------------------------------------
+     The buffer must still WRITE. Break (d) left the assignment in place and put a `return` at
+     the top of the function, which every substring test in the old clause passed. */
+  let logFn = null;
+  let bootErrWrites = 0;
+  let bootErrReads = 0;
+  let screenReadsBootErr = false;
+  walk(boot, {
+    AssignmentExpression(p) {
+      const l = p.node.left;
+      if (l.type !== 'MemberExpression' || l.object.type !== 'Identifier' || l.object.name !== 'window') return;
+      if (l.property.type !== 'Identifier') return;
+      if (l.property.name === '__logClientError') logFn = p.node.right;
+      if (l.property.name === '__bootError' && p.node.right.type !== 'NullLiteral') bootErrWrites += 1;
+    },
+    MemberExpression(p) {
+      const m = p.node;
+      if (m.object.type === 'Identifier' && m.object.name === 'window'
+        && m.property.type === 'Identifier' && m.property.name === '__bootError'
+        && !(p.parent.type === 'AssignmentExpression' && p.parent.left === m)) {
+        bootErrReads += 1;
+        if (within(m, wd.body)) screenReadsBootErr = true;
+      }
+    },
+  });
+  must(logFn && (logFn.type === 'FunctionExpression' || logFn.type === 'ArrowFunctionExpression'),
+    'window.__logClientError is no longer assigned a function — the ring buffer behind "Copy error '
+    + 'log" and every client_error row is gone');
+  must(logFn.body.type === 'BlockStatement' && logFn.body.body.findIndex((s) => s.type === 'ReturnStatement') === -1,
+    'window.__logClientError returns before it writes — the ring buffer is muted, which blinds '
+    + 'client_error, the only channel in this repo that fires on a real fault (Invariant 4\'s '
+    + '23505s and Invariant 2\'s blocked CDN script surface there and nowhere else)');
+  let logWrites = false;
+  walk(boot, {
+    CallExpression(p) {
+      const ce = p.node.callee;
+      if (!within(p.node, { start: logFn.start, end: logFn.end })) return;
+      if (ce.type === 'MemberExpression' && ce.object.type === 'Identifier' && ce.object.name === 'localStorage'
+        && ce.property.type === 'Identifier' && ce.property.name === 'setItem') logWrites = true;
+    },
+  });
+  must(logWrites,
+    'window.__logClientError no longer writes the ring buffer to localStorage — it accepts every '
+    + 'message and persists none, so the buffer is empty on the next load exactly as it was during '
+    + 'the 47-day sync outage');
+  must(bootErrWrites >= 2,
+    `window.__bootError is assigned a real value in ${bootErrWrites} place(s), expected both the `
+    + 'error and unhandledrejection listeners — the watchdog screen falls back to "Unknown startup '
+    + 'error" and the actual failure is lost');
+  /* Deliberately scoped to the WATCHDOG CALLBACK, not to the file. A first draft asserted
+     `bootErrReads >= 1` over the whole boot script and was vacuous in the direction that
+     matters: two of the three reads are the `if(!window.__bootError)` guards in the two
+     listeners, which exist only to keep the FIRST error, so deleting the error screen's own read
+     still left the count at 2. Caught by its own row in test_check_build.mjs — the break passed
+     a deliberately broken tree. The property is that the SCREEN shows what went wrong. */
+  must(screenReadsBootErr,
+    `window.__bootError is written (${bootErrWrites}x) and read (${bootErrReads}x) but the watchdog `
+    + 'screen no longer reads it — every failed boot silently degrades to "Unknown startup error.", '
+    + 'which is the one string a nurse would be asked to report');
+
+  return `watchdog ${wd.delay}ms writes the screen, ${createCalls.length} createClient guarded, `
+    + `${getSessionCalls.length} getSession raced via Promise.race, buffer writes + `
+    + `${bootErrWrites} __bootError writes/${bootErrReads} reads, screen reads it`;
 });
 
 /* ---- Invariant 2: SRI on every CDN script the publish set loads ------------------------
