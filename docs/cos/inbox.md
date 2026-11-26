@@ -7,6 +7,24 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-26 · nightly · **The unload-telemetry gate check was four unanchored regexes printing
+  four property-words, and it was wrong in BOTH directions: seven of eight realistic breaks left
+  the gate green, all three behaviour-neutral edits turned it red** — the subject is the only
+  channel that reports a visit ENDING, and one of its four mechanisms (`keepalive`) also carries
+  her **data**. Measured before the rewrite: `endSession` never *called* from the unload flush,
+  `return;` at its top, **either** keepalive sender losing the flag alone (they shared one regex,
+  and the `user_data` half is the 2026-10-03 `AbortError` restored on her data), `viaBeacon`
+  ignored with the pinned call site intact, the `ob_step` guard comparing `n > 0` (142 rows in
+  production say that stage fires), and the `pagehide` listeners never registered at all — all
+  green. Red on renaming a local `uid`, hoisting the `-1` ref sentinel to a constant, and
+  annotating `flushClientErrors(uid, /* viaBeacon */ true)` — which produced a failure reading
+  "the error buffer no longer flushes on unload" about a line that still flushes it. Six derived
+  clauses now, one shared walk; anything unresolvable throws. No live defect: all four mechanisms
+  are intact today, so this is a regression guard, not a fix. 18 breaks, 3 GREENS, falsifiable
+  both ways and both measured (neuter: 0 of 19 breaks still red, 21/21 greens green; restore the
+  old regexes: clean page still green, exactly the 3 new GREENS red). Eighth consecutive night of
+  this repo's recurring defect, in an eighth file.
+  · → park: shipped; belongs to no live thread.
 - 2026-11-25 · nightly · **Invariant 1's gate check was five substrings printing four
   property-words, and it was wrong in BOTH directions: seven realistic app-breaking edits left
   the gate green, three behaviour-neutral edits turned it red** — the invariant with

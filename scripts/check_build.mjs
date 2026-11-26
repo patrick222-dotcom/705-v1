@@ -1610,18 +1610,286 @@ check(9, 'Deploy branch still triggers a deploy', () => {
    Not numbered invariants, but load-bearing the same way. Both were broken for months in ways
    nothing could see: the exit row did not exist, and the test harness was quietly writing
    production rows. Each failure mode is silent by construction, so each gets a gate. */
+/* ---- the unload telemetry: four mechanisms, read rather than grepped -------------------------
+   This is the only channel that says anything at all about a visit that ENDS. `app_open` says
+   she arrived; `session_end` says how far she got; the unload `client_error` flush is the only
+   route the ring buffer takes on a device that never loads again, and every public device to
+   date is a one-visit device. The 2026-11-25 groom read a `session_end {n:3}` from a device with
+   no other row in the table — the keepalive beacon survived a 2-second bounce and the three
+   ordinary `track()` fetches did not. That asymmetry IS this check's subject.
+
+   Until 2026-11-26 the check was four unanchored regexes over the whole 580KB file and its label
+   printed four property-words — `session_end + keepalive + unload error flush + ob_step 0`, the
+   same shape Invariant 1's clause carried until the night before. Measured against it before
+   anything was written, SEVEN of eight realistic breaks left the gate printing
+   `All 21 mechanical checks passed`, and ALL THREE behaviour-neutral edits turned it RED:
+
+     green  endSession never CALLED from the unload flush (the declaration and the 'session_end'
+            literal both still matched; the exit row is simply never sent — and it is the one row
+            that survives a bounce)
+     green  `return;` at the top of endSession — the Invariant-1 break (b) shape, one line
+     green  beaconSaveUserData loses keepalive, the match surviving in beaconInsert. TWO senders
+            share one regex, so either could lose it alone. This one is the 2026-10-03 AbortError
+            restored on her actual DATA, not on telemetry
+     green  beaconInsert loses keepalive, the match surviving in beaconSaveUserData
+     green  flushClientErrors stops honouring `viaBeacon` and sends through track() — an ordinary
+            fetch inside an unload handler, i.e. the exact bug the parameter exists to fix, with
+            the call site `flushClientErrors(uid, true)` the old regex pinned left untouched
+     green  markObStep compares `n > 0` instead of `n > obMax.current` — step 0, the stage this
+            funnel was rebuilt for on 2026-09-16, can never fire again while `useRef(-1)` stands
+     green  the pagehide/visibilitychange listeners are never registered at all: nothing flushes
+            on unload, telemetry AND data, and all four regexes still matched
+     red    'session_end' renamed with the old name left in a comment — caught, but by the
+            INVENTORY row, not by this one. A break that fails the wrong row is not a win.
+
+   And the three false positives, each of which a linter or a reviewer suggests: renaming the
+   flush handler's local `uid` to `userId`, hoisting the `-1` ref sentinel to a named constant,
+   and annotating the positional boolean as `flushClientErrors(uid, /* viaBeacon *\/ true)`. The
+   red half matters as much as the green half: a check that accuses an ordinary edit is a check
+   someone deletes a clause from.
+
+   Read, not grepped, and each property asserted where it lives:
+
+   (a) THE FLUSH IS REGISTERED. The unload handler is identified by its `pagehide` registration,
+       never by its name, so a flush that exists and is never wired up fails here.
+   (b) IT REACHES BOTH SENDERS. `endSession` must be reachable from it, and `flushClientErrors`
+       must be CALLED FROM IT with a literal `true` — a call site elsewhere in the file cannot
+       satisfy it.
+   (c) EVERY RAW FETCH IT REACHES CARRIES `keepalive`. Derived from reachability rather than
+       declared, so a third unload sender added later is covered the day it lands. Deliberately
+       scoped to raw `fetch`: the `saveToSupabase` fallback on this same path goes through
+       supabase-js and is NOT keepalive on purpose.
+   (d) `viaBeacon` STILL GATES THE BEACON. The parameter must be the test of a conditional whose
+       consequent sends through `beaconInsert`, so neutering the body fails even with the call
+       site intact.
+   (e) `session_end` IS THE NAME, AND IT IS REACHED. The literal must be the name handed to
+       `eventRow` inside `endSession`, and no unconditional `return` may precede the send.
+   (f) STEP 0 CAN STILL FIRE. Anchored on the `track('ob_step')` call: its guard must compare
+       against the ref's `.current`, and the ref's initial value — resolved THROUGH a constant
+       binding, which is what makes the hoisting edit green — must be below zero.
+
+   Anything unresolvable THROWS. There is no regex fallback, because a check that shrugs at a
+   mechanism it cannot read is the hole being replaced. No live defect was found: all four
+   mechanisms are intact today, so this is a regression guard like Invariant 1's rewrite, §54 and
+   §62 — not a save. */
 check('events', 'Unload telemetry intact', () => {
-  must(/'session_end'/.test(html) && /function endSession\(/.test(html),
-    'session_end is gone — every abandonment collapses back to "somewhere after app_open"');
-  must(/keepalive: true/.test(html),
-    'the unload sender lost keepalive — an ordinary fetch is cancelled when the tab goes away, '
-    + 'which is the AbortError already sitting in production client_error rows');
-  must(/flushClientErrors\(uid, true\)/.test(html),
-    'the error buffer no longer flushes on unload — it would report only on a NEXT load, and no '
-    + 'public device has ever had one');
-  must(/const obMax = useRef\(-1\);/.test(html),
-    'obMax is back to 0 — goObStep(0) compares n > obMax.current, so the welcome stage stops firing');
-  return 'session_end + keepalive + unload error flush + ob_step 0';
+  const inline = inlineScripts();
+  must(inline.length === 2,
+    `expected 2 inline scripts, found ${inline.length} — this check reads the app script by index`);
+  const app = inline[1].body;
+
+  /* One traversal for the whole check: grab the Program root from the shared tree and walk it
+     with a plain recursive finder from here on. Five separate `walk()` calls would each re-visit
+     a 512KB tree to answer a question about one function. */
+  let program = null;
+  walk(app, { Program(p) { program = p.node; } });
+  must(program, 'the app script yielded no Program node — this walk resolved nothing, so it '
+    + 'cannot report the unload telemetry as intact');
+
+  const SKIP = new Set(['loc', 'leadingComments', 'trailingComments', 'innerComments', 'comments',
+    'extra', 'tokens', 'errors']);
+  const nodesIn = (root, pred, out = []) => {
+    if (!root || typeof root !== 'object') return out;
+    if (Array.isArray(root)) { for (const n of root) nodesIn(n, pred, out); return out; }
+    if (typeof root.type === 'string' && pred(root)) out.push(root);
+    for (const k of Object.keys(root)) {
+      if (SKIP.has(k)) continue;
+      const v = root[k];
+      if (v && typeof v === 'object') nodesIn(v, pred, out);
+    }
+    return out;
+  };
+  const within = (n, r) => n.start >= r.start && n.end <= r.end;
+  const rangeOf = (n) => ({ start: n.start, end: n.end });
+  const isCallTo = (n, name) => n.type === 'CallExpression'
+    && n.callee.type === 'Identifier' && n.callee.name === name;
+
+  /* Every function reachable by name: declarations and `const f = function/arrow`. */
+  const fns = new Map();
+  for (const n of nodesIn(program, (x) => x.type === 'FunctionDeclaration' && x.id)) fns.set(n.id.name, n);
+  for (const n of nodesIn(program, (x) => x.type === 'VariableDeclarator'
+    && x.id.type === 'Identifier' && x.init
+    && (x.init.type === 'FunctionExpression' || x.init.type === 'ArrowFunctionExpression'))) {
+    if (!fns.has(n.id.name)) fns.set(n.id.name, n.init);
+  }
+  must(fns.size > 50, `only ${fns.size} named functions resolved in the app script — this walk is `
+    + 'reading the wrong thing, so every clause below would pass by having nothing to inspect');
+
+  const allCalls = nodesIn(program, (x) => x.type === 'CallExpression');
+  const callsIn = (r) => allCalls.filter((c) => within(c, r));
+  const namedCallsIn = (r) => callsIn(r)
+    .filter((c) => c.callee.type === 'Identifier').map((c) => c.callee.name);
+
+  /* ---- (a) the flush is REGISTERED on pagehide ------------------------------------------- */
+  const registered = [];
+  for (const c of allCalls) {
+    const ce = c.callee;
+    if (!(ce.type === 'MemberExpression' && ce.property.type === 'Identifier'
+      && ce.property.name === 'addEventListener')) continue;
+    const ev = c.arguments[0];
+    if (!(ev && ev.type === 'StringLiteral' && ev.value === 'pagehide')) continue;
+    const h = c.arguments[1];
+    if (h && h.type === 'Identifier' && fns.has(h.name)) registered.push(h.name);
+  }
+  must(registered.length === 1,
+    `expected exactly 1 resolvable pagehide handler, found ${registered.length} — nothing flushes `
+    + 'on unload (telemetry AND her data), or there are now two and this check cannot say which '
+    + 'one carries the exit row');
+  const [flushName] = registered;
+  const flushRange = rangeOf(fns.get(flushName));
+
+  /* ---- (b) it reaches endSession, and calls flushClientErrors(_, true) ITSELF -------------
+     Reachability is hop-bounded from the flush. `endSession` is a direct call today; the bound
+     is 3 so an extracted helper does not turn this into a false positive. */
+  const reachable = (() => {
+    const seen = new Set();
+    let frontier = namedCallsIn(flushRange);
+    for (let hop = 0; hop < 3 && frontier.length; hop += 1) {
+      const next = [];
+      for (const n of frontier) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        const f = fns.get(n);
+        if (f) next.push(...namedCallsIn(rangeOf(f)));
+      }
+      frontier = next;
+    }
+    return seen;
+  })();
+  must(reachable.has('endSession'),
+    'the unload flush no longer reaches endSession — the exit row is never sent, so every '
+    + 'abandonment collapses back to "somewhere after app_open", and on a short bounce the '
+    + 'keepalive exit row is the ONLY row that survives at all');
+  const errFlushes = callsIn(flushRange).filter((c) => isCallTo(c, 'flushClientErrors'));
+  must(errFlushes.length === 1,
+    `the unload flush makes ${errFlushes.length} flushClientErrors() calls, expected 1 — the error `
+    + 'buffer would report only on a NEXT load, and no public device has ever had one');
+  const viaArg = errFlushes[0].arguments[1];
+  must(viaArg && viaArg.type === 'BooleanLiteral' && viaArg.value === true,
+    'the unload flushClientErrors() call no longer passes the beacon flag — its batch would go '
+    + `through an ordinary fetch that the discarded document cancels (got ${(viaArg || {}).type || 'no second argument'})`);
+
+  /* ---- (c) every raw fetch the flush reaches carries keepalive ---------------------------- */
+  const keepaliveOf = (fetchCall) => {
+    const opts = fetchCall.arguments[1];
+    if (!opts || opts.type !== 'ObjectExpression') return null;
+    for (const p of opts.properties) {
+      if (p.type !== 'ObjectProperty') continue;
+      const k = p.key.type === 'Identifier' ? p.key.name
+        : (p.key.type === 'StringLiteral' ? p.key.value : null);
+      if (k === 'keepalive') return p.value.type === 'BooleanLiteral' ? p.value.value : null;
+    }
+    return false;
+  };
+  const senders = [];
+  for (const name of reachable) {
+    const f = fns.get(name);
+    if (!f) continue;
+    for (const c of callsIn(rangeOf(f))) {
+      if (!isCallTo(c, 'fetch')) continue;
+      senders.push({ name, keepalive: keepaliveOf(c) });
+    }
+  }
+  must(senders.length >= 2,
+    `only ${senders.length} raw fetch() call(s) found on the unload path, expected at least 2 `
+    + '(the events beacon and the user_data flush) — this clause resolved almost nothing, so it '
+    + 'cannot report keepalive as intact');
+  const bare = senders.filter((s) => s.keepalive !== true);
+  must(!bare.length,
+    `${bare.length} of ${senders.length} unload fetch() call(s) do not carry keepalive:true `
+    + `(${bare.map((s) => s.name).join(', ')}) — an ordinary fetch started in a pagehide handler is `
+    + 'cancelled as the document is discarded, which is the AbortError already sitting in '
+    + 'production client_error rows from 2026-10-03');
+
+  /* ---- (d) viaBeacon still gates the beacon ---------------------------------------------- */
+  const fce = fns.get('flushClientErrors');
+  must(fce, 'flushClientErrors is gone — a rename must fail here rather than turn this clause '
+    + 'into a pass by omission');
+  const viaParam = fce.params[1];
+  must(viaParam && viaParam.type === 'Identifier',
+    'flushClientErrors no longer takes a second parameter, so the call site above is passing a '
+    + 'flag nothing reads');
+  const gated = nodesIn(fce, (n) => (n.type === 'IfStatement' || n.type === 'ConditionalExpression')
+    && nodesIn(n.test, (t) => t.type === 'Identifier' && t.name === viaParam.name).length
+    && nodesIn(n.type === 'IfStatement' ? n.consequent : n.consequent,
+      (t) => isCallTo(t, 'beaconInsert')).length);
+  must(gated.length >= 1,
+    `flushClientErrors no longer branches on \`${viaParam.name}\` to send through beaconInsert — the `
+    + 'unload batch goes out on an ordinary fetch that the discarded document cancels, whatever '
+    + 'the call site still passes');
+
+  /* ---- (e) session_end is the name, and the send is reached ------------------------------- */
+  const es = fns.get('endSession');
+  must(es, 'endSession is gone — a rename must fail here rather than leave this clause nothing '
+    + 'to inspect');
+  const sends = nodesIn(es, (n) => isCallTo(n, 'beaconInsert')
+    && nodesIn(n, (t) => isCallTo(t, 'eventRow') && t.arguments[0]
+      && t.arguments[0].type === 'StringLiteral' && t.arguments[0].value === 'session_end').length);
+  must(sends.length === 1,
+    `endSession makes ${sends.length} beaconInsert() call(s) carrying eventRow('session_end', …), `
+    + "expected 1 — the event name is what every query in docs/ and scripts/ reads, so a rename "
+    + 'orphans every row already in the table');
+  /* An unconditional `return` among the statements PRECEDING the send makes it unreachable —
+     the Invariant-1 break (b) shape. The real function's two early returns are consequents of
+     `if`s, so they are never direct siblings. */
+  const send = sends[0];
+  const blocked = nodesIn(es, (n) => n.type === 'BlockStatement' && within(send, rangeOf(n)))
+    .some((b) => b.body.some((s) => s.type === 'ReturnStatement' && s.end <= send.start));
+  must(!blocked,
+    'endSession returns unconditionally before it sends the exit row — the function is still '
+    + 'there, still called, and writes nothing');
+
+  /* ---- (f) ob_step 0 can still fire ------------------------------------------------------ */
+  const obCalls = allCalls.filter((c) => isCallTo(c, 'track') && c.arguments[0]
+    && c.arguments[0].type === 'StringLiteral' && c.arguments[0].value === 'ob_step');
+  must(obCalls.length === 1,
+    `found ${obCalls.length} track('ob_step') call(s), expected 1 — the onboarding funnel's only `
+    + 'stage event is gone or duplicated, and this clause has nothing to anchor on');
+  const guards = nodesIn(program, (n) => n.type === 'IfStatement' && within(obCalls[0], rangeOf(n)))
+    .sort((a, b) => (b.start - a.start))               // innermost first
+    .map((n) => nodesIn(n.test, (t) => t.type === 'BinaryExpression' && t.operator === '>')
+      .concat(n.test.type === 'BinaryExpression' && n.test.operator === '>' ? [n.test] : []))
+    .find((cmp) => cmp.length);
+  must(guards && guards.length,
+    "the track('ob_step') call is no longer behind a `>` comparison — markObStep fires on every "
+    + 'step change, so back-navigation and "Edit my setup" double-count and the rows stop reading '
+    + 'as a funnel');
+  const rhs = guards[0].right;
+  must(rhs.type === 'MemberExpression' && rhs.property.type === 'Identifier'
+    && rhs.property.name === 'current' && rhs.object.type === 'Identifier',
+    'the ob_step guard no longer compares against a ref\'s .current — a literal floor makes '
+    + 'step 0 (the welcome screen, the most common exit in the data) the one stage that can '
+    + `never fire, which is the 2026-09-16 defect verbatim (right side is ${rhs.type})`);
+  const refName = rhs.object.name;
+  const nums = new Map();
+  for (const d of nodesIn(program, (x) => x.type === 'VariableDeclarator'
+    && x.id.type === 'Identifier' && x.init)) {
+    const i = d.init;
+    if (i.type === 'NumericLiteral') nums.set(d.id.name, i.value);
+    else if (i.type === 'UnaryExpression' && i.operator === '-' && i.argument.type === 'NumericLiteral') {
+      nums.set(d.id.name, -i.argument.value);
+    }
+  }
+  const refDecl = nodesIn(program, (x) => x.type === 'VariableDeclarator'
+    && x.id.type === 'Identifier' && x.id.name === refName
+    && x.init && isCallTo(x.init, 'useRef'))[0];
+  must(refDecl, `the ob_step guard reads \`${refName}.current\` but \`${refName}\` is not a useRef() `
+    + 'binding this check can find, so its initial value cannot be established');
+  const seedNode = refDecl.init.arguments[0];
+  let seed = null;
+  if (!seedNode) seed = null;
+  else if (seedNode.type === 'NumericLiteral') seed = seedNode.value;
+  else if (seedNode.type === 'UnaryExpression' && seedNode.operator === '-'
+    && seedNode.argument.type === 'NumericLiteral') seed = -seedNode.argument.value;
+  else if (seedNode.type === 'Identifier' && nums.has(seedNode.name)) seed = nums.get(seedNode.name);
+  must(seed !== null && seed < 0,
+    `\`${refName}\` is seeded with ${seed === null ? `an expression this check cannot read (${(seedNode || {}).type || 'nothing'})` : seed}, `
+    + 'not a negative sentinel — goObStep(0) compares n > ref.current, so a seed of 0 makes the '
+    + 'WELCOME step the one stage of the funnel that can never fire (fixed 2026-09-16; every '
+    + 'ob_step row before that starts at 1)');
+
+  return `pagehide→${flushName}: endSession + flushClientErrors(…,true), ${senders.length} raw `
+    + `fetch(es) all keepalive, viaBeacon gates beaconInsert, ob_step floor ${refName}.current=${seed}`;
 });
 
 check('events', 'Harness cannot write to production', () => {
