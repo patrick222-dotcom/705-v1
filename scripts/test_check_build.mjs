@@ -188,7 +188,7 @@ ok('teeth: clean copy reports the declared count',
    a slow machine as a broken cache. */
 const parseLine = (base.out.match(/(\d+) AST parse\(s\) shared by (\d+) walk\(s\)\./) || []);
 ok('teeth: clean copy parses each source once and shares it across every walk',
-  parseLine[1] === '3' && parseLine[2] === '23',
+  parseLine[1] === '3' && parseLine[2] === '24',
   parseLine[0] || 'the gate printed no parse/walk line at all');
 
 /* One deliberate break per check, and one per clause where a check holds several. `expect` is the
@@ -719,6 +719,81 @@ const BREAKS = [
      the wrong row as a win. */
   ['[events] unload sender loses keepalive', 'index.html',
     (s) => s.split('keepalive: true').join('keepalive: false'), 'events', UNLOAD],
+  /* ---- the unload telemetry's SEVENTEEN, added 2026-11-26 -------------------------------
+     The clause these replaced was four unanchored regexes over the whole file, and it was wrong
+     in BOTH directions: measured before the rewrite, seven of eight realistic breaks left the
+     gate printing `All 21 mechanical checks passed` and all three behaviour-neutral edits turned
+     it RED. One break per `must()` below, plus one per detector feeding a shared must — the two
+     keepalive senders share one assertion and either can lose the flag alone, which is precisely
+     how one regex came to stand for two mechanisms.
+
+     Row "the senders are reached through window.fetch" is the odd one and belongs here on
+     purpose: `window.fetch(…)` is behaviour-identical, so it is not a defect — but it is a shape
+     this walk cannot resolve, and the check's stated rule is that anything unresolvable THROWS
+     rather than reporting keepalive intact on a file it could not read. It is the anti-vacuity
+     floor's break. */
+  ['[events] the pagehide/visibilitychange listeners are never registered', 'index.html',
+    (s) => s.replace(`    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVis);
+    return ()=>{ window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', onVis); };`,
+      '    return ()=>{};'), 'events', UNLOAD],
+  ['[events] endSession is never called from the unload flush', 'index.html',
+    (s) => s.replace(`        endSession(uid, { setup: !!(d && d.setupComplete), shifts: nShifts,
+                          ob: obMax.current >= 0 ? obMax.current : null });`,
+      '        /* endSession(uid, …) — temporarily disabled */'), 'events', UNLOAD],
+  ['[events] the unload flush stops flushing the error buffer', 'index.html',
+    (s) => s.replace('        flushClientErrors(uid, true);\n', ''), 'events', UNLOAD],
+  ['[events] the unload error flush drops its beacon flag', 'index.html',
+    (s) => s.replace('flushClientErrors(uid, true);', 'flushClientErrors(uid);'), 'events', UNLOAD],
+  /* Each sender alone. The pre-existing row above flips BOTH at once, which is exactly the
+     grouping that let one regex pass for two mechanisms. */
+  ['[events] the user_data unload flush alone loses keepalive', 'index.html',
+    (s) => s.replace(`    fetch(SUPABASE_URL + '/rest/v1/user_data?on_conflict=user_id', {
+      method: 'POST',
+      keepalive: true,`, `    fetch(SUPABASE_URL + '/rest/v1/user_data?on_conflict=user_id', {
+      method: 'POST',`), 'events', UNLOAD],
+  ['[events] the events beacon alone loses keepalive', 'index.html',
+    (s) => s.replace(`    fetch(SUPABASE_URL + '/rest/v1/events', {
+      method: 'POST',
+      keepalive: true,`, `    fetch(SUPABASE_URL + '/rest/v1/events', {
+      method: 'POST',`), 'events', UNLOAD],
+  ['[events] both unload senders are reached through window.fetch', 'index.html',
+    (s) => s.split("    fetch(SUPABASE_URL + '/rest/v1/").join("    window.fetch(SUPABASE_URL + '/rest/v1/"),
+    'events', UNLOAD],
+  ['[events] flushClientErrors is renamed and a caller is missed', 'index.html',
+    (s) => s.replace('function flushClientErrors(userId, viaBeacon){', 'function flushErrorBuffer(userId, viaBeacon){'),
+    'events', UNLOAD],
+  ['[events] flushClientErrors loses its beacon parameter', 'index.html',
+    (s) => s.replace('function flushClientErrors(userId, viaBeacon){', 'function flushClientErrors(userId){'),
+    'events', UNLOAD],
+  ['[events] viaBeacon no longer gates beaconInsert', 'index.html',
+    (s) => s.replace(`    if(viaBeacon) beaconInsert([eventRow('client_error', props, userId)]);
+    else track('client_error', props, userId);`, "    track('client_error', props, userId);"),
+    'events', UNLOAD],
+  ['[events] endSession is renamed and a caller is missed', 'index.html',
+    (s) => s.replace('function endSession(userId, extra){', 'function endLoad(userId, extra){'), 'events', UNLOAD],
+  ['[events] session_end is renamed, the old name left in a comment', 'index.html',
+    (s) => s.replace("    beaconInsert([eventRow('session_end', props, userId)]);",
+      "    /* was 'session_end' */\n    beaconInsert([eventRow('session_exit', props, userId)]);"),
+    'events', UNLOAD],
+  ['[events] endSession returns before it sends the exit row', 'index.html',
+    (s) => s.replace('function endSession(userId, extra){\n  try{', 'function endSession(userId, extra){\n  return;\n  try{'),
+    'events', UNLOAD],
+  ['[events] the ob_step event is renamed', 'index.html',
+    (s) => s.replace("track('ob_step', {step:n}, null)", "track('ob_stage', {step:n}, null)"), 'events', UNLOAD],
+  ['[events] markObStep loses its furthest-step guard', 'index.html',
+    (s) => s.replace("    if(typeof n === 'number' && n > obMax.current){ obMax.current = n; track('ob_step', {step:n}, null); }",
+      "    if(typeof n === 'number'){ obMax.current = n; track('ob_step', {step:n}, null); }"), 'events', UNLOAD],
+  ['[events] the ob_step guard compares against a literal floor', 'index.html',
+    (s) => s.replace("if(typeof n === 'number' && n > obMax.current){ obMax.current = n;",
+      "if(typeof n === 'number' && n > 0){ obMax.current = n;"), 'events', UNLOAD],
+  ['[events] the ob_step ref stops being a useRef binding', 'index.html',
+    (s) => s.replace('  const obMax = useRef(-1);', '  const obMax = {current:-1};'), 'events', UNLOAD],
+  /* The 2026-09-16 defect verbatim: step 0 becomes the one stage of the funnel that can never
+     fire. The old clause DID catch this one — it pinned the declaration's exact text — which is
+     why it also went red on hoisting the sentinel to a constant (a GREEN below). */
+  ['[events] the ob_step ref is seeded at 0, not -1', 'index.html',
+    (s) => s.replace('const obMax = useRef(-1);', 'const obMax = useRef(0);'), 'events', UNLOAD],
   ['[events] harness stops neutralising Supabase', 'tests/harness.mjs',
     (s) => s.split('NEUTRAL_SUPABASE_HOST').join('REAL_SUPABASE_HOST'), 'events', NEUTRAL],
   /* The inventory check, added 2026-11-10. Five breaks, one per `must()` (counting the resolve
@@ -993,6 +1068,26 @@ const GREENS = [
      All three are MEASURED false positives of the clause this check replaced: each one is
      behaviour-neutral and each one turned the old gate RED. That is the direction that gets a
      check weakened by whoever meets it, and a linter will suggest all three. */
+  /* ---- the unload telemetry's three, added 2026-11-26 ------------------------------------
+     All three were RED against the clause this replaced, and each is an edit a reviewer or a
+     linter suggests. They are the whole reason the rewrite is not simply "widen the regexes":
+     the old clause pinned a local variable's NAME, an argument list's exact text and a
+     declaration's exact spelling including its semicolon, so the three cheapest readability
+     edits on this path all accused the one check standing for the exit row.
+
+     Row 3 is the subtle one. `flushClientErrors(uid, true)` is a positional boolean, and
+     annotating it is the standard remedy — but the old clause matched the call site's literal
+     text, so the remedy was a gate failure saying "the error buffer no longer flushes on
+     unload", about a line that still flushes it. */
+  ['the unload flush renames its local uid to userId', 'index.html',
+    (s) => s.replace('        const uid = (snap && snap.user) ? snap.user.id : null;',
+      '        const userId = (snap && snap.user) ? snap.user.id : null;')
+      .replace('        endSession(uid, { setup:', '        endSession(userId, { setup:')
+      .replace('        flushClientErrors(uid, true);', '        flushClientErrors(userId, true);')],
+  ['the ob_step ref sentinel is hoisted to a named constant', 'index.html',
+    (s) => s.replace('  const obMax = useRef(-1);', '  const OB_STEP_NONE = -1;\n  const obMax = useRef(OB_STEP_NONE);')],
+  ['the viaBeacon positional boolean gets a name comment', 'index.html',
+    (s) => s.replace('        flushClientErrors(uid, true);', '        flushClientErrors(uid, /* viaBeacon */ true);')],
   ['the boot watchdog delay is hoisted to a named constant', 'index.html',
     (s) => s.replace('  window.__bootError = null;', '  window.__bootError = null;\n  var BOOT_WATCHDOG_MS = 8000;')
       .replace('  }, 8000);', '  }, BOOT_WATCHDOG_MS);')],

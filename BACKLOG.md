@@ -2595,6 +2595,149 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   twenty-three days.**
 
+### P1 (new, groom 2026-11-26)
+
+**Why this band sits BELOW the 11-06 through 11-25 bands instead of at the top of `## Queue`:**
+unchanged for the twentieth run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The unload-telemetry gate check was four unanchored regexes printing four
+  property-words, and it was wrong in BOTH directions — seven of eight app-breaking edits green,
+  all three behaviour-neutral edits red**~~ — **SHIPPED 2026-11-26**, tonight's build (see Done
+  log). (P1 · source:groom · `harness:drivable` (script-level))
+  **Taken because the Queue held no fresh build item and the groom used the 11-14 question for
+  the eighth night running** — find a claim with a number or a property-word in it, then ask what
+  it is actually testing. The label carried **four** words:
+  `session_end + keepalive + unload error flush + ob_step 0`. **Eighth consecutive night, eighth
+  file**, and the subject is the only channel in this app that says anything about a visit that
+  **ends** — which the 11-25 band had just finished reading, from a `session_end {n:3}` filed by
+  a device with no other row in `events` at all.
+  **Measured before anything was written.** Eleven edits, each applied to a scratch copy with the
+  gate run against it. **Seven printed `All 21 mechanical checks passed`:** (a) `endSession`
+  never **called** from the unload flush — the declaration and the `'session_end'` literal both
+  still matched, and the exit row is simply never sent; (b) `return;` at the top of `endSession`,
+  the Invariant-1 break (b) shape one file over; (c) `beaconSaveUserData` loses `keepalive`, the
+  match surviving in `beaconInsert` — **two senders shared one regex**, and this half is the
+  2026-10-03 `AbortError` restored on her actual **data**, not on telemetry; (d) `beaconInsert`
+  loses `keepalive`, the match surviving in `beaconSaveUserData`; (e) `flushClientErrors` stops
+  honouring `viaBeacon` and sends through `track()` — an ordinary fetch inside a `pagehide`
+  handler, the exact bug the parameter exists to fix, with the call site the old regex pinned
+  left untouched; (f) `markObStep` comparing `n > 0` instead of `n > obMax.current`, so step 0 —
+  the stage the funnel was rebuilt for on 2026-09-16 — can never fire again while `useRef(-1)`
+  stands; (g) the `pagehide`/`visibilitychange` listeners never registered **at all**, so nothing
+  flushes on unload, telemetry or data, with all four regexes still matching.
+  The eighth, renaming `'session_end'` with the old name left in a comment, went red — but on the
+  **inventory** row, not this one. A break that fails the wrong row is not a win, which is why
+  every `[events]` break pins its label.
+  **And all three behaviour-neutral edits turned it RED:** renaming the flush handler's local
+  `uid` to `userId`, hoisting the `-1` ref sentinel to a named constant, and annotating the
+  positional boolean as `flushClientErrors(uid, /* viaBeacon */ true)`. A reviewer suggests all
+  three, and the last one is the sharpest: the old clause matched the call site's literal text, so
+  the standard remedy for an unnamed boolean produced a gate failure reading *"the error buffer no
+  longer flushes on unload"* about a line that still flushes it.
+  **The fix reads the app script's AST in six clauses**, each asserted where it lives: the flush
+  is identified by its `pagehide` **registration** rather than by its name; `endSession` must be
+  **reachable** from it and `flushClientErrors` **called by** it with a literal `true`; every raw
+  `fetch` the flush reaches must carry `keepalive` — **derived from reachability**, so a third
+  unload sender is covered the day it lands, and deliberately scoped to raw `fetch` because the
+  `saveToSupabase` fallback on this same path is not keepalive on purpose; `viaBeacon` must be the
+  test of a conditional whose consequent sends through `beaconInsert`; `'session_end'` must be the
+  name handed to `eventRow` inside `endSession` with no unconditional `return` before the send;
+  and the `ob_step` guard must compare against the ref's `.current`, with the ref's seed resolved
+  **through a constant binding** — which is what makes the hoisting edit green — and required to
+  be below zero. Anything unresolvable **throws**. One shared walk, so the gate's parse count is
+  unchanged at 3 and its walk count moves 23 → 24.
+  **No live defect** — all four mechanisms are intact today, so this is a regression guard like
+  Invariant 1's rewrite, §54 and §62, not a save.
+  **Eighteen breaks, three GREENS, falsifiable both ways and both measured:** neuter the check and
+  **all nineteen of its breaks stop failing** (the eighteen new plus the pre-existing
+  whole-file `keepalive: false` row) while **all twenty-one GREENS stay green** — and the 11-23
+  parse-count row earns itself for the **third** time, going red on its own because the neutered
+  check took its walk with it (152 passed / 20 failed, and the 20th is that row). Restore the old
+  four regexes and the clean page is still **green**, which is the whole argument for the GREENS:
+  nothing but those three rows can see the old clause come back. Gate still 21 checks, so CI's
+  required count does not move.
+- [ ] **`events` did not move at all — the first fully flat groom since the table started being
+  read nightly** (P2 · source:groom · no action) — **1,831** rows, newest still the
+  `session_end {n:3, ob:0, last:'ob_view', secs:2, shifts:0}` from `38a672a5` at **2026-11-24
+  17:47:45**, which is the row the 11-25 band read. `silence_watch` is **FRESH** at **38.3h**
+  against a 48h window, so it is one bad day from `SILENT_*` and that is worth saying before it
+  happens rather than after. 8 distinct devices in 7 days, every one the landing-screen shape.
+  **Do not quote an activation figure off this** — the device classifier is still broken and
+  CLAUDE.md records every activation figure since 2026-09-07 as inflated by exactly this cohort.
+- [ ] **The `ob_step` floor tonight's build gated has 142 rows in production** (P2 ·
+  source:groom · no action) — `ob_step {step:0}` is at **142** rows and `session_end` at **155**,
+  which is the field evidence that break (f) above — `markObStep` comparing `n > 0` — removes
+  something that is *actually firing*, silently, with the gate green. Three of the last four
+  devices filed one. Recorded because the 2026-09-16 fix is six weeks past being news and the
+  next reader of that `useRef(-1)` will have no reason to know what it buys.
+- [ ] **`access_watch` reads TIGHT on its fourteenth night, 16/16** (P2 · source:groom · no
+  action) — unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe** — it reads the catalog and never connects as `anon`.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  2026-11-13 · needs the owner) — `anon` still holds TRUNCATE on `events`, `feedback` and
+  `user_data`, visible in tonight's `access_watch` output, and TRUNCATE is the one verb RLS does
+  not cover. Not reachable over PostgREST, which is why this has stayed P2 for thirteen nights
+  rather than becoming a P0, but it is a grant nothing needs. Revoking it is a migration, so it
+  is not nightly work.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — seventh night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **6.6 days**
+  ago. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **44**, `ics_sync_done`
+  **29** — all three identical for six grooms. `ics_autosync_pref` and `ics_autosync_off` both
+  **zero rows from any device, ever** — still expected: she met the stepper's opt-out on 11-19
+  and took neither it nor the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-SEVENTH groom** (housekeeping, re-read at the END
+  of the run with every column as the 10-14 item requires) — the whole table including `contact`
+  and `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **42.0 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 21-for-21** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the twenty-first groom.
+  Zero loads filed a row since the last groom, because zero loads happened.
+- [ ] **CABINET MISSED fires for the SEVENTEENTH night, and the brief is now 24.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twenty-fourth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the TWENTIETH time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-25
+  band staked out: that merge (#229) touched `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` — no publish-set file. `privacy.html`, `ops.html` and `pdf.worker.min.js`
+  all print the truncation sentence, boundary **`0e38f4d`** tonight (was `8d21e19`) — the figure
+  drifts with clone depth, which is why #210 stopped printing it as a deploy fact.
+  **Tonight's prediction:** tonight's merge touches `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` but **not `index.html`** and **not `ops.html`**, so tomorrow's watch should
+  still name **`a09cabe`**, and all three of the others should still read `[ok]` with the
+  truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-second night, and tonight it grew again**
+  (P2 · `harness:unscoped` · needs the owner) — the suite is **172** assertions now (151 last
+  night; tonight added eighteen breaks and three GREENS). Runtime ~4m15s. The ask is unchanged
+  and still Pat's, still after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs`, and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`. Tonight's build makes the gap concrete again: the eighteen breaks now
+  holding the unload telemetry — the only channel that reports a visit ENDING, and the one whose
+  keepalive half also carries her **data** — all live in the half CI does not run.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — TWENTIETH night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **20.3 days**.
+  Tonight branched to `claude/great-feynman-3xhgkq`, so #209's head is untouched for the
+  twentieth run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the TWENTY-FIRST night for the same reason (#209 rewrites T2's whole block); tonight's line went
+  to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty-four days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6626,6 +6769,70 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-26 — **The unload-telemetry gate check was four unanchored regexes standing in for the
+  four mechanisms that make a visit's ENDING visible, and it was wrong in BOTH directions: seven
+  of eight realistic breaks left the gate green, and all three behaviour-neutral edits turned it
+  red.** The Queue held no fresh build item, so the groom used the 11-14 question for the eighth
+  night running — take a claim with a number or a property-word in it and ask what it is actually
+  testing. This label carried **four** words: `session_end + keepalive + unload error flush +
+  ob_step 0`. **Eighth consecutive night, eighth file**, and the subject is the channel the 11-25
+  band had just finished reading: a `session_end {n:3}` filed by a device with **no other row in
+  `events` at all**, because an ordinary `track()` fetch is cancelled as the document is discarded
+  while the keepalive beacon is not. On a short bounce the exit row is the only row there is.
+  **Measured before anything was written.** Eleven edits, each applied to a `.measure-scratch/`
+  copy with the gate run against it. **Seven printed `All 21 mechanical checks passed`:**
+  (a) `endSession` never **called** from the unload flush — the declaration and the
+  `'session_end'` literal both still matched, so the function is there, looks fine, and the exit
+  row is never sent; (b) `return;` at the top of `endSession`, the Invariant-1 break (b) shape one
+  file over; (c) `beaconSaveUserData` loses `keepalive`, the single regex surviving in
+  `beaconInsert` — **two senders shared one match**, and this half is the 2026-10-03 `AbortError`
+  restored on her actual **data**, not on telemetry; (d) `beaconInsert` loses `keepalive`, the
+  match surviving in `beaconSaveUserData`; (e) `flushClientErrors` stops honouring `viaBeacon` and
+  sends through `track()`, i.e. an ordinary fetch inside a `pagehide` handler — the exact bug the
+  parameter exists to fix — with the call site the old regex pinned left untouched;
+  (f) `markObStep` comparing `n > 0` instead of `n > obMax.current`, so step 0, the stage the
+  funnel was rebuilt for on 2026-09-16, can never fire again while `useRef(-1)` stands — and that
+  stage has **142 rows in production**, so this one removes something actively firing;
+  (g) the `pagehide`/`visibilitychange` listeners never registered **at all**, so nothing flushes
+  on unload, telemetry or data, with all four regexes still matching.
+  The eighth, renaming `'session_end'` with the old name left in a comment, went red — but on the
+  **inventory** row. A break that fails the wrong row is not a win, which is why every `[events]`
+  break pins its label.
+  **And all three behaviour-neutral edits turned it RED:** renaming the flush handler's local
+  `uid` to `userId`, hoisting the `-1` ref sentinel to a named constant, and annotating the
+  positional boolean as `flushClientErrors(uid, /* viaBeacon */ true)`. The last is the sharpest —
+  the old clause matched the call site's literal text, so the standard remedy for an unnamed
+  boolean produced a gate failure reading *"the error buffer no longer flushes on unload"* about a
+  line that still flushes it. Green on the edits that break the app, red on the edits that do not,
+  which is the worst available shape because the red half is what gets a check weakened.
+  **The fix reads the app script's AST in six clauses**, one shared walk, each property asserted
+  where it lives: the flush is identified by its `pagehide` **registration** rather than by its
+  name (so a flush that exists and is never wired up fails); `endSession` must be **reachable**
+  from it and `flushClientErrors` **called by** it with a literal `true`; every raw `fetch` the
+  flush reaches must carry `keepalive`, **derived from reachability** rather than declared, so a
+  third unload sender is covered the day it lands — and deliberately scoped to raw `fetch`,
+  because the `saveToSupabase` fallback on this same path goes through supabase-js and is not
+  keepalive on purpose; `viaBeacon` must be the test of a conditional whose consequent sends
+  through `beaconInsert`; `'session_end'` must be the name handed to `eventRow` inside
+  `endSession`, with no unconditional `return` before the send; and the `ob_step` guard must
+  compare against the ref's `.current`, with the seed resolved **through a constant binding** —
+  which is what makes the hoisting edit green — and required to be below zero. Anything
+  unresolvable **throws**: no regex fallback, because a check that shrugs at a mechanism it cannot
+  read is the hole being replaced. The row prints what it read instead of four words.
+  **No live defect** — all four mechanisms are intact today, so this is a regression guard like
+  Invariant 1's rewrite, §54 and §62, not a save, and it is worth saying so plainly.
+  **Eighteen breaks, three GREENS, falsifiable both ways and both measured:** neuter the check and
+  **all nineteen of its breaks stop failing** — the eighteen new plus the pre-existing whole-file
+  `keepalive: false` row — while **all twenty-one GREENS stay green** (152 passed / 20 failed),
+  and the 20th failure is the 11-23 parse-count row going red **on its own**, because the neutered
+  check took its walk with it: the third time that row has caught something no break and no GREEN
+  would have noticed. Restore the four old regexes and the clean page is still **green**, 15 of
+  the 18 new breaks pass a deliberately broken tree, and **exactly** the three new GREENS go red
+  (155 / 17). That second run is the whole argument for the GREENS: nothing else in the suite can
+  see the old clause come back. Gate still **21 checks** (2.7s, 3 parses / 24 walks), so CI's
+  required count does not move; meta-test 151 → **172**. Suites green: gate 21/21, groom_seed 33,
+  core 175, dashboard_snapshot 44, smoke 1,012. `index.html` is untouched.
+  (P1 · source:groom · `harness:drivable` (script-level))
 - 2026-11-25 — **Invariant 1's gate check was five substrings standing in for the three
   mechanisms that make the app boot at all, and it was wrong in BOTH directions: seven realistic
   app-breaking edits left the gate green, and three behaviour-neutral edits turned it red.**
