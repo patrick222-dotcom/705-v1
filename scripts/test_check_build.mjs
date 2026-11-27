@@ -23,7 +23,7 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
- *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, seventeen of them now).
+ *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, twenty-six of them now).
  *             TEETH only ever asks
  *             "does a break go red?", and a check can be wrong in the other direction: one false
  *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
@@ -178,9 +178,10 @@ ok('teeth: clean copy reports the declared count',
    for its own tree — a full parse AND a full JSX transform of the same 512KB inline script, ~550ms
    apiece, 15 times. That put the gate at ~6.0s, and THIS SUITE runs the gate once per deliberate
    break, so it multiplied by 88 and put the run at ~8 minutes — which is what turned "add one line
-   to CI" into a question about CI minutes. There are three distinct sources (index.html's boot
-   script, its Babel block, and ops.html's inline script), so three parses is the floor and
-   anything above it is the cache not working.
+   to CI" into a question about CI minutes. There are four distinct sources (index.html's boot
+   script, its Babel block, ops.html's inline script, and — since 2026-11-27 — tests/harness.mjs,
+   which is an ES module and so the gate's only `sourceType:'module'` parse), so four parses is
+   the floor and anything above it is the cache not working.
    It is asserted on the EXACT pair, not a bound: `parses` rising to 15 is the regression this
    guards, and `walks` falling is a walk that quietly stopped running — which the breaks would
    also catch, but only for whichever check lost it. A wall-clock assertion was the obvious
@@ -188,7 +189,7 @@ ok('teeth: clean copy reports the declared count',
    a slow machine as a broken cache. */
 const parseLine = (base.out.match(/(\d+) AST parse\(s\) shared by (\d+) walk\(s\)\./) || []);
 ok('teeth: clean copy parses each source once and shares it across every walk',
-  parseLine[1] === '3' && parseLine[2] === '24',
+  parseLine[1] === '4' && parseLine[2] === '25',
   parseLine[0] || 'the gate printed no parse/walk line at all');
 
 /* One deliberate break per check, and one per clause where a check holds several. `expect` is the
@@ -794,8 +795,67 @@ const BREAKS = [
      why it also went red on hoisting the sentinel to a constant (a GREEN below). */
   ['[events] the ob_step ref is seeded at 0, not -1', 'index.html',
     (s) => s.replace('const obMax = useRef(-1);', 'const obMax = useRef(0);'), 'events', UNLOAD],
-  ['[events] harness stops neutralising Supabase', 'tests/harness.mjs',
-    (s) => s.split('NEUTRAL_SUPABASE_HOST').join('REAL_SUPABASE_HOST'), 'events', NEUTRAL],
+  /* ---- the harness neutraliser, derived 2026-11-27 ------------------------------------------
+     Seven breaks, one per `must()`. The clause these replaced was two unanchored regexes over
+     the whole file plus two literal call-site matches, and ALL SEVEN were measured GREEN against
+     it (2026-11-27) while the three GREENS below were measured RED. This is the one property in
+     the repo whose violation has already shipped: from 2026-09-07 to 09-16 every CI run inserted
+     real rows into production `events`, and CLAUDE.md still records every activation figure since
+     as inflated by that cohort. */
+  ['[events] the harness neutraliser is neutered to the identity function', 'tests/harness.mjs',
+    (s) => s.replace('function neutralizeSupabase(html, what) {',
+      'function neutralizeSupabase(html, what) {\n  return html;'), 'events', NEUTRAL],
+  /* One line, the shape anyone reaches for while debugging a scratch copy, and it restores the
+     2026-09-07 defect verbatim. The swap is still in the tree and is now dead code, which is why
+     the check needs a reachability clause rather than a search for the rewrite. */
+  ['[events] the host swap is dropped, the connect-src widening kept', 'tests/harness.mjs',
+    (s) => s.replace('    .split(REAL_SUPABASE_HOST).join(NEUTRAL_SUPABASE_HOST)\n', ''),
+    'events', NEUTRAL],
+  /* The old clause's sharpest miss: `/\.invalid'/` matched the EXPECTED_NETWORK list 100 lines
+     further down, so repointing the neutral host at the real project was green. A whole-file
+     regex cannot tell which occurrence it is standing on. */
+  ['[events] the neutral host is repointed at the real project', 'tests/harness.mjs',
+    (s) => s.replace("const NEUTRAL_SUPABASE_HOST = 'https://harness-must-never-write.invalid';",
+      "const NEUTRAL_SUPABASE_HOST = 'https://mnnlgcxnvodjwlhhiphq.supabase.co';"), 'events', NEUTRAL],
+  /* The call site the old clause pinned survives character for character; the bytes on disk are
+     the production ones. Ordering is a property only a reader of the function can have. */
+  ['[events] the index.html scratch page is written before it is neutralised', 'tests/harness.mjs',
+    (s) => s.replace("  html = neutralizeSupabase(html, 'index.html');\n\n  writeFileSync(join(outDir, 'index.html'), html);",
+      "  writeFileSync(join(outDir, 'index.html'), html);\n  html = neutralizeSupabase(html, 'index.html');"),
+    'events', NEUTRAL],
+  /* `includes()` over the whole file, so a COMMENT satisfied the old clause — Invariant 1's
+     break (c) one file over, on the page that borrows the app's session. */
+  ['[events] the ops.html scratch page stops being neutralised', 'tests/harness.mjs',
+    (s) => s.replace("  html = neutralizeSupabase(html, 'ops.html');",
+      "  /* html = neutralizeSupabase(html, 'ops.html'); */"), 'events', NEUTRAL],
+  /* The two self-guards are what make the rewrite falsifiable at all: without them a moved host
+     or a renamed CSP directive turns it into a no-op that reports success, which is how this
+     went unnoticed for nine days of CI runs the first time. */
+  ['[events] the neutraliser stops throwing when the production host is absent', 'tests/harness.mjs',
+    (s) => s.replace(`  if (!html.includes(REAL_SUPABASE_HOST)) {
+    throw new Error(\`\${what}: Supabase host not found — the harness can no longer prove it is offline\`);
+  }
+`, ''), 'events', NEUTRAL],
+  ['[events] the neutraliser stops throwing when connect-src is missing', 'tests/harness.mjs',
+    (s) => s.replace(`  if (!/connect-src /.test(html)) {
+    throw new Error(\`\${what}: no connect-src in the meta CSP — the rewrite below would silently no-op\`);
+  }
+`, ''), 'events', NEUTRAL],
+  /* The three anti-vacuity floors get their own breaks, because the clause this replaced would
+     also have passed a harness with no functions in it at all. The third and fourth rows are
+     CLASSIFICATION failures on purpose, not accusations of a bug: a write this check cannot
+     resolve, or a module it cannot parse, is intended friction — the same rule Invariant 5's
+     derivation takes for a storage key built from an unresolvable expression. */
+  ['[events] harness.mjs is truncated to its constants, resolving no functions', 'tests/harness.mjs',
+    (s) => s.slice(0, s.indexOf('function neutralizeSupabase')), 'events', NEUTRAL],
+  ['[events] a scratch-page write goes through a local alias this check cannot resolve',
+    'tests/harness.mjs',
+    (s) => s.replace("  writeFileSync(join(outDir, 'ops.html'), html);",
+      "  const wf = writeFileSync;\n  wf(join(outDir, 'ops.html'), html);"), 'events', NEUTRAL],
+  ['[events] harness.mjs stops parsing, so the check must throw rather than shrug',
+    'tests/harness.mjs',
+    (s) => s.replace('function neutralizeSupabase(html, what) {',
+      'function neutralizeSupabase(html, what) { var 0bad = ;'), 'events', NEUTRAL],
   /* The inventory check, added 2026-11-10. Five breaks, one per `must()` (counting the resolve
      clause's throw), because a group of musts negative-tested as a group only proves that ONE of
      them has teeth. Two of the five patch `scripts/dashboard_snapshot.mjs` rather than the app:
@@ -1055,9 +1115,9 @@ const GREENS = [
        reproduce it, and a first draft of this row did exactly that and passed with the fix
        reverted, which is the kind of unfalsifiable assertion this file exists to refuse. */
     (s) => s.replace(
-      /const walk = \(code, visitor, plugins = \['jsx'\]\) => \{[\s\S]*?\n\};/,
-      "const walk = (code, visitor, plugins = ['jsx']) => {\n"
-      + "  require('@babel/standalone').transform(code, { sourceType: 'script', code: false,\n"
+      /const walk = \(code, visitor, plugins = \['jsx'\], sourceType = 'script'\) => \{[\s\S]*?\n\};/,
+      "const walk = (code, visitor, plugins = ['jsx'], sourceType = 'script') => {\n"
+      + "  require('@babel/standalone').transform(code, { sourceType, code: false,\n"
       + "    ast: false, presets: plugins.includes('jsx') ? ['react'] : [],\n"
       + "    plugins: [() => ({ visitor })] });\n"
       + "  parses += 1;\n  walks += 1;\n};"),
@@ -1101,6 +1161,27 @@ const GREENS = [
       'const AUTH_CHECK_TIMEOUT_MS = 4000;\nconst sleepMs = ms => new Promise(r=>setTimeout(r, ms));')
       .replace("withTimeout(supabase.auth.getSession(), 4000, 'auth check')",
         "withTimeout(supabase.auth.getSession(), AUTH_CHECK_TIMEOUT_MS, 'auth check')")],
+  /* ---- the harness neutraliser's three, added 2026-11-27 ---------------------------------
+     Two of these were MEASURED red against the clause the derived check replaced, which is the
+     whole argument for the row: the old clause is green on today's clean file, so nothing but a
+     GREEN can see it come back. A check that pins the constant's NAME flags the first, and one
+     that pins the call site's literal text flags the second — and the second is the same shape
+     as the 11-26 `uid` → `userId` row, one file over. */
+  ['the neutral-host constant is renamed', 'tests/harness.mjs',
+    (s) => s.split('NEUTRAL_SUPABASE_HOST').join('OFFLINE_SUPABASE_HOST')],
+  ['the scratch page local is renamed html → doc in buildOpsScratch', 'tests/harness.mjs',
+    (s) => {
+      const i = s.indexOf('export function buildOpsScratch');
+      const j = s.indexOf('const MIME =', i);
+      return s.slice(0, i) + s.slice(i, j).replace(/(?<![.\w])html\b/g, 'doc') + s.slice(j);
+    }],
+  /* `split(x).join(y)` and `replaceAll(x, y)` are the same operation for a plain string with no
+     `$` in the replacement. A check that pinned the method would flag the modern spelling. */
+  ['the host swap is spelled with replaceAll instead of split/join', 'tests/harness.mjs',
+    (s) => s.replace(`    .split(REAL_SUPABASE_HOST).join(NEUTRAL_SUPABASE_HOST)
+    .split('connect-src ').join(\`connect-src \${NEUTRAL_SUPABASE_HOST} \`);`,
+      `    .replaceAll(REAL_SUPABASE_HOST, NEUTRAL_SUPABASE_HOST)
+    .replaceAll('connect-src ', \`connect-src \${NEUTRAL_SUPABASE_HOST} \`);`)],
 ];
 
 for (const [name, file, fn, also] of GREENS) {
