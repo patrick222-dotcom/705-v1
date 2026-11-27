@@ -7,6 +7,25 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-27 · nightly · **The gate check guarding "the harness cannot write to production" was
+  two unanchored regexes plus two literal call-site matches — and it is the one property in this
+  repo whose violation has ALREADY shipped.** From 2026-09-07 to 09-16 every CI run inserted real
+  rows into production `events` (291, 251 carrying Playwright's impossible `iPhone OS 15_0` +
+  `Version/18.0` pair), and every activation figure since is still recorded as inflated by that
+  cohort. Measured before the rewrite, seven edits that put the suite back on the real project
+  were green: `neutralizeSupabase` neutered to `return html;` (one line, restores the defect
+  verbatim), the host swap dropped, **the neutral host repointed at the real project** (green
+  because `/\.invalid'/` matched the `EXPECTED_NETWORK` list 100 lines down), the scratch page
+  written **before** it is neutralised, `buildOpsScratch`'s call left as a **comment**, and either
+  self-guard removed. Red on two renames that change nothing. Five derived properties plus three
+  anti-vacuity floors now: the
+  neutraliser is found by **what it does** (a `*.supabase.co` → `.invalid` swap), that swap must be
+  reachable, both self-guards must throw, and the pages are derived from the **writes** so a third
+  scratch page is covered the day it lands. First `sourceType:'module'` parse in the gate (3 → 4
+  parses, 24 → 25 walks). No live defect: both pages are neutralised today. 10 breaks (9 net), 3
+  GREENS, falsifiable both ways and both measured. Ninth consecutive night of this repo's
+  recurring defect, in a ninth file.
+  · → park: shipped; belongs to no live thread.
 - 2026-11-26 · nightly · **The unload-telemetry gate check was four unanchored regexes printing
   four property-words, and it was wrong in BOTH directions: seven of eight realistic breaks left
   the gate green, all three behaviour-neutral edits turned it red** — the subject is the only

@@ -2738,6 +2738,147 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
   twenty-four days.**
 
+### P1 (new, groom 2026-11-27)
+
+**Why this band sits BELOW the 11-06 through 11-26 bands instead of at the top of `## Queue`:**
+unchanged for the twenty-first run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The harness-neutraliser gate check was two unanchored regexes plus two literal
+  call-site matches, and it guarded the ONE property in this repo whose violation has already
+  shipped**~~ — **SHIPPED 2026-11-27**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level))
+  **Taken because the Queue held no fresh build item and the groom used the 11-14 question for
+  the ninth night running** — find a claim with a number or a property-word in it, then ask what
+  it is actually testing. The label printed `scratch copies point at .invalid`. **Ninth
+  consecutive night, ninth file**, and this subject is different in kind from the eight before
+  it: the other eight were regression guards on breaks that had never happened. This one already
+  happened. From 2026-09-07 to 09-16 every CI run inserted real `app_open` / `setup_completed` /
+  `shift_saved` rows into production `events` — 291 rows, 251 carrying Playwright's internally
+  impossible `iPhone OS 15_0` + `Version/18.0` pair — and CLAUDE.md still records **every
+  activation figure since 2026-09-07 as inflated by exactly that cohort**, which is the sentence
+  every groom in this file has had to repeat for eleven weeks.
+  **Measured before anything was written.** Ten edits, each applied to a scratch copy with the
+  gate run against it. **Seven printed `All 21 mechanical checks passed`:** (a)
+  `neutralizeSupabase` neutered to `return html;` on its first line — one line, the shape anyone
+  reaches for while debugging a scratch copy, and it restores the 2026-09-07 defect verbatim;
+  every regex still matched because the now-dead swap was still in the file, which is why the
+  fix needs a **reachability** clause and not a search for the rewrite; (b) the host swap dropped
+  from the returned expression with the `connect-src` widening kept; (c) **the neutral host
+  repointed at `https://mnnlgcxnvodjwlhhiphq.supabase.co`** — green because `/\.invalid'/` was
+  matching a *different line*, the `EXPECTED_NETWORK` list 100 lines further down, and a
+  whole-file regex cannot tell which occurrence it is standing on; (d) the `index.html` scratch
+  page **written before** it is neutralised, the two statements transposed, with the pinned call
+  site surviving character for character and the production bytes on disk; (e) `buildOpsScratch`
+  stops calling it with the call left behind **as a comment** — `includes()` over the whole file,
+  Invariant 1's break (c) one file over, on the page that borrows the app's session; (f) the
+  `Supabase host not found` throw removed, so a moved host turns the rewrite into a no-op that
+  reports success; (g) the `no connect-src in the meta CSP` throw removed, so the widening
+  no-ops, every telemetry request dies at CSP before it reaches the network and therefore before
+  Playwright can intercept it, and every assertion about what the app SENDS stops being able to
+  fire while passing.
+  **And both behaviour-neutral edits turned it RED:** renaming `NEUTRAL_SUPABASE_HOST`, and
+  renaming the local `html` to `doc` inside `buildOpsScratch`. The second is the 11-26
+  `uid` → `userId` row one file over.
+  **The fix reads the module's AST: five properties plus three anti-vacuity floors.** The
+  neutraliser is identified by **what it does** — a string replacement whose source resolves to a `*.supabase.co` URL and whose
+  replacement resolves to a host under `.invalid` (RFC 2606, which can never resolve) — never by
+  its name, so (b) and (c) have nothing to hide behind and a rename is free; `split/join`,
+  `replace` and `replaceAll` are all accepted, because the claim is about the swap and not its
+  spelling. That replacement must be reachable. Both self-guards must still throw. And the pages
+  are **derived from the writes**: every `writeFileSync` of an `.html` file must be handed a
+  value the neutraliser produced earlier in the same function, which covers a third scratch page
+  the day it lands and resolves the variable by binding rather than by the name `html`.
+  `copyFileSync` is deliberately out of scope — `privacy.html` is copied verbatim because it is
+  self-contained and names no Supabase host at all. Anything unresolvable **throws**.
+  `tests/harness.mjs` is an ES module, so this is the gate's first `sourceType:'module'` parse:
+  the summary moves 3 → **4** parses and 24 → **25** walks, and the 11-23 parse-count row in the
+  meta-test is updated to the new exact pair.
+  **No live defect** — both pages are neutralised today.
+  **Ten breaks (nine net, since one replaces the rename break that was there — kept as a GREEN,
+  because it is behaviour-neutral), three GREENS, falsifiable both ways and both measured.** The
+  three anti-vacuity floors get breaks of their own: a harness truncated to its constants, a
+  scratch-page write behind a local alias this check cannot resolve, and a module that does not
+  parse — the last two classified on purpose rather than waved through. Gate still 21 checks,
+  so CI's required count does not move.
+- [ ] **A SECOND fully flat groom: `events` has not moved in 62 hours and `silence_watch` has
+  crossed into `SILENT_BUT_HEALTHY`** (P2 · source:groom · no action) — **1,831** rows,
+  unchanged, newest still the `session_end {n:3, ob:0, last:'ob_view', secs:2, shifts:0}` from
+  `38a672a5` at **2026-11-24 17:47:45**, which is now the row three consecutive bands have read.
+  The 11-26 band said it was "one bad day from `SILENT_*`" and that is exactly what happened:
+  **62.3h against a 48h window**, and the verdict is `SILENT_BUT_HEALTHY` — badgebudget.com
+  serves 578,622 characters with 5 SRI scripts and the `events` insert policy is intact, so this
+  is **quiet, not broken**, which is the distinction that watch exists to draw and the reason it
+  does not exit non-zero. 7 distinct devices in 7 days (was 8), every one the landing-screen
+  shape. **Do not quote an activation figure off this** — the device classifier is still broken.
+- [ ] **`access_watch` reads TIGHT on its fifteenth night, 16/16** (P2 · source:groom · no
+  action) — unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe** — it reads the catalog and never connects as `anon`.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  2026-11-13 · needs the owner) — `anon` still holds TRUNCATE on `events`, `feedback` and
+  `user_data`, visible in tonight's `access_watch` output, and TRUNCATE is the one verb RLS does
+  not cover. Not reachable over PostgREST, which is why this has stayed P2 for fourteen nights
+  rather than becoming a P0, but it is a grant nothing needs. Revoking it is a migration, so it
+  is not nightly work.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — eighth night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **7.6 days**
+  ago. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **44**, `ics_sync_done`
+  **29** — all three identical for seven grooms. `ics_autosync_pref` and `ics_autosync_off` both
+  **zero rows from any device, ever** — still expected: she met the stepper's opt-out on 11-19
+  and took neither it nor the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-EIGHTH groom** (housekeeping, re-read at the END
+  of the run with every column as the 10-14 item requires) — the whole table including `contact`
+  and `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **42.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 22-for-22** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the twenty-second groom.
+  Zero loads filed a row since the last groom, because zero loads happened.
+- [ ] **CABINET MISSED fires for the EIGHTEENTH night, and the brief is now 25.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed
+  for Pat for the **twenty-fifth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the TWENTY-FIRST time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-26
+  band staked out: that merge (#230) touched `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` — no publish-set file. `privacy.html`, `ops.html` and `pdf.worker.min.js`
+  all print the truncation sentence, boundary **`e76c8bd`** tonight (was `0e38f4d`) — the figure
+  drifts with clone depth, which is why #210 stopped printing it as a deploy fact.
+  **Tonight's prediction:** tonight's merge touches `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` but **not `index.html`** and **not `ops.html`**, so tomorrow's watch should
+  still name **`a09cabe`**, and all three of the others should still read `[ok]` with the
+  truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-third night, and tonight it grew again**
+  (P2 · `harness:unscoped` · needs the owner) — the suite is **184** assertions now (172 last
+  night; tonight added nine net breaks and three GREENS). Runtime ~22m in this container tonight
+  (it shared CPU with the smoke run); 4m15s was last night's figure on an idle one. The ask is unchanged
+  and still Pat's, still after the existing `Deploy-watch classifier suite` step:
+  `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs`, and
+  `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
+  (44, <2s). Still **three** one-line workflow edits waiting on one visit, counting #209's
+  `cp terms.html _site/`. Tonight's build sharpens the gap in a new way: the check it replaced
+  was the only one in the gate whose subject is **CI itself**, and the seven breaks that hold it
+  now all live in the half CI does not run.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — TWENTY-FIRST night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **21.3 days**.
+  Tonight branched to `claude/great-feynman-9qjqgn`, so #209's head is untouched for the
+  twenty-first run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for
+  the TWENTY-SECOND night for the same reason (#209 rewrites T2's whole block); tonight's line
+  went to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated
+  2026-11-02" — twenty-five days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6769,6 +6910,76 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-27 — **The gate check guarding "the harness cannot write to production" was two
+  unanchored regexes over `tests/harness.mjs` plus two literal call-site matches, and it printed
+  the property-word `scratch copies point at .invalid`. Seven realistic edits that put the test
+  suite back on the real project left the gate green; both behaviour-neutral edits turned it
+  red.** The Queue held no fresh build item, so the groom used the 11-14 question for the ninth
+  night running — take a claim with a number or a property-word in it and ask what it is actually
+  testing. **Ninth consecutive night, ninth file**, and this subject differs in kind from the
+  eight before it: those were regression guards on breaks that had never happened. **This one has
+  already happened.** From 2026-09-07 to 09-16 the scratch copy rewrote only the five CDN
+  `<script>` tags, which left `createClient(SUPABASE_URL, …)` on the real project; the sandbox has
+  no route out so it read as harmless, but `ci.yml` runs the smoke suite on every push and
+  pull_request and an Actions runner's network is open. 291 rows of real `app_open` /
+  `setup_completed` / `shift_saved` went into production `events`, 251 of them carrying
+  Playwright's internally impossible `iPhone OS 15_0` + `Version/18.0` pair — a test suite was the
+  app's largest "user" by two orders of magnitude — and CLAUDE.md still records **every activation
+  figure since 2026-09-07 as inflated by exactly that cohort**, a sentence every groom in
+  `BACKLOG.md` has had to repeat for eleven weeks.
+  **Measured before anything was written.** Ten edits, each applied to a scratch copy with the
+  gate run against it. **Seven printed `All 21 mechanical checks passed`:** (a)
+  `neutralizeSupabase` neutered to `return html;` on its first line — one line, the shape anyone
+  reaches for while debugging a scratch copy, and it restores the 2026-09-07 defect verbatim;
+  every regex still matched, because the now-dead swap was still in the file, which is why the fix
+  needs a **reachability** clause and not a search for the rewrite; (b) the host swap dropped from
+  the returned expression with the `connect-src` widening kept; (c) **the neutral host repointed
+  at `https://mnnlgcxnvodjwlhhiphq.supabase.co`** — green because `/\.invalid'/` was matching a
+  *different line*, the `EXPECTED_NETWORK` list 100 lines further down, and a whole-file regex
+  cannot tell which occurrence it is standing on; (d) the `index.html` scratch page **written
+  before** it is neutralised, the two statements transposed, with the pinned call site surviving
+  character for character and the production bytes on disk; (e) `buildOpsScratch` stops calling it
+  with the call left behind **as a comment** — `includes()` over the whole file, Invariant 1's
+  break (c) one file over, on the page that borrows the app's session; (f) the `Supabase host not
+  found` throw removed, so a moved host turns the rewrite into a no-op that reports success;
+  (g) the `no connect-src in the meta CSP` throw removed, so the widening no-ops, every telemetry
+  request dies at CSP before it reaches the network and therefore before Playwright can intercept
+  it, and every assertion about what the app SENDS stops being able to fire while passing.
+  **Both behaviour-neutral edits turned it RED:** renaming `NEUTRAL_SUPABASE_HOST`, and renaming
+  the local `html` to `doc` inside `buildOpsScratch` — the 11-26 `uid` → `userId` row one file
+  over. That is the direction that gets a check weakened by whoever meets it.
+  **The fix reads the module's AST: five properties plus three anti-vacuity floors.** The
+  neutraliser is identified by **what it does** — a string replacement whose source resolves to a `*.supabase.co` URL and whose
+  replacement resolves to a host under `.invalid` (RFC 2606, which can never resolve) — never by
+  its name, so (b) and (c) have nothing to hide behind and a rename is free; `split/join`,
+  `replace` and `replaceAll` are all accepted, because the claim is about the swap and not its
+  spelling. That replacement must be **reachable** (no unconditional `return` before it in an
+  enclosing block). Both self-guards must still throw. And the pages are **derived from the
+  writes**: every `writeFileSync` of an `.html` file must be handed a value the neutraliser
+  produced earlier in the same function, which covers a third scratch page the day it lands and
+  resolves the page variable by binding rather than by the name `html`. `copyFileSync` is
+  deliberately out of scope — `privacy.html` is copied verbatim because it is self-contained and
+  names no Supabase host at all. Anything unresolvable **throws**: no regex fallback, because a
+  check that shrugs at a module it cannot read is the hole being replaced.
+  `tests/harness.mjs` is an ES module, so this is the gate's first `sourceType:'module'` parse —
+  `walk()` takes a `sourceType` and keys the AST cache on it — and the summary moves 3 → **4**
+  parses and 24 → **25** walks. The 11-23 parse-count row in `test_check_build.mjs` is updated to
+  the new exact pair rather than loosened to a bound, which is the whole point of that row.
+  **No live defect was found** — both scratch pages are neutralised today, so this is a regression
+  guard like Invariant 1's rewrite, §54 and §62, except that the regression it guards is one this
+  repo has already shipped once.
+  **Ten breaks (nine net — one replaces the old rename break, which is kept as a GREEN because
+  it is behaviour-neutral, and the three anti-vacuity floors get breaks of their own: a harness
+  truncated to its constants, a scratch-page write behind a local alias this check cannot
+  resolve, and a module that does not parse), three GREENS, falsifiable in both directions and
+  both measured.** The
+  gate's label stops printing a property-word and prints what it read:
+  `neutralizeSupabase() https://mnnlgcxnvodjwlhhiphq.supabase.co → harness-must-never-write.invalid,
+  both self-guards throw, 2 scratch page(s) neutralised before they are written`. Gate still 21
+  checks, so CI's required count does not move. `check_build.mjs` 21/21,
+  `test_check_build.mjs` 184 (151 breaks + 26 GREENS + the roster), `test_groom_seed.mjs` 33,
+  `tests/core.test.mjs` 175,
+  `tests/smoke.mjs` 1012 on iPhone 13.
 - 2026-11-26 — **The unload-telemetry gate check was four unanchored regexes standing in for the
   four mechanisms that make a visit's ENDING visible, and it was wrong in BOTH directions: seven
   of eight realistic breaks left the gate green, and all three behaviour-neutral edits turned it

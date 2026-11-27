@@ -80,12 +80,12 @@ const must = (cond, msg) => { if (!cond) throw new Error(msg); };
    the saving is asserted rather than claimed — `test_check_build.mjs` pins it. */
 let parses = 0, walks = 0;
 const astCache = new Map();
-const walk = (code, visitor, plugins = ['jsx']) => {
-  const key = `${plugins.join(',')}\u0000${code}`;
+const walk = (code, visitor, plugins = ['jsx'], sourceType = 'script') => {
+  const key = `${sourceType}\u0000${plugins.join(',')}\u0000${code}`;
   let ast = astCache.get(key);
   if (!ast) {
     const { parser } = require('@babel/standalone').packages;
-    ast = parser.parse(code, { sourceType: 'script', plugins, errorRecovery: false });
+    ast = parser.parse(code, { sourceType, plugins, errorRecovery: false });
     astCache.set(key, ast);
     parses += 1;
   }
@@ -1892,15 +1892,232 @@ check('events', 'Unload telemetry intact', () => {
     + `fetch(es) all keepalive, viaBeacon gates beaconInsert, ob_step floor ${refName}.current=${seed}`;
 });
 
+/* ---- the harness cannot write to production ------------------------------------------------
+   This is the one property in this repo whose violation has ALREADY happened and is still being
+   paid for. Until 2026-09-16 the scratch copy rewrote only the five CDN <script> tags, which
+   left `createClient(SUPABASE_URL, …)` pointing at the real project. In the sandbox that failed
+   silently; on a GitHub Actions runner the network is open and `ci.yml` runs the smoke suite on
+   every push and pull_request, so every CI run inserted real `app_open` / `setup_completed` /
+   `shift_saved` rows into production `events` under a fresh anon_id. 291 rows, 251 of them
+   carrying Playwright's impossible `iPhone OS 15_0` + `Version/18.0` pair: a test suite was the
+   app's largest "user" by two orders of magnitude, and CLAUDE.md still records every activation
+   figure since 2026-09-07 as inflated by exactly that cohort.
+
+   The check that held it was TWO UNANCHORED REGEXES over the whole file plus two literal
+   call-site string matches, and its label printed the property-word `scratch copies point at
+   .invalid`. Measured against that clause before this was written, SEVEN realistic edits left
+   the gate printing `All 21 mechanical checks passed`:
+
+     (a) `neutralizeSupabase` neutered to `return html;` on its first line — the identity-function
+         shape, one line, the thing anyone reaches for while debugging a scratch copy, and it
+         restores the 2026-09-07 defect verbatim. Every regex still matched; the constant was
+         still declared; both call sites were still there.
+     (b) the host swap dropped from the returned expression, the `connect-src` widening kept.
+     (c) `NEUTRAL_SUPABASE_HOST` repointed at `https://mnnlgcxnvodjwlhhiphq.supabase.co` — green
+         because `/\.invalid'/` matched a DIFFERENT line, the `EXPECTED_NETWORK` list 100 lines
+         further down. A whole-file regex cannot tell which occurrence it is standing on.
+     (d) the scratch page written BEFORE it is neutralised (the two statements transposed) — the
+         call site the old clause pinned was still present, character for character, and the
+         bytes on disk were the production ones.
+     (e) `buildOpsScratch` stops calling it, the call left behind as a comment — `includes()`
+         over the whole file, so a comment satisfied it. Invariant 1's break (c) one file over.
+     (f) the `Supabase host not found` throw removed, so a moved host silently no-ops.
+     (g) the `no connect-src in the meta CSP` throw removed, so the widening silently no-ops and
+         every assertion about what the app SENDS stops being able to fire.
+
+   And it was wrong in the other direction too, which is the half that gets a check weakened by
+   whoever meets it: renaming the constant, and renaming the local `html` to `doc` inside
+   `buildOpsScratch`, both turned it RED with nothing about the behaviour changed.
+
+   Read from the module's AST now: five properties plus three anti-vacuity floors, eight `must()`s
+   and ten deliberate breaks in `scripts/test_check_build.mjs`. The neutraliser is identified by WHAT IT DOES
+   — a string replacement whose source resolves to a `*.supabase.co` URL and whose replacement
+   resolves to a host under `.invalid` (RFC 2606, which can never resolve) — never by its name,
+   so (b) and (c) have nothing to hide behind and a rename is free. That replacement must be
+   REACHABLE, which is what (a) breaks. Both self-guards must still throw. And the pages are
+   derived from the WRITES: every `writeFileSync` of an `.html` file must be handed a value the
+   neutraliser produced earlier in the same function, so (d) and (e) fail, a third scratch page
+   is covered the day it lands, and the variable is resolved by binding rather than by the name
+   `html`. `tests/harness.mjs` is an ES module, so this is the gate's first `sourceType:'module'`
+   parse — parses 3 → 4, walks 24 → 25.
+
+   Anything unresolvable THROWS. No live defect was found: both pages are neutralised today, so
+   this is a regression guard like Invariant 1's rewrite, §54 and §62 — except that unlike those
+   three, the regression it guards is one this repo has already shipped once. */
 check('events', 'Harness cannot write to production', () => {
   const h = read('tests/harness.mjs');
-  must(/NEUTRAL_SUPABASE_HOST/.test(h) && /\.invalid'/.test(h),
-    'the scratch copy no longer neutralises the Supabase host — CI smoke runs will insert real '
-    + 'rows into production events, exactly as they silently did until 2026-09-16');
-  must(/neutralizeSupabase\(html, 'index\.html'\)/.test(h)
-    && /neutralizeSupabase\(html, 'ops\.html'\)/.test(h),
-    'a scratch page is built without neutralising its Supabase host');
-  return 'scratch copies point at .invalid';
+  let program = null;
+  /* Rethrown with what it MEANS rather than left as Babel's bare parser message: a harness that
+     does not parse runs no assertions at all, and this check has to say so rather than shrug. */
+  try { walk(h, { Program(p) { program = p.node; } }, [], 'module'); } catch (e) {
+    throw new Error(`tests/harness.mjs does not parse as an ES module (${String(e.message).split('\n')[0]})`
+      + ' — the smoke suite cannot run in this state, so this check can say nothing about whether'
+      + ' the scratch copies are offline, and fails rather than passing by omission');
+  }
+  must(program, 'tests/harness.mjs yielded no Program node — this walk resolved nothing, so it '
+    + 'cannot report the scratch copies as offline');
+
+  const SKIP = new Set(['loc', 'leadingComments', 'trailingComments', 'innerComments', 'comments',
+    'extra', 'tokens', 'errors']);
+  const nodesIn = (root, pred, out = []) => {
+    if (!root || typeof root !== 'object') return out;
+    if (Array.isArray(root)) { for (const n of root) nodesIn(n, pred, out); return out; }
+    if (typeof root.type === 'string' && pred(root)) out.push(root);
+    for (const k of Object.keys(root)) {
+      if (SKIP.has(k)) continue;
+      const v = root[k];
+      if (v && typeof v === 'object') nodesIn(v, pred, out);
+    }
+    return out;
+  };
+  const within = (n, r) => n.start >= r.start && n.end <= r.end;
+  const rangeOf = (n) => ({ start: n.start, end: n.end });
+
+  /* Module-scope string bindings, so every clause below can read a constant instead of its name.
+     This is what makes renaming NEUTRAL_SUPABASE_HOST a behaviour-neutral edit again. */
+  const strs = new Map();
+  for (const d of nodesIn(program, (x) => x.type === 'VariableDeclarator'
+    && x.id.type === 'Identifier' && x.init && x.init.type === 'StringLiteral')) {
+    strs.set(d.id.name, d.init.value);
+  }
+  const strOf = (n) => {
+    if (!n) return null;
+    if (n.type === 'StringLiteral') return n.value;
+    if (n.type === 'Identifier') return strs.has(n.name) ? strs.get(n.name) : null;
+    if (n.type === 'TemplateLiteral' && !n.expressions.length) {
+      return n.quasis.map((q) => q.value.cooked).join('');
+    }
+    return null;
+  };
+  const hostOf = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return null; } };
+  /* The project URL the app ships, in the shape `createClient` is handed it. Matched on the whole
+     value, so a path or a query cannot sneak past it. */
+  const PROD_HOST = /^https?:\/\/[a-z0-9-]+\.supabase\.co\/?$/i;
+  /* Every string this node could be standing for: literals, template literals with no
+     substitutions, resolvable identifiers, and regex patterns (the connect-src guard is a
+     RegExpLiteral, not a string). */
+  const textIn = (n) => nodesIn(n, (x) => x.type === 'StringLiteral' || x.type === 'Identifier'
+    || x.type === 'TemplateLiteral' || x.type === 'RegExpLiteral')
+    .map((x) => (x.type === 'RegExpLiteral' ? x.pattern : strOf(x)))
+    .filter((v) => typeof v === 'string');
+
+  /* Every function reachable by name: declarations and `const f = function/arrow`. */
+  const fns = new Map();
+  for (const n of nodesIn(program, (x) => x.type === 'FunctionDeclaration' && x.id)) fns.set(n.id.name, n);
+  for (const n of nodesIn(program, (x) => x.type === 'VariableDeclarator'
+    && x.id.type === 'Identifier' && x.init
+    && (x.init.type === 'FunctionExpression' || x.init.type === 'ArrowFunctionExpression'))) {
+    if (!fns.has(n.id.name)) fns.set(n.id.name, n.init);
+  }
+  must(fns.size >= 8, `only ${fns.size} named functions resolved in tests/harness.mjs — this walk `
+    + 'is reading the wrong thing, so every clause below would pass by having nothing to inspect');
+
+  /* ---- (a) the neutraliser, found by what it DOES ----------------------------------------
+     `s.split(FROM).join(TO)` and `s.replace(FROM, TO)` / `.replaceAll(…)` are all accepted: the
+     claim is that the production host is swapped for an unresolvable one, not that it is spelled
+     with any particular method. */
+  const swapsIn = (node) => {
+    const out = [];
+    for (const c of nodesIn(node, (x) => x.type === 'CallExpression'
+      && x.callee.type === 'MemberExpression' && x.callee.property.type === 'Identifier')) {
+      const m = c.callee.property.name;
+      const inner = c.callee.object;
+      if (m === 'join' && inner.type === 'CallExpression'
+        && inner.callee.type === 'MemberExpression'
+        && inner.callee.property.type === 'Identifier'
+        && inner.callee.property.name === 'split') {
+        out.push({ node: c, from: strOf(inner.arguments[0]), to: strOf(c.arguments[0]) });
+      } else if (m === 'replace' || m === 'replaceAll') {
+        out.push({ node: c, from: strOf(c.arguments[0]), to: strOf(c.arguments[1]) });
+      }
+    }
+    return out;
+  };
+  const isNeutralising = (s) => s.from && PROD_HOST.test(s.from)
+    && s.to && String(hostOf(s.to)).endsWith('.invalid');
+
+  const found = [];
+  for (const [name, f] of fns) {
+    const hits = swapsIn(f).filter(isNeutralising);
+    if (hits.length) found.push({ name, fn: f, swap: hits[0] });
+  }
+  must(found.length === 1,
+    `expected exactly 1 function in tests/harness.mjs that swaps the production Supabase host for `
+    + `a .invalid one, found ${found.length}${found.length ? ` (${found.map((x) => x.name).join(', ')})` : ''} `
+    + '— with no such rewrite the scratch copy talks to the real project, and CI inserts real rows '
+    + 'into production events on every push, exactly as it silently did until 2026-09-16');
+  const { name: neutName, fn: neutFn, swap } = found[0];
+
+  /* ---- (b) that rewrite is REACHABLE ----------------------------------------------------
+     `return html;` on the function's first line leaves the swap in the tree and dead. This is
+     the Invariant-1 break (b) shape, and here it is the single cheapest way to repoint the whole
+     suite at production. */
+  const deadBefore = nodesIn(neutFn, (n) => n.type === 'BlockStatement' && within(swap.node, rangeOf(n)))
+    .some((b) => b.body.some((s) => s.type === 'ReturnStatement' && s.end <= swap.node.start));
+  must(!deadBefore,
+    `${neutName}() returns unconditionally before it swaps the host — the function is still there, `
+    + 'still called from both builders, and hands back the production bytes unchanged');
+
+  /* ---- (c) + (d) the two self-guards that make the rewrite falsifiable -------------------
+     Without them a moved host or a renamed CSP directive turns the rewrite into a silent no-op,
+     which is precisely how this went unnoticed for nine days of CI runs the first time. */
+  const guards = nodesIn(neutFn, (n) => n.type === 'IfStatement'
+    && nodesIn(n.consequent, (t) => t.type === 'ThrowStatement').length);
+  must(guards.some((g) => textIn(g.test).some((v) => PROD_HOST.test(v))),
+    `${neutName}() no longer throws when the production Supabase host is absent — a moved or `
+    + 'renamed host makes the rewrite a no-op that reports success, and the scratch copy is back '
+    + 'on production with nothing saying so');
+  must(guards.some((g) => textIn(g.test).some((v) => v.includes('connect-src'))),
+    `${neutName}() no longer throws when the meta CSP has no connect-src — the widening below it `
+    + 'silently no-ops, every telemetry request is killed by CSP before it reaches the network, '
+    + 'and so before Playwright can intercept it: every assertion about what the app SENDS stops '
+    + 'being able to fire, while passing');
+
+  /* ---- (e) every scratch page written is neutralised FIRST -------------------------------
+     Derived from the writes, not from two pinned call sites: a third scratch page is covered the
+     day it lands, and the page variable is resolved by its binding rather than by the name
+     `html`. `copyFileSync` is deliberately out of scope — privacy.html is copied verbatim
+     because it is self-contained and names no Supabase host at all. */
+  const writes = nodesIn(program, (n) => n.type === 'CallExpression'
+    && n.callee.type === 'Identifier' && n.callee.name === 'writeFileSync'
+    && nodesIn(n.arguments[0], (a) => a.type === 'StringLiteral' && /\.html$/i.test(a.value)).length);
+  must(writes.length >= 2,
+    `found ${writes.length} writeFileSync() call(s) for an .html scratch page, expected at least 2 `
+    + '(index.html and ops.html) — this clause resolved almost nothing, so it cannot report the '
+    + 'pages as neutralised');
+
+  const unprotected = [];
+  for (const w of writes) {
+    const page = (nodesIn(w.arguments[0], (a) => a.type === 'StringLiteral'
+      && /\.html$/i.test(a.value))[0] || {}).value;
+    const src = w.arguments[1];
+    /* Inline `writeFileSync(…, neutralize(html, …))` is fine on its own terms. */
+    if (src && src.type === 'CallExpression' && src.callee.type === 'Identifier'
+      && src.callee.name === neutName) continue;
+    if (!src || src.type !== 'Identifier') {
+      unprotected.push(`${page} (written from a ${(src || {}).type || 'missing'} this check cannot resolve)`);
+      continue;
+    }
+    const owner = [...fns.values()].filter((f) => within(w, rangeOf(f)))
+      .sort((a, b) => (b.start - a.start))[0];
+    if (!owner) { unprotected.push(`${page} (written outside any named function)`); continue; }
+    const assigned = nodesIn(owner, (n) => (n.type === 'AssignmentExpression'
+        && n.left.type === 'Identifier' && n.left.name === src.name
+        && n.right.type === 'CallExpression' && n.right.callee.type === 'Identifier'
+        && n.right.callee.name === neutName)
+      || (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === src.name
+        && n.init && n.init.type === 'CallExpression' && n.init.callee.type === 'Identifier'
+        && n.init.callee.name === neutName))
+      .filter((n) => n.end <= w.start);
+    if (!assigned.length) unprotected.push(page);
+  }
+  must(!unprotected.length,
+    `${unprotected.length} scratch page(s) are written without ${neutName}() having run on the `
+    + `value first: ${unprotected.join(', ')} — those bytes still carry the production Supabase `
+    + 'host, so the suite writes real rows into production events on every CI run');
+
+  return `${neutName}() ${swap.from} → ${hostOf(swap.to)}, both self-guards throw, `
+    + `${writes.length} scratch page(s) neutralised before they are written`;
 });
 
 /* ---- the event inventory can still see every name ----------------------------------------
