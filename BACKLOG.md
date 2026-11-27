@@ -2857,7 +2857,8 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   truncation sentence.
 - [ ] **The gate meta-test is STILL not in CI — twenty-third night, and tonight it grew again**
   (P2 · `harness:unscoped` · needs the owner) — the suite is **184** assertions now (172 last
-  night; tonight added nine net breaks and three GREENS). Runtime ~18m in this container. The ask is unchanged
+  night; tonight added nine net breaks and three GREENS). Runtime ~22m in this container tonight
+  (it shared CPU with the smoke run); 4m15s was last night's figure on an idle one. The ask is unchanged
   and still Pat's, still after the existing `Deploy-watch classifier suite` step:
   `- name: Gate meta-test` / `run: node scripts/test_check_build.mjs`, and
   `- name: Dashboard-snapshot inventory suite` / `run: node scripts/test_dashboard_snapshot.mjs`
@@ -6976,7 +6977,8 @@ _Within each priority, **`drivable` items come first** — they are the ones the
   `neutralizeSupabase() https://mnnlgcxnvodjwlhhiphq.supabase.co → harness-must-never-write.invalid,
   both self-guards throw, 2 scratch page(s) neutralised before they are written`. Gate still 21
   checks, so CI's required count does not move. `check_build.mjs` 21/21,
-  `test_check_build.mjs` 184, `test_groom_seed.mjs` 33, `tests/core.test.mjs` 175,
+  `test_check_build.mjs` 184 (151 breaks + 26 GREENS + the roster), `test_groom_seed.mjs` 33,
+  `tests/core.test.mjs` 175,
   `tests/smoke.mjs` 1012 on iPhone 13.
 - 2026-11-26 — **The unload-telemetry gate check was four unanchored regexes standing in for the
   four mechanisms that make a visit's ENDING visible, and it was wrong in BOTH directions: seven
