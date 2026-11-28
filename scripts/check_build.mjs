@@ -1227,20 +1227,253 @@ check(6, '@scrubpay .ics sentinel, both halves', () => {
 });
 
 /* ---- Invariant 8/9: the deploy path itself --------------------------------------------- */
-check(8, 'Publish set is exactly the intended files', () => {
-  must(/cp CNAME _site\//.test(deploy), 'CNAME dropped from the publish set — the site falls off badgebudget.com');
-  must(/cp privacy\.html _site\//.test(deploy),
-    'privacy.html dropped from the publish set — badgebudget.com/privacy.html would 404, breaking the ' +
-    'Google OAuth consent screen and leaving the app with no privacy notice');
+/* ---- the deploy workflow, READ rather than grepped ------------------------------------------
+   Invariant 8's publish set and Invariant 9's triggers are both structural claims about
+   `deploy.yml`. 9's check has parsed it since 2026-11-24; 8's grepped it for
+   `^\s*cp (\S+) _site/$` until tonight, and that one regex shape stood for the whole property —
+   wrongly, in BOTH directions.
+
+   MEASURED against the old clause before any of this was written (2026-11-28). FIVE realistic
+   edits left the gate printing `All 21 mechanical checks passed`:
+
+     A. the upload step's `path: '_site'` changed to `path: '.'` — the WHOLE REPOSITORY is
+        published to badgebudget.com: BACKLOG.md, CLAUDE.md, docs/cos/, supabase/migrations/,
+        scripts/ops_gate_probe.sql. The five `cp` lines are untouched, so a check that reads only
+        them has nothing to say. This is the one that fails widest open, and NOTHING else in this
+        repo would see it — no suite drives deploy.yml, and `deploy_watch.mjs` hashes the five
+        known files, so it would read `LIVE` while the whole repo was served beside them.
+     B. the same path changed to `'docs'` — the app 404s and the internal notes become the site.
+     C. `echo "User-agent: *" > _site/robots.txt` — an extra published file by a command that is
+        not `cp`, so the regex never looked at it.
+     D. `cp -r docs _site/` — an extra published DIRECTORY. `cp (\S+) _site/` needs exactly one
+        token between, so `-r docs` matched nothing and the line was simply not seen.
+     E. `mkdir -p _site/legal && cp docs/council.md _site/legal/` — an extra file at a subpath,
+        unseen for the same reason.
+
+   And TWO behaviour-neutral edits turned it RED:
+
+     F. `cp -v index.html _site/` — one flag.
+     G. the five near-identical lines consolidated to `cp index.html CNAME _site/`, the obvious
+        tidy. The gate's message was `CNAME dropped from the publish set — the site falls off
+        badgebudget.com`, about a line that copies CNAME. F and G also broke the SIBLING check
+        below, because it derived the same set from a second copy of the same regex — two
+        spellings of one rule, which is the shape the AST-cache note above exists to forbid.
+
+   So the set is DERIVED: the staging script is read, every command in it is classified, and the
+   directory those commands stage into is compared to the path that is actually UPLOADED. The
+   staging half and the upload half are one question — "what does badgebudget.com serve?" — and
+   the old check answered only the first. Anything this check cannot place THROWS; there is no
+   regex fallback, because a check that shrugs at a workflow it cannot read is the hole being
+   replaced, and PR #209 is about to add a sixth file to this very step.
+
+   Comments are stripped OUTSIDE quotes only, so `group: "pages"` survives and a commented-out
+   `# - branch` or `# cp CNAME _site/` never becomes an entry — the latter is the one break the
+   OLD clause did catch, and it stays caught. */
+const yamlLines = (src) => {
+  const out = [];
+  src.split('\n').forEach((raw, i) => {
+    let s = '', q = null;
+    for (let c = 0; c < raw.length; c++) {
+      const ch = raw[c];
+      if (q) { s += ch; if (ch === q) q = null; continue; }
+      if (ch === '"' || ch === "'") { q = ch; s += ch; continue; }
+      if (ch === '#') break;
+      s += ch;
+    }
+    if (s.trim()) out.push({ indent: s.match(/^ */)[0].length, text: s.trim(), line: i + 1 });
+  });
+  return out;
+};
+
+const unquote = (v) => String(v).trim().replace(/^['"]|['"]$/g, '');
+
+/* The staging script and the uploaded artifact path both live under `jobs:`, which check 9's
+   reader deliberately refuses to descend into (it holds sequences-of-mappings and `run: |` block
+   scalars that check makes no claim about, and a first draft that parsed the whole file went red
+   on the real workflow). So this is its own reader, scoped to exactly what it claims: the
+   `steps:` sequence of the one job, and within a step only `name`, `uses`, `run` and `with`.
+
+   Called from inside two `check()` bodies, never at module scope, because `must()` throws and the
+   gate's report must survive a workflow it cannot read. Memoised on success only — a failure
+   re-throws for the second caller with the same message, which is the correct outcome: both
+   checks genuinely depend on it. */
+let publishCache = null;
+const publishSet = () => {
+  if (publishCache) return publishCache;
+  const lines = yamlLines(deploy);
+
+  /* Exactly one `steps:` block: this workflow has one job. A second job that stages or uploads is
+     a deliberate change and should be classified here in the same commit. */
+  const stepKeys = lines.filter((l) => l.text === 'steps:');
+  must(stepKeys.length === 1,
+    `the deploy workflow has ${stepKeys.length} \`steps:\` blocks — this check reads the one job `
+    + 'that stages and uploads the site, so another one must be classified here on purpose rather '
+    + 'than silently unread');
+  const key = stepKeys[0];
+  const at = lines.indexOf(key);
+  let end = at + 1;
+  while (end < lines.length && lines[end].indent > key.indent) end++;
+  const region = lines.slice(at + 1, end);
+  must(region.length > 0,
+    'the deploy workflow\'s `steps:` block is empty — nothing is staged and nothing is uploaded, '
+    + 'so this fails rather than reporting an empty publish set as a clean sweep');
+
+  /* Each `- ` entry at the sequence indent starts a step. The entry line's own remainder is the
+     step's first mapping key, two columns in (`- name: Checkout` puts `name:` at indent+2). */
+  const seqIndent = region[0].indent;
+  const steps = [];
+  for (const l of region) {
+    if (l.indent === seqIndent && l.text.startsWith('- ')) {
+      steps.push([{ indent: seqIndent + 2, text: l.text.slice(2).trim(), line: l.line }]);
+      continue;
+    }
+    must(steps.length,
+      `line ${l.line} of the deploy workflow sits inside \`steps:\` before any \`- \` entry — this `
+      + 'check cannot place it, so it fails rather than guessing');
+    steps[steps.length - 1].push(l);
+  }
+
+  const parsed = steps.map((ls) => {
+    const base = ls[0].indent;
+    const map = {};
+    for (let i = 0; i < ls.length; i++) {
+      const l = ls[i];
+      if (l.indent !== base) continue;                 // nested content, collected by its own key
+      const m = l.text.match(/^([^:]+):(.*)$/);
+      must(m, `cannot read line ${l.line} of the deploy workflow's steps as a mapping key: "${l.text}"`);
+      const nested = [];
+      for (let j = i + 1; j < ls.length && ls[j].indent > base; j++) nested.push(ls[j]);
+      const rest = m[2].trim();
+      /* `run: |` and `run: >` — the value is the indented block below, already comment-stripped. */
+      if (/^[|>]/.test(rest)) map[unquote(m[1])] = { block: nested };
+      else if (rest) map[unquote(m[1])] = unquote(rest);
+      else map[unquote(m[1])] = { nested };
+    }
+    return map;
+  });
+
+  /* (1) The staging step: the one whose `run:` script mentions the staging directory. Exactly
+     one, so a second script writing into it has to be classified here. */
+  const staging = parsed.filter((s) => s.run && s.run.block
+    && s.run.block.some((l) => l.text.includes('_site')));
+  must(staging.length === 1,
+    `${staging.length} steps in the deploy workflow run a script mentioning _site; this check `
+    + 'reads exactly one staging script, so a second must be classified here on purpose');
+  const script = staging[0].run.block;
+  const stepName = staging[0].name || '(unnamed step)';
+
+  /* (2) Every command in that script is classified. `cp` publishes, `mkdir` of the staging
+     directory itself does not, and ANYTHING ELSE throws — which is what catches break C, where
+     an extra file was published by a redirect rather than a copy. `&&` is split because break E
+     used it. */
+  const DIR = '_site';
+  const files = [];
+  const commands = [];
+  for (const l of script) {
+    for (const raw of l.text.split('&&')) {
+      const cmd = raw.trim();
+      if (!cmd) continue;
+      commands.push(cmd);
+      const words = cmd.split(/\s+/);
+      const flags = words.slice(1).filter((w) => w.startsWith('-'));
+      const args = words.slice(1).filter((w) => !w.startsWith('-'));
+
+      if (words[0] === 'mkdir') {
+        must(args.length === 1 && args[0].replace(/\/$/, '') === DIR,
+          `line ${l.line} of the deploy workflow creates \`${args.join(' ')}\` — this check reads a `
+          + `publish set of files at the top level of ${DIR}/, so a directory inside the published `
+          + 'tree cannot be expressed by it and is classified here rather than shipped unseen');
+        continue;
+      }
+
+      must(words[0] === 'cp',
+        `line ${l.line} of the deploy workflow runs \`${cmd.slice(0, 60)}\`, which this check cannot `
+        + `classify. Everything the staging script puts into ${DIR}/ is published to `
+        + 'badgebudget.com, so an unreadable command is a file shipped unseen (a redirect, an '
+        + '`rsync`, a `mv`, a `tar`). Teach this check the command, or stage with `cp`.');
+
+      /* A recursive copy publishes a DIRECTORY, which the expected set cannot express — break D. */
+      const recursive = flags.find((f) => /^-[^-]*[rRa]/.test(f) || /^--(recursive|archive)$/.test(f));
+      must(!recursive,
+        `line ${l.line} of the deploy workflow copies recursively (\`${recursive}\`) — that publishes `
+        + 'a whole directory tree to badgebudget.com, and the publish set names files. Copy the '
+        + 'files, or widen this check deliberately with a line saying what tree ships and why');
+
+      must(args.length >= 2,
+        `line ${l.line} of the deploy workflow runs \`${cmd.slice(0, 60)}\` with no source and `
+        + 'destination this check can read');
+      const dest = args[args.length - 1];
+      const sources = args.slice(0, -1);
+
+      /* The destination must be the staging directory ITSELF. `_site/legal/` is break E, and a
+         rename (`_site/app.html`) publishes under a name the expected list does not hold. */
+      must(dest.replace(/\/$/, '') === DIR,
+        `line ${l.line} of the deploy workflow copies into \`${dest}\` rather than ${DIR}/ — a file `
+        + 'published at a subpath or under a new name is not in the set this check compares, so it '
+        + 'is classified here rather than shipped unseen');
+
+      for (const src of sources) {
+        /* A glob or a variable cannot be resolved to a file list, and "whatever matches" is the
+           opposite of an exact publish set. Intended friction, the same as the storage-key set. */
+        must(/^[A-Za-z0-9._][A-Za-z0-9._/-]*$/.test(src),
+          `line ${l.line} of the deploy workflow copies \`${src}\`, which this check cannot resolve `
+          + 'to a named file (a glob, a variable, a quoted path). The publish set is exact, so '
+          + 'write the filename');
+        files.push(src);
+      }
+    }
+  }
+
+  /* (3) Anti-vacuity. A script this walk reads as copying nothing must fail: every assertion the
+     callers make is about `files`, and an empty list would pass the "nothing unexpected ships"
+     half of both of them by having nothing to look at. */
+  must(files.length > 0,
+    `the deploy workflow's "${stepName}" step stages no files this check could resolve — the `
+    + 'derivation broke, so this fails rather than reporting an empty publish set as correct');
+
+  /* (4) The uploaded artifact. This is the clause the old regex had no way to hold: the staging
+     script can be perfect and `path:` can still point at the repository root (break A). */
+  const uploads = parsed.filter((s) => typeof s.uses === 'string' && s.uses.includes('upload-pages-artifact'));
+  must(uploads.length === 1,
+    `${uploads.length} steps upload a Pages artifact; this check compares the uploaded path to the `
+    + 'directory the staging script fills, so exactly one must be readable here');
+  const withBlock = uploads[0].with;
+  must(withBlock && withBlock.nested,
+    'the Pages upload step has no readable `with:` block, so the path it publishes cannot be read '
+    + '— which is the whole of break A, and it fails rather than passing by omission');
+  const pathLine = withBlock.nested.find((l) => /^path\s*:/.test(l.text));
+  must(pathLine,
+    'the Pages upload step names no `path:` — it then defaults to the repository root and the '
+    + 'entire repo is published to badgebudget.com. Name the staging directory explicitly');
+  const artifact = unquote(pathLine.text.replace(/^path\s*:/, '')).replace(/\/$/, '');
+  must(artifact === DIR,
+    `the Pages upload step publishes \`${artifact}\`, not ${DIR}/ — the staging script above it `
+    + `copies ${files.length} files into ${DIR}/ and they are not what ships. \`path: '.'\` serves `
+    + 'the whole repository (BACKLOG.md, CLAUDE.md, docs/cos/, supabase/migrations/) from '
+    + 'badgebudget.com, silently: nothing else in this repo reads this line');
+
+  publishCache = { files, artifact, stepName, commands };
+  return publishCache;
+};
+
+check(8, 'Publish set is exactly the intended files, and that set is what ships', () => {
+  const { files, artifact, stepName } = publishSet();
   // Anything NOT copied silently 404s on Pages; anything added by accident ships publicly. Both
-  // directions matter, so the set is asserted exactly rather than as a minimum.
-  must(/cp ops\.html _site\//.test(deploy),
-    'ops.html dropped from the publish set — the ops console would 404');
+  // directions matter, so the set is asserted exactly rather than as a minimum. The named-file
+  // musts that used to sit above this one are gone: they were three more spellings of the same
+  // regex, and `expected` already holds every one of them.
   const expected = ['index.html', 'pdf.worker.min.js', 'privacy.html', 'ops.html', 'CNAME'];
-  const copies = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
-  must(copies.length === expected.length && expected.every((f) => copies.includes(f)),
-    `publish set should be exactly [${expected.join(', ')}], found [${copies.join(', ')}]`);
-  return copies.join(', ');
+  const extra = files.filter((f) => !expected.includes(f));
+  const missing = expected.filter((f) => !files.includes(f));
+  must(!missing.length,
+    `the deploy workflow no longer publishes [${missing.join(', ')}] — a missing CNAME takes the `
+    + 'site off badgebudget.com entirely, and a missing privacy.html 404s the URL on the Google '
+    + 'OAuth consent screen and leaves the app with no reachable privacy notice');
+  must(!extra.length,
+    `the deploy workflow publishes [${extra.join(', ')}], which Invariant 8 does not name — `
+    + 'everything in the publish set is served on the open internet. Add it to `expected` in this '
+    + 'check in the same commit if it is meant to ship');
+  return `${files.length} files staged by "${stepName}" and uploaded from ${artifact}/: ${files.join(', ')}`;
 });
 
 /* ---- Invariant 8: ops.html is published, so what it contains is a public question ---------
@@ -1381,7 +1614,10 @@ check(8, 'Ops console ships nothing it should not', () => {
    needed a check of its own — so clause (b) fails on a dynamic href/src instead of letting the
    walk go quietly blind. */
 check(8, 'Published pages link only to published files', () => {
-  const published = [...deploy.matchAll(/^\s*cp (\S+) _site\/$/gm)].map((m) => m[1]);
+  /* The SAME derivation the check above uses, not a second copy of it. Until 2026-11-28 this
+     line was its own `matchAll` of the same regex, so the two checks could disagree about
+     what ships — and both went red together on an ordinary `cp -v`. */
+  const published = publishSet().files;
   const pages = published.filter((f) => f.endsWith('.html'));
   /* Anti-omission: if the derivation above ever yields nothing, every assertion below passes by
      having nothing to walk. The same rule check 13 takes for a renamed serializeState. */
@@ -1479,18 +1715,7 @@ check(9, 'Deploy branch still triggers a deploy', () => {
      Comments are stripped OUTSIDE quotes only, so `group: "pages"` survives and a commented-out
      `# - branch` never becomes an entry — which is break A, the likeliest edit of the five.
      Flow style (`{`/`[`) is reported as unresolvable rather than guessed at. */
-  const lines = [];
-  deploy.split('\n').forEach((raw, i) => {
-    let s = '', q = null;
-    for (let c = 0; c < raw.length; c++) {
-      const ch = raw[c];
-      if (q) { s += ch; if (ch === q) q = null; continue; }
-      if (ch === '"' || ch === "'") { q = ch; s += ch; continue; }
-      if (ch === '#') break;
-      s += ch;
-    }
-    if (s.trim()) lines.push({ indent: s.match(/^ */)[0].length, text: s.trim(), line: i + 1 });
-  });
+  const lines = yamlLines(deploy);
 
   /* The region of `lines` belonging to one top-level key, as [start, end). The key is compared
      after its quotes are stripped, because `on` is a YAML 1.1 boolean and linters suggest
@@ -2574,7 +2799,8 @@ check('gate', 'Every check this gate claims is still here', () => {
     'CSP covers every host the pages load',
     'pdf.js worker matches its pinned library',
     'Every write to user_data carries a conflict target', 'Storage keys unrenamed',
-    '@scrubpay .ics sentinel, both halves', 'Publish set is exactly the intended files',
+    '@scrubpay .ics sentinel, both halves',
+    'Publish set is exactly the intended files, and that set is what ships',
     'Ops console ships nothing it should not',
     'Published pages link only to published files',
     'Deploy branch still triggers a deploy',

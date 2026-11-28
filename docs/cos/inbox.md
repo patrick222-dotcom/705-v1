@@ -7,6 +7,25 @@ each. Format: `- YYYY-MM-DD · source · what · → outcome`. Source is `sessio
 
 ## Open
 
+- 2026-11-28 · nightly · **The publish-set gate check read the five `cp` lines and never the step
+  that UPLOADS them.** `path: '_site'` on the Pages upload step changed to `path: '.'` serves the
+  ENTIRE repository from badgebudget.com — `BACKLOG.md`, `CLAUDE.md`, `docs/cos/`,
+  `supabase/migrations/`, `scripts/ops_gate_probe.sql` — with all five `cp` lines untouched and the
+  gate printing `All 21 mechanical checks passed`. Nothing else here can see it: no suite drives
+  `deploy.yml`, and `deploy_watch.mjs` hashes the five known files, so it reads `LIVE` while the
+  whole repo is served beside them. Seven of eleven measured edits passed the old clause; two
+  behaviour-neutral ones turned it red, one printing *"CNAME dropped from the publish set"* about a
+  line that copies CNAME, and both also broke the sibling link check because it held a **second
+  copy** of the same regex. Derived now: every command in the staging script is classified
+  (`cp` publishes, `mkdir _site` does not, anything else throws), each copy must land at the top
+  level of `_site`, the set must be exactly five, and the uploaded `path:` must be that directory.
+  No live defect. 11 breaks, 6 GREENS, falsifiable both ways and both measured. **Tenth
+  consecutive night of this repo's recurring defect, in a tenth file — and the first night a
+  candidate was rejected on a measurement**: Invariant 6's `[6]` check is wrong in both directions
+  too, but `tests/smoke.mjs` §52 was run against a patched copy and caught all five of its breaks,
+  so claiming a production hole there would have been over-claiming.
+  · → park: shipped; belongs to no live thread.
+
 - 2026-11-27 · nightly · **The gate check guarding "the harness cannot write to production" was
   two unanchored regexes plus two literal call-site matches — and it is the one property in this
   repo whose violation has ALREADY shipped.** From 2026-09-07 to 09-16 every CI run inserted real
