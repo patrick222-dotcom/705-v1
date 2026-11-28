@@ -23,7 +23,7 @@
  *             per deliberate break, and must EXIT NON-ZERO and name the right invariant each
  *             time. A roster test alone would still pass if `must()` quietly became a no-op or
  *             `check()` started swallowing throws, which is the way a gate most plausibly dies.
- *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, twenty-six of them now).
+ *   GREENS  — edits that must leave the gate GREEN (first added 2026-11-19, thirty-two of them now).
  *             TEETH only ever asks
  *             "does a break go red?", and a check can be wrong in the other direction: one false
  *             positive on an ordinary edit gets the check weakened by whoever meets it. See the
@@ -64,7 +64,7 @@ const ROSTER = [
   [4, 'Every write to user_data carries a conflict target'],
   [5, 'Storage keys unrenamed'],
   [6, '@scrubpay .ics sentinel, both halves'],
-  [8, 'Publish set is exactly the intended files'],
+  [8, 'Publish set is exactly the intended files, and that set is what ships'],
   [8, 'Ops console ships nothing it should not'],
   [8, 'Published pages link only to published files'],
   [9, 'Deploy branch still triggers a deploy'],
@@ -217,7 +217,7 @@ const BR = 'claude/migrate-to-github-deploy-3F5RD';
    run fixed for `[2]` and the 2026-11-10 run fixed for `[events]`, still open in a third band.
    All five `[8]` breaks now pin the label. */
 const SRI = 'SRI on every CDN script the publish set loads';
-const PUBSET = 'Publish set is exactly the intended files';
+const PUBSET = 'Publish set is exactly the intended files, and that set is what ships';
 const OPSPAGE = 'Ops console ships nothing it should not';
 const LINKS = 'Published pages link only to published files';
 /* The one line in ops.html that renders a public-authored string. Every HTML-sink break below
@@ -579,6 +579,55 @@ const BREAKS = [
     (s) => s.replace("'UID:scrubpay-'+dateKey+'-'+safeId(ev.id)", "'UID:badgebudget-'+dateKey+'-'+safeId(ev.id)"), '6'],
   ['[8] CNAME dropped from the publish set', '.github/workflows/deploy.yml',
     (s) => s.split('cp CNAME _site/').join('# cp CNAME _site/'), '8', PUBSET],
+  /* ---- the publish set's ten, added 2026-11-28 ------------------------------------------
+     The row above was the WHOLE of this check's teeth, and it is the one case the old clause was
+     written for. That clause was `/cp CNAME _site\//` plus two more of the same shape plus one
+     anchored `matchAll`, and it was MEASURED before the rewrite: SEVEN of these eleven edits left
+     the gate printing `All 21 mechanical checks passed`, and TWO behaviour-neutral ones turned it
+     RED (both are GREENS at the foot of this file).
+
+     Row A is the one that matters most and the reason this became a build item. The staging
+     script can be perfect and `path:` can still point at the repository root, which publishes
+     BACKLOG.md, CLAUDE.md, docs/cos/, supabase/migrations/ and scripts/ops_gate_probe.sql on
+     badgebudget.com — and NOTHING else in this repo would notice: no suite drives deploy.yml, and
+     `deploy_watch.mjs` hashes the five known files, so it reads `LIVE` while the whole repo is
+     served beside them. The old clause read only the `cp` lines, which row A does not touch.
+
+     Every row pins the label: `[8]` is shared by three checks. */
+  ['[8] the uploaded artifact path is the repo root, not _site', '.github/workflows/deploy.yml',
+    (s) => s.replace("path: '_site'", "path: '.'"), '8', PUBSET],
+  ['[8] the uploaded artifact path is some other directory', '.github/workflows/deploy.yml',
+    (s) => s.replace("path: '_site'", "path: 'docs'"), '8', PUBSET],
+  /* Not every way to publish a file is a `cp`. A redirect was invisible to a check that matched
+     one command name, and `# robots.txt while we are here` is an ordinary thing to add. */
+  ['[8] an extra file is published by a redirect rather than a cp', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp CNAME _site/',
+      '          cp CNAME _site/\n          echo "User-agent: *" > _site/robots.txt'), '8', PUBSET],
+  /* `cp (\S+) _site/` needs exactly ONE token between, so `-r docs` never matched at all — the
+     old regex did not fail to judge this line, it never saw it. */
+  ['[8] an extra DIRECTORY is published by cp -r', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp CNAME _site/',
+      '          cp CNAME _site/\n          cp -r docs _site/'), '8', PUBSET],
+  ['[8] an extra file is published at a subpath of _site', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp CNAME _site/',
+      '          cp CNAME _site/\n          mkdir -p _site/legal && cp docs/council.md _site/legal/'), '8', PUBSET],
+  /* No `path:` at all is not a missing option: upload-pages-artifact then defaults to the
+     repository root, so this is row A reached by deleting a line instead of editing one. */
+  ['[8] the upload step names no path at all', '.github/workflows/deploy.yml',
+    (s) => s.replace("          path: '_site'\n", ''), '8', PUBSET],
+  ['[8] the Pages upload step is gone entirely', '.github/workflows/deploy.yml',
+    (s) => s.replace(/      - name: Upload artifact\n        uses: actions\/upload-pages-artifact@v3\n        with:\n          path: '_site'\n/, ''), '8', PUBSET],
+  /* A published file renamed on the way in is not in the set this check compares. The old
+     anchored regex caught this one incidentally, by the COUNT falling to four — not by reading
+     the destination, which is why the message it printed named the wrong file. */
+  ['[8] a page is renamed on the way into _site', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp ops.html _site/', '          cp ops.html _site/admin.html'), '8', PUBSET],
+  ['[8] staging done with rsync, which this check must classify rather than ignore', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp index.html _site/', '          rsync -a index.html _site/'), '8', PUBSET],
+  /* "Whatever matches" is the opposite of an exact publish set: a glob ships the next .html file
+     anyone drops in the repo root. Intended friction, the same rule the storage-key set takes. */
+  ['[8] the publish set becomes a glob', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp privacy.html _site/', '          cp *.html _site/'), '8', PUBSET],
   /* The HTML-injection clause, rewritten as a walk 2026-11-21. This break predates the rewrite
      and is kept because it is the only one that adds a SECOND inline script: a walk wired to
      `inline[0]` would pass it. */
@@ -1182,6 +1231,38 @@ const GREENS = [
     .split('connect-src ').join(\`connect-src \${NEUTRAL_SUPABASE_HOST} \`);`,
       `    .replaceAll(REAL_SUPABASE_HOST, NEUTRAL_SUPABASE_HOST)
     .replaceAll('connect-src ', \`connect-src \${NEUTRAL_SUPABASE_HOST} \`);`)],
+  /* ---- the publish set's six, added 2026-11-28 -------------------------------------------
+     Two of these are not hypothetical: they are MEASURED false positives of the clause this
+     replaced. `cp -v index.html _site/` and consolidating the five near-identical lines to
+     `cp index.html CNAME _site/` both turned the old gate RED, and the second one printed
+     `CNAME dropped from the publish set — the site falls off badgebudget.com` about a line that
+     copies CNAME. That is the shape that gets a check weakened by whoever meets it, and it broke
+     the SIBLING check at the same time, because that one held a second copy of the same regex.
+
+     Negative-tested in both directions and both measured (2026-11-28): neuter the derivation and
+     all eleven `[8]`-pubset breaks stop failing while all six of these stay green (0 still red,
+     6/6); restore the old regex and seven of the eleven breaks pass a deliberately broken
+     workflow while EXACTLY the two rows below go red (4 still red, 4/6 green). The clean
+     baseline cannot see either of those two, which is the whole reason they are rows. */
+  ['a flag is added to one cp line', '.github/workflows/deploy.yml',
+    (s) => s.replace('          cp index.html _site/', '          cp -v index.html _site/')],
+  ['the five near-identical cp lines are consolidated', '.github/workflows/deploy.yml',
+    (s) => s.replace(/          cp index\.html _site\/\n/, '')
+      .replace('          cp CNAME _site/', '          cp index.html CNAME _site/')],
+  ['the cp lines are reordered', '.github/workflows/deploy.yml',
+    (s) => s.replace(/          cp index\.html _site\/\n          cp pdf\.worker\.min\.js _site\/\n/,
+      '          cp pdf.worker.min.js _site/\n          cp index.html _site/\n')],
+  /* The artifact path is a YAML scalar, so its quoting is the author's choice and a trailing
+     slash on a directory is idiomatic. A check that compared the raw text would flag both. */
+  ['the artifact path is written unquoted', '.github/workflows/deploy.yml',
+    (s) => s.replace("path: '_site'", 'path: _site')],
+  ['the artifact path carries a trailing slash', '.github/workflows/deploy.yml',
+    (s) => s.replace("path: '_site'", "path: '_site/'")],
+  /* The same YAML 1.1 truthy trap Invariant 9's rewrite hit: this check shares that tokeniser
+     now, so the quoted spelling has to stay green here too. Both checks read the same file, and a
+     reader that only one of them survives is a reader with two behaviours. */
+  ['`on:` is quoted, as yamllint suggests', '.github/workflows/deploy.yml',
+    (s) => s.replace('\non:\n', '\n"on":\n')],
 ];
 
 for (const [name, file, fn, also] of GREENS) {

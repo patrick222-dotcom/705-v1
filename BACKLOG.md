@@ -2879,6 +2879,157 @@ merge conflict on a legal-text review. Placed below, every diff applies cleanly.
   went to `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated
   2026-11-02" — twenty-five days.**
 
+### P1 (new, groom 2026-11-28)
+
+**Why this band sits BELOW the 11-06 through 11-27 bands instead of at the top of `## Queue`:**
+unchanged for the twenty-second run — PR #209 (the `terms.html` draft, open for Pat since
+2026-11-06) inserts its own `### P1` band at line 29, and another insert at that hunk hands him a
+merge conflict on a legal-text review. Placed below, every diff applies cleanly.
+
+- [x] ~~**The publish-set gate check read the five `cp` lines and never the step that UPLOADS
+  them — `path: '.'` publishes the whole repository with the gate printing all-green**~~ —
+  **SHIPPED 2026-11-28**, tonight's build (see Done log). (P1 · source:groom ·
+  `harness:drivable` (script-level))
+  **Taken because the Queue held no fresh build item and the groom used the 11-14 question for
+  the tenth night running** — find a claim with a number or a property-word in it, then ask what
+  it is actually testing. **Tonight that question was asked of TWO candidates and the first one
+  was rejected on a measurement**, which is worth recording because it is the first time this
+  nightly has turned a subject down for being already covered rather than for being risky.
+  Invariant 6's `[6]` check (`2 export stamps + import drops`) is two unanchored regexes, and
+  **five of five realistic breaks left the gate green while both behaviour-neutral edits turned
+  it red** — the same wrong-in-both-directions shape as the nine nights before it, including
+  inverting the import drop's polarity (`>=0` → `<0`), which makes every previously exported
+  shift re-import as a duplicate. But `tests/smoke.mjs` §52 drives the real round trip, and a
+  patched copy was run against it: **§52 catches all five**, including the one that looked
+  uncovered (a third, unstamped export site — measured, 5 of 20 assertions failed). CI runs the
+  smoke suite, so nothing was exposed and a write-up claiming otherwise would have been
+  over-claiming. **What is left on `[6]` is a FALSE-POSITIVE pair**, filed below as P3.
+  **The publish-set check was the stronger subject, and the measurement is why.** `[8] Publish
+  set is exactly the intended files` was `/cp CNAME _site\//` plus two more of the same shape
+  plus one anchored `matchAll`, and it had no clause at all about the step that uploads the
+  artifact. **Seven of eleven realistic edits left the gate printing `All 21 mechanical checks
+  passed`**, and the first is the one that made this a P1: **`path: '_site'` on the upload step
+  changed to `path: '.'`**, which serves the ENTIRE REPOSITORY from badgebudget.com —
+  `BACKLOG.md`, `CLAUDE.md`, `docs/cos/`, `supabase/migrations/`, `scripts/ops_gate_probe.sql` —
+  with all five `cp` lines untouched. **Nothing else in this repo can see that**: no suite drives
+  `deploy.yml` (`buildScratch` copies pages by name, so the harness publishes what the deploy
+  does not), and `deploy_watch.mjs` hashes the five known files, so it would read **`LIVE`** with
+  the whole repo served beside them. The other six: the path pointed at `docs`; an extra file via
+  `echo "User-agent: *" > _site/robots.txt`; an extra DIRECTORY via `cp -r docs _site/` (the old
+  regex needed exactly one token between `cp` and `_site/`, so `-r docs` matched nothing and the
+  line was never seen rather than judged); an extra file at `_site/legal/`; the `path:` key
+  deleted, which defaults to the repository root; and the upload step removed outright.
+  **And two behaviour-neutral edits turned it RED — both live defects, not hypotheticals:**
+  `cp -v index.html _site/`, and consolidating the five near-identical lines to
+  `cp index.html CNAME _site/`, which is the obvious tidy and which printed *"CNAME dropped from
+  the publish set — the site falls off badgebudget.com"* about a line that copies CNAME. Each also
+  broke the **sibling** `Published pages link only to published files` check at the same time,
+  because that one carried a **second copy of the same regex** — two spellings of one rule, which
+  the AST-cache note in that very file exists to forbid. There is one derivation now and both
+  checks read it.
+  **What is asserted:** the staging step is found (exactly one; none fails rather than sweeping
+  clean), **every command in its script is classified** — a `cp` publishes each source at its
+  basename, `mkdir _site` publishes nothing, and anything else **throws**, which is what catches
+  a redirect, an `rsync`, a `mv` or a glob — each copy must land at the top level of `_site` under
+  its own name, the resolved set must be exactly the five files, and the Pages step's `path:` must
+  be that same directory. `jobs:` is parsed for this, which Invariant 9's reader deliberately
+  refuses to descend into, so it is its own reader over the now-shared tokeniser, scoped to
+  `steps:` and within a step to `name`/`uses`/`run`/`with`. **No live defect** — the workflow is
+  correct today, so this is a regression guard like §54 and §62, not a fix.
+  **Eleven breaks, six GREENS, falsifiable both ways and both measured.** Neuter the derivation
+  and all eleven breaks stop failing while all six GREENS stay green (0 still red, 6/6); restore
+  the old regex clause and it is **green on the clean workflow**, seven of the eleven breaks pass
+  a deliberately broken file, and **exactly** the two measured false-positive rows go red
+  (4 still red, 4/6 green). That second run is the argument for the GREENS: the clean baseline
+  cannot see either of them. Gate still 21 checks and still `4 AST parse(s) shared by 25 walk(s)`
+  — the workflow is YAML, so no Babel parse was added. Meta-test 184 → **200**.
+- [ ] **`[6]`'s remaining defect is a FALSE POSITIVE, not a hole** (P3 · source:groom ·
+  `harness:drivable` (script-level)) — measured tonight and deliberately not fixed, because it is
+  P3 and the night's build item was elsewhere. The `[6]` check's second clause is
+  `html.includes("indexOf('@scrubpay')")`, so two behaviour-identical edits turn the gate **red**
+  with the message *"import no longer drops its own UIDs — re-import will duplicate every
+  event"*: hoisting the sentinel to a constant (`indexOf(ICS_SELF_UID)`), which is the natural
+  tidy in a file that already has `ICS_OFF_TITLE_RE`, `ICS_BONUS_LABEL` and `ICS_EVENT_LABEL`;
+  and writing the drop as `uidRaw.includes('@scrubpay')`. Both accuse a correct line of breaking
+  the invariant with the widest wage blast radius in the app, which is the shape that gets a
+  check *weakened* by whoever meets it. The break direction is covered — §52 was measured against
+  all five tonight and caught all five — so this is a one-clause derivation (find the parser, find
+  the UID read, require a live skip whose test resolves to the sentinel), not another whole band.
+- [ ] **A THIRD fully flat groom: `events` has not moved in 86 hours** (P2 · source:groom · no
+  action) — **1,831** rows, unchanged for the third consecutive band, newest still the
+  `session_end {n:3, ob:0, last:'ob_view', secs:2, shifts:0}` from `38a672a5` at **2026-11-24
+  17:47:45**. `silence_watch` reads **`SILENT_BUT_HEALTHY`** — 86.3h against a 48h window, while
+  badgebudget.com serves 578,622 characters with 5 SRI scripts and the `events` insert policy is
+  intact. So this is **quiet, not broken**, which is the distinction that watch exists to draw and
+  the reason it does not exit non-zero. **6** distinct devices in 7 days (was 7, was 8), every one
+  the landing-screen shape. **Do not quote an activation figure off this** — the device classifier
+  is still broken.
+- [ ] **`access_watch` reads TIGHT on its sixteenth night, 16/16** (P2 · source:groom · no
+  action) — unchanged rule for rule: `ical_subscriptions` RLS on with four `auth.uid() = user_id`
+  policies and `authenticated` the only role in its ACL, `user_data` owner-gated on all four
+  commands, `events`/`feedback` with no SELECT for either role, `ops_admins` at zero policies,
+  five `ops_*` functions `authenticated`+`service_role` only and still SECURITY DEFINER. **Still
+  not a probe** — it reads the catalog and never connects as `anon`.
+- [ ] **The TRUNCATE grant is unchanged and still needs a dedicated session** (P2 · carried from
+  2026-11-13 · needs the owner) — `anon` still holds TRUNCATE on `events`, `feedback` and
+  `user_data`, visible in tonight's `access_watch` output, and TRUNCATE is the one verb RLS does
+  not cover. Not reachable over PostgREST, which is why this has stayed P2 for fifteen nights
+  rather than becoming a P0, but it is a grant nothing needs. Revoking it is a migration, so it is
+  not nightly work.
+- [ ] **Courtney's 11-19 sync-plan row is still the newest sync evidence — ninth night**
+  (P2 · housekeeping) — her device `f184ffa5` last filed at **2026-11-19 18:13:57**, **8.6 days**
+  ago. `ics_import_done` **10** (last 2026-10-10), `ics_sync_result` **44**, `ics_sync_done`
+  **29** — all three identical for eight grooms. `ics_autosync_pref` and `ics_autosync_off` both
+  **zero rows from any device, ever** — still expected: she met the stepper's opt-out on 11-19 and
+  took neither it nor the plan.
+- [ ] **`feedback` is unchanged for the THIRTY-NINTH groom** (housekeeping, re-read at the END of
+  the run with every column as the 10-14 item requires) — the whole table including `contact` and
+  `user_id`: **18 rows**, 1 device, newest still Courtney's **2026-10-15 12:30** ("Stop auto
+  syncing with nurse grid"), now **43.8 days** old. `paystub_failed` has **still never fired for
+  any reason**, so the 10-13 item's "read a second device" bar is still not met — do not build a
+  worker mitigation.
+- [ ] **The 11-03 `client_error` fix is 23-for-23** (P2 · source:groom · no action) —
+  `client_error` is **30**, newest `2026-11-03 04:04:11`, unchanged for the twenty-third groom.
+  Zero loads filed a row since the last groom, because zero loads happened.
+- [ ] **CABINET MISSED fires for the NINETEENTH night, and the brief is now 26.8 days old** (P2 ·
+  housekeeping · needs the owner) — `docs/cos/brief.md` is still `400272a`, committed
+  **2026-11-01 12:54:09 UTC**, against an 8-day switch. `scripts/cos_check.mjs` still passes,
+  because the switch is **not** in the gate and the notify line is the whole mechanism — filed for
+  Pat for the **twenty-sixth** time: **gate the build on an over-age brief, or retire the
+  dead-man's-switch claim.** One of those two is cheap and the current state is neither.
+- [ ] **Last night's prediction HELD for the TWENTY-SECOND time** (housekeeping) — `deploy_watch`
+  reads **LIVE** with `index.html` still serving **`a09cabe` (2026-11-16)**, exactly as the 11-27
+  band staked out: that merge (#231) touched `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` — no publish-set file. `privacy.html`, `ops.html` and `pdf.worker.min.js`
+  all print the truncation sentence, boundary **`2f0b443`** tonight (was `e76c8bd`) — the figure
+  drifts with clone depth, which is why #210 stopped printing it as a deploy fact.
+  **Tonight's prediction:** tonight's merge touches `scripts/`, `CLAUDE.md`, `BACKLOG.md` and
+  `docs/cos/inbox.md` but **not `index.html`** and **not `ops.html`**, so tomorrow's watch should
+  still name **`a09cabe`**, and all three of the others should still read `[ok]` with the
+  truncation sentence.
+- [ ] **The gate meta-test is STILL not in CI — twenty-fourth night, and tonight it grew again**
+  (P2 · `harness:unscoped` · needs the owner) — the suite is **200** assertions now (184 last
+  night; tonight added ten breaks and six GREENS). Runtime ~13m in this container tonight (it
+  shared CPU with the smoke run). The ask is unchanged and still Pat's, still after the existing
+  `Deploy-watch classifier suite` step: `- name: Gate meta-test` /
+  `run: node scripts/test_check_build.mjs`, and `- name: Dashboard-snapshot inventory suite` /
+  `run: node scripts/test_dashboard_snapshot.mjs` (44, <2s). Still **three** one-line workflow
+  edits waiting on one visit, counting #209's `cp terms.html _site/`. Tonight's build makes that
+  last one concrete: adding `terms.html` to the publish set now needs the `cp` line AND
+  `expected` in the gate, and the gate's failure message says so by name.
+- [ ] **PR #209 is still open, and tonight did NOT branch over it — TWENTY-SECOND night** (P1 ·
+  needs the owner) — head unchanged at `ceacb5f`, open since 2026-11-06 01:45, now **22.3 days**.
+  Tonight branched to `claude/great-feynman-tjtbj4`, so #209's head is untouched for the
+  twenty-second run running. The loop prompt's step 3 still says `git checkout -B
+  claude/clause-md-review-9tqlj8 origin/…` followed by `--force-with-lease`, and a run that
+  follows it literally still destroys Pat's pending legal review — **that prompt is the one
+  artefact no agent can edit**, so the standing answer is: owner-tier work gets its own branch,
+  and #209 should be merged or closed. Its CI is red on purpose since #214 (the published-link
+  check names `terms.html`), which is the check working. `docs/cos/now.md` goes un-updated for the
+  TWENTY-THIRD night for the same reason (#209 rewrites T2's whole block); tonight's line went to
+  `docs/cos/inbox.md`. **The one page Pat is meant to read still says "Updated 2026-11-02" —
+  twenty-six days.**
+
 ### P1 (new, cabinet 2026-11-01)
 - [x] ~~**"Clear all data" leaves the calendar-feed link in the database**~~ — **SHIPPED 2026-11-02**,
   tonight's build (see the 11-02 band and the Done log). Original note below. (P1 · source:cabinet (Risk
@@ -6910,6 +7061,40 @@ _Within each priority, **`drivable` items come first** — they are the ones the
 <!-- GROOM_SEED:END -->
 
 ## Done (log)
+- 2026-11-28 — **The publish-set gate check read the five `cp` lines and never the step that
+  UPLOADS them. `path: '_site'` changed to `path: '.'` publishes the entire repository to
+  badgebudget.com with the gate printing `All 21 mechanical checks passed`, and nothing else in
+  this repo can see it.** Seven of eleven realistic edits passed the old clause; two
+  behaviour-neutral ones turned it red, one of them accusing a line that copies CNAME of dropping
+  CNAME.
+  **The groom asked the 11-14 question of two candidates and rejected the first on a
+  measurement** — the first time this loop has turned a subject down for being already covered
+  rather than for being risky. Invariant 6's `[6]` check is two unanchored regexes and is wrong in
+  both directions (five of five breaks green, both neutral edits red), but `tests/smoke.mjs` §52
+  drives the real export→import round trip, and a patched copy run against it caught **all five**,
+  including the one that looked uncovered — a third, unstamped export site (5 of 20 assertions
+  failed). CI runs that suite, so nothing was exposed, and a write-up claiming a production hole
+  would have been over-claiming. `[6]`'s remaining defect is the false-positive pair, filed P3.
+  **What shipped.** `[8] Publish set is exactly the intended files` becomes **`…, and that set is
+  what ships`**, because leaving a label that names only the half it reads is the defect being
+  fixed. The set is DERIVED: the staging step is located (exactly one; none fails rather than
+  sweeping clean), **every command in its script is classified** — a `cp` publishes each source at
+  its basename, `mkdir _site` publishes nothing, anything else **throws** — each copy must land at
+  the top level of `_site` under its own name, the resolved set must be exactly the five files, and
+  the Pages step's `path:` must be that same directory. That last clause is the one nothing had
+  ever read. `jobs:` is parsed for it, which Invariant 9's reader deliberately refuses to descend
+  into, so it is its own reader over a tokeniser both checks now share — and the sibling
+  `Published pages link only to published files` check stops carrying a **second copy** of the old
+  regex, which is why both of them used to go red together on an ordinary `cp -v`.
+  **No live defect**: the workflow is correct today, so this is a regression guard like §54 and
+  §62, not a fix. **Eleven deliberate breaks and six GREENS** in `scripts/test_check_build.mjs`
+  (184 → **200**), falsifiable in both directions and both measured: neuter the derivation and all
+  eleven breaks stop failing while all six GREENS stay green (0 still red, 6/6); restore the old
+  regex and it is green on the clean workflow, seven of eleven breaks pass a deliberately broken
+  file, and **exactly** the two false-positive rows go red (4 still red, 4/6 green).
+  Gate still **21 checks** and still `4 AST parse(s) shared by 25 walk(s)` — YAML needs no Babel
+  parse, so CI's required count does not move. Suites: gate 21/21, meta-test 200/0, groom_seed
+  33/0, core 175/0, dashboard 44/0, deploy_watch 121/0, silence_watch 39/0, smoke **1012/0**.
 - 2026-11-27 — **The gate check guarding "the harness cannot write to production" was two
   unanchored regexes over `tests/harness.mjs` plus two literal call-site matches, and it printed
   the property-word `scratch copies point at .invalid`. Seven realistic edits that put the test
